@@ -1,0 +1,12 @@
+{
+    "name": "fabioaacarneiro/bng",
+    "description": "Aplicação para gestão de clientes",
+    "type": "project",
+    "authors": [
+        {
+            "name": "Fabio Carneiro",
+            "email": "fabioaacarneiro@gmail.com"
+        }
+    ],
+    "require": {}
+}
