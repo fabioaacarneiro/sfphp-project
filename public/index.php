@@ -1,11 +1,8 @@
 <?php
 
-use bng\Controllers\Main;
+use bng\System\Router;
 
 require_once "../vendor/autoload.php";
 
-echo APP_NAME;
-echo "<br>";
-
-$a = new Main();
-echo $a->teste();
+echo "<pre>";
+Router::dispatch();

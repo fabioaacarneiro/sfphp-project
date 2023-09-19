@@ -11,7 +11,8 @@
     "require": {},
     "autoload": {
         "psr-4": {
-            "bng\\Controllers\\": ["app/Controllers"]
+            "bng\\Controllers\\": ["app/Controllers"],
+            "bng\\System\\": ["app/system"]
         },
         "files": [
             "app/config.php"
