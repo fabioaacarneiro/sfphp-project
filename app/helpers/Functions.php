@@ -11,6 +11,6 @@ function printData($data, $die = true)
     }
 
     if ($die) {
-        die("<br>FIM<br>");
+        die();
     }
 }
