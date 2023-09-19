@@ -1,8 +1,8 @@
 <?php
 
-namespace bgn\Models;
+namespace sfphp\Models;
 
-use bng\System\Database;
+use sfphp\System\Database;
 
 abstract class BaseModel
 {

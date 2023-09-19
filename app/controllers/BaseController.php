@@ -1,6 +1,6 @@
 <?php
 
-namespace bng\Controllers;
+namespace sfphp\Controllers;
 
 abstract class BaseController
 {

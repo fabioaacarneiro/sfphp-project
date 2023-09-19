@@ -1,7 +1,7 @@
 <?php
 
-namespace bng\Controllers;
-use bng\Controllers\BaseController;
+namespace sfphp\Controllers;
+use sfphp\Controllers\BaseController;
 
 class Main extends BaseController
 {
