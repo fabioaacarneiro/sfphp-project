@@ -8,7 +8,9 @@
             "email": "fabioaacarneiro@gmail.com"
         }
     ],
-    "require": {},
+    "require": {
+        "vlucas/phpdotenv": "^5.5"
+    },
     "autoload": {
         "psr-4": {
             "sfphp\\Controllers\\": ["app/controllers"],
