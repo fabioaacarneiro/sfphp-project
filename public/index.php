@@ -4,5 +4,9 @@ use bng\System\Router;
 
 require_once "../vendor/autoload.php";
 
-echo "<pre>";
 Router::dispatch();
+
+$nomes = ["João", "Ana", "Carlos"];
+$nome = "Fabio Carneiro";
+
+printData($nome);
