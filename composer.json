@@ -8,5 +8,13 @@
             "email": "fabioaacarneiro@gmail.com"
         }
     ],
-    "require": {}
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "bng\\Controllers\\": ["app/Controllers"]
+        },
+        "files": [
+            "app/config.php"
+        ]
+    }
 }
