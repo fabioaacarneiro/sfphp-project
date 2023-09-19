@@ -1,8 +1,8 @@
 <?php
 
-namespace bng\Models;
+namespace sfphp\Models;
 
-use bgn\Models\BaseModel;
+use sfphp\Models\BaseModel;
 
 class Agents extends BaseModel
 {

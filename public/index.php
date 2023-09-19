@@ -1,6 +1,6 @@
 <?php
 
-use bng\System\Router;
+use sfphp\System\Router;
 
 require_once "../vendor/autoload.php";
 

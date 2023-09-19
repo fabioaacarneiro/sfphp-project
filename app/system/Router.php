@@ -1,11 +1,11 @@
 <?php
 
-namespace bng\System;
+namespace sfphp\System;
 
-use bng\Controllers\Main;
+use sfphp\Controllers\Main;
 use Exception;
 
-class Router
+abstract class Router
 {
     public static function dispatch()
     {
@@ -38,7 +38,7 @@ class Router
 
         // try to instanciate the controller and execute the method
         try {
-            $class = "bng\Controllers\\$controller";
+            $class = "sfphp\Controllers\\$controller";
             $controller = new $class();
             $controller->$method(...$parameters);
         } catch (Exception $err) {
