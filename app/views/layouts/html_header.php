@@ -1,19 +1,20 @@
 <!DOCTYPE html>
 <html lang="pt">
-
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" href="assets/images/logo_32.png" type="image/png">
     <title><?= APP_NAME ?></title>
-    <!-- font google -->
+    <!-- google fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@300;600&display=swap" rel="stylesheet">
     <!-- bootstrap -->
     <link rel="stylesheet" href="assets/bootstrap/bootstrap.min.css">
+    <!-- fontawesome -->
     <link rel="stylesheet" href="assets/fontawesome/all.min.css">
-    <!-- main app.css file -->
+    <!-- custom css -->
     <link rel="stylesheet" href="assets/app.css">
 </head>
-
 <body>
