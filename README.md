@@ -37,10 +37,10 @@ não vou me responsabilizar por absolutamente nada!
 - .env
 - sistema de views (bem básico)
 - sistema de router (bem básico)
-- suporte a banco de dados (apenas MySql até agora)
+- suporte a banco de dados (apenas MySQL até agora)
 - helpers
 - layouts
-- printData (pada debug simples)
+- função printData (para debug simples)
 
 ***
 
