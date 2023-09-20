@@ -11,7 +11,7 @@ objetivo de sua evolução até a conclusão deste projeto.
 
 Este framework foi construído apenas para finalidade de estudo
 não recomendo o uso do mesmo em produção, é por sua conta em risco
-não vou me responsábilizar por absolutamente nada!
+não vou me responsabilizar por absolutamente nada!
 
 ***
 
