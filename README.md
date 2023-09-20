@@ -17,6 +17,8 @@ não vou me responsábilizar por absolutamente nada!
 
 Framework em fase inicial, pode haver mudanças e melhorias com o tempo.
 
+![alt text](public/assets/img/project.png "project imagem")
+
 ### Features:
 
 - MVC
