@@ -23,6 +23,7 @@ Framework em fase inicial, pode haver mudanças e melhorias com o tempo.
 
 - MVC
 - Composer
+- Bootstrap5
 - .env
 - sistema de views (bem básico)
 - sistema de router (bem básico)
