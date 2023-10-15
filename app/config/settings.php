@@ -7,4 +7,8 @@ return [
         "MYSQL_USER" => "your_user_name",
         "MYSQL_PASSWORD" => "your_password",
     ],
+    "info" => [
+        "APP_VERSION" => "1.0.5",
+        "APP_NAME" => "Simple Framework PHP",
+    ],
 ];
