@@ -13,4 +13,4 @@
         </div>
     </div>
 </div>
-<div class="author"><span class="author-name">Fabio Carneiro <?= date("Y") ?></span></div>
+<div class="author"><span class="author-name">Fabio Carneiro <?= date("Y") ?> | ver. <?= APP_VERSION ?></span></div>

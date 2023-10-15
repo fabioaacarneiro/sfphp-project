@@ -1,8 +1,10 @@
 <?php
 
 $settings = require_once __DIR__ . "/settings.php";
+$info = $settings["info"];
 
-define("APP_NAME", "Simple Framework PHP");
+define("APP_NAME", $info["APP_NAME"]);
+define("APP_VERSION", $info["APP_VERSION"]);
 
 if ($file = file_exists(__DIR__ . "/.env")) {
 
@@ -16,7 +18,7 @@ if ($file = file_exists(__DIR__ . "/.env")) {
     define("MYSQL_PASSWORD", $_ENV["MYSQL_PASSWORD"]);
     
 } else {
-    
+
     $database = $settings["database"];
 
     // database setup with .env not if exists
