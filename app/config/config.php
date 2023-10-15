@@ -4,9 +4,9 @@ $settings = require_once __DIR__ . "/settings.php";
 
 define("APP_NAME", "Simple Framework PHP");
 
-if (file_exists($dotenv = Dotenv\Dotenv::createImmutable(__DIR__))) {
+if ($file = file_exists(__DIR__ . "/.env")) {
 
-    echo "<br>Arquivo existe<br>";
+    $dotenv = Dotenv\Dotenv::createImmutable($file);
     $dotenv->load();
     
     // database setup with .env if exists
@@ -15,10 +15,8 @@ if (file_exists($dotenv = Dotenv\Dotenv::createImmutable(__DIR__))) {
     define("MYSQL_USER", $_ENV["MYSQL_USER"]);
     define("MYSQL_PASSWORD", $_ENV["MYSQL_PASSWORD"]);
     
-    echo "<pre>";
-    var_dump($dotenv);
-
 } else {
+    
     $database = $settings["database"];
 
     // database setup with .env not if exists
