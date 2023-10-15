@@ -2,10 +2,10 @@
 
 namespace sfphp\Controllers;
 
-use sfphp\Controllers\BaseController;
+use sfphp\Controllers\Controller;
 use sfphp\Models\Agents;
 
-class Main extends BaseController
+class Main extends Controller
 {
     public function index()
     {
