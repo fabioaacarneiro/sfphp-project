@@ -4,7 +4,7 @@ namespace sfphp\Models;
 
 use sfphp\System\Database;
 
-abstract class BaseModel
+abstract class Model
 {
     public $db;
 
