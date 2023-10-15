@@ -2,7 +2,7 @@
 
 namespace sfphp\Controllers;
 
-abstract class BaseController
+abstract class Controller
 {
     public function view($view, $data = [])
     {
