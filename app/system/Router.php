@@ -2,7 +2,6 @@
 
 namespace sfphp\System;
 
-use sfphp\Controllers\Main;
 use Exception;
 
 abstract class Router
@@ -38,7 +37,7 @@ abstract class Router
 
         // try to instanciate the controller and execute the method
         try {
-            $class = "sfphp\Controllers\\$controller";
+            $class = "sfphp\Controllers\\" . ucfirst($controller);
             $controller = new $class();
             $controller->$method(...$parameters);
         } catch (Exception $err) {

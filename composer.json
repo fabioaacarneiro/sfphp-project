@@ -18,8 +18,7 @@
             "sfphp\\System\\": ["app/system"]
         },
         "files": [
-            "app/config/config.php",
-            "app/helpers/functions.php"
+            "app/config/config.php"
         ]
     }
 }
