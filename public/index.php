@@ -1,8 +1,28 @@
 <?php
 
-require_once "../vendor/autoload.php";
+use SfphpProject\src\Router;
 
-use sfphp\System\Router;
-
+require_once __DIR__ . "/../vendor/autoload.php";
+require_once __DIR__ . "/../src/routes.php";
 
 Router::dispatch();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
