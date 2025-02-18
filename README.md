@@ -8,7 +8,7 @@ Ao optar pelo SFPHP, você estará utilizando um framework que valoriza o aprend
 
 ## Segurança
 
-Embora o SFPHP não implemente medidas de segurança nativas, ele oferece a liberdade para que o desenvolvedor adicione as proteções necessárias conforme seu projeto.
+SFPHP oferece recursos nativos para geração de JWT, pré sanitização das *super globais* **$_GET** e **$_POST**, ainda assim, você é livre para implementar medidas mais seguras e necessárias baseando em suas necessidades.
 
 ## Público-alvo
 
