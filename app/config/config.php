@@ -1,29 +1,74 @@
 <?php
 
-$settings = require_once __DIR__ . "/settings.php";
-$info = $settings["info"];
+/**
+ * Configuration file for the application.
+ *
+ * This file contains the application settings, such as database connection
+ * and application name.
+ *
+ * @package SfphpProject
+ * @subpackage app/config
+ * @author Fabio Carneiro <fabioaacarneiro@gmail.com>
+ * @copyright Copyright (c) 2022, Fabio Carneiro
+ * @license https://opensource.org/licenses/MIT MIT License
+ */
 
-define("APP_NAME", $info["APP_NAME"]);
-define("APP_VERSION", $info["APP_VERSION"]);
+namespace SfphpProject\app\config;
 
-if ($file = file_exists(__DIR__ . "/.env")) {
+use SfphpProject\src\Dotenv;
 
-    $dotenv = Dotenv\Dotenv::createImmutable($file);
-    $dotenv->load();
-    
-    // database setup with .env if exists
-    define("MYSQL_HOST", $_ENV["MYSQL_HOST"]);
-    define("MYSQL_DATABASE", $_ENV["MYSQL_DATABASE"]);
-    define("MYSQL_USER", $_ENV["MYSQL_USER"]);
-    define("MYSQL_PASSWORD", $_ENV["MYSQL_PASSWORD"]);
-    
-} else {
+Dotenv::loadEnv(__DIR__ . "/../../.env");
 
-    $database = $settings["database"];
+/**
+ * Application name.
+ *
+ * The name of the application.
+ *
+ * @var string
+ */
+define("APP_NAME", $_ENV["APP_NAME"] ?? "SfphpProject");
 
-    // database setup with .env not if exists
-    define("MYSQL_HOST", $database["MYSQL_HOST"]);
-    define("MYSQL_DATABASE", $database["MYSQL_DATABASE"]);
-    define("MYSQL_USER", $database["MYSQL_USER"]);
-    define("MYSQL_PASSWORD", $database["MYSQL_PASSWORD"]);
-}
+/**
+ * Application version.
+ *
+ * The version of the application.
+ *
+ * @var string
+ */
+define("APP_VERSION", $_ENV["APP_VERSION"] ?? "1.0.0");
+
+/**
+ * Database host.
+ *
+ * The host of the database.
+ *
+ * @var string
+ */
+define("DB_HOST", $_ENV["DB_HOST"] ?? "localhost");
+
+/**
+ * Database name.
+ *
+ * The name of the database.
+ *
+ * @var string
+ */
+define("DB_DATABASE", $_ENV["DB_DATABASE"] ?? "sfphp");
+
+/**
+ * Database username.
+ *
+ * The username of the database.
+ *
+ * @var string
+ */
+define("DB_USERNAME", $_ENV["DB_USERNAME"] ?? "root");
+
+/**
+ * Database password.
+ *
+ * The password of the database.
+ *
+ * @var string
+ */
+define("DB_PASSWORD", $_ENV["DB_PASSWORD"] ?? "");
