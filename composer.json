@@ -1,24 +1,23 @@
 {
-    "name": "fabioaacarneiro/sfphp",
-    "description": "This a simple PHP Framework for web developers",
-    "type": "project",
+    "name": "fabio/sfphp-project",
+    "description": "Simple Framework writed in PHP",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "\\SfphpProject\\src\\": "src/",
+            "\\SfphpProject\\app\\": "app/"
+        },
+        "files": [
+            "app/config/config.php",
+            "src/utils.php",
+            "src/http.php"
+        ]
+    },
     "authors": [
         {
             "name": "Fabio Carneiro",
             "email": "fabioaacarneiro@gmail.com"
         }
     ],
-    "require": {
-        "vlucas/phpdotenv": "^5.5"
-    },
-    "autoload": {
-        "psr-4": {
-            "sfphp\\Controllers\\": ["app/controllers"],
-            "sfphp\\Models\\": ["app/models"],
-            "sfphp\\System\\": ["app/system"]
-        },
-        "files": [
-            "app/config/config.php"
-        ]
-    }
+    "minimum-stability": "stable"
 }
