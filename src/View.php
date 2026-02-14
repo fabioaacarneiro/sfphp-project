@@ -14,13 +14,17 @@ class View
      * @throws Exception If the view file does not exist
      * @return void
      */
-    public static function render($view, $data = [])
-    {
+    public static function render(
+        string $view, 
+        array $data
+    ) {
         extract($data);
         $path = __DIR__ . "/../app/resources/views/$view.php";
+        
         if (!file_exists($path)) {
             throw new Exception("View $view not found");
         }
+            
         require_once $path;
     }
 }
