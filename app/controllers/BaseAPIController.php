@@ -35,6 +35,8 @@ class BaseAPIController {
                 return $matches[1];
             }
         }
+        
+        return null;
     }
 
     /**
