@@ -10,11 +10,18 @@ class Router
     private static $routes = [];
 
     /**
+     * Router constructor.
+     *
+     * @param Container $container The dependency injection container
+     */
+    public function __construct(private Container $container) {}
+
+    /**
      * Dispatch the request to the correct controller
      *
      * @return void
      */
-    public static function dispatch()
+    public function dispatch()
     {
         $url = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
         $method = $_SERVER['REQUEST_METHOD'];
@@ -32,7 +39,7 @@ class Router
             if (preg_match($pattern, $url, $matches) && isset($methods[$method])) {
                 $controllerClass = "SfphpProject\\app\\controllers\\" . $methods[$method]['controller'];
                 if (class_exists($controllerClass)) {
-                    $controller = new $controllerClass();
+                    $controller = $this->container->get($controllerClass);
                     if (method_exists($controller, $methods[$method]['action'])) {
                         if (isset($matches[1])) {
                             $controller->{$methods[$method]['action']}($matches[1]);

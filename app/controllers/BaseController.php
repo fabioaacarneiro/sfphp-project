@@ -13,7 +13,7 @@ class BaseController {
      * @param string $key
      * @return string|null
      */
-    public function requestGET(string $key = null) {
+    public function requestGET(string $key) {
         return filter_input(INPUT_GET, $key, FILTER_SANITIZE_SPECIAL_CHARS);
     }
 
@@ -23,7 +23,7 @@ class BaseController {
      * @param string $key
      * @return string|null
      */
-    public function requestPOST(string $key = null) {
+    public function requestPOST(string $key) {
         return filter_input(INPUT_POST, $key, FILTER_SANITIZE_SPECIAL_CHARS);
     }
 }

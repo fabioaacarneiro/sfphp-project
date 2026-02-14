@@ -30,7 +30,8 @@ function partial($view, $data = [])
  * @param string $asset The name of the asset
  * @return void
  */
-function assets($asset) {
+function assets($asset) 
+{
     echo "/assets/$asset";
 }
 
@@ -42,7 +43,11 @@ function assets($asset) {
  * @param array $errorMessages Custom error messages for validation failures
  * @return array The original data if valid, or an array containing errors
  */
-function validate($data, $rules, $errorMessages = []) {
+function validate(
+    $data, 
+    $rules, 
+    $errorMessages = []
+) {
     $errors = [];
 
     foreach ($rules as $field => $ruleSet) {

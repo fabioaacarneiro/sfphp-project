@@ -1,10 +1,10 @@
 <?php
 
 /**
- * Arquivo de constantes de HTTP e métodos HTTP
+ * File of HTTP constants and HTTP methods
  *
- * Aqui estão definidas as constantes de status de resposta HTTP
- * e os métodos HTTP comumente utilizados.
+ * Here are defined the HTTP response status constants
+ * and the most commonly used HTTP methods.
  *
  * @package SfphpProject
  * @subpackage src
