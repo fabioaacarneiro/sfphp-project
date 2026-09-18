@@ -33,7 +33,6 @@ class Database
       $charset = $_ENV['DB_CHARSET'] ?? 'utf8mb4';
 
       try {
-
         $dsn = self::buildDsn($driver, $host, $port, $dbname, $charset);
 
         self::$instance = new PDO($dsn, $user, $pass, [
@@ -41,11 +40,7 @@ class Database
           PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
           PDO::ATTR_EMULATE_PREPARES => false,
         ]);
-
-        error_log("Database connection established successfully");
-        fwrite(STDERR, "Database connection established successfully\n");
       } catch (PDOException $e) {
-        fwrite(STDERR, "Database connection failed: " . $e->getMessage() . "\n");
         error_log("Database connection failed: " . $e->getMessage());
         die("Database connection failed: " . $e->getMessage());
       }
