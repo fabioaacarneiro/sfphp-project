@@ -2,6 +2,8 @@
 
 namespace SfphpProject\src;
 
+use RuntimeException;
+
 /**
  * Class JWT
  * @package SfphpProject\src
@@ -33,11 +35,33 @@ class JWT
     }
 
     /**
+     * Minimum length, in bytes, accepted for the signing key.
+     */
+    private const MIN_KEY_LENGTH = 32;
+
+    /**
+     * Get the signing key from the environment.
+     *
      * @return string
+     * @throws RuntimeException If the key is missing or too short
      */
     private static function getSecretKey(): string
     {
-        return $_ENV['JWT_KEY'] ?? '';
+        $key = $_ENV['JWT_KEY'] ?? '';
+
+        if ($key === '' || $key === 'your_secret_token_here') {
+            throw new RuntimeException(
+                'JWT_KEY is not set. Define it in your .env file before issuing or validating tokens.'
+            );
+        }
+
+        if (strlen($key) < self::MIN_KEY_LENGTH) {
+            throw new RuntimeException(
+                'JWT_KEY must be at least ' . self::MIN_KEY_LENGTH . ' bytes long.'
+            );
+        }
+
+        return $key;
     }
 
     /**
@@ -61,6 +85,7 @@ class JWT
     /**
      * @param array $user
      * @return string
+     * @throws RuntimeException If JWT_KEY is missing or too short
      */
     public static function generate(array $user): string
     {
@@ -78,12 +103,9 @@ class JWT
         $headerBase64 = self::base64UrlEncode($header);
         $payloadBase64 = self::base64UrlEncode($payload);
 
-        $key = self::getSecretKey();
-
         $signature = self::generateSignature(
-            $headerBase64, 
-            $payloadBase64, 
-            $key
+            $headerBase64,
+            $payloadBase64
         );
 
         return $headerBase64 . '.' . $payloadBase64 . '.' . $signature;
@@ -92,6 +114,7 @@ class JWT
     /**
      * @param string $token
      * @return bool
+     * @throws RuntimeException If JWT_KEY is missing or too short
      */
     public static function validate(string $token): bool
     {
