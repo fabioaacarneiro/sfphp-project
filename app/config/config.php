@@ -3,8 +3,9 @@
 /**
  * Configuration file for the application.
  *
- * This file contains the application settings, such as database connection
- * and application name.
+ * This file is loaded by Composer on every request, before anything else runs,
+ * and is responsible for loading the .env file and defining the application
+ * settings.
  *
  * @package SfphpProject
  * @subpackage app/config
@@ -17,58 +18,26 @@ namespace SfphpProject\app\config;
 
 use SfphpProject\src\Dotenv;
 
-Dotenv::loadEnv(__DIR__ . "/../../.env");
+/*
+ * Loaded as optional. Because this file runs from Composer's autoloader, a
+ * required .env made `require vendor/autoload.php` fatal on a fresh clone,
+ * before the application had a chance to say what was missing. Features that
+ * genuinely need configuration (the database, JWT) fail on their own when the
+ * value they need is absent.
+ */
+Dotenv::loadEnv(__DIR__ . "/../../.env", required: false);
 
 /**
  * Application name.
- *
- * The name of the application.
- *
- * @var string
  */
 define("APP_NAME", $_ENV["APP_NAME"] ?? "SfphpProject");
 
 /**
  * Application version.
- *
- * The version of the application.
- *
- * @var string
  */
 define("APP_VERSION", $_ENV["APP_VERSION"] ?? "1.0.0");
 
 /**
- * Database host.
- *
- * The host of the database.
- *
- * @var string
+ * Application environment: "production" or "development".
  */
-define("DB_HOST", $_ENV["DB_HOST"] ?? "localhost");
-
-/**
- * Database name.
- *
- * The name of the database.
- *
- * @var string
- */
-define("DB_DATABASE", $_ENV["DB_DATABASE"] ?? "sfphp");
-
-/**
- * Database username.
- *
- * The username of the database.
- *
- * @var string
- */
-define("DB_USERNAME", $_ENV["DB_USERNAME"] ?? "root");
-
-/**
- * Database password.
- *
- * The password of the database.
- *
- * @var string
- */
-define("DB_PASSWORD", $_ENV["DB_PASSWORD"] ?? "");
+define("APP_ENV", $_ENV["APP_ENV"] ?? "production");

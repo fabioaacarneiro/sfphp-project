@@ -2,6 +2,93 @@
 
 O SFPHP é um framework PHP projetado para fornecer uma estrutura básica para o desenvolvimento de aplicações web, eliminando a necessidade de recriar funcionalidades do zero. Com um design simples e altamente personalizável, ele permite que os desenvolvedores adaptem o framework conforme suas necessidades específicas.
 
+## Requisitos
+
+- PHP 8.1 ou superior
+- Composer 2
+- Extensões `pdo` e `json` (o driver PDO correspondente ao seu banco, se for usar banco)
+
+## Instalação
+
+```bash
+git clone https://github.com/fabioaacarneiro/sfphp-project.git
+cd sfphp-project
+composer install
+cp .env-example .env
+```
+
+Depois abra o `.env` e ajuste as variáveis. Duas observações importantes:
+
+- **`JWT_KEY` precisa ser trocada.** O valor de exemplo é rejeitado, e a chave
+  deve ter no mínimo 32 bytes. Para gerar uma:
+
+  ```bash
+  php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
+  ```
+
+- **Configurar banco é opcional.** A conexão só é aberta quando um controller ou
+  model pede o PDO, então páginas que não usam banco funcionam sem `DB_*`.
+
+## Executando
+
+### Servidor embutido do PHP (desenvolvimento)
+
+```bash
+php -S localhost:8000 -t public server.php
+```
+
+O `server.php` é necessário: o servidor embutido procura um arquivo de índice
+dentro do diretório pedido, então sem ele qualquer rota além de `/` retorna 404
+sem chegar ao front controller.
+
+### Apache
+
+O `DocumentRoot` deve apontar para o diretório `public/`, e o diretório precisa
+de `AllowOverride All` para que o `public/.htaccess` seja aplicado:
+
+```apache
+<VirtualHost *:80>
+    ServerName sfphp.local
+    DocumentRoot /caminho/para/sfphp-project/public
+
+    <Directory /caminho/para/sfphp-project/public>
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
+```
+
+### Nginx
+
+```nginx
+server {
+    listen 80;
+    server_name sfphp.local;
+    root /caminho/para/sfphp-project/public;
+
+    index index.php;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include fastcgi_params;
+        fastcgi_pass unix:/run/php/php8.1-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        fastcgi_param DOCUMENT_ROOT $realpath_root;
+    }
+
+    location ~ /\. {
+        deny all;
+    }
+}
+```
+
+Em qualquer um dos três, o `DocumentRoot`/`root` aponta para `public/` — nunca
+para a raiz do projeto, para que `.env`, `src/` e `app/` fiquem fora do alcance
+do navegador.
+
 ## Benefícios do Uso
 
 Ao optar pelo SFPHP, você estará utilizando um framework que valoriza o aprendizado do PHP puro, exigindo conhecimento em SQL e promovendo a compreensão de como as funcionalidades básicas operam. Ele oferece a flexibilidade necessária para que o desenvolvedor implemente suas próprias soluções, sem as restrições de frameworks mais pesados e complexos.
@@ -90,22 +177,30 @@ class MainController extends BaseController
 ```php
 public function login()
     {
-        $request = json_decode($this->getRequest());
+        $request = json_decode($this->getRequest(), true);
 
-        $email = $request->email;
-        $password = $request->password;
+        if (!is_array($request)) {
+            return $this->responseJSON(
+                ['message' => 'Invalid JSON body'],
+                HTTP_BAD_REQUEST
+            );
+        }
 
-        $user = User::login($email, $password);
+        $user = User::login(
+            $request['email'] ?? '',
+            $request['password'] ?? ''
+        );
 
         if (!$user) {
-            $this->responseJSON(
+            return $this->responseJSON(
                 ['message' => 'Login failed'],
-                HTTP_NOT_FOUND
+                HTTP_UNAUTHORIZED
             );
         }
 
         $token = JWT::generate($user);
-        $this->responseJSON(
+
+        return $this->responseJSON(
             [
                 'message' => 'Login successful',
                 'token' => $token
@@ -120,13 +215,16 @@ public function getUserById(int $id)
 {
     $token = $this->getBearerToken();
 
-    if (!JWT::validate($token)) {
+    // getBearerToken() devolve null quando não há header Authorization,
+    // e JWT::validate() espera string. Sem essa checagem, uma requisição
+    // sem token gera TypeError (500) em vez de 401.
+    if ($token === null || !JWT::validate($token)) {
         return $this->responseJSON(
             ['message' => 'Unauthorized'],
             HTTP_UNAUTHORIZED
         );
     }
-    
+
     return $this->responseJSON(
         User::getUserById($id),
         HTTP_OK
@@ -157,17 +255,34 @@ class UserController extends BaseAPIController
 
 ```
 
-- Sistema nativo de validação do corpo da requisição com resposta personalizada de erro na validação:
+- Sistema nativo de validação do corpo da requisição com resposta personalizada de erro na validação.
+
+`validate()` devolve um `ValidationResult`, não um array: você precisa checar
+`passes()`/`fails()` antes de acessar os dados. Isso existe justamente para que
+uma validação que falhou não possa ser repassada por engano para o model.
+
+Repare também que o separador entre regras é sempre o pipe (`min:3|alpha`).
+Escrever `min:3:alpha` aplicava só o `min` e ignorava o `alpha` em silêncio —
+hoje uma regra desconhecida lança `InvalidArgumentException`.
+
 ```php
 public function createUser()
 {
     $data = json_decode($this->getRequest(), true);
-    $data = validate($data, [
-        "name" => "required|min:3:alpha",
-        "surname" => "required|min:3:alpha",
+
+    if (!is_array($data)) {
+        return $this->responseJSON(
+            ['message' => 'Invalid JSON body'],
+            HTTP_BAD_REQUEST
+        );
+    }
+
+    $result = validate($data, [
+        "name" => "required|min:3|alpha",
+        "surname" => "required|min:3|alpha",
         "email" => "required|email",
-        "nick" => "required|min:3:alpha",
-        "password" => "required|min:3"
+        "nick" => "required|min:3|alphanum",
+        "password" => "required|min:8"
     ], [
         "name" => [
             "required" => "Name is required",
@@ -190,12 +305,19 @@ public function createUser()
         ],
         "password" => [
             "required" => "Password is required",
-            "min" => "Password must be at least 3 characters long"
+            "min" => "Password must be at least 8 characters long"
         ]
     ]);
 
-    $this->responseJSON(
-        User::createUser($data),
+    if ($result->fails()) {
+        return $this->responseJSON(
+            ['errors' => $result->errors()],
+            HTTP_UNPROCESSABLE_ENTITY
+        );
+    }
+
+    return $this->responseJSON(
+        User::createUser($result->validated()),
         HTTP_CREATED
     );
 }
@@ -204,7 +326,13 @@ public function createUser()
 - Sistema nativo para carregamento do arquivo .env:
 ```php
 Dotenv::loadEnv(__DIR__ . "path_to_.env_file");
+
+// Passe required: false para que a ausência do arquivo não seja um erro.
+Dotenv::loadEnv(__DIR__ . "path_to_.env_file", required: false);
 ```
+
+O `app/config/config.php` já carrega o `.env` da raiz do projeto em toda
+requisição, como opcional, então normalmente você não precisa chamar isso.
 
 - Classe base para criação de modelos MVC, pode ser herdados por uma classe base com implementações personalizadas onde suas classes **controllers** podem herdar essa personalizada ou herdar diretamente de **BaseController**:
 ```php
@@ -217,11 +345,11 @@ namespace SfphpProject\app\controllers;
  */
 class BaseController {
 
-    public function requestGET(string $key = null) {
+    public function requestGET(string $key) {
         return filter_input(INPUT_GET, $key, FILTER_SANITIZE_SPECIAL_CHARS);
     }
 
-    public function requestPOST(string $key = null) {
+    public function requestPOST(string $key) {
         return filter_input(INPUT_POST, $key, FILTER_SANITIZE_SPECIAL_CHARS);
     }
 }
@@ -237,27 +365,31 @@ namespace SfphpProject\app\controllers;
  * Base API controller, other controllers api needs extends this
  */
 class BaseAPIController {
-    public function __construct() {
-        header("Content-Type: application/json");
-    }
-
-    public function getRequest() {
+    public function getRequest(): string {
         return file_get_contents('php://input');
     }
 
     public function getBearerToken(): ?string {
         $headers = getallheaders();
-    
+
         if (isset($headers['Authorization'])) {
             if (preg_match('/Bearer\s(\S+)/', $headers['Authorization'], $matches)) {
                 return $matches[1];
             }
         }
+
+        return null;
     }
 
-    public function responseJSON($data = [], $httpCode = HTTP_OK) {
-        http_response_code($httpCode);
-        echo json_encode($data);
+    // Retorna 'never': encerra a requisição, de modo que nada depois da
+    // chamada executa. O Content-Type vai junto da resposta, e não no
+    // construtor, para não se perder quando uma subclasse declara o
+    // próprio construtor para receber dependências do container.
+    public function responseJSON(
+        array $data = [],
+        int $httpCode = HTTP_OK
+    ): never {
+        // ...
     }
 }
 ```
