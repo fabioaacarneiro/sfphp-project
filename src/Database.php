@@ -4,6 +4,7 @@ namespace SfphpProject\src;
 
 use PDO;
 use PDOException;
+use RuntimeException;
 
 class Database
 {
@@ -18,12 +19,15 @@ class Database
    * Connect to the database and return the PDO instance
    *
    * @return PDO
+   * @throws RuntimeException If the connection cannot be established
    */
   public static function connect(): PDO
   {
     if (!self::$instance) {
-      Dotenv::loadEnv(__DIR__ . "/../.env");
-
+      /*
+       * The .env file is already loaded by app/config/config.php, which runs
+       * from Composer's autoloader before any application code.
+       */
       $driver = $_ENV['DB_DRIVER'] ?? 'mysql';
       $host   = $_ENV['DB_HOST'] ?? 'localhost';
       $port   = $_ENV['DB_PORT'] ?? null;
@@ -33,7 +37,6 @@ class Database
       $charset = $_ENV['DB_CHARSET'] ?? 'utf8mb4';
 
       try {
-
         $dsn = self::buildDsn($driver, $host, $port, $dbname, $charset);
 
         self::$instance = new PDO($dsn, $user, $pass, [
@@ -41,13 +44,17 @@ class Database
           PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
           PDO::ATTR_EMULATE_PREPARES => false,
         ]);
-
-        error_log("Database connection established successfully");
-        fwrite(STDERR, "Database connection established successfully\n");
       } catch (PDOException $e) {
-        fwrite(STDERR, "Database connection failed: " . $e->getMessage() . "\n");
+        /*
+         * The driver message carries the host, database name and user. It goes
+         * to the log only; the exception raised here is deliberately generic
+         * and NOT chained to $e, because PHP prints a chained exception's
+         * message as part of an uncaught trace, which would put those details
+         * back in front of the visitor whenever display_errors is on.
+         */
         error_log("Database connection failed: " . $e->getMessage());
-        die("Database connection failed: " . $e->getMessage());
+
+        throw new RuntimeException("Database connection failed.");
       }
     }
 

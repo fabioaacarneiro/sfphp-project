@@ -24,7 +24,13 @@ class View
         if (!file_exists($path)) {
             throw new Exception("View $view not found");
         }
-            
-        require_once $path;
+
+        /*
+         * require, not require_once: a view or partial may legitimately be
+         * rendered more than once in the same request (a row partial inside a
+         * loop, for instance). require_once would silently output nothing from
+         * the second render onwards.
+         */
+        require $path;
     }
 }

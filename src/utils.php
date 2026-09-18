@@ -6,6 +6,8 @@
  * @package SfphpProject
  */
 
+use SfphpProject\src\ValidationResult;
+
  /**
   * Renders a partial view with the provided data
   *
@@ -21,7 +23,13 @@ function partial($view, $data = [])
     if (!file_exists($path)) {
         throw new \Exception("Partial $view not found");
     }
-    require_once $path;
+
+    /*
+     * require, not require_once: the same partial is often rendered several
+     * times in one request (inside a loop, for example). require_once would
+     * silently produce no output after the first render.
+     */
+    require $path;
 }
 
 /**
@@ -36,18 +44,24 @@ function assets($asset)
 }
 
 /**
- * Validates data against specified rules and returns errors if any
+ * Validates data against the given rules
+ *
+ * Rules are pipe separated, and rules that take an argument use a colon:
+ * "required|min:3|alpha". Note that the separator between rules is always the
+ * pipe: "min:3:alpha" parses as a single min rule and the alpha check is never
+ * applied.
  *
  * @param array $data The data to validate
- * @param array $rules The validation rules
+ * @param array $rules The validation rules, keyed by field name
  * @param array $errorMessages Custom error messages for validation failures
- * @return array The original data if valid, or an array containing errors
+ * @return ValidationResult
+ * @throws InvalidArgumentException If a rule name is not recognised
  */
 function validate(
-    $data, 
-    $rules, 
-    $errorMessages = []
-) {
+    array $data,
+    array $rules,
+    array $errorMessages = []
+): ValidationResult {
     $errors = [];
 
     foreach ($rules as $field => $ruleSet) {
@@ -75,10 +89,19 @@ function validate(
                 $errors[$field][] = $errorMessages[$field]['alphanum'] ?? "$field must contain only letters and numbers.";
             } elseif ($rule === 'number' && !ctype_digit($value)) {
                 $errors[$field][] = $errorMessages[$field]['number'] ?? "$field must contain only numbers.";
+            } elseif (!in_array($rule, ['required', 'email', 'alpha', 'alphanum', 'number'], true)) {
+                /*
+                 * Unknown rules used to be skipped silently, so a typo such as
+                 * "requried" — or writing "min:3:alpha" instead of "min:3|alpha"
+                 * — turned the check off without any warning.
+                 */
+                throw new InvalidArgumentException(
+                    "Unknown validation rule \"$rule\" for field \"$field\"."
+                );
             }
         }
     }
 
-    return empty($errors) ? $data : ['errors' => $errors];
+    return new ValidationResult($data, $errors);
 }
 
