@@ -8,7 +8,15 @@ require_once __DIR__ . "/../vendor/autoload.php";
 require_once __DIR__ . "/../src/routes.php";
 
 $container = new Container();
-$container->set("pdo", Database::connect());
+
+/*
+ * Bound under PDO::class because the autowiring resolver looks services up by
+ * the fully qualified class name of the constructor parameter it is filling.
+ *
+ * Bound as a closure so the connection is only opened when a controller or
+ * model actually asks for it, instead of on every request.
+ */
+$container->set(PDO::class, fn (): PDO => Database::connect());
 
 $router = new Router($container);
 $router->dispatch();
