@@ -21,7 +21,13 @@ function partial($view, $data = [])
     if (!file_exists($path)) {
         throw new \Exception("Partial $view not found");
     }
-    require_once $path;
+
+    /*
+     * require, not require_once: the same partial is often rendered several
+     * times in one request (inside a loop, for example). require_once would
+     * silently produce no output after the first render.
+     */
+    require $path;
 }
 
 /**
