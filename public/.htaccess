@@ -1,0 +1,22 @@
+# Front controller for Apache.
+#
+# Requires mod_rewrite and "AllowOverride All" on the directory.
+# Without this file only "/" works: every other path is looked up as a real
+# file, does not exist, and Apache answers 404 before PHP is ever reached.
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Serve existing files and directories as they are (assets, images).
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Send everything else to the front controller.
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# Never serve dotfiles, in case the document root is misconfigured.
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>

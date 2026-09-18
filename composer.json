@@ -2,6 +2,11 @@
     "name": "fabio/sfphp-project",
     "description": "Simple Framework writed in PHP",
     "license": "MIT",
+    "require": {
+        "php": "^8.1",
+        "ext-json": "*",
+        "ext-pdo": "*"
+    },
     "autoload": {
         "psr-4": {
             "\\SfphpProject\\src\\": "src/",
