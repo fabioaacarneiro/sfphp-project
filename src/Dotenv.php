@@ -12,26 +12,50 @@ class Dotenv
     /**
      * Load environment variables from .env file
      *
-     * @param string $filePath
+     * Values already present in $_ENV or $_SERVER win, so real environment
+     * variables set by the server are never overwritten by the file.
+     *
+     * @param string $filePath Path to the .env file
+     * @param bool $required Whether a missing file is an error
      * @return void
-     * @throws Exception
+     * @throws Exception If the file is required and does not exist
      */
-    static function loadEnv(string $filePath): void
+    static function loadEnv(string $filePath, bool $required = true): void
     {
         if (!file_exists($filePath)) {
-            throw new Exception(".env file not found!");
+            if ($required) {
+                throw new Exception(".env file not found!");
+            }
+
+            return;
         }
 
         $lines = file($filePath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        
+
         foreach ($lines as $line) {
-            if (strpos(trim($line), '#') === 0) {
+            $line = trim($line);
+
+            if ($line === '' || str_starts_with($line, '#')) {
+                continue;
+            }
+
+            /*
+             * Skip malformed lines instead of destructuring them: a line with
+             * no "=" used to raise an "undefined array key 1" warning on every
+             * request that loaded the file.
+             */
+            if (!str_contains($line, '=')) {
                 continue;
             }
 
             [$key, $value] = explode('=', $line, 2);
+
             $key = trim($key);
-            $value = trim($value);
+            $value = self::parseValue(trim($value));
+
+            if ($key === '') {
+                continue;
+            }
 
             if (!array_key_exists($key, $_ENV) && !array_key_exists($key, $_SERVER)) {
                 $_ENV[$key] = $value;
@@ -39,5 +63,34 @@ class Dotenv
                 putenv("$key=$value");
             }
         }
+    }
+
+    /**
+     * Normalise a raw value read from the file.
+     *
+     * Strips a single layer of matching quotes, and drops trailing inline
+     * comments from unquoted values so that "DB_NAME=app # main" yields "app".
+     *
+     * @param string $value
+     * @return string
+     */
+    private static function parseValue(string $value): string
+    {
+        if (strlen($value) >= 2) {
+            $first = $value[0];
+            $last = $value[strlen($value) - 1];
+
+            if (($first === '"' || $first === "'") && $first === $last) {
+                return substr($value, 1, -1);
+            }
+        }
+
+        $commentPosition = strpos($value, ' #');
+
+        if ($commentPosition !== false) {
+            $value = substr($value, 0, $commentPosition);
+        }
+
+        return rtrim($value);
     }
 }

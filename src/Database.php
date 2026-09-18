@@ -24,8 +24,10 @@ class Database
   public static function connect(): PDO
   {
     if (!self::$instance) {
-      Dotenv::loadEnv(__DIR__ . "/../.env");
-
+      /*
+       * The .env file is already loaded by app/config/config.php, which runs
+       * from Composer's autoloader before any application code.
+       */
       $driver = $_ENV['DB_DRIVER'] ?? 'mysql';
       $host   = $_ENV['DB_HOST'] ?? 'localhost';
       $port   = $_ENV['DB_PORT'] ?? null;
