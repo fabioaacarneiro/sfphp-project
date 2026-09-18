@@ -4,6 +4,7 @@ namespace SfphpProject\src;
 
 use PDO;
 use PDOException;
+use RuntimeException;
 
 class Database
 {
@@ -18,6 +19,7 @@ class Database
    * Connect to the database and return the PDO instance
    *
    * @return PDO
+   * @throws RuntimeException If the connection cannot be established
    */
   public static function connect(): PDO
   {
@@ -41,8 +43,16 @@ class Database
           PDO::ATTR_EMULATE_PREPARES => false,
         ]);
       } catch (PDOException $e) {
+        /*
+         * The driver message carries the host, database name and user. It goes
+         * to the log only; the exception raised here is deliberately generic
+         * and NOT chained to $e, because PHP prints a chained exception's
+         * message as part of an uncaught trace, which would put those details
+         * back in front of the visitor whenever display_errors is on.
+         */
         error_log("Database connection failed: " . $e->getMessage());
-        die("Database connection failed: " . $e->getMessage());
+
+        throw new RuntimeException("Database connection failed.");
       }
     }
 
