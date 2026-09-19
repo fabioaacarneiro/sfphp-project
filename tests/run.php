@@ -549,7 +549,14 @@ $tests->run('schema builder creates tables and alters columns', function () use 
 
     $schema->table('users', function (\SfphpProject\src\Migrations\Blueprint $table): void {
         $table->string('nickname')->nullable()->index();
+        $table->foreignId('company_id')->constrained('companies')->cascadeOnDelete()->cascadeOnUpdate();
+        $table->renameColumn('nickname', 'display_name');
+        $table->string('email', 320)->change()->nullable()->after('display_name');
         $table->dropColumn('obsolete_field');
+        $table->dropUnique('email');
+        $table->dropIndex(['display_name']);
+        $table->dropForeign('company_id');
+        $table->check('display_name <> ""', 'users_display_name_check');
     });
 
     $tests->assertSame(
@@ -557,8 +564,16 @@ $tests->run('schema builder creates tables and alters columns', function () use 
             'CREATE TABLE `users` (`id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, `email` VARCHAR(255) NOT NULL, `name` VARCHAR(255) NULL, `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
             'CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`)',
             'ALTER TABLE `users` ADD COLUMN `nickname` VARCHAR(255) NULL',
+            'ALTER TABLE `users` ADD COLUMN `company_id` BIGINT UNSIGNED NOT NULL',
+            'ALTER TABLE `users` MODIFY COLUMN `email` VARCHAR(320) NULL',
             'CREATE INDEX `users_nickname_index` ON `users` (`nickname`)',
+            'ALTER TABLE `users` ADD CONSTRAINT `users_company_id_foreign` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`) ON DELETE CASCADE ON UPDATE CASCADE',
+            'ALTER TABLE `users` RENAME COLUMN `nickname` TO `display_name`',
             'ALTER TABLE `users` DROP COLUMN `obsolete_field`',
+            'DROP INDEX `users_email_unique` ON `users`',
+            'DROP INDEX `users_display_name_index` ON `users`',
+            'ALTER TABLE `users` DROP FOREIGN KEY `users_company_id_foreign`',
+            'ALTER TABLE `users` ADD CONSTRAINT `users_display_name_check` CHECK (display_name <> "")',
         ],
         $pdo->statements
     );
