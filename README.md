@@ -148,13 +148,23 @@ casos mais comuns sem SQL cru:
 - `create()` para criar tabelas
 - `table()` para alterar tabelas existentes
 - `dropIfExists()` e `rename()`
-- tipos como `id()`, `foreignId()`, `string()`, `text()`, `integer()`,
-  `bigInteger()`, `boolean()`, `date()`, `dateTime()`, `timestamp()`,
-  `decimal()`, `json()` e `uuid()`
-- modificadores de coluna como `nullable()`, `default()`, `unique()` e
-  `index()`
-- chaves estrangeiras com `constrained()`
-- `timestamps()` para criar `created_at` e `updated_at`
+- tipos como `id()`, `foreignId()`, `increments()`, `smallIncrements()`,
+  `mediumIncrements()`, `bigIncrements()`, `string()`, `char()`, `text()`,
+  `longText()`, `binary()`, `integer()`, `bigInteger()`, `boolean()`,
+  `date()`, `time()`, `dateTime()`, `dateTimeTz()`, `timestamp()`,
+  `timestampTz()`, `decimal()`, `float()`, `json()`, `uuid()`, `ulid()` e
+  `enum()`
+- modificadores de coluna como `nullable()`, `default()`, `useCurrent()`,
+  `useCurrentOnUpdate()`, `unsigned()`, `autoIncrement()`, `change()`,
+  `after()`, `comment()`, `charset()`, `collation()`, `unique()`, `index()`
+  e `primary()`
+- chaves estrangeiras com `constrained()`, `foreign()`, `references()`,
+  `onDelete()` e `onUpdate()`, além dos atalhos `cascadeOnDelete()`,
+  `cascadeOnUpdate()`, `nullOnDelete()`, `nullOnUpdate()`, `restrictOnDelete()`,
+  `restrictOnUpdate()`, `noActionOnDelete()` e `noActionOnUpdate()`
+- helpers de uso comum como `timestamps()`, `timestampsTz()`, `softDeletes()`,
+  `softDeletesTz()`, `rememberToken()`, `morphs()`, `nullableMorphs()`,
+  `uuidMorphs()` e `ulidMorphs()`
 
 Quando uma operação sair desse escopo, ainda dá para cair em `statement()` com
 SQL puro e bindings.
