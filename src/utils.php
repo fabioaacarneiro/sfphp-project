@@ -1,56 +1,46 @@
 <?php
 
 /**
- * Utility functions for view rendering, asset management, and data validation
+ * Legacy global helpers for view rendering and data validation.
  *
  * @package SfphpProject
  */
 
 use SfphpProject\src\ValidationResult;
+use SfphpProject\src\Validator;
+use SfphpProject\src\View;
 
- /**
-  * Renders a partial view with the provided data
-  *
-  * @param string $view The name of the partial view to render
-  * @param array $data The data to pass to the view
-  * @throws \Exception If the view file does not exist
-  * @return void
-  */
-function partial($view, $data = [])
-{
-    extract($data);
-    $path = __DIR__ . "/../app/resources/views/partials/$view.php";
-    if (!file_exists($path)) {
-        throw new \Exception("Partial $view not found");
-    }
-
-    /*
-     * require, not require_once: the same partial is often rendered several
-     * times in one request (inside a loop, for example). require_once would
-     * silently produce no output after the first render.
-     */
-    require $path;
+/**
+ * Render a partial view with the provided data.
+ *
+ * @deprecated Use View::partial() instead.
+ * @param string $view The name of the partial view to render
+ * @param array $data The data to pass to the view
+ * @throws \Exception If the view file does not exist
+ * @return void
+ */
+function partial(
+    string $view,
+    array $data = []
+): void {
+    View::partial($view, $data);
 }
 
 /**
- * Outputs the URL for a given asset
+ * Output the URL for a given asset.
  *
  * @param string $asset The name of the asset
  * @return void
  */
-function assets($asset) 
+function assets(string $asset): void
 {
     echo "/assets/$asset";
 }
 
 /**
- * Validates data against the given rules
+ * Validate data against the given rules.
  *
- * Rules are pipe separated, and rules that take an argument use a colon:
- * "required|min:3|alpha". Note that the separator between rules is always the
- * pipe: "min:3:alpha" parses as a single min rule and the alpha check is never
- * applied.
- *
+ * @deprecated Use Validator::validate() instead.
  * @param array $data The data to validate
  * @param array $rules The validation rules, keyed by field name
  * @param array $errorMessages Custom error messages for validation failures
@@ -62,46 +52,5 @@ function validate(
     array $rules,
     array $errorMessages = []
 ): ValidationResult {
-    $errors = [];
-
-    foreach ($rules as $field => $ruleSet) {
-        $rulesArray = explode('|', $ruleSet);
-        $value = $data[$field] ?? null;
-
-        foreach ($rulesArray as $rule) {
-            if (str_starts_with($rule, 'min:')) {
-                $min = explode(':', $rule)[1];
-                if (strlen($value) < $min) {
-                    $errors[$field][] = $errorMessages[$field]['min'] ?? "$field must be at least $min characters long.";
-                }
-            } elseif (str_starts_with($rule, 'max:')) {
-                $max = explode(':', $rule)[1];
-                if (strlen($value) > $max) {
-                    $errors[$field][] = $errorMessages[$field]['max'] ?? "$field must be at most $max characters long.";
-                }
-            } elseif ($rule === 'required' && empty($value)) {
-                $errors[$field][] = $errorMessages[$field]['required'] ?? "$field is required.";
-            } elseif ($rule === 'email' && !filter_var($value, FILTER_VALIDATE_EMAIL)) {
-                $errors[$field][] = $errorMessages[$field]['email'] ?? "$field must be a valid email.";
-            } elseif ($rule === 'alpha' && !ctype_alpha($value)) {
-                $errors[$field][] = $errorMessages[$field]['alpha'] ?? "$field must contain only letters.";
-            } elseif ($rule === 'alphanum' && !ctype_alnum($value)) {
-                $errors[$field][] = $errorMessages[$field]['alphanum'] ?? "$field must contain only letters and numbers.";
-            } elseif ($rule === 'number' && !ctype_digit($value)) {
-                $errors[$field][] = $errorMessages[$field]['number'] ?? "$field must contain only numbers.";
-            } elseif (!in_array($rule, ['required', 'email', 'alpha', 'alphanum', 'number'], true)) {
-                /*
-                 * Unknown rules used to be skipped silently, so a typo such as
-                 * "requried" — or writing "min:3:alpha" instead of "min:3|alpha"
-                 * — turned the check off without any warning.
-                 */
-                throw new InvalidArgumentException(
-                    "Unknown validation rule \"$rule\" for field \"$field\"."
-                );
-            }
-        }
-    }
-
-    return new ValidationResult($data, $errors);
+    return Validator::validate($data, $rules, $errorMessages);
 }
-
