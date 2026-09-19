@@ -55,7 +55,7 @@ class Router
         }
 
         if (!$found) {
-            http_response_code(404);
+            http_response_code(HTTP_NOT_FOUND);
             echo "<html lang='pt-br'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><link href='https://unpkg.com/tailwindcss@^1.0/dist/tailwind.min.css' rel='stylesheet'><title>404 - Página Não Encontrada</title></head><body class='bg-gray-100 flex items-center justify-center h-screen'><div class='text-center'><h1 class='text-6xl font-bold text-gray-900'>404</h1><p class='text-xl text-gray-600 mt-4'>Desculpe, a página que você está procurando não foi encontrada.</p><a href='/' class='mt-8 inline-block bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600'>Voltar para a página inicial</a></div></body></html>";
         }
     }
@@ -166,6 +166,50 @@ class Router
             PATCH, 
             $url, 
             $controller, 
+            $action
+        );
+    }
+
+    /**
+     * Define a HEAD route
+     *
+     * @param string $url
+     * @param string $controller
+     * @param string $action
+     *
+     * @return void
+     */
+    public static function head(
+        string $url,
+        string $controller,
+        string $action
+    ): void {
+        self::addRoute(
+            HEAD,
+            $url,
+            $controller,
+            $action
+        );
+    }
+
+    /**
+     * Define an OPTIONS route
+     *
+     * @param string $url
+     * @param string $controller
+     * @param string $action
+     *
+     * @return void
+     */
+    public static function options(
+        string $url,
+        string $controller,
+        string $action
+    ): void {
+        self::addRoute(
+            OPTIONS,
+            $url,
+            $controller,
             $action
         );
     }
