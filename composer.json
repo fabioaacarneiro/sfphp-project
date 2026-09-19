@@ -9,8 +9,8 @@
     },
     "autoload": {
         "psr-4": {
-            "\\SfphpProject\\src\\": "src/",
-            "\\SfphpProject\\app\\": "app/"
+            "SfphpProject\\src\\": "src/",
+            "SfphpProject\\app\\": "app/"
         },
         "files": [
             "app/config/config.php",

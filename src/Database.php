@@ -29,6 +29,7 @@ class Database
        * from Composer's autoloader before any application code.
        */
       $driver = $_ENV['DB_DRIVER'] ?? 'mysql';
+      $customDsn = $_ENV['DB_DSN'] ?? null;
       $host   = $_ENV['DB_HOST'] ?? 'localhost';
       $port   = $_ENV['DB_PORT'] ?? null;
       $dbname = $_ENV['DB_NAME'] ?? '';
@@ -37,7 +38,13 @@ class Database
       $charset = $_ENV['DB_CHARSET'] ?? 'utf8mb4';
 
       try {
-        $dsn = self::buildDsn($driver, $host, $port, $dbname, $charset);
+        $dsn = $customDsn ?: self::buildDsn(
+          $driver,
+          $host,
+          $port,
+          $dbname,
+          $charset
+        );
 
         self::$instance = new PDO($dsn, $user, $pass, [
           PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
@@ -59,6 +66,29 @@ class Database
     }
 
     return self::$instance;
+  }
+
+  /**
+   * Start a query builder for a table.
+   *
+   * @param string $table
+   * @return QueryBuilder
+   */
+  public static function table(string $table): QueryBuilder
+  {
+    return (new QueryBuilder(self::connect()))->from($table);
+  }
+
+  /**
+   * Prepare a raw SQL query with bound values.
+   *
+   * @param string $sql
+   * @param array $bindings
+   * @return RawQuery
+   */
+  public static function query(string $sql, array $bindings = []): RawQuery
+  {
+    return new RawQuery(self::connect(), $sql, $bindings);
   }
 
   /**
@@ -93,8 +123,19 @@ class Database
       case 'sqlsrv':
         return "sqlsrv:Server=$host,$port;Database=$dbname";
 
+      case 'oci':
+        return "oci:dbname=//$host:$port/$dbname;charset=$charset";
+
+      case 'firebird':
+        return "firebird:dbname=$host/$port:$dbname;charset=$charset";
+
+      case 'dblib':
+        return "dblib:host=$host:$port;dbname=$dbname";
+
       default:
-        throw new \Exception("Unsupported driver: $driver");
+        throw new \Exception(
+          "Unsupported driver: $driver. Set DB_DSN for custom PDO drivers."
+        );
     }
   }
 }
