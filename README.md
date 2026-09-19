@@ -89,6 +89,18 @@ Em qualquer um dos três, o `DocumentRoot`/`root` aponta para `public/` — nunc
 para a raiz do projeto, para que `.env`, `src/` e `app/` fiquem fora do alcance
 do navegador.
 
+## Qualidade
+
+O projeto possui verificações nativas, sem dependências de desenvolvimento:
+
+```bash
+composer run lint
+composer run test
+```
+
+Esses comandos também são executados em push e pull request pelo workflow do
+GitHub Actions.
+
 ## Benefícios do Uso
 
 Ao optar pelo SFPHP, você estará utilizando um framework que valoriza o aprendizado do PHP puro, exigindo conhecimento em SQL e promovendo a compreensão de como as funcionalidades básicas operam. Ele oferece a flexibilidade necessária para que o desenvolvedor implemente suas próprias soluções, sem as restrições de frameworks mais pesados e complexos.
@@ -96,6 +108,21 @@ Ao optar pelo SFPHP, você estará utilizando um framework que valoriza o aprend
 ## Segurança
 
 SFPHP oferece recursos nativos para geração de JWT, pré sanitização das *super globais* **$_GET** e **$_POST**, ainda assim, você é livre para implementar medidas mais seguras e necessárias baseando em suas necessidades.
+
+- Sistema nativo de CSRF para formulários e requests mutantes:
+```php
+<form method="post" action="/users">
+    <?= csrf_field() ?>
+
+    <input type="text" name="name">
+    <button type="submit">Salvar</button>
+</form>
+```
+
+`csrf_field()` emite um `input` oculto com o token da sessão, `csrf_meta()`
+expõe o mesmo token para JavaScript e `csrf_verify()` valida o request atual
+contra a sessão. O token é criado automaticamente na inicialização da
+aplicação e fica disponível em qualquer view.
 
 ## Público-alvo
 
@@ -206,6 +233,12 @@ Os valores são sempre vinculados ao PDO; nunca os concatene na consulta SQL.
 O builder valida nomes de tabelas e colunas, operadores, direções de ordenação
 e tipos de `JOIN`. Ele gera SQL portável para CRUD e adapta paginação aos
 dialetos MySQL, PostgreSQL, SQLite, SQL Server, Oracle, Firebird e DBLIB.
+
+- Classes auxiliares para segurança e qualidade:
+```php
+<?= csrf_meta() ?>
+<?= e($user['name']) ?>
+```
 Para qualquer outro driver PDO, use `DB_DSN` no `.env`; CRUD sem paginação usa
 SQL ANSI e identificadores com aspas padrão. Consultas específicas de dialeto,
 como funções proprietárias ou paginação DBLIB com offset, devem usar
@@ -245,11 +278,24 @@ class MainController extends BaseController
 
 - Sistema nativo e simplificado para composição de páginas com inclusão de *partials*:
 ```php
-<?php partial("header"); ?>
+<?php
 
-<?php partial("content"); ?>
+use SfphpProject\src\View;
+?>
 
-<?php partial("footer"); ?>
+<?php View::partial("header"); ?>
+
+<?php View::partial("content"); ?>
+
+<?php View::partial("footer"); ?>
+```
+
+Use `e()` para dados dinâmicos em HTML e `asset()` para URLs absolutas de
+arquivos públicos:
+
+```php
+<a href="<?= e(Router::url('login')) ?>">Entrar</a>
+<img src="<?= e(asset('images/logo_32.png')) ?>" alt="Logo">
 ```
 
 - Sistema nativo para trabalhar com JWT:
@@ -257,14 +303,7 @@ class MainController extends BaseController
 ```php
 public function login()
     {
-        $request = json_decode($this->getRequest(), true);
-
-        if (!is_array($request)) {
-            return $this->responseJSON(
-                ['message' => 'Invalid JSON body'],
-                HTTP_BAD_REQUEST
-            );
-        }
+        $request = $this->getJsonRequest();
 
         $user = User::login(
             $request['email'] ?? '',
@@ -311,6 +350,22 @@ public function getUserById(int $id)
     );
 }
 ```
+
+- Sistema nativo de CSRF para formulários e requests mutantes:
+```php
+<form method="post" action="/users">
+    <?= csrf_field() ?>
+
+    <input type="text" name="name">
+    <button type="submit">Salvar</button>
+</form>
+```
+
+`csrf_field()` emite um `input` oculto com o token da sessão, `csrf_meta()`
+expõe o mesmo token para JavaScript e `csrf_verify()` valida o request atual
+contra a sessão. O token é criado automaticamente na inicialização da
+aplicação e fica disponível em qualquer view.
+
 - Coletar JSON da requisição por herança da clase **BaseAPIController**:
 ```php
 <?php
@@ -326,7 +381,7 @@ class UserController extends BaseAPIController
 
     public function createUser()
     {
-        $data = json_decode($this->getRequest(), true);
+        $data = $this->getJsonRequest();
         // restante do código
     }
 
@@ -337,9 +392,10 @@ class UserController extends BaseAPIController
 
 - Sistema nativo de validação do corpo da requisição com resposta personalizada de erro na validação.
 
-`validate()` devolve um `ValidationResult`, não um array: você precisa checar
-`passes()`/`fails()` antes de acessar os dados. Isso existe justamente para que
-uma validação que falhou não possa ser repassada por engano para o model.
+`Validator::validate()` devolve um `ValidationResult`, não um array: você
+precisa checar `passes()`/`fails()` antes de acessar os dados. Isso existe
+justamente para que uma validação que falhou não possa ser repassada por engano
+para o model.
 
 Repare também que o separador entre regras é sempre o pipe (`min:3|alpha`).
 Escrever `min:3:alpha` aplicava só o `min` e ignorava o `alpha` em silêncio —
@@ -348,16 +404,9 @@ hoje uma regra desconhecida lança `InvalidArgumentException`.
 ```php
 public function createUser()
 {
-    $data = json_decode($this->getRequest(), true);
+    $data = $this->getJsonRequest();
 
-    if (!is_array($data)) {
-        return $this->responseJSON(
-            ['message' => 'Invalid JSON body'],
-            HTTP_BAD_REQUEST
-        );
-    }
-
-    $result = validate($data, [
+    $result = \SfphpProject\src\Validator::validate($data, [
         "name" => "required|min:3|alpha",
         "surname" => "required|min:3|alpha",
         "email" => "required|email",
@@ -449,22 +498,19 @@ class BaseAPIController {
         return file_get_contents('php://input');
     }
 
-    public function getBearerToken(): ?string {
-        $headers = getallheaders();
-
-        if (isset($headers['Authorization'])) {
-            if (preg_match('/Bearer\s(\S+)/', $headers['Authorization'], $matches)) {
-                return $matches[1];
-            }
-        }
-
-        return null;
+    // Retorna 400 para JSON inválido e 415 para Content-Type incompatível.
+    public function getJsonRequest(): array {
+        // ...
     }
 
-    // Retorna 'never': encerra a requisição, de modo que nada depois da
-    // chamada executa. O Content-Type vai junto da resposta, e não no
-    // construtor, para não se perder quando uma subclasse declara o
-    // próprio construtor para receber dependências do container.
+    public function getHeader(string $name): ?string {
+        // ...
+    }
+
+    public function getBearerToken(): ?string {
+        // ...
+    }
+
     public function responseJSON(
         array $data = [],
         int $httpCode = HTTP_OK
