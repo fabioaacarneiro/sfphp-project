@@ -101,6 +101,50 @@ composer run test
 Esses comandos também são executados em push e pull request pelo workflow do
 GitHub Actions.
 
+## CLI e migrations
+
+O projeto agora inclui um binário PHP simples na raiz do repositório:
+
+```bash
+./sfphp help
+```
+
+Os comandos iniciais são:
+
+```bash
+./sfphp make:migration create_users_table
+./sfphp migrate
+./sfphp rollback
+./sfphp status
+```
+
+As migrations ficam em `database/migrations/` e são geradas como arquivos PHP
+que retornam uma instância anônima de `Migration`. O stub já vem com `up()` e
+`down()` e um exemplo de uso do schema builder:
+
+```php
+return new class extends Migration
+{
+    public function up(Schema $schema): void
+    {
+        $schema->create('users', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+    }
+
+    public function down(Schema $schema): void
+    {
+        $schema->dropIfExists('users');
+    }
+};
+```
+
+O objetivo desta primeira etapa é deixar o fluxo operacional: criar migration,
+aplicar, desfazer e inspecionar o estado. A camada de schema vai evoluir em
+seguida com mais tipos e operações.
+
 ## Benefícios do Uso
 
 Ao optar pelo SFPHP, você estará utilizando um framework que valoriza o aprendizado do PHP puro, exigindo conhecimento em SQL e promovendo a compreensão de como as funcionalidades básicas operam. Ele oferece a flexibilidade necessária para que o desenvolvedor implemente suas próprias soluções, sem as restrições de frameworks mais pesados e complexos.
