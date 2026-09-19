@@ -8,6 +8,7 @@ use SfphpProject\src\Container;
 use SfphpProject\src\JWT;
 use SfphpProject\src\Migrations\MigrationCreator;
 use SfphpProject\src\Migrations\MigrationRunner;
+use SfphpProject\src\Migrations\Schema;
 use SfphpProject\src\QueryBuilder;
 use SfphpProject\src\Router;
 use SfphpProject\src\Validator;
@@ -306,6 +307,42 @@ final class MigrationPdoTest extends PDO
     }
 }
 
+final class SchemaStatementTest extends PDOStatement
+{
+    public string $sql;
+
+    public function __construct(private SchemaPdoTest $pdo) {}
+
+    public function execute(?array $params = null): bool
+    {
+        $this->pdo->statements[] = $this->sql;
+
+        return true;
+    }
+}
+
+final class SchemaPdoTest extends PDO
+{
+    public array $statements = [];
+
+    public function __construct() {}
+
+    public function getAttribute(int $attribute): mixed
+    {
+        return 'mysql';
+    }
+
+    public function prepare(
+        string $query,
+        array $options = []
+    ): PDOStatement|false {
+        $statement = new SchemaStatementTest($this);
+        $statement->sql = $query;
+
+        return $statement;
+    }
+}
+
 final class ContainerDependencyTest {}
 
 final class ContainerDefaultTest
@@ -497,6 +534,34 @@ $tests->run('migration runner applies and rolls back files', function () use ($t
 
     $tests->assertTrue(isset($pdo->tables['users']));
     $tests->assertTrue(!isset($pdo->tables['posts']));
+});
+
+$tests->run('schema builder creates tables and alters columns', function () use ($tests): void {
+    $pdo = new SchemaPdoTest();
+    $schema = new Schema($pdo);
+
+    $schema->create('users', function (\SfphpProject\src\Migrations\Blueprint $table): void {
+        $table->id();
+        $table->string('email')->unique();
+        $table->string('name')->nullable();
+        $table->timestamps();
+    });
+
+    $schema->table('users', function (\SfphpProject\src\Migrations\Blueprint $table): void {
+        $table->string('nickname')->nullable()->index();
+        $table->dropColumn('obsolete_field');
+    });
+
+    $tests->assertSame(
+        [
+            'CREATE TABLE `users` (`id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, `email` VARCHAR(255) NOT NULL, `name` VARCHAR(255) NULL, `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+            'CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`)',
+            'ALTER TABLE `users` ADD COLUMN `nickname` VARCHAR(255) NULL',
+            'CREATE INDEX `users_nickname_index` ON `users` (`nickname`)',
+            'ALTER TABLE `users` DROP COLUMN `obsolete_field`',
+        ],
+        $pdo->statements
+    );
 });
 
 $tests->finish();
