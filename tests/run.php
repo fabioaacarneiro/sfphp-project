@@ -579,4 +579,35 @@ $tests->run('schema builder creates tables and alters columns', function () use 
     );
 });
 
+$tests->run('schema builder covers common column helpers', function () use ($tests): void {
+    $pdo = new SchemaPdoTest();
+    $schema = new Schema($pdo);
+
+    $schema->create('media', function (\SfphpProject\src\Migrations\Blueprint $table): void {
+        $table->increments('id');
+        $table->char('code', 32)->unique();
+        $table->binary('payload')->nullable();
+        $table->ulid('public_id')->index();
+        $table->rememberToken();
+        $table->softDeletes();
+        $table->timestampsTz();
+    });
+
+    $schema->table('media', function (\SfphpProject\src\Migrations\Blueprint $table): void {
+        $table->string('slug', 80)->change()->nullable()->charset('utf8mb4')->collation('utf8mb4_unicode_ci')->comment('Slug');
+        $table->timestamp('published_at')->nullable()->useCurrent()->useCurrentOnUpdate();
+    });
+
+    $tests->assertSame(
+        [
+            'CREATE TABLE `media` (`id` INTEGER UNSIGNED AUTO_INCREMENT PRIMARY KEY, `code` CHAR(32) NOT NULL, `payload` BLOB NULL, `public_id` CHAR(26) NOT NULL, `remember_token` VARCHAR(100) NULL, `deleted_at` TIMESTAMP NULL, `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+            'CREATE UNIQUE INDEX `media_code_unique` ON `media` (`code`)',
+            'CREATE INDEX `media_public_id_index` ON `media` (`public_id`)',
+            'ALTER TABLE `media` MODIFY COLUMN `slug` VARCHAR(80) NULL CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT \'Slug\'',
+            'ALTER TABLE `media` ADD COLUMN `published_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP',
+        ],
+        $pdo->statements
+    );
+});
+
 $tests->finish();
