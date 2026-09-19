@@ -131,6 +131,43 @@ Router::post("/users", "UserController", "createUser");
 Router::post("/users/login", "UserController", "login");
   ```
 
+- Query builder nativo e SQL bruto com parâmetros vinculados. O builder atende
+  consultas comuns e mantém PDO acessível para SQL específico do banco:
+```php
+use SfphpProject\src\Database as DB;
+
+$users = DB::table('users')
+    ->select('id', 'name', 'email')
+    ->where('status', 'active')
+    ->whereNull('deleted_at')
+    ->orderBy('name')
+    ->limit(20)
+    ->get();
+
+$user = DB::table('users')
+    ->where('email', $email)
+    ->first();
+
+$newUserId = DB::table('users')->insert([
+    'name' => 'Ada Lovelace',
+    'email' => 'ada@example.com',
+]);
+
+$total = DB::query(
+    'SELECT COUNT(*) FROM users WHERE created_at >= :date',
+    ['date' => $date]
+)->scalar();
+```
+
+Os valores são sempre vinculados ao PDO; nunca os concatene na consulta SQL.
+O builder valida nomes de tabelas e colunas, operadores, direções de ordenação
+e tipos de `JOIN`. Ele gera SQL portável para CRUD e adapta paginação aos
+dialetos MySQL, PostgreSQL, SQLite, SQL Server, Oracle, Firebird e DBLIB.
+Para qualquer outro driver PDO, use `DB_DSN` no `.env`; CRUD sem paginação usa
+SQL ANSI e identificadores com aspas padrão. Consultas específicas de dialeto,
+como funções proprietárias ou paginação DBLIB com offset, devem usar
+`DB::query()` com bindings.
+
 - Sistema nativo de view simples renderizando páginas:
 ```php
 <?php
@@ -399,4 +436,3 @@ class BaseAPIController {
 ## Autor
 
 O SFPHP foi criado por Fabio Carneiro.
-
