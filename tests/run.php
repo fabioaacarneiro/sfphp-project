@@ -6,6 +6,8 @@ use SfphpProject\app\controllers\BaseAPIController;
 use SfphpProject\src\Csrf;
 use SfphpProject\src\Container;
 use SfphpProject\src\JWT;
+use SfphpProject\src\Migrations\MigrationCreator;
+use SfphpProject\src\Migrations\MigrationRunner;
 use SfphpProject\src\QueryBuilder;
 use SfphpProject\src\Router;
 use SfphpProject\src\Validator;
@@ -128,6 +130,182 @@ final class QueryBuilderPdoTest extends PDO
     }
 }
 
+final class MigrationStatementTest extends PDOStatement
+{
+    public string $sql;
+    public array $bindings = [];
+    public array $rows = [];
+    public mixed $value = null;
+
+    public function __construct(private MigrationPdoTest $pdo) {}
+
+    public function bindValue(
+        string|int $param,
+        mixed $value,
+        int $type = PDO::PARAM_STR
+    ): bool {
+        $this->bindings[$param] = $value;
+
+        return true;
+    }
+
+    public function execute(?array $params = null): bool
+    {
+        if ($params !== null) {
+            $this->bindings = $params;
+        }
+
+        $this->pdo->executeStatement($this->sql, $this->bindings, $this);
+
+        return true;
+    }
+
+    public function fetchAll(int $mode = PDO::FETCH_DEFAULT, mixed ...$args): array
+    {
+        return $this->rows;
+    }
+
+    public function fetchColumn(int $column = 0): mixed
+    {
+        return $this->value;
+    }
+
+    public function rowCount(): int
+    {
+        return is_array($this->rows) ? count($this->rows) : 0;
+    }
+}
+
+final class MigrationPdoTest extends PDO
+{
+    public array $migrations = [];
+    public array $tables = [];
+    public int $sequence = 0;
+
+    public function __construct() {}
+
+    public function getAttribute(int $attribute): mixed
+    {
+        return 'sqlite';
+    }
+
+    public function exec(string $statement): int|false
+    {
+        if (str_starts_with($statement, 'CREATE TABLE IF NOT EXISTS migrations')) {
+            return 0;
+        }
+
+        return 0;
+    }
+
+    public function query(
+        string $query,
+        ?int $fetchMode = null,
+        mixed ...$fetchModeArgs
+    ): PDOStatement|false {
+        $statement = new MigrationStatementTest($this);
+        $statement->sql = $query;
+        $statement->execute();
+
+        return $statement;
+    }
+
+    public function prepare(
+        string $query,
+        array $options = []
+    ): PDOStatement|false {
+        $statement = new MigrationStatementTest($this);
+        $statement->sql = $query;
+
+        return $statement;
+    }
+
+    public function lastInsertId(?string $name = null): string
+    {
+        return (string) count($this->migrations);
+    }
+
+    public function executeStatement(
+        string $sql,
+        array $bindings,
+        MigrationStatementTest $statement
+    ): void {
+        if (preg_match('/^CREATE TABLE IF NOT EXISTS migrations/i', $sql)) {
+            return;
+        }
+
+        if (preg_match('/^CREATE TABLE\s+[\"`\[]?(?<table>[A-Za-z_][A-Za-z0-9_]*)[\"`\]]?/i', $sql, $matches)) {
+            $this->tables[$matches['table']] = true;
+            return;
+        }
+
+        if (preg_match('/^DROP TABLE IF EXISTS\s+[\"`\[]?(?<table>[A-Za-z_][A-Za-z0-9_]*)[\"`\]]?/i', $sql, $matches)) {
+            unset($this->tables[$matches['table']]);
+            return;
+        }
+
+        if (preg_match('/^INSERT INTO migrations/i', $sql)) {
+            $migration = $bindings['migration'];
+            $this->migrations[$migration] = [
+                'migration' => $migration,
+                'batch' => (int) $bindings['batch'],
+                'applied_at' => sprintf('2026-09-19 12:00:%02d', $this->sequence++),
+            ];
+
+            return;
+        }
+
+        if (preg_match('/^DELETE FROM migrations WHERE migration = :migration/i', $sql)) {
+            unset($this->migrations[$bindings['migration']]);
+            return;
+        }
+
+        if (preg_match('/^SELECT COUNT\\(\\*\\) FROM migrations WHERE migration = :migration/i', $sql)) {
+            $statement->value = isset($this->migrations[$bindings['migration']]) ? 1 : 0;
+            return;
+        }
+
+        if (preg_match('/^SELECT COALESCE\\(MAX\\(batch\\), 0\\) \\+ 1 AS batch FROM migrations/i', $sql)) {
+            $statement->value = $this->migrations === []
+                ? 1
+                : max(array_column($this->migrations, 'batch')) + 1;
+
+            return;
+        }
+
+        if (preg_match('/^SELECT migration, batch, applied_at FROM migrations ORDER BY applied_at ASC, migration ASC/i', $sql)) {
+            $statement->rows = array_values($this->sortedMigrations());
+            return;
+        }
+
+        if (preg_match('/^SELECT migration, batch, applied_at FROM migrations ORDER BY applied_at DESC, migration DESC LIMIT :limit/i', $sql)) {
+            $limit = (int) $bindings[':limit'];
+            $statement->rows = array_slice(array_values($this->sortedMigrationsDesc()), 0, $limit);
+            return;
+        }
+    }
+
+    private function sortedMigrations(): array
+    {
+        $rows = array_values($this->migrations);
+        usort($rows, static function (array $left, array $right): int {
+            return [$left['applied_at'], $left['migration']] <=> [$right['applied_at'], $right['migration']];
+        });
+
+        return $rows;
+    }
+
+    private function sortedMigrationsDesc(): array
+    {
+        $rows = array_values($this->migrations);
+        usort($rows, static function (array $left, array $right): int {
+            return [$right['applied_at'], $right['migration']] <=> [$left['applied_at'], $left['migration']];
+        });
+
+        return $rows;
+    }
+}
+
 final class ContainerDependencyTest {}
 
 final class ContainerDefaultTest
@@ -146,6 +324,36 @@ final class ContainerCycleATest
 final class ContainerCycleBTest
 {
     public function __construct(public ContainerCycleATest $dependency) {}
+}
+
+function writeMigrationFixture(string $directory, string $fileName, string $table): string
+{
+    $path = rtrim($directory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $fileName;
+    file_put_contents($path, <<<PHP
+<?php
+
+use SfphpProject\src\Migrations\Blueprint;
+use SfphpProject\src\Migrations\Migration;
+use SfphpProject\src\Migrations\Schema;
+
+return new class extends Migration
+{
+    public function up(Schema \$schema): void
+    {
+        \$schema->create('$table', function (Blueprint \$table): void {
+            \$table->id();
+            \$table->string('name');
+        });
+    }
+
+    public function down(Schema \$schema): void
+    {
+        \$schema->dropIfExists('$table');
+    }
+};
+PHP);
+
+    return $path;
 }
 
 $tests = new TestRunner();
@@ -245,6 +453,50 @@ $tests->run('views escape output and protect view names', function () use ($test
     View::partial('header', ['title' => '<script>']);
     $output = ob_get_clean();
     $tests->assertTrue(str_contains($output, '&lt;script&gt;'));
+});
+
+$tests->run('migration creator builds timestamped stubs', function () use ($tests): void {
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'sfphp-migrations-' . uniqid('', true);
+    mkdir($directory, 0775, true);
+
+    $creator = new MigrationCreator($directory);
+    $path = $creator->create('create_users_table');
+
+    $tests->assertTrue(is_file($path));
+    $tests->assertTrue((bool) preg_match('/\d{4}_\d{2}_\d{2}_\d{6}_create_users_table\.php$/', $path));
+
+    $contents = file_get_contents($path);
+    $tests->assertTrue(str_contains($contents, 'return new class extends Migration'));
+});
+
+$tests->run('migration runner applies and rolls back files', function () use ($tests): void {
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'sfphp-migrations-' . uniqid('', true);
+    mkdir($directory, 0775, true);
+
+    writeMigrationFixture($directory, '2026_09_19_120000_create_users_table.php', 'users');
+    writeMigrationFixture($directory, '2026_09_19_120001_create_posts_table.php', 'posts');
+
+    $pdo = new MigrationPdoTest();
+
+    $runner = new MigrationRunner($pdo, $directory);
+    $tests->assertSame(
+        [
+            '2026_09_19_120000_create_users_table.php',
+            '2026_09_19_120001_create_posts_table.php',
+        ],
+        $runner->migrate()
+    );
+
+    $tests->assertTrue(isset($pdo->tables['users']));
+    $tests->assertTrue(isset($pdo->tables['posts']));
+
+    $tests->assertSame(
+        ['2026_09_19_120001_create_posts_table.php'],
+        $runner->rollback(1)
+    );
+
+    $tests->assertTrue(isset($pdo->tables['users']));
+    $tests->assertTrue(!isset($pdo->tables['posts']));
 });
 
 $tests->finish();
