@@ -2,6 +2,8 @@
 
 namespace SfphpProject\src;
 
+use InvalidArgumentException;
+use JsonException;
 use RuntimeException;
 
 /**
@@ -21,9 +23,9 @@ class JWT
 
     /**
      * @param string $data
-     * @return string
+     * @return string|null
      */
-    private static function base64UrlDecode(string $data): string
+    private static function base64UrlDecode(string $data): ?string
     {
         $padding = strlen($data) % 4;
 
@@ -31,7 +33,9 @@ class JWT
             $data .= str_repeat('=', 4 - $padding);
         }
 
-        return base64_decode(str_replace(['-', '_'], ['+', '/'], $data));
+        $decoded = base64_decode(str_replace(['-', '_'], ['+', '/'], $data), true);
+
+        return $decoded === false ? null : $decoded;
     }
 
     /**
@@ -65,8 +69,8 @@ class JWT
     }
 
     /**
-     * @param $headerBase64
-     * @param $payloadBase64
+     * @param string $headerBase64 The Base64 URL-encoded header
+     * @param string $payloadBase64 The Base64 URL-encoded payload
      * @return string
      */
     private static function generateSignature(
@@ -83,22 +87,30 @@ class JWT
     }
 
     /**
-     * @param array $user
-     * @return string
+     * @param array $user The authenticated user data
+     * @return string The signed token
+     * @throws InvalidArgumentException If the required user claims are absent
+     * @throws JsonException If a claim cannot be JSON encoded
      * @throws RuntimeException If JWT_KEY is missing or too short
      */
     public static function generate(array $user): string
     {
+        if (!array_key_exists('id', $user) || !array_key_exists('email', $user)) {
+            throw new InvalidArgumentException(
+                'JWT generation requires user id and email claims.'
+            );
+        }
+
         $header = json_encode([
             'alg' => 'HS256',
-            'typ' => 'JWT'
-        ]);
+            'typ' => 'JWT',
+        ], JSON_THROW_ON_ERROR);
 
         $payload = json_encode([
-           'id' => $user['id'],
-           'email' => $user['email'],
-           'exp' => time() + 3600
-        ]);
+            'id' => $user['id'],
+            'email' => $user['email'],
+            'exp' => time() + 3600,
+        ], JSON_THROW_ON_ERROR);
 
         $headerBase64 = self::base64UrlEncode($header);
         $payloadBase64 = self::base64UrlEncode($payload);
@@ -112,8 +124,8 @@ class JWT
     }
 
     /**
-     * @param string $token
-     * @return bool
+     * @param string $token The token to validate
+     * @return bool True when the token is structurally valid, signed, and unexpired
      * @throws RuntimeException If JWT_KEY is missing or too short
      */
     public static function validate(string $token): bool
@@ -135,12 +147,43 @@ class JWT
             return false;
         }
 
-        $payload = json_decode(self::base64UrlDecode($payloadBase64), true);
+        $header = self::decodeJsonSegment($headerBase64);
+        $payload = self::decodeJsonSegment($payloadBase64);
 
-        if (!isset($payload['exp']) || time() >= $payload['exp']) {
+        if (
+            $header === null
+            || ($header['alg'] ?? null) !== 'HS256'
+            || ($header['typ'] ?? null) !== 'JWT'
+            || $payload === null
+            || !isset($payload['exp'])
+            || !is_int($payload['exp'])
+            || time() >= $payload['exp']
+        ) {
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * Decode a Base64 URL-encoded JSON object.
+     *
+     * @param string $segment The encoded JWT segment
+     * @return array|null The decoded object, or null when invalid
+     */
+    private static function decodeJsonSegment(string $segment): ?array
+    {
+        $decoded = self::base64UrlDecode($segment);
+        if ($decoded === null) {
+            return null;
+        }
+
+        try {
+            $data = json_decode($decoded, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return null;
+        }
+
+        return is_array($data) ? $data : null;
     }
 }

@@ -24,5 +24,9 @@
             "email": "fabioaacarneiro@gmail.com"
         }
     ],
-    "minimum-stability": "stable"
+    "minimum-stability": "stable",
+    "scripts": {
+        "test": "php tests/run.php",
+        "lint": "find app src public tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l && php -l server.php"
+    }
 }
