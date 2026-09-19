@@ -133,6 +133,47 @@ Router::head("/health", "HealthController", "head");
 Router::options("/users", "UserController", "options");
   ```
 
+- Rotas nomeadas, grupos e geração de URLs:
+```php
+use SfphpProject\src\Router;
+
+Router::get("/login", "AuthController", "login")
+    ->name("login");
+
+Router::get("/users/id:number/posts/slug:alpha", "PostController", "show")
+    ->name("posts.show");
+
+Router::group("/admin", function (): void {
+    Router::get("/users/id:number", "AdminUserController", "show")
+        ->name("show");
+}, namePrefix: "admin.");
+
+$loginUrl = Router::url("login");
+$postUrl = Router::url(
+    "posts.show",
+    ["id" => 42, "slug" => "welcome"],
+    ["page" => 2]
+);
+// /users/42/posts/welcome?page=2
+```
+
+`Router::url()` sempre retorna uma string; em uma view, faça escape da URL
+antes de renderizá-la:
+
+```php
+<a href="<?= htmlspecialchars(
+    Router::url("posts.show", ["id" => $post["id"], "slug" => $post["slug"]]),
+    ENT_QUOTES,
+    "UTF-8"
+) ?>">Ler postagem</a>
+```
+
+Os parâmetros usam o formato `nome:tipo` e podem ser `number`, `alpha` ou
+`alphanum`. Rotas nomeadas rejeitam nomes duplicados e valores ausentes,
+extras ou inválidos. Quando uma URL existe mas o método HTTP não é aceito, o
+roteador responde `405` com o header `Allow`; `OPTIONS` sem rota explícita
+responde `204` com os métodos permitidos.
+
 - Query builder nativo e SQL bruto com parâmetros vinculados. O builder atende
   consultas comuns e mantém PDO acessível para SQL específico do banco:
 ```php
