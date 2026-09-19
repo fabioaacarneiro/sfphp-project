@@ -142,8 +142,22 @@ return new class extends Migration
 ```
 
 O objetivo desta primeira etapa é deixar o fluxo operacional: criar migration,
-aplicar, desfazer e inspecionar o estado. A camada de schema vai evoluir em
-seguida com mais tipos e operações.
+aplicar, desfazer e inspecionar o estado. A camada de schema já cobre os
+casos mais comuns sem SQL cru:
+
+- `create()` para criar tabelas
+- `table()` para alterar tabelas existentes
+- `dropIfExists()` e `rename()`
+- tipos como `id()`, `foreignId()`, `string()`, `text()`, `integer()`,
+  `bigInteger()`, `boolean()`, `date()`, `dateTime()`, `timestamp()`,
+  `decimal()`, `json()` e `uuid()`
+- modificadores de coluna como `nullable()`, `default()`, `unique()` e
+  `index()`
+- chaves estrangeiras com `constrained()`
+- `timestamps()` para criar `created_at` e `updated_at`
+
+Quando uma operação sair desse escopo, ainda dá para cair em `statement()` com
+SQL puro e bindings.
 
 ## Benefícios do Uso
 
