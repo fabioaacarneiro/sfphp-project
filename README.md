@@ -129,6 +129,8 @@ Router::get("/users", "UserController", "getAll");
 Router::get("/users/id:number", "UserController", "getUserById");
 Router::post("/users", "UserController", "createUser");
 Router::post("/users/login", "UserController", "login");
+Router::head("/health", "HealthController", "head");
+Router::options("/users", "UserController", "options");
   ```
 
 - Query builder nativo e SQL bruto com parâmetros vinculados. O builder atende
