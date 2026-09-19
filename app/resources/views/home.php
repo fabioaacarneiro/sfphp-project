@@ -1,12 +1,16 @@
 <?php
+use SfphpProject\src\View;
+
+/** @var string $title */
+
 /*
- * partial() executa o arquivo dentro do escopo da própria função, então as
+ * View::partial() executa o arquivo dentro do escopo do método, então as
  * variáveis da view não são herdadas: o que o partial precisa tem de ser
  * passado explicitamente no segundo argumento.
  */
 ?>
-<?php partial("header", ["title" => $title]); ?>
+<?php View::partial("header", ["title" => $title]); ?>
 
-<?php partial("content"); ?>
+<?php View::partial("content"); ?>
 
-<?php partial("footer"); ?>
+<?php View::partial("footer"); ?>
