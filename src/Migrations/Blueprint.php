@@ -51,6 +51,66 @@ final class Blueprint
     }
 
     /**
+     * Add an auto-incrementing integer column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function increments(string $name = 'id'): self
+    {
+        return $this->column($name, 'increments', [
+            'autoIncrement' => true,
+            'primary' => true,
+            'unsigned' => true,
+        ]);
+    }
+
+    /**
+     * Add an auto-incrementing small integer column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function smallIncrements(string $name = 'id'): self
+    {
+        return $this->column($name, 'smallIncrements', [
+            'autoIncrement' => true,
+            'primary' => true,
+            'unsigned' => true,
+        ]);
+    }
+
+    /**
+     * Add an auto-incrementing medium integer column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function mediumIncrements(string $name = 'id'): self
+    {
+        return $this->column($name, 'mediumIncrements', [
+            'autoIncrement' => true,
+            'primary' => true,
+            'unsigned' => true,
+        ]);
+    }
+
+    /**
+     * Add an auto-incrementing big integer column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function bigIncrements(string $name = 'id'): self
+    {
+        return $this->column($name, 'bigIncrements', [
+            'autoIncrement' => true,
+            'primary' => true,
+            'unsigned' => true,
+        ]);
+    }
+
+    /**
      * Add a foreign identifier column.
      *
      * @param string $name The column name
@@ -129,6 +189,18 @@ final class Blueprint
     }
 
     /**
+     * Add a char column.
+     *
+     * @param string $name The column name
+     * @param int $length The maximum length
+     * @return self
+     */
+    public function char(string $name, int $length = 255): self
+    {
+        return $this->column($name, 'char', ['length' => $length]);
+    }
+
+    /**
      * Add a text column.
      *
      * @param string $name The column name
@@ -148,6 +220,17 @@ final class Blueprint
     public function longText(string $name): self
     {
         return $this->column($name, 'longText');
+    }
+
+    /**
+     * Add a binary/blob column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function binary(string $name): self
+    {
+        return $this->column($name, 'binary');
     }
 
     /**
@@ -195,6 +278,17 @@ final class Blueprint
     }
 
     /**
+     * Add a timezone-aware date-time column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function dateTimeTz(string $name): self
+    {
+        return $this->column($name, 'dateTimeTz');
+    }
+
+    /**
      * Add a timestamp column.
      *
      * @param string $name The column name
@@ -206,6 +300,17 @@ final class Blueprint
     }
 
     /**
+     * Add a timezone-aware timestamp column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function timestampTz(string $name): self
+    {
+        return $this->column($name, 'timestampTz');
+    }
+
+    /**
      * Add created_at and updated_at columns.
      *
      * @return self
@@ -214,6 +319,19 @@ final class Blueprint
     {
         $this->timestamp('created_at')->default($this->raw('CURRENT_TIMESTAMP'));
         $this->timestamp('updated_at')->default($this->raw('CURRENT_TIMESTAMP'));
+
+        return $this;
+    }
+
+    /**
+     * Add timezone-aware created_at and updated_at columns.
+     *
+     * @return self
+     */
+    public function timestampsTz(): self
+    {
+        $this->timestampTz('created_at')->default($this->raw('CURRENT_TIMESTAMP'));
+        $this->timestampTz('updated_at')->default($this->raw('CURRENT_TIMESTAMP'));
 
         return $this;
     }
@@ -231,6 +349,21 @@ final class Blueprint
         return $this->column($name, 'decimal', [
             'precision' => $precision,
             'scale' => $scale,
+        ]);
+    }
+
+    /**
+     * Add a money-style decimal column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function unsignedDecimal(string $name, int $precision = 10, int $scale = 2): self
+    {
+        return $this->column($name, 'decimal', [
+            'precision' => $precision,
+            'scale' => $scale,
+            'unsigned' => true,
         ]);
     }
 
@@ -265,6 +398,17 @@ final class Blueprint
     public function uuid(string $name): self
     {
         return $this->column($name, 'uuid');
+    }
+
+    /**
+     * Add a ULID column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function ulid(string $name): self
+    {
+        return $this->column($name, 'ulid');
     }
 
     /**
@@ -306,6 +450,29 @@ final class Blueprint
     {
         $column =& $this->currentColumn();
         $column['default'] = $value;
+
+        return $this;
+    }
+
+    /**
+     * Use CURRENT_TIMESTAMP as the default value.
+     *
+     * @return self
+     */
+    public function useCurrent(): self
+    {
+        return $this->default($this->raw('CURRENT_TIMESTAMP'));
+    }
+
+    /**
+     * Use CURRENT_TIMESTAMP on update.
+     *
+     * @return self
+     */
+    public function useCurrentOnUpdate(): self
+    {
+        $column =& $this->currentColumn();
+        $column['useCurrentOnUpdate'] = true;
 
         return $this;
     }
@@ -359,6 +526,48 @@ final class Blueprint
     {
         $current =& $this->currentColumn();
         $current['after'] = $column;
+
+        return $this;
+    }
+
+    /**
+     * Set a column comment.
+     *
+     * @param string $comment The column comment
+     * @return self
+     */
+    public function comment(string $comment): self
+    {
+        $current =& $this->currentColumn();
+        $current['comment'] = $comment;
+
+        return $this;
+    }
+
+    /**
+     * Set a column charset.
+     *
+     * @param string $charset The character set
+     * @return self
+     */
+    public function charset(string $charset): self
+    {
+        $current =& $this->currentColumn();
+        $current['charset'] = $charset;
+
+        return $this;
+    }
+
+    /**
+     * Set a column collation.
+     *
+     * @param string $collation The collation name
+     * @return self
+     */
+    public function collation(string $collation): self
+    {
+        $current =& $this->currentColumn();
+        $current['collation'] = $collation;
 
         return $this;
     }
@@ -522,6 +731,36 @@ final class Blueprint
     }
 
     /**
+     * Set ON DELETE SET NULL.
+     *
+     * @return self
+     */
+    public function nullOnDelete(): self
+    {
+        return $this->onDelete('SET NULL');
+    }
+
+    /**
+     * Set ON DELETE RESTRICT.
+     *
+     * @return self
+     */
+    public function restrictOnDelete(): self
+    {
+        return $this->onDelete('RESTRICT');
+    }
+
+    /**
+     * Set ON DELETE NO ACTION.
+     *
+     * @return self
+     */
+    public function noActionOnDelete(): self
+    {
+        return $this->onDelete('NO ACTION');
+    }
+
+    /**
      * Convenience helper for cascading updates.
      *
      * @return self
@@ -529,6 +768,36 @@ final class Blueprint
     public function cascadeOnUpdate(): self
     {
         return $this->onUpdate('CASCADE');
+    }
+
+    /**
+     * Set ON UPDATE SET NULL.
+     *
+     * @return self
+     */
+    public function nullOnUpdate(): self
+    {
+        return $this->onUpdate('SET NULL');
+    }
+
+    /**
+     * Set ON UPDATE RESTRICT.
+     *
+     * @return self
+     */
+    public function restrictOnUpdate(): self
+    {
+        return $this->onUpdate('RESTRICT');
+    }
+
+    /**
+     * Set ON UPDATE NO ACTION.
+     *
+     * @return self
+     */
+    public function noActionOnUpdate(): self
+    {
+        return $this->onUpdate('NO ACTION');
     }
 
     /**
@@ -650,6 +919,96 @@ final class Blueprint
         ];
 
         return $this;
+    }
+
+    /**
+     * Add common polymorphic columns.
+     *
+     * @param string $name The morph name
+     * @return self
+     */
+    public function morphs(string $name): self
+    {
+        $this->column($name . '_id', 'morphId', ['unsigned' => true]);
+        $this->column($name . '_type', 'morphType', ['length' => 255]);
+        $this->index([$name . '_id', $name . '_type'], $name . '_morph_index');
+
+        return $this;
+    }
+
+    /**
+     * Add nullable polymorphic columns.
+     *
+     * @param string $name The morph name
+     * @return self
+     */
+    public function nullableMorphs(string $name): self
+    {
+        $this->morphs($name);
+        $this->columns[array_key_last($this->columns) - 1]['nullable'] = true;
+        $this->columns[array_key_last($this->columns)]['nullable'] = true;
+
+        return $this;
+    }
+
+    /**
+     * Add UUID polymorphic columns.
+     *
+     * @param string $name The morph name
+     * @return self
+     */
+    public function uuidMorphs(string $name): self
+    {
+        $this->column($name . '_id', 'morphUuid', ['length' => 36]);
+        $this->column($name . '_type', 'morphType', ['length' => 255]);
+        $this->index([$name . '_id', $name . '_type'], $name . '_morph_index');
+
+        return $this;
+    }
+
+    /**
+     * Add ULID polymorphic columns.
+     *
+     * @param string $name The morph name
+     * @return self
+     */
+    public function ulidMorphs(string $name): self
+    {
+        $this->column($name . '_id', 'morphUlid', ['length' => 26]);
+        $this->column($name . '_type', 'morphType', ['length' => 255]);
+        $this->index([$name . '_id', $name . '_type'], $name . '_morph_index');
+
+        return $this;
+    }
+
+    /**
+     * Add a remember token column.
+     *
+     * @return self
+     */
+    public function rememberToken(): self
+    {
+        return $this->string('remember_token', 100)->nullable();
+    }
+
+    /**
+     * Add a soft delete timestamp column.
+     *
+     * @return self
+     */
+    public function softDeletes(): self
+    {
+        return $this->timestamp('deleted_at')->nullable();
+    }
+
+    /**
+     * Add a timezone-aware soft delete timestamp column.
+     *
+     * @return self
+     */
+    public function softDeletesTz(): self
+    {
+        return $this->timestampTz('deleted_at')->nullable();
     }
 
     /**
@@ -849,6 +1208,22 @@ final class Blueprint
             $sql .= ' DEFAULT ' . $this->quoteValue($column['default']);
         }
 
+        if (!empty($column['useCurrentOnUpdate']) && $this->driver === 'mysql') {
+            $sql .= ' ON UPDATE CURRENT_TIMESTAMP';
+        }
+
+        if (!empty($column['charset']) && $this->driver === 'mysql') {
+            $sql .= ' CHARACTER SET ' . $this->assertSqlWord((string) $column['charset']);
+        }
+
+        if (!empty($column['collation']) && $this->driver === 'mysql') {
+            $sql .= ' COLLATE ' . $this->assertSqlWord((string) $column['collation']);
+        }
+
+        if (!empty($column['comment']) && $this->driver === 'mysql') {
+            $sql .= ' COMMENT ' . $this->quoteValue($column['comment']);
+        }
+
         return $sql;
     }
 
@@ -1030,22 +1405,76 @@ final class Blueprint
     private function columnType(array $column): string
     {
         return match ($column['type']) {
+            'increments', 'smallIncrements', 'mediumIncrements', 'bigIncrements',
             'id', 'foreignId', 'tinyInteger', 'smallInteger', 'mediumInteger', 'integer' => $this->integerType($column['type']),
             'bigInteger' => 'BIGINT',
             'string' => 'VARCHAR(' . ((int) ($column['length'] ?? 255)) . ')',
+            'char' => 'CHAR(' . ((int) ($column['length'] ?? 255)) . ')',
             'text' => 'TEXT',
             'longText' => $this->driver === 'mysql' ? 'LONGTEXT' : 'TEXT',
+            'binary' => 'BLOB',
             'boolean' => 'BOOLEAN',
             'date' => 'DATE',
             'time' => 'TIME',
-            'dateTime' => 'DATETIME',
-            'timestamp' => 'TIMESTAMP',
+            'timeTz' => $this->timeType(true),
+            'dateTime' => $this->dateTimeType(false),
+            'dateTimeTz' => $this->dateTimeType(true),
+            'timestamp' => $this->dateTimeType(false, true),
+            'timestampTz' => $this->dateTimeType(true, true),
             'decimal' => 'DECIMAL(' . ((int) ($column['precision'] ?? 10)) . ', ' . ((int) ($column['scale'] ?? 2)) . ')',
             'float' => 'FLOAT',
             'json' => $this->driver === 'sqlite' ? 'TEXT' : 'JSON',
             'uuid' => 'CHAR(36)',
+            'ulid' => 'CHAR(26)',
+            'morphId', 'morphUlid' => $this->morphIdType($column['type']),
+            'morphType' => 'VARCHAR(' . ((int) ($column['length'] ?? 255)) . ')',
             'enum' => $this->compileEnumType($column['values'] ?? []),
             default => throw new InvalidArgumentException('Unsupported column type: ' . $column['type']),
+        };
+    }
+
+    /**
+     * Build a temporal SQL type.
+     *
+     * @param bool $timezone Whether the column is timezone-aware
+     * @param bool $timestamp Whether the column is a timestamp
+     * @return string
+     */
+    private function dateTimeType(bool $timezone, bool $timestamp = false): string
+    {
+        if ($this->driver === 'pgsql') {
+            return $timezone ? 'TIMESTAMPTZ' : ($timestamp ? 'TIMESTAMP' : 'TIMESTAMP');
+        }
+
+        return 'TIMESTAMP';
+    }
+
+    /**
+     * Build a time SQL type.
+     *
+     * @param bool $timezone Whether the column is timezone-aware
+     * @return string
+     */
+    private function timeType(bool $timezone): string
+    {
+        if ($this->driver === 'pgsql') {
+            return $timezone ? 'TIMETZ' : 'TIME';
+        }
+
+        return 'TIME';
+    }
+
+    /**
+     * Build a morph id type.
+     *
+     * @param string $type The logical type
+     * @return string
+     */
+    private function morphIdType(string $type): string
+    {
+        return match ($type) {
+            'morphUlid' => 'CHAR(26)',
+            default => 'BIGINT',
         };
     }
 
@@ -1061,7 +1490,10 @@ final class Blueprint
             'tinyInteger' => 'TINYINT',
             'smallInteger' => 'SMALLINT',
             'mediumInteger' => $this->driver === 'mysql' ? 'MEDIUMINT' : 'INTEGER',
-            'bigInteger', 'id', 'foreignId' => 'BIGINT',
+            'increments' => 'INTEGER',
+            'smallIncrements' => 'SMALLINT',
+            'mediumIncrements' => $this->driver === 'mysql' ? 'MEDIUMINT' : 'INTEGER',
+            'bigIncrements', 'bigInteger', 'id', 'foreignId' => 'BIGINT',
             default => 'INTEGER',
         };
     }
@@ -1102,6 +1534,21 @@ final class Blueprint
             'sqlsrv', 'dblib' => '[' . $identifier . ']',
             default => '"' . $identifier . '"',
         };
+    }
+
+    /**
+     * Assert a word is safe for SQL keywords/options.
+     *
+     * @param string $value The raw SQL word
+     * @return string
+     */
+    private function assertSqlWord(string $value): string
+    {
+        if (!preg_match('/^[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)?$/', $value)) {
+            throw new InvalidArgumentException("Invalid schema option: $value");
+        }
+
+        return $value;
     }
 
     /**
