@@ -15,12 +15,12 @@ class View
      * @return void
      */
     public static function render(
-        string $view, 
+        string $view,
         array $data
-    ) {
+    ): void {
         extract($data);
         $path = __DIR__ . "/../app/resources/views/$view.php";
-        
+
         if (!file_exists($path)) {
             throw new Exception("View $view not found");
         }
@@ -31,6 +31,28 @@ class View
          * loop, for instance). require_once would silently output nothing from
          * the second render onwards.
          */
+        require $path;
+    }
+
+    /**
+     * Render a partial view with the provided data.
+     *
+     * @param string $view The name of the partial view
+     * @param array $data The data to pass to the partial view
+     * @throws Exception If the partial view file does not exist
+     * @return void
+     */
+    public static function partial(
+        string $view,
+        array $data = []
+    ): void {
+        extract($data);
+        $path = __DIR__ . "/../app/resources/views/partials/$view.php";
+
+        if (!file_exists($path)) {
+            throw new Exception("Partial $view not found");
+        }
+
         require $path;
     }
 }

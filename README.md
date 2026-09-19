@@ -204,11 +204,16 @@ class MainController extends BaseController
 
 - Sistema nativo e simplificado para composição de páginas com inclusão de *partials*:
 ```php
-<?php partial("header"); ?>
+<?php
 
-<?php partial("content"); ?>
+use SfphpProject\src\View;
+?>
 
-<?php partial("footer"); ?>
+<?php View::partial("header"); ?>
+
+<?php View::partial("content"); ?>
+
+<?php View::partial("footer"); ?>
 ```
 
 - Sistema nativo para trabalhar com JWT:
@@ -296,9 +301,10 @@ class UserController extends BaseAPIController
 
 - Sistema nativo de validação do corpo da requisição com resposta personalizada de erro na validação.
 
-`validate()` devolve um `ValidationResult`, não um array: você precisa checar
-`passes()`/`fails()` antes de acessar os dados. Isso existe justamente para que
-uma validação que falhou não possa ser repassada por engano para o model.
+`Validator::validate()` devolve um `ValidationResult`, não um array: você
+precisa checar `passes()`/`fails()` antes de acessar os dados. Isso existe
+justamente para que uma validação que falhou não possa ser repassada por engano
+para o model.
 
 Repare também que o separador entre regras é sempre o pipe (`min:3|alpha`).
 Escrever `min:3:alpha` aplicava só o `min` e ignorava o `alpha` em silêncio —
@@ -316,7 +322,7 @@ public function createUser()
         );
     }
 
-    $result = validate($data, [
+    $result = \SfphpProject\src\Validator::validate($data, [
         "name" => "required|min:3|alpha",
         "surname" => "required|min:3|alpha",
         "email" => "required|email",
