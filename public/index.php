@@ -1,10 +1,14 @@
 <?php
 
 use SfphpProject\src\Container;
+use SfphpProject\src\Csrf;
 use SfphpProject\src\Database;
+use SfphpProject\src\ErrorHandler;
 use SfphpProject\src\Router;
 
 require_once __DIR__ . "/../vendor/autoload.php";
+Csrf::startSession();
+ErrorHandler::register();
 require_once __DIR__ . "/../src/routes.php";
 
 $container = new Container();

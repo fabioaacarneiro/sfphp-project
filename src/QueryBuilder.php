@@ -306,8 +306,9 @@ class QueryBuilder
 
         $columns = array_keys($data);
         $placeholders = [];
+        $bindings = [];
         foreach ($data as $value) {
-            $placeholders[] = $this->bind($value);
+            $placeholders[] = $this->bindValue($value, $bindings);
         }
 
         $sql = sprintf(
@@ -317,7 +318,7 @@ class QueryBuilder
             implode(', ', $placeholders)
         );
 
-        $this->execute($sql);
+        $this->execute($sql, $bindings);
 
         return $this->pdo->lastInsertId();
     }
@@ -337,13 +338,16 @@ class QueryBuilder
         }
 
         $assignments = [];
+        $bindings = $this->bindings();
         foreach ($data as $column => $value) {
-            $assignments[] = $this->quoteIdentifier($column) . ' = ' . $this->bind($value);
+            $assignments[] = $this->quoteIdentifier($column) . ' = '
+                . $this->bindValue($value, $bindings);
         }
 
         $statement = $this->execute(
             'UPDATE ' . $this->getTable() . ' SET ' . implode(', ', $assignments)
-            . $this->compileWhere()
+            . $this->compileWhere(),
+            $bindings
         );
 
         return $statement->rowCount();
@@ -358,7 +362,8 @@ class QueryBuilder
     public function delete(): int
     {
         $statement = $this->execute(
-            'DELETE FROM ' . $this->getTable() . $this->compileWhere()
+            'DELETE FROM ' . $this->getTable() . $this->compileWhere(),
+            $this->bindings()
         );
 
         return $statement->rowCount();
@@ -478,8 +483,20 @@ class QueryBuilder
      */
     private function bind(mixed $value): string
     {
+        return $this->bindValue($value, $this->bindings);
+    }
+
+    /**
+     * Bind a value to an operation-specific collection of placeholders.
+     *
+     * @param mixed $value The value to bind
+     * @param array $bindings The bindings updated by reference
+     * @return string The generated named placeholder
+     */
+    private function bindValue(mixed $value, array &$bindings): string
+    {
         $name = ':binding_' . $this->bindingIndex++;
-        $this->bindings[$name] = $value;
+        $bindings[$name] = $value;
 
         return $name;
     }
@@ -492,19 +509,20 @@ class QueryBuilder
      */
     private function executeSelect(): PDOStatement
     {
-        return $this->execute($this->toSql());
+        return $this->execute($this->toSql(), $this->bindings());
     }
 
     /**
      * Prepare and execute an SQL statement with query bindings.
      *
      * @param string $sql The SQL statement to execute
+     * @param array $bindings The values bound to the statement
      * @return PDOStatement The executed statement
      */
-    private function execute(string $sql): PDOStatement
+    private function execute(string $sql, array $bindings = []): PDOStatement
     {
         $statement = $this->pdo->prepare($sql);
-        foreach ($this->bindings() as $name => $value) {
+        foreach ($bindings as $name => $value) {
             $statement->bindValue($name, $value, $this->pdoType($value));
         }
         $statement->execute();
@@ -782,7 +800,7 @@ class RawQuery
      */
     public function rowCount(): int
     {
-        return $this->execute()->rowCount();
+        return $this->statement?->rowCount() ?? $this->execute()->rowCount();
     }
 
     /**
@@ -793,7 +811,9 @@ class RawQuery
      */
     public function lastInsertId(?string $name = null): string
     {
-        $this->execute();
+        if ($this->statement === null) {
+            $this->execute();
+        }
 
         return $this->pdo->lastInsertId($name);
     }
