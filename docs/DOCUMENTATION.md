@@ -17,7 +17,7 @@
 
 ## CLI e Geração de Código
 
-O binário `./sfphp` fornece comandos para gerar código esqueleto e gerenciar migrations.
+O binário `./sfphp` fornece 15+ comandos para gerar código, gerenciar migrations, e desenvolver.
 
 ### Comandos de Geração
 
@@ -36,6 +36,9 @@ Gerar arquivos esqueleto com o padrão do framework:
 # Service
 ./sfphp make:service PostService
 
+# Form Request (Validação)
+./sfphp make:request StoreUserRequest
+
 # Scaffold: Gerar tudo de uma vez (controller, model, repository, service)
 ./sfphp make:scaffold Article
 ```
@@ -44,11 +47,22 @@ Os arquivos são gerados nos diretórios apropriados com namespace correto e est
 
 **Scaffold** é a forma recomendada para gerar um CRUD completo rapidamente, assim como Rails faz.
 
+#### Diretórios Gerados
+
+- Controllers: `app/controllers/{Name}Controller.php`
+- Models: `app/models/{Name}.php`
+- Repositories: `app/repositories/{Name}Repository.php`
+- Services: `app/services/{Name}Service.php`
+- Form Requests: `app/requests/{Name}Request.php`
+
 ### Comandos de Migration
 
 ```bash
-# Criar nova migration
+# Criar nova migration vazia
 ./sfphp make:migration create_users_table
+
+# Criar migration com schema pré-preenchida (id, timestamps)
+./sfphp make:migration:create users
 
 # Aplicar todas as migrations pendentes
 ./sfphp migrate
@@ -67,6 +81,62 @@ Os arquivos são gerados nos diretórios apropriados com namespace correto e est
 
 # Usar diretório customizado
 ./sfphp migrate --path=db/migrations
+./sfphp make:migration:create users --path=db/migrations
+```
+
+### Comandos do Servidor
+
+```bash
+# Iniciar servidor de desenvolvimento (localhost:8000)
+./sfphp serve
+
+# Criar arquivo .env a partir de .env-example
+./sfphp env:example
+
+# Listar todas as rotas registradas
+./sfphp routes
+```
+
+### Comandos de Utilidade
+
+```bash
+# Mostrar versão do SFPHP
+./sfphp version
+# ou
+./sfphp --version
+./sfphp -v
+
+# Listar todos os comandos disponíveis
+./sfphp list
+# ou
+./sfphp --list
+
+# Mostrar ajuda geral
+./sfphp help
+
+# Mostrar ajuda de um comando específico
+./sfphp help make:scaffold
+./sfphp help migrate
+./sfphp help serve
+```
+
+### Exemplos de Uso Completo
+
+```bash
+# Criar uma feature completa com um comando
+./sfphp make:scaffold Post
+
+# Criar a tabela no banco com schema básico
+./sfphp make:migration:create posts
+
+# Aplicar a migration
+./sfphp migrate
+
+# Ver as rotas que você registrou
+./sfphp routes
+
+# Iniciar servidor para testar
+./sfphp serve
 ```
 
 ---
