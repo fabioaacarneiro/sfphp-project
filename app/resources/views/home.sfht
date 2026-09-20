@@ -138,32 +138,105 @@
 <section class="bg-slate-900 text-white" style="padding: 4rem 1rem;">
     <div class="container">
         <h2 style="font-size: 2rem; font-weight: bold; margin-bottom: 1rem; text-align: center;">18 Color Families</h2>
-        <p style="text-align: center; opacity: 0.9; margin-bottom: 2rem;">620+ color utilities for complete design flexibility</p>
+        <p style="text-align: center; opacity: 0.9; margin-bottom: 3rem;">620+ color utilities for complete design flexibility</p>
 
-        <div class="grid grid-cols-3 md:grid-cols-6 gap-2">
+        <div class="grid grid-cols-3 md:grid-cols-6 gap-3">
+            <!-- Neutrals -->
             <div style="text-align: center;">
-                <div style="width: 100%; height: 60px; background-color: #3b82f6; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
-                <p style="font-size: 0.8rem;">Blue</p>
+                <div style="width: 100%; height: 50px; background-color: #64748b; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Slate</p>
             </div>
             <div style="text-align: center;">
-                <div style="width: 100%; height: 60px; background-color: #22c55e; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
-                <p style="font-size: 0.8rem;">Green</p>
+                <div style="width: 100%; height: 50px; background-color: #6b7280; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Gray</p>
             </div>
             <div style="text-align: center;">
-                <div style="width: 100%; height: 60px; background-color: #a855f7; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
-                <p style="font-size: 0.8rem;">Purple</p>
+                <div style="width: 100%; height: 50px; background-color: #71717a; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Zinc</p>
+            </div>
+
+            <!-- Blues -->
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #3b82f6; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Blue</p>
             </div>
             <div style="text-align: center;">
-                <div style="width: 100%; height: 60px; background-color: #06b6d4; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
-                <p style="font-size: 0.8rem;">Cyan</p>
+                <div style="width: 100%; height: 50px; background-color: #6366f1; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Indigo</p>
             </div>
             <div style="text-align: center;">
-                <div style="width: 100%; height: 60px; background-color: #f59e0b; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
-                <p style="font-size: 0.8rem;">Amber</p>
+                <div style="width: 100%; height: 50px; background-color: #0ea5e9; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Sky</p>
+            </div>
+
+            <!-- Greens -->
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #22c55e; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Green</p>
             </div>
             <div style="text-align: center;">
-                <div style="width: 100%; height: 60px; background-color: #ec4899; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
-                <p style="font-size: 0.8rem;">Pink</p>
+                <div style="width: 100%; height: 50px; background-color: #10b981; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Emerald</p>
+            </div>
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #14b8a6; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Teal</p>
+            </div>
+
+            <!-- Cyans/Teals -->
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #06b6d4; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Cyan</p>
+            </div>
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #84cc16; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Lime</p>
+            </div>
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #eab308; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Yellow</p>
+            </div>
+
+            <!-- Warm -->
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #f59e0b; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Amber</p>
+            </div>
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #ea580c; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Orange</p>
+            </div>
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #ef4444; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Red</p>
+            </div>
+
+            <!-- Purples/Pinks -->
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #a855f7; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Purple</p>
+            </div>
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #8b5cf6; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Violet</p>
+            </div>
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #d946ef; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Fuchsia</p>
+            </div>
+
+            <!-- Pinks/Roses -->
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #ec4899; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Pink</p>
+            </div>
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #f43f5e; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">Rose</p>
+            </div>
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 50px; background-color: #ffffff; border: 1px solid #64748b; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.75rem; opacity: 0.8;">White</p>
             </div>
         </div>
     </div>
