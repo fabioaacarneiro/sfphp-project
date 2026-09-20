@@ -36,11 +36,13 @@ Gerar arquivos esqueleto com o padrão do framework:
 # Service
 ./sfphp make:service PostService
 
-# Tudo de uma vez (controller, model, repository, service)
-./sfphp make:all Article
+# Scaffold: Gerar tudo de uma vez (controller, model, repository, service)
+./sfphp make:scaffold Article
 ```
 
 Os arquivos são gerados nos diretórios apropriados com namespace correto e estrutura inicial.
+
+**Scaffold** é a forma recomendada para gerar um CRUD completo rapidamente, assim como Rails faz.
 
 ### Comandos de Migration
 
