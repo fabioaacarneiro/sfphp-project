@@ -79,8 +79,8 @@ function generateCss(array $config): string
 
     $css .= "}\n\n";
 
-    // Include base styles
-    $css .= file_get_contents(__DIR__ . '/sfcss-base.css');
+    // Note: Base styles (typography, components, etc.) are in sfcss.css
+    // This builder generates only the CSS variables from config
 
     return $css;
 }
