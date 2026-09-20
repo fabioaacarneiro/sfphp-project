@@ -79,6 +79,19 @@ function generateCss(array $config): string
 
     $css .= "}\n\n";
 
+    // Generate color palette classes (Tailwind-style)
+    if (isset($config['colorPalettes'])) {
+        $css .= "/* Color Palettes - Tailwind Style */\n";
+        foreach ($config['colorPalettes'] as $colorName => $shades) {
+            foreach ($shades as $shade => $color) {
+                $css .= ".text-{$colorName}-{$shade} { color: {$color}; }\n";
+                $css .= ".bg-{$colorName}-{$shade} { background-color: {$color}; }\n";
+                $css .= ".border-{$colorName}-{$shade} { border-color: {$color}; }\n";
+            }
+        }
+        $css .= "\n";
+    }
+
     // Include base styles
     $css .= file_get_contents(__DIR__ . '/sfcss-base.css');
 
