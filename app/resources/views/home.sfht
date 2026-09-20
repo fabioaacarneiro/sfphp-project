@@ -5,8 +5,8 @@
     <div class="container" style="display: flex; justify-content: space-between;">
         <h1 style="margin: 0; color: #3b82f6; font-weight: bold;">SFPHP</h1>
         <div style="display: flex; gap: 2rem;">
-            <a href="/" style="color: #475569; text-decoration: none;">Features</a>
-            <a href="https://github.com" style="color: #3b82f6; text-decoration: none;">GitHub</a>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project#features" style="color: #475569; text-decoration: none;">Features</a>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project" style="color: #3b82f6; text-decoration: none;">GitHub</a>
         </div>
     </div>
 </nav>
@@ -17,8 +17,8 @@
         <h1 style="font-size: 3.5rem; font-weight: bold; margin-bottom: 1rem;">Build Fast, Modern PHP Apps</h1>
         <p style="font-size: 1.25rem; margin-bottom: 2rem; opacity: 0.95;">Zero dependencies. Production-ready.</p>
         <div style="display: flex; gap: 1rem; justify-content: center;">
-            <a href="https://github.com" class="btn" style="background-color: white; color: #3b82f6; padding: 0.75rem 2rem; font-weight: bold; text-decoration: none; display: inline-block; border-radius: 0.5rem;">Get Started</a>
-            <a href="https://github.com" class="btn" style="background-color: rgba(255,255,255,0.2); color: white; padding: 0.75rem 2rem; font-weight: bold; text-decoration: none; display: inline-block; border-radius: 0.5rem; border: 2px solid white;">View on GitHub</a>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/DOCUMENTATION.md" class="btn" style="background-color: white; color: #3b82f6; padding: 0.75rem 2rem; font-weight: bold; text-decoration: none; display: inline-block; border-radius: 0.5rem;">Get Started</a>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project" class="btn" style="background-color: rgba(255,255,255,0.2); color: white; padding: 0.75rem 2rem; font-weight: bold; text-decoration: none; display: inline-block; border-radius: 0.5rem; border: 2px solid white;">View on GitHub</a>
         </div>
     </div>
 </section>
