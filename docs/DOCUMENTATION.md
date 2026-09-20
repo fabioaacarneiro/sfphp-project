@@ -5,7 +5,11 @@
 - [CLI e Geração de Código](#cli-e-geração-de-código)
 - [SFHT Template Engine](#sfht-template-engine)
 - [SFCSS Framework](#sfcss-framework)
+- [SFJS Library](#sfjs-library)
 - [Migrations e Schema Builder](#migrations-e-schema-builder)
+- [Seeders e Factories](#seeders-e-factories)
+- [Cache System](#cache-system)
+- [Queue System](#queue-system)
 - [Roteamento](#roteamento)
 - [Controllers e Views](#controllers-e-views)
 - [Modelos e Repositórios](#modelos-e-repositórios)
@@ -71,6 +75,42 @@ O binário `./sfphp` fornece 20+ comandos para gerar código, gerenciar migratio
 
 # Seeders
 ./sfphp db:seed
+```
+
+### Seeders e Factories
+
+```bash
+# Criar seeder
+./sfphp make:seeder UserSeeder
+./sfphp make:seeder PostSeeder
+
+# Criar factory
+./sfphp make:factory User
+./sfphp make:factory Post
+
+# Executar seeders
+./sfphp db:seed
+```
+
+### Cache Commands
+
+```bash
+# Limpar cache
+./sfphp cache:clear
+
+# Flush todos os cache
+./sfphp cache:flush
+```
+
+### Queue Commands
+
+```bash
+# Iniciar queue worker
+./sfphp queue:work
+./sfphp queue:work --timeout=7200  # 2 horas
+
+# Ver jobs que falharam
+./sfphp queue:failed
 ```
 
 ### Servidor e Utilitários
@@ -362,92 +402,130 @@ php public/css/sfcss-builder.php > public/css/sfcss.css
 
 ### Componentes
 
-#### Buttons
+#### Buttons com SFJS
 
-```html
+```sfpt
+<!-- Botões com interações AJAX -->
 <button class="btn">Default</button>
-<button class="btn btn-primary">Primary</button>
-<button class="btn btn-success">Success</button>
-<button class="btn btn-danger">Danger</button>
+<button class="btn btn-primary" @hxGet="/api/data" @hxTarget="#content">Load Data</button>
+<button class="btn btn-success" @hxPost="/posts" @hxTarget="#posts-list">Create Post</button>
+<button class="btn btn-danger" @hxDelete="/item/1">Delete</button>
+
+<!-- Botões com tamanhos -->
 <button class="btn btn-sm">Small</button>
+<button class="btn">Regular</button>
 <button class="btn btn-lg">Large</button>
+
+<!-- Botão desabilitado -->
 <button class="btn" disabled>Disabled</button>
+
+<!-- Botão com toggle -->
+<button class="btn btn-primary" @toggle="modal">Open Modal</button>
 ```
 
-#### Forms
+#### Forms com SFHT
 
-```html
-<div class="form-group">
-  <label class="form-label">Email</label>
-  <input type="email" placeholder="user@example.com">
-</div>
+```sfpt
+<!-- Form com validação SFJS integrada -->
+<form @hxPost="/users" @hxTarget="#users-list" class="card p-4 mb-4">
+  <div class="form-group">
+    <label class="form-label">Name</label>
+    <input type="text" name="name" @validate="required" placeholder="John Doe">
+  </div>
 
-<div class="form-group">
-  <label class="form-label">Message</label>
-  <textarea placeholder="Your message..."></textarea>
-</div>
+  <div class="form-group">
+    <label class="form-label">Email</label>
+    <input type="email" name="email" @validate="email" placeholder="user@example.com">
+  </div>
 
-<div class="form-group">
-  <label class="form-label">Country</label>
-  <select>
-    <option>Select...</option>
-    <option>Brazil</option>
-    <option>USA</option>
-  </select>
-</div>
+  <div class="form-group">
+    <label class="form-label">Country</label>
+    <select name="country">
+      <option value="">Select...</option>
+      @foreach($countries as $code => $name)
+        <option value="{{ $code }}">{{ $name }}</option>
+      @endforeach
+    </select>
+  </div>
+
+  <button type="submit" class="btn btn-primary">Submit</button>
+</form>
 ```
 
-#### Cards
+#### Cards com SFHT
 
-```html
-<div class="card">
-  <div class="card-header">
-    Card Title
+```sfpt
+<!-- Cards dinâmicas com dados -->
+@foreach($posts as $post)
+  <div class="card mb-3">
+    <div class="card-header">
+      <h3>{{ $post->title | truncate(50) }}</h3>
+    </div>
+    <div class="card-body">
+      <p>{{ $post->excerpt }}</p>
+      <small class="text-muted">By {{ $post->author->name }}</small>
+    </div>
+    <div class="card-footer">
+      <a href="/posts/{{ $post->id }}" class="btn btn-primary btn-sm">Read More</a>
+      <button @hxDelete="/posts/{{ $post->id }}" class="btn btn-danger btn-sm">Delete</button>
+    </div>
   </div>
-  <div class="card-body">
-    Card content goes here
-  </div>
-  <div class="card-footer">
-    Card footer
-  </div>
-</div>
+@endforeach
 ```
 
-#### Grid
+#### Grid com SFHT
 
-```html
-<!-- Auto responsive -->
-<div class="grid">
-  <div>Item 1</div>
-  <div>Item 2</div>
-  <div>Item 3</div>
-</div>
-
-<!-- Fixed columns -->
+```sfpt
+<!-- Grid responsiva com dados dinâmicos -->
 <div class="grid grid-cols-3">
-  <div>Col 1</div>
-  <div>Col 2</div>
-  <div>Col 3</div>
+  @foreach($products as $product)
+    <div class="card">
+      <img src="{{ $product->image }}" alt="{{ $product->name }}" style="width:100%; height:200px; object-fit:cover;">
+      <div class="card-body">
+        <h4>{{ $product->name }}</h4>
+        <p class="text-sm text-muted">{{ $product->description | truncate(80) }}</p>
+        <strong class="text-lg text-primary">${{ $product->price }}</strong>
+      </div>
+      <div class="card-footer">
+        <button @hxPost="/cart" @hxVals="{ product_id: {{ $product->id }} }" 
+                class="btn btn-primary w-100">Add to Cart</button>
+      </div>
+    </div>
+  @endforeach
 </div>
 ```
 
-#### Tables
+#### Tables com SFHT
 
-```html
+```sfpt
+<!-- Tabela dinâmica com dados do controller -->
 <table>
   <thead>
     <tr>
       <th>Name</th>
       <th>Email</th>
       <th>Status</th>
+      <th>Actions</th>
     </tr>
   </thead>
   <tbody>
-    <tr>
-      <td>John</td>
-      <td>john@example.com</td>
-      <td><span class="badge badge-success">Active</span></td>
-    </tr>
+    @foreach($users as $user)
+      <tr>
+        <td>{{ $user->name }}</td>
+        <td>{{ $user->email }}</td>
+        <td>
+          @if($user->is_active)
+            <span class="badge badge-success">Active</span>
+          @else
+            <span class="badge">Inactive</span>
+          @endif
+        </td>
+        <td>
+          <button @hxDelete="/users/{{ $user->id }}" @hxConfirm="Delete user?" 
+                  class="btn btn-sm btn-danger">Delete</button>
+        </td>
+      </tr>
+    @endforeach
   </tbody>
 </table>
 ```
@@ -460,6 +538,110 @@ php public/css/sfcss-builder.php > public/css/sfcss.css
 <div class="alert alert-danger">Danger alert</div>
 <div class="alert alert-warning">Warning alert</div>
 ```
+
+### Exemplo Completo — SFHT + SFCSS + SFJS
+
+```sfpt
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Users Dashboard</title>
+  <link rel="stylesheet" href="/css/sfcss.css">
+</head>
+<body>
+  <div class="container p-4">
+    <h1>Users Management</h1>
+
+    <!-- Form criar usuário com validação SFJS -->
+    <form @hxPost="/users" @hxTarget="#users-table" class="card p-4 mb-4">
+      <h2 class="mb-3">New User</h2>
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input type="text" name="name" @validate="required" placeholder="Full Name">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" name="email" @validate="email" placeholder="user@example.com">
+      </div>
+      <button type="submit" class="btn btn-primary">Create User</button>
+    </form>
+
+    <!-- Tabela com dados dinâmicos e AJAX actions -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Users List</h2>
+      </div>
+      <div class="card-body">
+        <table id="users-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach($users as $user)
+              <tr>
+                <td>{{ $user->name }}</td>
+                <td>{{ $user->email }}</td>
+                <td>
+                  @if($user->is_active)
+                    <span class="badge badge-success">Active</span>
+                  @else
+                    <span class="badge badge-warning">Inactive</span>
+                  @endif
+                </td>
+                <td>
+                  <button @hxPut="/users/{{ $user->id }}" 
+                          @hxTarget="closest tr" @hxSwap="outerHTML"
+                          class="btn btn-sm">Edit</button>
+                  <button @hxDelete="/users/{{ $user->id }}" 
+                          @hxTarget="closest tr" @hxSwap="outerHTML"
+                          class="btn btn-sm btn-danger">Delete</button>
+                </td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Grid de estatísticas -->
+    <div class="grid grid-cols-3 mt-4">
+      <div class="card">
+        <div class="card-body text-center">
+          <h3 class="text-2xl font-bold text-primary">{{ $total_users }}</h3>
+          <p class="text-sm text-muted">Total Users</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body text-center">
+          <h3 class="text-2xl font-bold text-success">{{ $active_users }}</h3>
+          <p class="text-sm text-muted">Active</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body text-center">
+          <h3 class="text-2xl font-bold text-warning">{{ $inactive_users }}</h3>
+          <p class="text-sm text-muted">Inactive</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/sfjs.js"></script>
+</body>
+</html>
+```
+
+**O que está acontecendo aqui:**
+- **SFHT:** `@foreach`, `@if/@else`, variáveis com `{{ }}`
+- **SFCSS:** Classes `.btn`, `.card`, `.grid`, `.badge`, `.form-group`
+- **SFJS:** `@hxPost`, `@hxDelete`, `@hxPut` com `@hxTarget` e `@hxSwap`, `@validate` no input
+
+Tudo integrado, sem JavaScript customizado!
 
 ### Utilidades
 
@@ -536,6 +718,197 @@ Arquivo `sfcss.config.json`:
   "transition": "all 0.3s ease"
 }
 ```
+
+---
+
+## SFJS Library
+
+**SFJS** (Simple Framework JavaScript) é uma biblioteca JavaScript minimalista tipo HTMX para AJAX, validação, e manipulação DOM sem dependências (~8KB).
+
+### Instalação
+
+```html
+<!-- No seu HTML -->
+<script src="/js/sfjs.js"></script>
+```
+
+### AJAX Declarativo
+
+Sem JavaScript customizado — use atributos HTML:
+
+```html
+<!-- GET request -->
+<button @hxGet="/api/data" @hxTarget="#content">
+  Load Data
+</button>
+
+<!-- POST request -->
+<form @hxPost="/submit" @hxTarget="#result" @hxSwap="outerHTML">
+  <input name="title" type="text">
+  <button type="submit">Save</button>
+</form>
+
+<!-- PUT/DELETE/PATCH -->
+<button @hxPut="/api/item/1" @hxTarget="#item">Update</button>
+<button @hxDelete="/api/item/1" @hxTarget="#item">Delete</button>
+```
+
+### Swap Strategies
+
+```html
+<!-- innerHTML (padrão) - substitui conteúdo -->
+<div @hxGet="/new" @hxTarget="#container" @hxSwap="innerHTML"></div>
+
+<!-- outerHTML - substitui elemento inteiro -->
+<div @hxGet="/new" @hxTarget="#container" @hxSwap="outerHTML"></div>
+
+<!-- beforebegin/afterbegin/beforeend/afterend -->
+<div @hxGet="/item" @hxSwap="beforeend"></div>
+```
+
+### Form Handling
+
+```html
+<!-- Form submit com AJAX -->
+<form @hxPost="/users" @hxTarget="#users-list">
+  <input name="name" type="text" @validate="required">
+  <input name="email" type="email" @validate="email">
+  <button type="submit">Create</button>
+</form>
+```
+
+### Validação Client-Side
+
+```html
+<!-- Validação automática em blur -->
+<input name="email" @validate="email">
+<input name="age" @validate="number">
+<input name="url" @validate="url">
+<input name="text" @validate="minLength:5">
+```
+
+**Regras disponíveis:**
+- `required` — Campo obrigatório
+- `email` — Email válido
+- `number` — Apenas dígitos
+- `url` — URL válida
+- `minLength:N` — Comprimento mínimo
+- `maxLength:N` — Comprimento máximo
+- `pattern:regex` — Expressão regular customizada
+
+### JavaScript API
+
+```javascript
+// AJAX manual
+sf.ajax.get('/api/data', {
+  target: '#content',
+  swap: 'innerHTML'
+});
+
+sf.ajax.post('/submit', { name: 'John' }, {
+  onSuccess: (html) => console.log('Done'),
+  onError: (error) => console.error(error)
+});
+
+// Form utilities
+const data = sf.form.serialize(document.querySelector('form'));
+sf.form.submit(formElement);
+
+// DOM manipulation
+sf.dom.addClass('element', 'active');
+sf.dom.removeClass('element', 'disabled');
+sf.dom.toggleClass('element', 'hidden');
+sf.dom.show('modal');
+sf.dom.hide('modal');
+
+// Event binding
+sf.dom.on('button', 'click', (e) => {
+  console.log('Clicked!');
+});
+
+// Storage
+sf.storage.set('user-id', 123);
+const userId = sf.storage.get('user-id');
+sf.storage.remove('user-id');
+sf.storage.clear();
+
+// Utilities
+const debounced = sf.util.debounce((value) => {
+  console.log('Search:', value);
+}, 300);
+
+const throttled = sf.util.throttle(() => {
+  console.log('Resized!');
+}, 500);
+
+// Wait for async
+await sf.util.wait(1000);
+console.log('Done waiting');
+```
+
+### Toggle/Show/Hide
+
+```html
+<!-- @toggle attribute -->
+<button @toggle="modal-id">
+  Open Modal
+</button>
+
+<div id="modal-id" style="display:none;">
+  Modal content
+</div>
+```
+
+### Exemplo Completo
+
+```html
+<!-- SfPHP SFJS Example -->
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="/css/sfcss.css">
+</head>
+<body>
+  <div class="container p-4">
+    <h1>Users</h1>
+    
+    <!-- Form create com validação -->
+    <form @hxPost="/users" @hxTarget="#users-list" class="card p-3 mb-4">
+      <div class="form-group">
+        <input name="name" @validate="required" placeholder="Name">
+      </div>
+      <div class="form-group">
+        <input name="email" @validate="email" placeholder="Email">
+      </div>
+      <button type="submit" class="btn btn-primary">Create</button>
+    </form>
+
+    <!-- List with AJAX refresh -->
+    <div id="users-list">
+      <div class="grid grid-cols-3">
+        <!-- Loaded via AJAX -->
+      </div>
+    </div>
+
+    <!-- Refresh button -->
+    <button @hxGet="/users" @hxTarget="#users-list" class="btn mt-3">
+      Refresh
+    </button>
+  </div>
+
+  <script src="/js/sfjs.js"></script>
+</body>
+</html>
+```
+
+### Auto-Initialization
+
+SFJS **não requer inicialização manual**:
+- Event listeners instalados automaticamente no DOMContentLoaded
+- Validação funciona sem setup
+- AJAX declarativa pronta para usar
+
+Basta incluir o script e usar os atributos `@hx*`.
 
 ---
 
@@ -728,6 +1101,503 @@ $schema->create('public.users', function (Blueprint $table): void {
 });
 
 $schema->hasTable('my_schema.users');
+```
+
+---
+
+## Seeders e Factories
+
+**Seeders** populam o banco com dados de teste. **Factories** definem padrões de dados para criar registros.
+
+### Criar Seeder
+
+```bash
+./sfphp make:seeder UserSeeder
+./sfphp make:seeder PostSeeder
+```
+
+Arquivo gerado em `database/seeders/UserSeeder.php`:
+
+```php
+<?php
+
+namespace Database\Seeders;
+
+use SfPhp\Database\Seeder;
+
+class UserSeeder extends Seeder
+{
+    public function run(): void
+    {
+        // User::factory()->count(50)->create();
+        // Or insert directly:
+        // User::create(['name' => 'John', 'email' => 'john@example.com']);
+    }
+}
+```
+
+### Criar Factory
+
+```bash
+./sfphp make:factory User
+./sfphp make:factory Post
+```
+
+Arquivo gerado em `database/factories/UserFactory.php`:
+
+```php
+<?php
+
+namespace Database\Factories;
+
+use SfPhp\Database\Factory;
+
+class UserFactory extends Factory
+{
+    public function definition(): array
+    {
+        return [
+            'name' => 'User ' . mt_rand(1000, 9999),
+            'email' => 'user' . mt_rand(1000, 9999) . '@example.com',
+            'password' => password_hash('password', PASSWORD_BCRYPT),
+            'created_at' => date('Y-m-d H:i:s'),
+        ];
+    }
+
+    protected function model(): string
+    {
+        return \SfphpProject\app\Models\User::class;
+    }
+}
+```
+
+### Usando Factories
+
+```php
+use Database\Factories\UserFactory;
+
+// Criar 1 registro
+$user = (new UserFactory())->create();
+
+// Criar 50 registros
+$users = (new UserFactory())->count(50)->create();
+
+// Criar dados sem salvar (fazer em memória)
+$data = (new UserFactory())->make();
+
+// Sobrescrever atributos
+$admin = (new UserFactory())->create([
+    'role' => 'admin',
+    'is_active' => true,
+]);
+```
+
+### Rodando Seeders
+
+Primeiro, registre no `database/seeders/DatabaseSeeder.php`:
+
+```php
+<?php
+
+namespace Database\Seeders;
+
+use SfPhp\Database\Seeder;
+
+class DatabaseSeeder extends Seeder
+{
+    public function run(): void
+    {
+        $this->call([
+            UserSeeder::class,
+            PostSeeder::class,
+            CommentSeeder::class,
+        ]);
+    }
+}
+```
+
+Depois execute:
+
+```bash
+./sfphp db:seed
+```
+
+Ou em uma migration/setup:
+
+```php
+use Database\Seeders\UserSeeder;
+
+(new UserSeeder())->run();
+```
+
+### Factory com Relacionamentos
+
+```php
+class PostFactory extends Factory
+{
+    public function definition(): array
+    {
+        return [
+            'user_id' => fn () => (new UserFactory())->create()->id,
+            'title' => 'Post Title ' . mt_rand(1, 1000),
+            'content' => 'Lorem ipsum...',
+            'created_at' => date('Y-m-d H:i:s'),
+        ];
+    }
+
+    protected function model(): string
+    {
+        return \SfphpProject\app\Models\Post::class;
+    }
+}
+```
+
+### Exemplo Completo
+
+```php
+// database/seeders/DatabaseSeeder.php
+public function run(): void
+{
+    // Criar 100 usuários
+    (new UserFactory())->count(100)->create();
+
+    // Criar posts para cada usuário
+    foreach (User::all() as $user) {
+        (new PostFactory())->count(5)->create([
+            'user_id' => $user->id,
+        ]);
+    }
+}
+```
+
+Execute com `./sfphp db:seed`.
+
+---
+
+## Cache System
+
+Sistema de cache multi-driver para armazenar dados em memória, arquivos ou Redis.
+
+### Drivers Disponíveis
+
+**FileDriver** (padrão)
+```php
+use SfPhp\Cache\FileDriver;
+
+$cache = new FileDriver('/tmp/sfphp-cache');
+```
+
+**MemoryDriver** (em memória, apenas durante request)
+```php
+use SfPhp\Cache\MemoryDriver;
+
+$cache = new MemoryDriver();
+```
+
+**RedisDriver** (persistente, distribuído)
+```php
+use SfPhp\Cache\RedisDriver;
+
+$redis = new \Redis();
+$redis->connect('127.0.0.1', 6379);
+
+$cache = new RedisDriver($redis);
+```
+
+### Uso via Helper
+
+```php
+// Get
+$user = cache()->get('user.1');
+$user = cache()->get('user.1', 'default_value');
+
+// Put (sem expiração)
+cache()->put('user.1', $user);
+
+// Put com expiração (segundos)
+cache()->put('user.1', $user, 3600);  // 1 hora
+
+// Forget
+cache()->forget('user.1');
+
+// Flush tudo
+cache()->flush();
+
+// Has
+if (cache()->has('user.1')) {
+    // ...
+}
+```
+
+### Remember + Pull
+
+```php
+// Remember: retorna do cache ou executa callback
+$user = cache()->remember('user.1', 3600, function() {
+    return User::find(1);
+});
+
+// Pull: get + forget
+$user = cache()->pull('user.1');
+```
+
+### Mudar Driver em Runtime
+
+```php
+use SfPhp\Cache\CacheManager;
+use SfPhp\Cache\RedisDriver;
+
+$manager = new CacheManager();
+
+// Usar Redis
+$redis = new \Redis();
+$redis->connect('127.0.0.1', 6379);
+$manager->driver(new RedisDriver($redis));
+
+cache()->put('key', 'value', 3600);
+```
+
+### CLI Commands
+
+```bash
+# Clear (mesma coisa que flush)
+./sfphp cache:clear
+
+# Flush tudo
+./sfphp cache:flush
+```
+
+### Exemplo Prático
+
+```php
+use SfPhp\Cache\CacheManager;
+use SfPhp\Cache\RedisDriver;
+
+// Em um controller
+class UserController
+{
+    public function show($id)
+    {
+        // Cache por 1 hora
+        $user = cache()->remember("user.{$id}", 3600, function() use ($id) {
+            return User::find($id);
+        });
+
+        return $this->view('user.show', compact('user'));
+    }
+
+    public function update($id)
+    {
+        $user = User::find($id);
+        $user->update(request()->all());
+
+        // Invalidar cache
+        cache()->forget("user.{$id}");
+
+        return redirect("/users/{$id}");
+    }
+}
+```
+
+### Estrutura de Drivers
+
+Criar driver customizado:
+
+```php
+use SfPhp\Cache\Cache;
+
+class CustomDriver implements Cache
+{
+    public function get(string $key, mixed $default = null): mixed { }
+    public function put(string $key, mixed $value, ?int $seconds = null): void { }
+    public function forget(string $key): void { }
+    public function flush(): void { }
+    public function has(string $key): bool { }
+}
+```
+
+---
+
+## Queue System
+
+Sistema de fila para executar jobs em background via workers.
+
+### Drivers Disponíveis
+
+**DatabaseDriver** (padrão)
+```php
+use SfPhp\Queue\DatabaseDriver;
+
+$queue = new QueueManager(new DatabaseDriver());
+```
+
+**RedisDriver** (distribuído, recomendado para produção)
+```php
+use SfPhp\Queue\RedisDriver;
+
+$redis = new \Redis();
+$redis->connect('127.0.0.1', 6379);
+
+$queue = new QueueManager(new RedisDriver($redis));
+```
+
+### Criar Job
+
+```bash
+./sfphp make:job SendEmail
+./sfphp make:job ProcessImage
+```
+
+Arquivo gerado em `app/Jobs/SendEmailJob.php`:
+
+```php
+<?php
+
+namespace SfphpProject\app\Jobs;
+
+use SfPhp\Queue\Job;
+
+class SendEmailJob extends Job
+{
+    protected string $email;
+    protected string $subject;
+    protected string $message;
+
+    public function __construct(string $email = '', string $subject = '', string $message = '')
+    {
+        $this->email = $email;
+        $this->subject = $subject;
+        $this->message = $message;
+    }
+
+    public function handle(): void
+    {
+        // Envia email
+        mail($this->email, $this->subject, $this->message);
+    }
+}
+```
+
+### Dispatch Job
+
+```php
+use SfphpProject\app\Jobs\SendEmailJob;
+
+// Dispatch imediatamente
+dispatch(new SendEmailJob('user@example.com', 'Welcome!', 'Hi there!'));
+
+// Dispatch com delay (segundos)
+dispatch(
+    new SendEmailJob('user@example.com', 'Reminder', 'Don\'t forget!'),
+    delay: 3600  // 1 hora depois
+);
+```
+
+### Job Configuration
+
+```php
+class SendEmailJob extends Job
+{
+    protected int $tries = 3;       // Tentar 3 vezes antes de falhar
+    protected int $timeout = 60;    // Timeout de 60 segundos
+
+    public function handle(): void
+    {
+        // ...
+    }
+}
+```
+
+### Métodos do Job
+
+```php
+$job->tries(5);              // Tentar 5 vezes
+$job->timeout(120);          // Timeout 120 segundos
+$job->delay(3600);           // Delay 1 hora
+$job->getAttempts();         // Número de tentativas
+$job->getTries();            // Max tentativas
+```
+
+### Worker
+
+Iniciar worker para processar jobs:
+
+```bash
+./sfphp queue:work
+./sfphp queue:work --timeout=7200  # 2 horas
+```
+
+Worker vai:
+1. Buscar job disponível da fila
+2. Executar `handle()`
+3. Deletar job se sucesso
+4. Retentar se falhar (até max `tries`)
+5. Marcar como falho se max retentativas atingido
+
+Pressione CTRL+C para parar o worker.
+
+### Failed Jobs
+
+Ver jobs que falharam:
+
+```bash
+./sfphp queue:failed
+```
+
+### Exemplo Completo
+
+```php
+// Em um controller
+class UserController
+{
+    public function store()
+    {
+        $user = User::create(request()->all());
+
+        // Dispatch email em background
+        dispatch(new SendEmailJob(
+            $user->email,
+            'Welcome to SFPHP',
+            'Thanks for signing up!'
+        ));
+
+        return redirect('/')->with('success', 'User created');
+    }
+}
+```
+
+### Job com Relacionamentos
+
+```php
+class ProcessImageJob extends Job
+{
+    protected int $userId;
+
+    public function __construct(int $userId)
+    {
+        $this->userId = $userId;
+    }
+
+    public function handle(): void
+    {
+        $user = User::find($this->userId);
+        // Process image...
+    }
+}
+```
+
+### Retry e Release
+
+```php
+public function handle(): void
+{
+    try {
+        // Risca...
+    } catch (\Exception $e) {
+        // Release job volta para fila em 60 segundos
+        throw $e;
+    }
+}
 ```
 
 ---

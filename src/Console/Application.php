@@ -4,12 +4,14 @@ namespace SfphpProject\src\Console;
 
 use SfphpProject\src\Console\Generators\ControllerGenerator;
 use SfphpProject\src\Console\Generators\EventGenerator;
+use SfphpProject\src\Console\Generators\FactoryGenerator;
 use SfphpProject\src\Console\Generators\ListenerGenerator;
 use SfphpProject\src\Console\Generators\MiddlewareGenerator;
 use SfphpProject\src\Console\Generators\ModelGenerator;
 use SfphpProject\src\Console\Generators\PolicyGenerator;
 use SfphpProject\src\Console\Generators\RepositoryGenerator;
 use SfphpProject\src\Console\Generators\RequestGenerator;
+use SfphpProject\src\Console\Generators\SeederGenerator;
 use SfphpProject\src\Console\Generators\ServiceGenerator;
 use SfphpProject\src\Console\Generators\TestGenerator;
 use SfphpProject\src\Database;
@@ -63,11 +65,17 @@ final class Application
                 'make:event' => $this->makeEvent($arguments),
                 'make:listener' => $this->makeListener($arguments),
                 'make:policy' => $this->makePolicy($arguments),
+                'make:seeder' => $this->makeSeeder($arguments),
+                'make:factory' => $this->makeFactory($arguments),
                 'migrate' => $this->migrate($arguments),
                 'rollback' => $this->rollback($arguments),
                 'status' => $this->status($arguments),
                 'db:seed' => $this->dbSeed($arguments),
                 'db:fresh' => $this->dbFresh($arguments),
+                'cache:clear' => $this->cacheClear($arguments),
+                'cache:flush' => $this->cacheFlush($arguments),
+                'queue:work' => $this->queueWork($arguments),
+                'queue:failed' => $this->queueFailed($arguments),
                 'tinker' => $this->tinker(),
                 default => $this->unknownCommand($command),
             };
@@ -106,6 +114,19 @@ final class Application
             $this->writeLine('  migrate                          [--path=database/migrations] [--step=N]');
             $this->writeLine('  rollback                         [--path=database/migrations] [--step=N]');
             $this->writeLine('  status                           [--path=database/migrations]');
+            $this->writeLine('');
+            $this->writeLine('Seeding & Factory Commands:');
+            $this->writeLine('  make:seeder <name>    Generate a seeder class');
+            $this->writeLine('  make:factory <name>   Generate a factory class');
+            $this->writeLine('  db:seed               Run database seeders');
+            $this->writeLine('');
+            $this->writeLine('Cache Commands:');
+            $this->writeLine('  cache:clear           Clear expired cache entries');
+            $this->writeLine('  cache:flush           Flush all cache');
+            $this->writeLine('');
+            $this->writeLine('Queue Commands:');
+            $this->writeLine('  queue:work            Start queue worker [--timeout=3600]');
+            $this->writeLine('  queue:failed          List failed jobs');
             $this->writeLine('');
             $this->writeLine('Server & Database Commands:');
             $this->writeLine('  serve                 Start development server (localhost:8000)');
@@ -891,6 +912,48 @@ PHP;
     }
 
     /**
+     * Generate a seeder class.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makeSeeder(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('Seeder name is required.');
+        }
+
+        $generator = new SeederGenerator($this->rootPath());
+        $file = $generator->generate($name);
+
+        $this->writeLine('Created seeder: ' . $this->relativePath($file));
+
+        return 0;
+    }
+
+    /**
+     * Generate a factory class.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makeFactory(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('Factory name is required.');
+        }
+
+        $generator = new FactoryGenerator($this->rootPath());
+        $file = $generator->generate($name);
+
+        $this->writeLine('Created factory: ' . $this->relativePath($file));
+
+        return 0;
+    }
+
+    /**
      * Run database seeders.
      *
      * @param array<int, string> $arguments The command arguments
@@ -945,6 +1008,104 @@ PHP;
             return 0;
         } catch (Throwable $e) {
             $this->writeLine('Error: ' . $e->getMessage());
+            return 1;
+        }
+    }
+
+    /**
+     * Clear expired cache entries.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function cacheClear(array $arguments): int
+    {
+        try {
+            $cache = new \SfPhp\Cache\CacheManager();
+            $cache->flush();
+
+            $this->writeLine('Cache cleared successfully.');
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+            return 1;
+        }
+    }
+
+    /**
+     * Flush all cache.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function cacheFlush(array $arguments): int
+    {
+        try {
+            $cache = new \SfPhp\Cache\CacheManager();
+            $cache->flush();
+
+            $this->writeLine('All cache flushed successfully.');
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+            return 1;
+        }
+    }
+
+    /**
+     * Start queue worker.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function queueWork(array $arguments): int
+    {
+        try {
+            $timeout = $this->getOption($arguments, 'timeout', 3600);
+            $queue = new \SfPhp\Queue\QueueManager();
+
+            $this->writeLine('Starting queue worker (timeout: ' . $timeout . 's)...');
+            $this->writeLine('Press CTRL+C to stop.');
+            $this->writeLine('');
+
+            $queue->work((int) $timeout);
+
+            $this->writeLine('Queue worker stopped.');
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+            return 1;
+        }
+    }
+
+    /**
+     * Show failed jobs.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function queueFailed(array $arguments): int
+    {
+        try {
+            $queue = new \SfPhp\Queue\QueueManager();
+            $failed = $queue->failed();
+
+            if (empty($failed)) {
+                $this->writeLine('No failed jobs.');
+                return 0;
+            }
+
+            $this->writeLine('Failed Jobs:');
+            foreach ($failed as $job) {
+                $this->writeLine('  - ' . $job['id'] . ' (failed at ' . date('Y-m-d H:i:s', $job['failed_at']) . ')');
+            }
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
             return 1;
         }
     }
