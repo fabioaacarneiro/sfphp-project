@@ -6,9 +6,26 @@ use InvalidArgumentException;
 
 /**
  * Collects schema operations for a migration.
+ *
+ * MySQL (8.0.19+) and PostgreSQL (12+) are first-class targets; other PDO
+ * drivers receive the common ANSI-ish SQL and may need Schema::statement().
  */
 final class Blueprint
 {
+    private const FOREIGN_ACTIONS = ['CASCADE', 'SET NULL', 'SET DEFAULT', 'RESTRICT', 'NO ACTION'];
+
+    /**
+     * Column types that MySQL only accepts a default for as an expression.
+     */
+    private const MYSQL_EXPRESSION_DEFAULT_TYPES = ['text', 'mediumText', 'longText', 'binary', 'json', 'jsonb'];
+
+    /**
+     * Shared PostgreSQL trigger function that emulates ON UPDATE CURRENT_TIMESTAMP.
+     */
+    private const PG_TOUCH_FUNCTION = 'CREATE OR REPLACE FUNCTION sfphp_set_current_timestamp() RETURNS TRIGGER AS $$ '
+        . 'BEGIN NEW := jsonb_populate_record(NEW, jsonb_build_object(TG_ARGV[0], CURRENT_TIMESTAMP)); RETURN NEW; END; '
+        . '$$ LANGUAGE plpgsql';
+
     /**
      * @var array<int, array<string, mixed>>
      */
@@ -19,13 +36,24 @@ final class Blueprint
      */
     private array $operations = [];
 
+    /**
+     * @var array<string, string|null>
+     */
+    private array $tableOptions = [
+        'engine' => null,
+        'charset' => null,
+        'collation' => null,
+        'comment' => null,
+    ];
+
     private ?int $currentColumnIndex = null;
     private ?int $currentForeignIndex = null;
+    private ?int $currentIndexIndex = null;
 
     /**
      * Create a blueprint for the given table.
      *
-     * @param string $table The table name
+     * @param string $table The table name, optionally qualified as "schema.table"
      * @param string $driver The PDO driver name
      * @param string $mode Either "create" or "alter"
      */
@@ -111,7 +139,7 @@ final class Blueprint
     }
 
     /**
-     * Add a foreign identifier column.
+     * Add an unsigned big integer column meant to reference another table.
      *
      * @param string $name The column name
      * @return self
@@ -122,7 +150,29 @@ final class Blueprint
     }
 
     /**
-     * Add a tiny integer column.
+     * Add a UUID column meant to reference another table.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function foreignUuid(string $name): self
+    {
+        return $this->uuid($name);
+    }
+
+    /**
+     * Add a ULID column meant to reference another table.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function foreignUlid(string $name): self
+    {
+        return $this->ulid($name);
+    }
+
+    /**
+     * Add a tiny integer column (SMALLINT on PostgreSQL).
      *
      * @param string $name The column name
      * @return self
@@ -144,7 +194,7 @@ final class Blueprint
     }
 
     /**
-     * Add a medium integer column.
+     * Add a medium integer column (INTEGER on PostgreSQL).
      *
      * @param string $name The column name
      * @return self
@@ -177,7 +227,62 @@ final class Blueprint
     }
 
     /**
-     * Add a string column.
+     * Add an unsigned tiny integer column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function unsignedTinyInteger(string $name): self
+    {
+        return $this->tinyInteger($name)->unsigned();
+    }
+
+    /**
+     * Add an unsigned small integer column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function unsignedSmallInteger(string $name): self
+    {
+        return $this->smallInteger($name)->unsigned();
+    }
+
+    /**
+     * Add an unsigned medium integer column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function unsignedMediumInteger(string $name): self
+    {
+        return $this->mediumInteger($name)->unsigned();
+    }
+
+    /**
+     * Add an unsigned integer column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function unsignedInteger(string $name): self
+    {
+        return $this->integer($name)->unsigned();
+    }
+
+    /**
+     * Add an unsigned big integer column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function unsignedBigInteger(string $name): self
+    {
+        return $this->bigInteger($name)->unsigned();
+    }
+
+    /**
+     * Add a variable-length string column.
      *
      * @param string $name The column name
      * @param int $length The maximum length
@@ -189,10 +294,10 @@ final class Blueprint
     }
 
     /**
-     * Add a char column.
+     * Add a fixed-length string column.
      *
      * @param string $name The column name
-     * @param int $length The maximum length
+     * @param int $length The length
      * @return self
      */
     public function char(string $name, int $length = 255): self
@@ -212,7 +317,18 @@ final class Blueprint
     }
 
     /**
-     * Add a long text column.
+     * Add a medium text column (TEXT on PostgreSQL).
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function mediumText(string $name): self
+    {
+        return $this->column($name, 'mediumText');
+    }
+
+    /**
+     * Add a long text column (TEXT on PostgreSQL).
      *
      * @param string $name The column name
      * @return self
@@ -223,7 +339,7 @@ final class Blueprint
     }
 
     /**
-     * Add a binary/blob column.
+     * Add a binary column (BLOB on MySQL, BYTEA on PostgreSQL).
      *
      * @param string $name The column name
      * @return self
@@ -259,79 +375,98 @@ final class Blueprint
      * Add a time column.
      *
      * @param string $name The column name
+     * @param int|null $precision The fractional seconds precision (0-6)
      * @return self
      */
-    public function time(string $name): self
+    public function time(string $name, ?int $precision = null): self
     {
-        return $this->column($name, 'time');
+        return $this->column($name, 'time', ['precision' => $this->assertPrecision($precision)]);
     }
 
     /**
-     * Add a date-time column.
+     * Add a time column with time zone (TIME on MySQL).
      *
      * @param string $name The column name
+     * @param int|null $precision The fractional seconds precision (0-6)
      * @return self
      */
-    public function dateTime(string $name): self
+    public function timeTz(string $name, ?int $precision = null): self
     {
-        return $this->column($name, 'dateTime');
+        return $this->column($name, 'timeTz', ['precision' => $this->assertPrecision($precision)]);
     }
 
     /**
-     * Add a timezone-aware date-time column.
+     * Add a date-time column (DATETIME on MySQL, TIMESTAMP on PostgreSQL).
      *
      * @param string $name The column name
+     * @param int|null $precision The fractional seconds precision (0-6)
      * @return self
      */
-    public function dateTimeTz(string $name): self
+    public function dateTime(string $name, ?int $precision = null): self
     {
-        return $this->column($name, 'dateTimeTz');
+        return $this->column($name, 'dateTime', ['precision' => $this->assertPrecision($precision)]);
+    }
+
+    /**
+     * Add a date-time column with time zone (DATETIME on MySQL, TIMESTAMPTZ on PostgreSQL).
+     *
+     * @param string $name The column name
+     * @param int|null $precision The fractional seconds precision (0-6)
+     * @return self
+     */
+    public function dateTimeTz(string $name, ?int $precision = null): self
+    {
+        return $this->column($name, 'dateTimeTz', ['precision' => $this->assertPrecision($precision)]);
     }
 
     /**
      * Add a timestamp column.
      *
      * @param string $name The column name
+     * @param int|null $precision The fractional seconds precision (0-6)
      * @return self
      */
-    public function timestamp(string $name): self
+    public function timestamp(string $name, ?int $precision = null): self
     {
-        return $this->column($name, 'timestamp');
+        return $this->column($name, 'timestamp', ['precision' => $this->assertPrecision($precision)]);
     }
 
     /**
-     * Add a timezone-aware timestamp column.
+     * Add a timestamp column with time zone (TIMESTAMPTZ on PostgreSQL).
      *
      * @param string $name The column name
+     * @param int|null $precision The fractional seconds precision (0-6)
      * @return self
      */
-    public function timestampTz(string $name): self
+    public function timestampTz(string $name, ?int $precision = null): self
     {
-        return $this->column($name, 'timestampTz');
+        return $this->column($name, 'timestampTz', ['precision' => $this->assertPrecision($precision)]);
     }
 
     /**
-     * Add created_at and updated_at columns.
+     * Add created_at and updated_at timestamp columns.
      *
+     * @param int|null $precision The fractional seconds precision (0-6)
      * @return self
      */
-    public function timestamps(): self
+    public function timestamps(?int $precision = null): self
     {
-        $this->timestamp('created_at')->default($this->raw('CURRENT_TIMESTAMP'));
-        $this->timestamp('updated_at')->default($this->raw('CURRENT_TIMESTAMP'));
+        $this->timestamp('created_at', $precision)->useCurrent();
+        $this->timestamp('updated_at', $precision)->useCurrent();
 
         return $this;
     }
 
     /**
-     * Add timezone-aware created_at and updated_at columns.
+     * Add created_at and updated_at timestamp columns with time zone.
      *
+     * @param int|null $precision The fractional seconds precision (0-6)
      * @return self
      */
-    public function timestampsTz(): self
+    public function timestampsTz(?int $precision = null): self
     {
-        $this->timestampTz('created_at')->default($this->raw('CURRENT_TIMESTAMP'));
-        $this->timestampTz('updated_at')->default($this->raw('CURRENT_TIMESTAMP'));
+        $this->timestampTz('created_at', $precision)->useCurrent();
+        $this->timestampTz('updated_at', $precision)->useCurrent();
 
         return $this;
     }
@@ -340,8 +475,8 @@ final class Blueprint
      * Add a decimal column.
      *
      * @param string $name The column name
-     * @param int $precision The total precision
-     * @param int $scale The decimal scale
+     * @param int $precision The total number of digits
+     * @param int $scale The number of digits after the decimal point
      * @return self
      */
     public function decimal(string $name, int $precision = 10, int $scale = 2): self
@@ -353,9 +488,11 @@ final class Blueprint
     }
 
     /**
-     * Add a money-style decimal column.
+     * Add an unsigned decimal column.
      *
      * @param string $name The column name
+     * @param int $precision The total number of digits
+     * @param int $scale The number of digits after the decimal point
      * @return self
      */
     public function unsignedDecimal(string $name, int $precision = 10, int $scale = 2): self
@@ -368,7 +505,7 @@ final class Blueprint
     }
 
     /**
-     * Add a float column.
+     * Add a single-precision floating point column (FLOAT on MySQL, REAL on PostgreSQL).
      *
      * @param string $name The column name
      * @return self
@@ -376,6 +513,17 @@ final class Blueprint
     public function float(string $name): self
     {
         return $this->column($name, 'float');
+    }
+
+    /**
+     * Add a double-precision floating point column.
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function double(string $name): self
+    {
+        return $this->column($name, 'double');
     }
 
     /**
@@ -390,7 +538,18 @@ final class Blueprint
     }
 
     /**
-     * Add a UUID column.
+     * Add a binary JSON column (JSONB on PostgreSQL, JSON on MySQL).
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function jsonb(string $name): self
+    {
+        return $this->column($name, 'jsonb');
+    }
+
+    /**
+     * Add a UUID column (UUID on PostgreSQL, CHAR(36) on MySQL).
      *
      * @param string $name The column name
      * @return self
@@ -412,7 +571,42 @@ final class Blueprint
     }
 
     /**
-     * Add an enum-like column.
+     * Add an IP address column (INET on PostgreSQL, VARCHAR(45) on MySQL).
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function ipAddress(string $name): self
+    {
+        return $this->column($name, 'ipAddress');
+    }
+
+    /**
+     * Add a MAC address column (MACADDR on PostgreSQL, VARCHAR(17) on MySQL).
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function macAddress(string $name): self
+    {
+        return $this->column($name, 'macAddress');
+    }
+
+    /**
+     * Add a year column (YEAR on MySQL, SMALLINT on PostgreSQL).
+     *
+     * @param string $name The column name
+     * @return self
+     */
+    public function year(string $name): self
+    {
+        return $this->column($name, 'year');
+    }
+
+    /**
+     * Add an enum column.
+     *
+     * Native ENUM on MySQL; VARCHAR plus a CHECK constraint on PostgreSQL.
      *
      * @param string $name The column name
      * @param array<int, string> $values The allowed values
@@ -428,7 +622,41 @@ final class Blueprint
     }
 
     /**
-     * Make the current column nullable.
+     * Add a set column (MySQL only).
+     *
+     * @param string $name The column name
+     * @param array<int, string> $values The allowed values
+     * @return self
+     */
+    public function set(string $name, array $values): self
+    {
+        if ($values === []) {
+            throw new InvalidArgumentException('Set values cannot be empty.');
+        }
+
+        return $this->column($name, 'set', ['values' => array_values($values)]);
+    }
+
+    /**
+     * Add a column with a driver-specific type written as raw SQL.
+     *
+     * The definition is emitted as-is, so never build it from user input.
+     *
+     * @param string $name The column name
+     * @param string $definition The raw SQL type, such as "INET" or "INTEGER[]"
+     * @return self
+     */
+    public function rawColumn(string $name, string $definition): self
+    {
+        if (trim($definition) === '') {
+            throw new InvalidArgumentException('A raw column definition cannot be empty.');
+        }
+
+        return $this->column($name, 'raw', ['rawType' => trim($definition)]);
+    }
+
+    /**
+     * Mark the current column as nullable.
      *
      * @return self
      */
@@ -441,7 +669,7 @@ final class Blueprint
     }
 
     /**
-     * Set a default value on the current column.
+     * Set the default value for the current column.
      *
      * @param mixed $value The default value
      * @return self
@@ -455,17 +683,21 @@ final class Blueprint
     }
 
     /**
-     * Use CURRENT_TIMESTAMP as the default value.
+     * Default the current column to the current timestamp.
      *
      * @return self
      */
     public function useCurrent(): self
     {
-        return $this->default($this->raw('CURRENT_TIMESTAMP'));
+        $precision = $this->currentColumn()['precision'] ?? null;
+
+        return $this->default($this->raw('CURRENT_TIMESTAMP' . ($precision ? "($precision)" : '')));
     }
 
     /**
-     * Use CURRENT_TIMESTAMP on update.
+     * Refresh the current column with the current timestamp on every update.
+     *
+     * Native ON UPDATE on MySQL; a BEFORE UPDATE trigger on PostgreSQL.
      *
      * @return self
      */
@@ -478,7 +710,9 @@ final class Blueprint
     }
 
     /**
-     * Mark the current column as unsigned.
+     * Mark the current numeric column as unsigned.
+     *
+     * Ignored on PostgreSQL, which has no unsigned integers.
      *
      * @return self
      */
@@ -491,7 +725,7 @@ final class Blueprint
     }
 
     /**
-     * Mark the current column as auto incrementing.
+     * Mark the current column as auto-incrementing.
      *
      * @return self
      */
@@ -504,7 +738,7 @@ final class Blueprint
     }
 
     /**
-     * Mark the current column as needing a type change.
+     * Change an existing column instead of adding it.
      *
      * @return self
      */
@@ -517,9 +751,9 @@ final class Blueprint
     }
 
     /**
-     * Position the current column after another column.
+     * Place the current column after another one (MySQL only).
      *
-     * @param string $column The column to place after
+     * @param string $column The existing column name
      * @return self
      */
     public function after(string $column): self
@@ -531,9 +765,22 @@ final class Blueprint
     }
 
     /**
-     * Set a column comment.
+     * Place the current column first in the table (MySQL only).
      *
-     * @param string $comment The column comment
+     * @return self
+     */
+    public function first(): self
+    {
+        $current =& $this->currentColumn();
+        $current['first'] = true;
+
+        return $this;
+    }
+
+    /**
+     * Set the comment for the current column.
+     *
+     * @param string $comment The comment text
      * @return self
      */
     public function comment(string $comment): self
@@ -545,9 +792,9 @@ final class Blueprint
     }
 
     /**
-     * Set a column charset.
+     * Set the character set for the current column (MySQL only).
      *
-     * @param string $charset The character set
+     * @param string $charset The character set name
      * @return self
      */
     public function charset(string $charset): self
@@ -559,7 +806,7 @@ final class Blueprint
     }
 
     /**
-     * Set a column collation.
+     * Set the collation for the current column.
      *
      * @param string $collation The collation name
      * @return self
@@ -573,7 +820,87 @@ final class Blueprint
     }
 
     /**
-     * Build a raw SQL expression.
+     * Make the current column a virtual generated column (MySQL only).
+     *
+     * @param string $expression The raw SQL expression
+     * @return self
+     */
+    public function virtualAs(string $expression): self
+    {
+        $current =& $this->currentColumn();
+        $current['virtualAs'] = $expression;
+
+        return $this;
+    }
+
+    /**
+     * Make the current column a stored generated column.
+     *
+     * @param string $expression The raw SQL expression
+     * @return self
+     */
+    public function storedAs(string $expression): self
+    {
+        $current =& $this->currentColumn();
+        $current['storedAs'] = $expression;
+
+        return $this;
+    }
+
+    /**
+     * Set the storage engine for the table (MySQL only).
+     *
+     * @param string $engine The engine name, such as "InnoDB"
+     * @return self
+     */
+    public function engine(string $engine): self
+    {
+        $this->tableOptions['engine'] = $engine;
+
+        return $this;
+    }
+
+    /**
+     * Set the default character set for the table (MySQL only).
+     *
+     * @param string $charset The character set name
+     * @return self
+     */
+    public function tableCharset(string $charset): self
+    {
+        $this->tableOptions['charset'] = $charset;
+
+        return $this;
+    }
+
+    /**
+     * Set the default collation for the table (MySQL only).
+     *
+     * @param string $collation The collation name
+     * @return self
+     */
+    public function tableCollation(string $collation): self
+    {
+        $this->tableOptions['collation'] = $collation;
+
+        return $this;
+    }
+
+    /**
+     * Set the comment for the table.
+     *
+     * @param string $comment The comment text
+     * @return self
+     */
+    public function tableComment(string $comment): self
+    {
+        $this->tableOptions['comment'] = $comment;
+
+        return $this;
+    }
+
+    /**
+     * Create a raw SQL expression.
      *
      * @param string $sql The SQL fragment
      * @return Expression
@@ -584,9 +911,9 @@ final class Blueprint
     }
 
     /**
-     * Mark the current column as unique.
+     * Add a unique index.
      *
-     * @param string|null $name Optional index name
+     * @param string|null $name The optional index name
      * @return self
      */
     public function unique(?string $name = null): self
@@ -597,10 +924,10 @@ final class Blueprint
     }
 
     /**
-     * Create an index for one or more columns.
+     * Add an index.
      *
-     * @param string|array<int, string>|null $columns The indexed columns or the current column
-     * @param string|null $name Optional index name
+     * @param string|array<int, string>|null $columns The indexed columns or null for the current column
+     * @param string|null $name The optional index name
      * @return self
      */
     public function index(string|array|null $columns = null, ?string $name = null): self
@@ -611,10 +938,10 @@ final class Blueprint
     }
 
     /**
-     * Create a primary key constraint.
+     * Add a primary key.
      *
-     * @param string|array<int, string>|null $columns The primary key columns or the current column
-     * @param string|null $name Optional constraint name
+     * @param string|array<int, string>|null $columns The key columns or null for the current column
+     * @param string|null $name The optional constraint name
      * @return self
      */
     public function primary(string|array|null $columns = null, ?string $name = null): self
@@ -625,11 +952,58 @@ final class Blueprint
     }
 
     /**
-     * Add a foreign key constraint for the current column.
+     * Add a full-text index.
+     *
+     * FULLTEXT on MySQL; a GIN index over to_tsvector() on PostgreSQL.
+     *
+     * @param string|array<int, string>|null $columns The indexed columns or null for the current column
+     * @param string|null $name The optional index name
+     * @param string $language The text search configuration used on PostgreSQL
+     * @return self
+     */
+    public function fullText(string|array|null $columns = null, ?string $name = null, string $language = 'english'): self
+    {
+        $this->pushConstraint('fullText', $this->normalizeColumns($columns), $name);
+        $index =& $this->currentIndex();
+        $index['language'] = $language;
+
+        return $this;
+    }
+
+    /**
+     * Set the access method of the last index (btree, hash, gin, gist, spgist, brin).
+     *
+     * @param string $algorithm The index algorithm
+     * @return self
+     */
+    public function algorithm(string $algorithm): self
+    {
+        $index =& $this->currentIndex();
+        $index['algorithm'] = strtolower($algorithm);
+
+        return $this;
+    }
+
+    /**
+     * Restrict the last index to matching rows (partial index, PostgreSQL only).
+     *
+     * @param string $expression The raw SQL predicate
+     * @return self
+     */
+    public function where(string $expression): self
+    {
+        $index =& $this->currentIndex();
+        $index['where'] = $expression;
+
+        return $this;
+    }
+
+    /**
+     * Add a foreign key that starts from the current column.
      *
      * @param string $table The referenced table
      * @param string $references The referenced column
-     * @param string|null $name Optional constraint name
+     * @param string|null $name The optional constraint name
      * @return self
      */
     public function constrained(string $table, string $references = 'id', ?string $name = null): self
@@ -650,10 +1024,10 @@ final class Blueprint
     }
 
     /**
-     * Add a foreign key constraint for one or more columns.
+     * Start a foreign key definition.
      *
      * @param string|array<int, string> $columns The local columns
-     * @param string|null $name Optional constraint name
+     * @param string|null $name The optional constraint name
      * @return self
      */
     public function foreign(string|array $columns, ?string $name = null): self
@@ -674,7 +1048,7 @@ final class Blueprint
     }
 
     /**
-     * Define the referenced table for the current foreign key.
+     * Set the referenced table and column of the current foreign key.
      *
      * @param string $table The referenced table
      * @param string $references The referenced column
@@ -685,43 +1059,55 @@ final class Blueprint
         $foreign =& $this->currentForeign();
         $foreign['table'] = $table;
         $foreign['references'] = [$references];
-        if (($foreign['name'] ?? null) === null) {
-            $foreign['name'] = $this->foreignKeyName($foreign['columns'], $table);
-        }
 
         return $this;
     }
 
     /**
-     * Set ON DELETE behavior for the current foreign key.
+     * Set the ON DELETE action of the current foreign key.
      *
-     * @param string $action The action name
+     * @param string $action CASCADE, SET NULL, SET DEFAULT, RESTRICT or NO ACTION
      * @return self
      */
     public function onDelete(string $action): self
     {
         $foreign =& $this->currentForeign();
-        $foreign['onDelete'] = strtoupper($action);
+        $foreign['onDelete'] = $this->assertForeignAction($action);
 
         return $this;
     }
 
     /**
-     * Set ON UPDATE behavior for the current foreign key.
+     * Set the ON UPDATE action of the current foreign key.
      *
-     * @param string $action The action name
+     * @param string $action CASCADE, SET NULL, SET DEFAULT, RESTRICT or NO ACTION
      * @return self
      */
     public function onUpdate(string $action): self
     {
         $foreign =& $this->currentForeign();
-        $foreign['onUpdate'] = strtoupper($action);
+        $foreign['onUpdate'] = $this->assertForeignAction($action);
 
         return $this;
     }
 
     /**
-     * Convenience helper for cascading deletes.
+     * Make the current foreign key deferrable (PostgreSQL only).
+     *
+     * @param bool $initiallyDeferred Whether the check waits until commit by default
+     * @return self
+     */
+    public function deferrable(bool $initiallyDeferred = false): self
+    {
+        $foreign =& $this->currentForeign();
+        $foreign['deferrable'] = true;
+        $foreign['initiallyDeferred'] = $initiallyDeferred;
+
+        return $this;
+    }
+
+    /**
+     * Cascade deletes to the referencing rows.
      *
      * @return self
      */
@@ -731,7 +1117,7 @@ final class Blueprint
     }
 
     /**
-     * Set ON DELETE SET NULL.
+     * Set the referencing column to NULL on delete.
      *
      * @return self
      */
@@ -741,7 +1127,7 @@ final class Blueprint
     }
 
     /**
-     * Set ON DELETE RESTRICT.
+     * Reject deletes that would orphan referencing rows.
      *
      * @return self
      */
@@ -751,7 +1137,7 @@ final class Blueprint
     }
 
     /**
-     * Set ON DELETE NO ACTION.
+     * Use NO ACTION on delete.
      *
      * @return self
      */
@@ -761,7 +1147,7 @@ final class Blueprint
     }
 
     /**
-     * Convenience helper for cascading updates.
+     * Cascade key updates to the referencing rows.
      *
      * @return self
      */
@@ -771,7 +1157,7 @@ final class Blueprint
     }
 
     /**
-     * Set ON UPDATE SET NULL.
+     * Set the referencing column to NULL on update.
      *
      * @return self
      */
@@ -781,7 +1167,7 @@ final class Blueprint
     }
 
     /**
-     * Set ON UPDATE RESTRICT.
+     * Reject updates that would orphan referencing rows.
      *
      * @return self
      */
@@ -791,7 +1177,7 @@ final class Blueprint
     }
 
     /**
-     * Set ON UPDATE NO ACTION.
+     * Use NO ACTION on update.
      *
      * @return self
      */
@@ -801,9 +1187,9 @@ final class Blueprint
     }
 
     /**
-     * Drop a column from an altered table.
+     * Drop one or more columns.
      *
-     * @param string|array<int, string> $columns The column name(s)
+     * @param string|array<int, string> $columns The column names
      * @return self
      */
     public function dropColumn(string|array $columns): self
@@ -819,10 +1205,10 @@ final class Blueprint
     }
 
     /**
-     * Drop an index from an altered table.
+     * Drop an index.
      *
-     * @param string|array<int, string> $columns The index name or columns
-     * @param string|null $name Optional explicit index name
+     * @param string|array<int, string> $columns The indexed columns
+     * @param string|null $name The optional index name
      * @return self
      */
     public function dropIndex(string|array $columns, ?string $name = null): self
@@ -836,10 +1222,10 @@ final class Blueprint
     }
 
     /**
-     * Drop a unique constraint from an altered table.
+     * Drop a unique index.
      *
-     * @param string|array<int, string> $columns The constraint name or columns
-     * @param string|null $name Optional explicit constraint name
+     * @param string|array<int, string> $columns The indexed columns
+     * @param string|null $name The optional index name
      * @return self
      */
     public function dropUnique(string|array $columns, ?string $name = null): self
@@ -853,17 +1239,66 @@ final class Blueprint
     }
 
     /**
-     * Drop a foreign key from an altered table.
+     * Drop a full-text index.
      *
-     * @param string|array<int, string> $columns The constraint name or columns
-     * @param string|null $name Optional explicit constraint name
+     * @param string|array<int, string> $columns The indexed columns
+     * @param string|null $name The optional index name
+     * @return self
+     */
+    public function dropFullText(string|array $columns, ?string $name = null): self
+    {
+        $this->operations[] = [
+            'type' => 'dropIndex',
+            'name' => $name ?: $this->indexName($this->normalizeColumns($columns), 'fullText'),
+        ];
+
+        return $this;
+    }
+
+    /**
+     * Drop the primary key.
+     *
+     * @param string|null $name The constraint name (PostgreSQL); defaults to "<table>_pkey"
+     * @return self
+     */
+    public function dropPrimary(?string $name = null): self
+    {
+        $this->operations[] = [
+            'type' => 'dropPrimary',
+            'name' => $name ?: $this->indexName([], 'primary'),
+        ];
+
+        return $this;
+    }
+
+    /**
+     * Drop a foreign key.
+     *
+     * @param string|array<int, string> $columns The local columns
+     * @param string|null $name The optional constraint name
      * @return self
      */
     public function dropForeign(string|array $columns, ?string $name = null): self
     {
         $this->operations[] = [
             'type' => 'dropForeign',
-            'name' => $name ?: $this->foreignKeyName($this->normalizeColumns($columns), 'foreign'),
+            'name' => $name ?: $this->foreignKeyName($this->normalizeColumns($columns)),
+        ];
+
+        return $this;
+    }
+
+    /**
+     * Drop a CHECK constraint by name.
+     *
+     * @param string $name The constraint name
+     * @return self
+     */
+    public function dropCheck(string $name): self
+    {
+        $this->operations[] = [
+            'type' => 'dropCheck',
+            'name' => $name,
         ];
 
         return $this;
@@ -888,7 +1323,25 @@ final class Blueprint
     }
 
     /**
-     * Rename the current table.
+     * Rename an index.
+     *
+     * @param string $from The current index name
+     * @param string $to The new index name
+     * @return self
+     */
+    public function renameIndex(string $from, string $to): self
+    {
+        $this->operations[] = [
+            'type' => 'renameIndex',
+            'from' => $from,
+            'to' => $to,
+        ];
+
+        return $this;
+    }
+
+    /**
+     * Rename the table.
      *
      * @param string $newName The new table name
      * @return self
@@ -906,8 +1359,10 @@ final class Blueprint
     /**
      * Add a CHECK constraint.
      *
-     * @param string $expression The SQL check expression
-     * @param string|null $name Optional constraint name
+     * The expression is emitted as-is, so never build it from user input.
+     *
+     * @param string $expression The raw SQL condition
+     * @param string|null $name The optional constraint name
      * @return self
      */
     public function check(string $expression, ?string $name = null): self
@@ -915,74 +1370,58 @@ final class Blueprint
         $this->operations[] = [
             'type' => 'check',
             'expression' => $expression,
-            'name' => $name ?: $this->table . '_check_' . count($this->operations),
+            'name' => $name ?: $this->shortenName(Identifier::bareTable($this->table) . '_check_' . count($this->operations)),
         ];
 
         return $this;
     }
 
     /**
-     * Add common polymorphic columns.
+     * Add polymorphic relation columns and their index.
      *
-     * @param string $name The morph name
+     * @param string $name The relation name
      * @return self
      */
     public function morphs(string $name): self
     {
-        $this->column($name . '_id', 'morphId', ['unsigned' => true]);
-        $this->column($name . '_type', 'morphType', ['length' => 255]);
-        $this->index([$name . '_id', $name . '_type'], $name . '_morph_index');
-
-        return $this;
+        return $this->addMorphs($name, 'morphId', ['unsigned' => true]);
     }
 
     /**
-     * Add nullable polymorphic columns.
+     * Add nullable polymorphic relation columns and their index.
      *
-     * @param string $name The morph name
+     * @param string $name The relation name
      * @return self
      */
     public function nullableMorphs(string $name): self
     {
-        $this->morphs($name);
-        $this->columns[array_key_last($this->columns) - 1]['nullable'] = true;
-        $this->columns[array_key_last($this->columns)]['nullable'] = true;
-
-        return $this;
+        return $this->addMorphs($name, 'morphId', ['unsigned' => true], true);
     }
 
     /**
-     * Add UUID polymorphic columns.
+     * Add UUID polymorphic relation columns and their index.
      *
-     * @param string $name The morph name
+     * @param string $name The relation name
      * @return self
      */
     public function uuidMorphs(string $name): self
     {
-        $this->column($name . '_id', 'morphUuid', ['length' => 36]);
-        $this->column($name . '_type', 'morphType', ['length' => 255]);
-        $this->index([$name . '_id', $name . '_type'], $name . '_morph_index');
-
-        return $this;
+        return $this->addMorphs($name, 'morphUuid');
     }
 
     /**
-     * Add ULID polymorphic columns.
+     * Add ULID polymorphic relation columns and their index.
      *
-     * @param string $name The morph name
+     * @param string $name The relation name
      * @return self
      */
     public function ulidMorphs(string $name): self
     {
-        $this->column($name . '_id', 'morphUlid', ['length' => 26]);
-        $this->column($name . '_type', 'morphType', ['length' => 255]);
-        $this->index([$name . '_id', $name . '_type'], $name . '_morph_index');
-
-        return $this;
+        return $this->addMorphs($name, 'morphUlid');
     }
 
     /**
-     * Add a remember token column.
+     * Add a remember_token column.
      *
      * @return self
      */
@@ -992,23 +1431,69 @@ final class Blueprint
     }
 
     /**
-     * Add a soft delete timestamp column.
+     * Add a nullable deleted_at timestamp column.
      *
+     * @param string $column The column name
+     * @param int|null $precision The fractional seconds precision (0-6)
      * @return self
      */
-    public function softDeletes(): self
+    public function softDeletes(string $column = 'deleted_at', ?int $precision = null): self
     {
-        return $this->timestamp('deleted_at')->nullable();
+        return $this->timestamp($column, $precision)->nullable();
     }
 
     /**
-     * Add a timezone-aware soft delete timestamp column.
+     * Add a nullable deleted_at timestamp column with time zone.
+     *
+     * @param string $column The column name
+     * @param int|null $precision The fractional seconds precision (0-6)
+     * @return self
+     */
+    public function softDeletesTz(string $column = 'deleted_at', ?int $precision = null): self
+    {
+        return $this->timestampTz($column, $precision)->nullable();
+    }
+
+    /**
+     * Drop the created_at and updated_at columns.
      *
      * @return self
      */
-    public function softDeletesTz(): self
+    public function dropTimestamps(): self
     {
-        return $this->timestampTz('deleted_at')->nullable();
+        return $this->dropColumn(['created_at', 'updated_at']);
+    }
+
+    /**
+     * Drop the soft-delete column.
+     *
+     * @param string $column The column name
+     * @return self
+     */
+    public function dropSoftDeletes(string $column = 'deleted_at'): self
+    {
+        return $this->dropColumn($column);
+    }
+
+    /**
+     * Drop the remember_token column.
+     *
+     * @return self
+     */
+    public function dropRememberToken(): self
+    {
+        return $this->dropColumn('remember_token');
+    }
+
+    /**
+     * Drop polymorphic relation columns (and their index with them).
+     *
+     * @param string $name The relation name
+     * @return self
+     */
+    public function dropMorphs(string $name): self
+    {
+        return $this->dropColumn([$name . '_id', $name . '_type']);
     }
 
     /**
@@ -1064,9 +1549,28 @@ final class Blueprint
             'autoIncrement' => false,
             'change' => false,
             'after' => null,
+            'first' => false,
             'values' => [],
         ], $attributes);
         $this->currentColumnIndex = array_key_last($this->columns);
+
+        return $this;
+    }
+
+    /**
+     * Register the id and type columns of a polymorphic relation.
+     *
+     * @param string $name The relation name
+     * @param string $idType The logical type of the id column
+     * @param array<string, mixed> $idAttributes Extra attributes of the id column
+     * @param bool $nullable Whether both columns are nullable
+     * @return self
+     */
+    private function addMorphs(string $name, string $idType, array $idAttributes = [], bool $nullable = false): self
+    {
+        $this->column($name . '_id', $idType, $idAttributes + ['nullable' => $nullable]);
+        $this->column($name . '_type', 'morphType', ['length' => 255, 'nullable' => $nullable]);
+        $this->pushConstraint('index', [$name . '_id', $name . '_type'], null);
 
         return $this;
     }
@@ -1100,6 +1604,20 @@ final class Blueprint
     }
 
     /**
+     * Get the current index by reference.
+     *
+     * @return array<string, mixed>
+     */
+    private function &currentIndex(): array
+    {
+        if ($this->currentIndexIndex === null) {
+            throw new InvalidArgumentException('An index modifier must follow an index definition.');
+        }
+
+        return $this->operations[$this->currentIndexIndex];
+    }
+
+    /**
      * Add a constraint for one or more columns.
      *
      * @param string $type The constraint type
@@ -1116,6 +1634,7 @@ final class Blueprint
             'columns' => $columns,
             'name' => $name ?: $this->indexName($columns, $type),
         ];
+        $this->currentIndexIndex = array_key_last($this->operations);
     }
 
     /**
@@ -1130,9 +1649,18 @@ final class Blueprint
         }
 
         $statements = [
-            'CREATE TABLE ' . $this->quoteIdentifier($this->table)
-            . ' (' . implode(', ', array_map([$this, 'compileColumn'], $this->columns)) . ')',
+            'CREATE TABLE ' . $this->quoteTable($this->table)
+            . ' (' . implode(', ', array_map([$this, 'compileColumn'], $this->columns)) . ')'
+            . $this->compileCreateTableOptions(),
         ];
+
+        foreach ($this->columns as $column) {
+            $statements = array_merge($statements, $this->compileColumnExtras($column, false));
+        }
+
+        if ($this->isPostgres() && $this->tableOptions['comment'] !== null) {
+            $statements[] = $this->compileTableComment();
+        }
 
         foreach ($this->operations as $operation) {
             $statements[] = $this->compileOperation($operation);
@@ -1151,26 +1679,124 @@ final class Blueprint
         $statements = [];
 
         foreach ($this->columns as $column) {
-            if (!empty($column['change'])) {
-                $statements = array_merge($statements, $this->compileChangeColumn($column));
-                continue;
-            }
+            $changing = !empty($column['change']);
 
-            $statement = 'ALTER TABLE ' . $this->quoteIdentifier($this->table)
-                . ' ADD COLUMN ' . $this->compileColumn($column);
-
-            if (!empty($column['after']) && $this->driver === 'mysql') {
-                $statement .= ' AFTER ' . $this->quoteIdentifier($column['after']);
-            }
-
-            $statements[] = $statement;
+            $statements = array_merge(
+                $statements,
+                $changing ? $this->compileChangeColumn($column) : [$this->compileAddColumn($column)],
+                $this->compileColumnExtras($column, $changing)
+            );
         }
+
+        $statements = array_merge($statements, $this->compileAlterTableOptions());
 
         foreach ($this->operations as $operation) {
             $statements[] = $this->compileOperation($operation);
         }
 
         return $statements;
+    }
+
+    /**
+     * Compile an ADD COLUMN statement.
+     *
+     * @param array<string, mixed> $column The column data
+     * @return string
+     */
+    private function compileAddColumn(array $column): string
+    {
+        return 'ALTER TABLE ' . $this->quoteTable($this->table)
+            . ' ADD COLUMN ' . $this->compileColumn($column)
+            . $this->compileColumnPosition($column);
+    }
+
+    /**
+     * Compile the AFTER / FIRST clause of a column (MySQL only).
+     *
+     * @param array<string, mixed> $column The column data
+     * @return string
+     */
+    private function compileColumnPosition(array $column): string
+    {
+        if (!$this->isMySql()) {
+            return '';
+        }
+
+        if (!empty($column['first'])) {
+            return ' FIRST';
+        }
+
+        return !empty($column['after']) ? ' AFTER ' . $this->quoteIdentifier($column['after']) : '';
+    }
+
+    /**
+     * Compile the table options that go at the end of CREATE TABLE (MySQL only).
+     *
+     * @return string
+     */
+    private function compileCreateTableOptions(): string
+    {
+        $options = $this->mysqlTableOptions();
+
+        return $options === [] ? '' : ' ' . implode(' ', $options);
+    }
+
+    /**
+     * Compile the statements for table options changed by an alter blueprint.
+     *
+     * @return array<int, string>
+     */
+    private function compileAlterTableOptions(): array
+    {
+        if ($this->isPostgres()) {
+            return $this->tableOptions['comment'] !== null ? [$this->compileTableComment()] : [];
+        }
+
+        $options = $this->mysqlTableOptions();
+
+        return $options === [] ? [] : ['ALTER TABLE ' . $this->quoteTable($this->table) . ' ' . implode(' ', $options)];
+    }
+
+    /**
+     * Build the MySQL table option fragments.
+     *
+     * @return array<int, string>
+     */
+    private function mysqlTableOptions(): array
+    {
+        if (!$this->isMySql()) {
+            return [];
+        }
+
+        $options = [];
+
+        if ($this->tableOptions['engine'] !== null) {
+            $options[] = 'ENGINE=' . $this->assertSqlWord($this->tableOptions['engine']);
+        }
+
+        if ($this->tableOptions['charset'] !== null) {
+            $options[] = 'DEFAULT CHARSET=' . $this->assertSqlWord($this->tableOptions['charset']);
+        }
+
+        if ($this->tableOptions['collation'] !== null) {
+            $options[] = 'COLLATE=' . $this->assertSqlWord($this->tableOptions['collation']);
+        }
+
+        if ($this->tableOptions['comment'] !== null) {
+            $options[] = 'COMMENT=' . $this->quoteValue($this->tableOptions['comment']);
+        }
+
+        return $options;
+    }
+
+    /**
+     * Compile a COMMENT ON TABLE statement (PostgreSQL).
+     *
+     * @return string
+     */
+    private function compileTableComment(): string
+    {
+        return 'COMMENT ON TABLE ' . $this->quoteTable($this->table) . ' IS ' . $this->quoteValue($this->tableOptions['comment']);
     }
 
     /**
@@ -1183,8 +1809,29 @@ final class Blueprint
     {
         $sql = $this->quoteIdentifier($column['name']) . ' ' . $this->columnType($column);
 
-        if (!empty($column['unsigned']) && in_array($this->driver, ['mysql', 'sqlsrv', 'dblib'], true)) {
+        if ($this->isMySql()) {
+            if (!empty($column['unsigned'])) {
+                $sql .= ' UNSIGNED';
+            }
+
+            if (!empty($column['charset'])) {
+                $sql .= ' CHARACTER SET ' . $this->assertSqlWord((string) $column['charset']);
+            }
+
+            if (!empty($column['collation'])) {
+                $sql .= ' COLLATE ' . $this->assertSqlWord((string) $column['collation']);
+            }
+        } elseif ($this->isPostgres()) {
+            if (!empty($column['collation'])) {
+                $sql .= ' COLLATE ' . $this->quoteCollation((string) $column['collation']);
+            }
+        } elseif (!empty($column['unsigned']) && in_array($this->driver, ['sqlsrv', 'dblib'], true)) {
             $sql .= ' UNSIGNED';
+        }
+
+        $generated = $this->compileGeneratedColumn($column);
+        if ($generated !== '') {
+            $sql .= $generated;
         }
 
         if (!empty($column['autoIncrement'])) {
@@ -1204,27 +1851,127 @@ final class Blueprint
             $sql .= ' NOT NULL';
         }
 
-        if (array_key_exists('default', $column) && $column['default'] !== null) {
-            $sql .= ' DEFAULT ' . $this->quoteValue($column['default']);
+        if ($generated === '' && array_key_exists('default', $column) && $column['default'] !== null) {
+            $sql .= ' DEFAULT ' . $this->compileDefault($column);
         }
 
-        if (!empty($column['useCurrentOnUpdate']) && $this->driver === 'mysql') {
-            $sql .= ' ON UPDATE CURRENT_TIMESTAMP';
+        if (!empty($column['useCurrentOnUpdate']) && $this->isMySql()) {
+            $precision = $column['precision'] ?? null;
+            $sql .= ' ON UPDATE CURRENT_TIMESTAMP' . ($precision ? "($precision)" : '');
         }
 
-        if (!empty($column['charset']) && $this->driver === 'mysql') {
-            $sql .= ' CHARACTER SET ' . $this->assertSqlWord((string) $column['charset']);
-        }
-
-        if (!empty($column['collation']) && $this->driver === 'mysql') {
-            $sql .= ' COLLATE ' . $this->assertSqlWord((string) $column['collation']);
-        }
-
-        if (!empty($column['comment']) && $this->driver === 'mysql') {
+        if (!empty($column['comment']) && $this->isMySql()) {
             $sql .= ' COMMENT ' . $this->quoteValue($column['comment']);
         }
 
+        if ($this->isPostgres() && $column['type'] === 'enum') {
+            $sql .= ' CONSTRAINT ' . $this->quoteIdentifier($this->enumCheckName($column['name']))
+                . ' CHECK (' . $this->enumCheckExpression($column) . ')';
+        }
+
         return $sql;
+    }
+
+    /**
+     * Compile the generated-column clause of a column.
+     *
+     * @param array<string, mixed> $column The column data
+     * @return string
+     */
+    private function compileGeneratedColumn(array $column): string
+    {
+        $virtual = $column['virtualAs'] ?? null;
+        $stored = $column['storedAs'] ?? null;
+
+        if ($virtual === null && $stored === null) {
+            return '';
+        }
+
+        if ($virtual !== null && $stored !== null) {
+            throw new InvalidArgumentException('A column cannot be both virtualAs() and storedAs().');
+        }
+
+        if ($virtual !== null && !$this->isMySql()) {
+            throw new InvalidArgumentException('Virtual generated columns are only supported by MySQL; use storedAs().');
+        }
+
+        if (!$this->isMySql() && !$this->isPostgres()) {
+            throw new InvalidArgumentException('Generated columns are not supported for driver ' . $this->driver . '.');
+        }
+
+        return ' GENERATED ALWAYS AS (' . ($virtual ?? $stored) . ') ' . ($virtual !== null ? 'VIRTUAL' : 'STORED');
+    }
+
+    /**
+     * Compile the default value of a column.
+     *
+     * @param array<string, mixed> $column The column data
+     * @return string
+     */
+    private function compileDefault(array $column): string
+    {
+        $default = $this->quoteValue($column['default']);
+
+        if (
+            $this->isMySql()
+            && !($column['default'] instanceof Expression)
+            && in_array($column['type'], self::MYSQL_EXPRESSION_DEFAULT_TYPES, true)
+        ) {
+            return '(' . $default . ')';
+        }
+
+        return $default;
+    }
+
+    /**
+     * Compile the extra PostgreSQL statements a column needs (comments, triggers, enum checks).
+     *
+     * @param array<string, mixed> $column The column data
+     * @param bool $changing Whether the column replaces an existing one
+     * @return array<int, string>
+     */
+    private function compileColumnExtras(array $column, bool $changing): array
+    {
+        if (!$this->isPostgres()) {
+            return [];
+        }
+
+        $statements = [];
+        $table = $this->quoteTable($this->table);
+        $name = $this->quoteIdentifier($column['name']);
+
+        if ($changing) {
+            $constraint = $this->quoteIdentifier($this->enumCheckName($column['name']));
+            $statements[] = 'ALTER TABLE ' . $table . ' DROP CONSTRAINT IF EXISTS ' . $constraint;
+
+            if ($column['type'] === 'enum') {
+                $statements[] = 'ALTER TABLE ' . $table . ' ADD CONSTRAINT ' . $constraint
+                    . ' CHECK (' . $this->enumCheckExpression($column) . ')';
+            }
+        }
+
+        if (!empty($column['comment'])) {
+            $statements[] = 'COMMENT ON COLUMN ' . $table . '.' . $name . ' IS ' . $this->quoteValue($column['comment']);
+        } elseif ($changing) {
+            $statements[] = 'COMMENT ON COLUMN ' . $table . '.' . $name . ' IS NULL';
+        }
+
+        $trigger = $this->quoteIdentifier($this->shortenName(Identifier::bareTable($this->table) . '_' . $column['name'] . '_on_update'));
+
+        if (!empty($column['useCurrentOnUpdate'])) {
+            $statements[] = self::PG_TOUCH_FUNCTION;
+
+            if ($changing) {
+                $statements[] = 'DROP TRIGGER IF EXISTS ' . $trigger . ' ON ' . $table;
+            }
+
+            $statements[] = 'CREATE TRIGGER ' . $trigger . ' BEFORE UPDATE ON ' . $table
+                . ' FOR EACH ROW EXECUTE FUNCTION sfphp_set_current_timestamp(' . $this->quoteValue($column['name']) . ')';
+        } elseif ($changing) {
+            $statements[] = 'DROP TRIGGER IF EXISTS ' . $trigger . ' ON ' . $table;
+        }
+
+        return $statements;
     }
 
     /**
@@ -1235,45 +1982,59 @@ final class Blueprint
      */
     private function compileChangeColumn(array $column): array
     {
-        $columnName = $this->quoteIdentifier($column['name']);
-        $definition = $this->columnType($column);
-        $statements = [];
+        $table = $this->quoteTable($this->table);
 
-        if ($this->driver === 'mysql') {
-            $statements[] = 'ALTER TABLE ' . $this->quoteIdentifier($this->table)
-                . ' MODIFY COLUMN ' . $this->compileColumn($column);
-
-            return $statements;
+        if ($this->isMySql()) {
+            return [
+                'ALTER TABLE ' . $table . ' MODIFY COLUMN ' . $this->compileColumn($column)
+                . $this->compileColumnPosition($column),
+            ];
         }
 
-        if (in_array($this->driver, ['pgsql', 'sqlite'], true)) {
-            $statements[] = 'ALTER TABLE ' . $this->quoteIdentifier($this->table)
-                . ' ALTER COLUMN ' . $columnName . ' TYPE ' . $definition;
-
-            if (!empty($column['nullable'])) {
-                $statements[] = 'ALTER TABLE ' . $this->quoteIdentifier($this->table)
-                    . ' ALTER COLUMN ' . $columnName . ' DROP NOT NULL';
-            } elseif (empty($column['autoIncrement'])) {
-                $statements[] = 'ALTER TABLE ' . $this->quoteIdentifier($this->table)
-                    . ' ALTER COLUMN ' . $columnName . ' SET NOT NULL';
-            }
-
-            if (array_key_exists('default', $column) && $column['default'] !== null) {
-                $statements[] = 'ALTER TABLE ' . $this->quoteIdentifier($this->table)
-                    . ' ALTER COLUMN ' . $columnName . ' SET DEFAULT ' . $this->quoteValue($column['default']);
-            }
-
-            return $statements;
+        if ($this->isPostgres()) {
+            return $this->compilePostgresChangeColumn($column);
         }
 
         if (in_array($this->driver, ['sqlsrv', 'dblib'], true)) {
-            $statements[] = 'ALTER TABLE ' . $this->quoteIdentifier($this->table)
-                . ' ALTER COLUMN ' . $this->compileColumn($column);
-
-            return $statements;
+            return ['ALTER TABLE ' . $table . ' ALTER COLUMN ' . $this->compileColumn($column)];
         }
 
         throw new InvalidArgumentException('Column changes are not supported for driver ' . $this->driver . '.');
+    }
+
+    /**
+     * Compile the statements that redefine a column on PostgreSQL.
+     *
+     * @param array<string, mixed> $column The column data
+     * @return array<int, string>
+     */
+    private function compilePostgresChangeColumn(array $column): array
+    {
+        if (!empty($column['virtualAs']) || !empty($column['storedAs'])) {
+            throw new InvalidArgumentException('Changing a generated column is not supported on PostgreSQL.');
+        }
+
+        $alter = 'ALTER TABLE ' . $this->quoteTable($this->table) . ' ALTER COLUMN ' . $this->quoteIdentifier($column['name']);
+        $type = $this->columnType($column);
+        $statements = [];
+
+        if (empty($column['autoIncrement'])) {
+            $statements[] = $alter . ' DROP DEFAULT';
+        }
+
+        $statements[] = $alter . ' TYPE ' . $type . ' USING ' . $this->quoteIdentifier($column['name']) . '::' . $type;
+
+        if (!empty($column['nullable'])) {
+            $statements[] = $alter . ' DROP NOT NULL';
+        } elseif (empty($column['autoIncrement'])) {
+            $statements[] = $alter . ' SET NOT NULL';
+        }
+
+        if (array_key_exists('default', $column) && $column['default'] !== null) {
+            $statements[] = $alter . ' SET DEFAULT ' . $this->compileDefault($column);
+        }
+
+        return $statements;
     }
 
     /**
@@ -1285,21 +2046,24 @@ final class Blueprint
     private function compileOperation(array $operation): string
     {
         return match ($operation['type']) {
-            'unique' => $this->compileIndexLike('CREATE UNIQUE INDEX', $operation['name'], $operation['columns']),
-            'index' => $this->compileIndexLike('CREATE INDEX', $operation['name'], $operation['columns']),
-            'primary' => 'ALTER TABLE ' . $this->quoteIdentifier($this->table)
+            'unique', 'index' => $this->compileIndex($operation),
+            'fullText' => $this->compileFullText($operation),
+            'primary' => 'ALTER TABLE ' . $this->quoteTable($this->table)
                 . ' ADD CONSTRAINT ' . $this->quoteIdentifier($operation['name'])
                 . ' PRIMARY KEY (' . $this->quoteColumns($operation['columns']) . ')',
             'foreign' => $this->compileForeignKey($operation),
-            'dropColumn' => 'ALTER TABLE ' . $this->quoteIdentifier($this->table)
+            'dropColumn' => 'ALTER TABLE ' . $this->quoteTable($this->table)
                 . ' DROP COLUMN ' . $this->quoteIdentifier($operation['name']),
-            'dropIndex' => $this->compileDropIndex($operation['name']),
-            'dropUnique' => $this->compileDropIndex($operation['name']),
+            'dropIndex', 'dropUnique' => $this->compileDropIndex($operation['name']),
+            'dropPrimary' => $this->compileDropPrimary($operation['name']),
             'dropForeign' => $this->compileDropForeign($operation['name']),
+            'dropCheck' => 'ALTER TABLE ' . $this->quoteTable($this->table)
+                . ' DROP CONSTRAINT ' . $this->quoteIdentifier($operation['name']),
             'renameColumn' => $this->compileRenameColumn($operation['from'], $operation['to']),
-            'renameTable' => 'ALTER TABLE ' . $this->quoteIdentifier($this->table)
+            'renameIndex' => $this->compileRenameIndex($operation['from'], $operation['to']),
+            'renameTable' => 'ALTER TABLE ' . $this->quoteTable($this->table)
                 . ' RENAME TO ' . $this->quoteIdentifier($operation['name']),
-            'check' => 'ALTER TABLE ' . $this->quoteIdentifier($this->table)
+            'check' => 'ALTER TABLE ' . $this->quoteTable($this->table)
                 . ' ADD CONSTRAINT ' . $this->quoteIdentifier($operation['name'])
                 . ' CHECK (' . $operation['expression'] . ')',
             default => throw new InvalidArgumentException('Unsupported schema operation: ' . $operation['type']),
@@ -1309,16 +2073,65 @@ final class Blueprint
     /**
      * Compile a CREATE INDEX / CREATE UNIQUE INDEX statement.
      *
-     * @param string $prefix The statement prefix
-     * @param string $name The index name
-     * @param array<int, string> $columns The indexed columns
+     * @param array<string, mixed> $operation The operation definition
      * @return string
      */
-    private function compileIndexLike(string $prefix, string $name, array $columns): string
+    private function compileIndex(array $operation): string
     {
-        return $prefix . ' ' . $this->quoteIdentifier($name)
-            . ' ON ' . $this->quoteIdentifier($this->table)
-            . ' (' . $this->quoteColumns($columns) . ')';
+        $algorithm = isset($operation['algorithm']) ? $this->assertIndexAlgorithm($operation['algorithm']) : null;
+
+        $sql = 'CREATE ' . ($operation['type'] === 'unique' ? 'UNIQUE ' : '') . 'INDEX '
+            . $this->quoteIdentifier($operation['name']);
+
+        if ($algorithm !== null && $this->isMySql()) {
+            $sql .= ' USING ' . strtoupper($algorithm);
+        }
+
+        $sql .= ' ON ' . $this->quoteTable($this->table);
+
+        if ($algorithm !== null && !$this->isMySql()) {
+            $sql .= ' USING ' . $algorithm;
+        }
+
+        $sql .= ' (' . $this->quoteColumns($operation['columns']) . ')';
+
+        if (isset($operation['where'])) {
+            if (!$this->isPostgres()) {
+                throw new InvalidArgumentException('Partial indexes are only supported by PostgreSQL.');
+            }
+
+            $sql .= ' WHERE ' . $operation['where'];
+        }
+
+        return $sql;
+    }
+
+    /**
+     * Compile a full-text index statement.
+     *
+     * @param array<string, mixed> $operation The operation definition
+     * @return string
+     */
+    private function compileFullText(array $operation): string
+    {
+        $name = $this->quoteIdentifier($operation['name']);
+        $table = $this->quoteTable($this->table);
+
+        if ($this->isMySql()) {
+            return 'CREATE FULLTEXT INDEX ' . $name . ' ON ' . $table . ' (' . $this->quoteColumns($operation['columns']) . ')';
+        }
+
+        if ($this->isPostgres()) {
+            $language = $this->assertSqlWord($operation['language'] ?? 'english');
+            $vectors = array_map(
+                fn (string $column): string => "to_tsvector('" . $language . "', " . $this->quoteIdentifier($column) . ')',
+                $operation['columns']
+            );
+
+            return 'CREATE INDEX ' . $name . ' ON ' . $table . ' USING gin ((' . implode(' || ', $vectors) . '))';
+        }
+
+        throw new InvalidArgumentException('Full-text indexes are not supported for driver ' . $this->driver . '.');
     }
 
     /**
@@ -1333,18 +2146,30 @@ final class Blueprint
             throw new InvalidArgumentException('Foreign key constraints require a referenced table.');
         }
 
-        $sql = 'ALTER TABLE ' . $this->quoteIdentifier($this->table)
+        $sql = 'ALTER TABLE ' . $this->quoteTable($this->table)
             . ' ADD CONSTRAINT ' . $this->quoteIdentifier($operation['name'])
             . ' FOREIGN KEY (' . $this->quoteColumns($operation['columns']) . ')'
-            . ' REFERENCES ' . $this->quoteIdentifier($operation['table'])
+            . ' REFERENCES ' . $this->quoteTable($operation['table'])
             . ' (' . $this->quoteColumns($operation['references']) . ')';
 
-        if (!empty($operation['onDelete'])) {
-            $sql .= ' ON DELETE ' . $operation['onDelete'];
+        foreach (['onDelete' => 'ON DELETE', 'onUpdate' => 'ON UPDATE'] as $key => $clause) {
+            if (empty($operation[$key])) {
+                continue;
+            }
+
+            if ($this->isMySql() && $operation[$key] === 'SET DEFAULT') {
+                throw new InvalidArgumentException('MySQL (InnoDB) does not support SET DEFAULT in foreign keys.');
+            }
+
+            $sql .= ' ' . $clause . ' ' . $operation[$key];
         }
 
-        if (!empty($operation['onUpdate'])) {
-            $sql .= ' ON UPDATE ' . $operation['onUpdate'];
+        if (!empty($operation['deferrable'])) {
+            if (!$this->isPostgres()) {
+                throw new InvalidArgumentException('Deferrable foreign keys are only supported by PostgreSQL.');
+            }
+
+            $sql .= ' DEFERRABLE INITIALLY ' . (!empty($operation['initiallyDeferred']) ? 'DEFERRED' : 'IMMEDIATE');
         }
 
         return $sql;
@@ -1358,10 +2183,26 @@ final class Blueprint
      */
     private function compileDropIndex(string $name): string
     {
-        return match ($this->driver) {
-            'mysql' => 'DROP INDEX ' . $this->quoteIdentifier($name) . ' ON ' . $this->quoteIdentifier($this->table),
-            default => 'DROP INDEX ' . $this->quoteIdentifier($name),
-        };
+        if ($this->isMySql()) {
+            return 'DROP INDEX ' . $this->quoteIdentifier($name) . ' ON ' . $this->quoteTable($this->table);
+        }
+
+        return 'DROP INDEX ' . $this->qualifyWithTableSchema($name);
+    }
+
+    /**
+     * Compile a DROP PRIMARY KEY statement for the configured driver.
+     *
+     * @param string $name The constraint name
+     * @return string
+     */
+    private function compileDropPrimary(string $name): string
+    {
+        $table = $this->quoteTable($this->table);
+
+        return $this->isMySql()
+            ? 'ALTER TABLE ' . $table . ' DROP PRIMARY KEY'
+            : 'ALTER TABLE ' . $table . ' DROP CONSTRAINT ' . $this->quoteIdentifier($name);
     }
 
     /**
@@ -1372,9 +2213,11 @@ final class Blueprint
      */
     private function compileDropForeign(string $name): string
     {
+        $table = $this->quoteTable($this->table);
+
         return match ($this->driver) {
-            'mysql' => 'ALTER TABLE ' . $this->quoteIdentifier($this->table) . ' DROP FOREIGN KEY ' . $this->quoteIdentifier($name),
-            default => 'ALTER TABLE ' . $this->quoteIdentifier($this->table) . ' DROP CONSTRAINT ' . $this->quoteIdentifier($name),
+            'mysql' => 'ALTER TABLE ' . $table . ' DROP FOREIGN KEY ' . $this->quoteIdentifier($name),
+            default => 'ALTER TABLE ' . $table . ' DROP CONSTRAINT ' . $this->quoteIdentifier($name),
         };
     }
 
@@ -1388,12 +2231,44 @@ final class Blueprint
     private function compileRenameColumn(string $from, string $to): string
     {
         return match ($this->driver) {
-            'mysql' => 'ALTER TABLE ' . $this->quoteIdentifier($this->table)
-                . ' RENAME COLUMN ' . $this->quoteIdentifier($from) . ' TO ' . $this->quoteIdentifier($to),
-            'pgsql', 'sqlite', 'sqlsrv', 'dblib', 'firebird', 'oci' => 'ALTER TABLE ' . $this->quoteIdentifier($this->table)
+            'mysql', 'pgsql', 'sqlite', 'sqlsrv', 'dblib', 'firebird', 'oci' => 'ALTER TABLE ' . $this->quoteTable($this->table)
                 . ' RENAME COLUMN ' . $this->quoteIdentifier($from) . ' TO ' . $this->quoteIdentifier($to),
             default => throw new InvalidArgumentException('Column rename is not supported for driver ' . $this->driver . '.'),
         };
+    }
+
+    /**
+     * Compile a rename-index statement for the configured driver.
+     *
+     * @param string $from The current index name
+     * @param string $to The new index name
+     * @return string
+     */
+    private function compileRenameIndex(string $from, string $to): string
+    {
+        if ($this->isMySql()) {
+            return 'ALTER TABLE ' . $this->quoteTable($this->table)
+                . ' RENAME INDEX ' . $this->quoteIdentifier($from) . ' TO ' . $this->quoteIdentifier($to);
+        }
+
+        if ($this->isPostgres()) {
+            return 'ALTER INDEX ' . $this->qualifyWithTableSchema($from) . ' RENAME TO ' . $this->quoteIdentifier($to);
+        }
+
+        throw new InvalidArgumentException('Index rename is not supported for driver ' . $this->driver . '.');
+    }
+
+    /**
+     * Quote an index-like name, prefixing the table schema when there is one.
+     *
+     * @param string $name The unqualified name
+     * @return string
+     */
+    private function qualifyWithTableSchema(string $name): string
+    {
+        [$schema] = Identifier::split($this->table);
+
+        return ($schema !== null ? $this->quoteIdentifier($schema) . '.' : '') . $this->quoteIdentifier($name);
     }
 
     /**
@@ -1411,24 +2286,33 @@ final class Blueprint
             'string' => 'VARCHAR(' . ((int) ($column['length'] ?? 255)) . ')',
             'char' => 'CHAR(' . ((int) ($column['length'] ?? 255)) . ')',
             'text' => 'TEXT',
-            'longText' => $this->driver === 'mysql' ? 'LONGTEXT' : 'TEXT',
-            'binary' => 'BLOB',
+            'mediumText' => $this->isMySql() ? 'MEDIUMTEXT' : 'TEXT',
+            'longText' => $this->isMySql() ? 'LONGTEXT' : 'TEXT',
+            'binary' => $this->isPostgres() ? 'BYTEA' : 'BLOB',
             'boolean' => 'BOOLEAN',
             'date' => 'DATE',
-            'time' => 'TIME',
-            'timeTz' => $this->timeType(true),
-            'dateTime' => $this->dateTimeType(false),
-            'dateTimeTz' => $this->dateTimeType(true),
-            'timestamp' => $this->dateTimeType(false, true),
-            'timestampTz' => $this->dateTimeType(true, true),
+            'time', 'timeTz' => $this->timeType($column['type'] === 'timeTz', $column['precision'] ?? null),
+            'dateTime', 'dateTimeTz', 'timestamp', 'timestampTz' => $this->dateTimeType($column['type'], $column['precision'] ?? null),
             'decimal' => 'DECIMAL(' . ((int) ($column['precision'] ?? 10)) . ', ' . ((int) ($column['scale'] ?? 2)) . ')',
-            'float' => 'FLOAT',
+            'float' => $this->isPostgres() ? 'REAL' : 'FLOAT',
+            'double' => $this->isPostgres() ? 'DOUBLE PRECISION' : 'DOUBLE',
             'json' => $this->driver === 'sqlite' ? 'TEXT' : 'JSON',
-            'uuid' => 'CHAR(36)',
+            'jsonb' => match ($this->driver) {
+                'pgsql' => 'JSONB',
+                'sqlite' => 'TEXT',
+                default => 'JSON',
+            },
+            'uuid', 'morphUuid' => $this->isPostgres() ? 'UUID' : 'CHAR(36)',
             'ulid' => 'CHAR(26)',
-            'morphId', 'morphUlid' => $this->morphIdType($column['type']),
+            'ipAddress' => $this->isPostgres() ? 'INET' : 'VARCHAR(45)',
+            'macAddress' => $this->isPostgres() ? 'MACADDR' : 'VARCHAR(17)',
+            'year' => $this->isMySql() ? 'YEAR' : 'SMALLINT',
+            'morphId' => 'BIGINT',
+            'morphUlid' => 'CHAR(26)',
             'morphType' => 'VARCHAR(' . ((int) ($column['length'] ?? 255)) . ')',
             'enum' => $this->compileEnumType($column['values'] ?? []),
+            'set' => $this->compileSetType($column['values'] ?? []),
+            'raw' => (string) $column['rawType'],
             default => throw new InvalidArgumentException('Unsupported column type: ' . $column['type']),
         };
     }
@@ -1436,46 +2320,38 @@ final class Blueprint
     /**
      * Build a temporal SQL type.
      *
-     * @param bool $timezone Whether the column is timezone-aware
-     * @param bool $timestamp Whether the column is a timestamp
+     * @param string $type The logical type: dateTime, dateTimeTz, timestamp or timestampTz
+     * @param int|null $precision The fractional seconds precision
      * @return string
      */
-    private function dateTimeType(bool $timezone, bool $timestamp = false): string
+    private function dateTimeType(string $type, ?int $precision): string
     {
-        if ($this->driver === 'pgsql') {
-            return $timezone ? 'TIMESTAMPTZ' : ($timestamp ? 'TIMESTAMP' : 'TIMESTAMP');
-        }
+        $fraction = $precision !== null ? '(' . $precision . ')' : '';
+        $timezone = in_array($type, ['dateTimeTz', 'timestampTz'], true);
 
-        return 'TIMESTAMP';
+        return match (true) {
+            $this->isPostgres() => ($timezone ? 'TIMESTAMPTZ' : 'TIMESTAMP') . $fraction,
+            $this->isMySql() => (in_array($type, ['dateTime', 'dateTimeTz'], true) ? 'DATETIME' : 'TIMESTAMP') . $fraction,
+            default => 'TIMESTAMP',
+        };
     }
 
     /**
      * Build a time SQL type.
      *
      * @param bool $timezone Whether the column is timezone-aware
+     * @param int|null $precision The fractional seconds precision
      * @return string
      */
-    private function timeType(bool $timezone): string
+    private function timeType(bool $timezone, ?int $precision): string
     {
-        if ($this->driver === 'pgsql') {
-            return $timezone ? 'TIMETZ' : 'TIME';
+        $fraction = $precision !== null ? '(' . $precision . ')' : '';
+
+        if ($this->isPostgres()) {
+            return ($timezone ? 'TIMETZ' : 'TIME') . $fraction;
         }
 
-        return 'TIME';
-    }
-
-    /**
-     * Build a morph id type.
-     *
-     * @param string $type The logical type
-     * @return string
-     */
-    private function morphIdType(string $type): string
-    {
-        return match ($type) {
-            'morphUlid' => 'CHAR(26)',
-            default => 'BIGINT',
-        };
+        return $this->isMySql() ? 'TIME' . $fraction : 'TIME';
     }
 
     /**
@@ -1487,12 +2363,12 @@ final class Blueprint
     private function integerType(string $type): string
     {
         return match ($type) {
-            'tinyInteger' => 'TINYINT',
+            'tinyInteger' => $this->isPostgres() ? 'SMALLINT' : 'TINYINT',
             'smallInteger' => 'SMALLINT',
-            'mediumInteger' => $this->driver === 'mysql' ? 'MEDIUMINT' : 'INTEGER',
+            'mediumInteger' => $this->isMySql() ? 'MEDIUMINT' : 'INTEGER',
             'increments' => 'INTEGER',
             'smallIncrements' => 'SMALLINT',
-            'mediumIncrements' => $this->driver === 'mysql' ? 'MEDIUMINT' : 'INTEGER',
+            'mediumIncrements' => $this->isMySql() ? 'MEDIUMINT' : 'INTEGER',
             'bigIncrements', 'bigInteger', 'id', 'foreignId' => 'BIGINT',
             default => 'INTEGER',
         };
@@ -1510,11 +2386,79 @@ final class Blueprint
             throw new InvalidArgumentException('Enum values cannot be empty.');
         }
 
-        if ($this->driver === 'mysql') {
-            return 'ENUM(' . implode(', ', array_map(fn (string $value): string => $this->quoteValue($value), $values)) . ')';
+        if ($this->isMySql()) {
+            return 'ENUM(' . $this->quoteValueList($values) . ')';
         }
 
-        return 'TEXT';
+        return $this->isPostgres() ? 'VARCHAR(255)' : 'TEXT';
+    }
+
+    /**
+     * Compile a set type (MySQL only).
+     *
+     * @param array<int, string> $values The set values
+     * @return string
+     */
+    private function compileSetType(array $values): string
+    {
+        if (!$this->isMySql()) {
+            throw new InvalidArgumentException('Set columns are only supported by MySQL.');
+        }
+
+        return 'SET(' . $this->quoteValueList($values) . ')';
+    }
+
+    /**
+     * Quote a list of string values.
+     *
+     * @param array<int, string> $values The values
+     * @return string
+     */
+    private function quoteValueList(array $values): string
+    {
+        return implode(', ', array_map(fn (string $value): string => $this->quoteValue($value), $values));
+    }
+
+    /**
+     * Build the CHECK expression that emulates an enum on PostgreSQL.
+     *
+     * @param array<string, mixed> $column The column data
+     * @return string
+     */
+    private function enumCheckExpression(array $column): string
+    {
+        return $this->quoteIdentifier($column['name']) . ' IN (' . $this->quoteValueList($column['values']) . ')';
+    }
+
+    /**
+     * Build the CHECK constraint name that emulates an enum on PostgreSQL.
+     *
+     * @param string $column The column name
+     * @return string
+     */
+    private function enumCheckName(string $column): string
+    {
+        return $this->shortenName(Identifier::bareTable($this->table) . '_' . $column . '_enum');
+    }
+
+    /**
+     * Check whether the driver is MySQL.
+     *
+     * @return bool
+     */
+    private function isMySql(): bool
+    {
+        return $this->driver === 'mysql';
+    }
+
+    /**
+     * Check whether the driver is PostgreSQL.
+     *
+     * @return bool
+     */
+    private function isPostgres(): bool
+    {
+        return $this->driver === 'pgsql';
     }
 
     /**
@@ -1525,15 +2469,18 @@ final class Blueprint
      */
     private function quoteIdentifier(string $identifier): string
     {
-        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $identifier)) {
-            throw new InvalidArgumentException("Invalid schema identifier: $identifier");
-        }
+        return Identifier::quote($this->driver, $identifier);
+    }
 
-        return match ($this->driver) {
-            'mysql' => '`' . $identifier . '`',
-            'sqlsrv', 'dblib' => '[' . $identifier . ']',
-            default => '"' . $identifier . '"',
-        };
+    /**
+     * Quote a table name for the current driver.
+     *
+     * @param string $table The table name, optionally qualified as "schema.table"
+     * @return string
+     */
+    private function quoteTable(string $table): string
+    {
+        return Identifier::quoteTable($this->driver, $table);
     }
 
     /**
@@ -1552,6 +2499,74 @@ final class Blueprint
     }
 
     /**
+     * Quote a collation name for PostgreSQL, which takes it as an identifier.
+     *
+     * @param string $collation The collation name, such as "C" or "en_US.utf8"
+     * @return string
+     */
+    private function quoteCollation(string $collation): string
+    {
+        if (!preg_match('/^[A-Za-z0-9_.\-]+$/', $collation)) {
+            throw new InvalidArgumentException("Invalid schema option: $collation");
+        }
+
+        return '"' . $collation . '"';
+    }
+
+    /**
+     * Assert an index algorithm is valid for the current driver.
+     *
+     * @param string $algorithm The index algorithm
+     * @return string
+     */
+    private function assertIndexAlgorithm(string $algorithm): string
+    {
+        $allowed = match ($this->driver) {
+            'mysql' => ['btree', 'hash'],
+            'pgsql' => ['btree', 'hash', 'gin', 'gist', 'spgist', 'brin'],
+            default => throw new InvalidArgumentException('Index algorithms are not supported for driver ' . $this->driver . '.'),
+        };
+
+        if (!in_array($algorithm, $allowed, true)) {
+            throw new InvalidArgumentException("Index algorithm \"$algorithm\" is not supported by {$this->driver}.");
+        }
+
+        return $algorithm;
+    }
+
+    /**
+     * Assert a foreign key action is one of the SQL-standard referential actions.
+     *
+     * @param string $action The referential action
+     * @return string
+     */
+    private function assertForeignAction(string $action): string
+    {
+        $normalized = strtoupper(trim($action));
+
+        if (!in_array($normalized, self::FOREIGN_ACTIONS, true)) {
+            throw new InvalidArgumentException("Invalid foreign key action: $action");
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Assert a fractional seconds precision is valid.
+     *
+     * @param int|null $precision The precision
+     * @return int|null
+     */
+    private function assertPrecision(?int $precision): ?int
+    {
+        if ($precision !== null && ($precision < 0 || $precision > 6)) {
+            throw new InvalidArgumentException('Time precision must be between 0 and 6.');
+        }
+
+        return $precision;
+    }
+
+    /**
      * Quote a scalar value for SQL output.
      *
      * @param mixed $value The value to quote
@@ -1564,18 +2579,45 @@ final class Blueprint
         }
 
         if (is_bool($value)) {
-            return $value ? '1' : '0';
+            return $this->isPostgres() ? ($value ? 'TRUE' : 'FALSE') : ($value ? '1' : '0');
         }
 
         if ($value === null) {
             return 'NULL';
         }
 
+        if (is_float($value) && !is_finite($value)) {
+            throw new InvalidArgumentException('Schema values cannot be INF or NAN.');
+        }
+
         if (is_int($value) || is_float($value)) {
             return (string) $value;
         }
 
-        return "'" . str_replace("'", "''", (string) $value) . "'";
+        if (is_array($value)) {
+            return $this->quoteString(json_encode($value, JSON_THROW_ON_ERROR));
+        }
+
+        return $this->quoteString((string) $value);
+    }
+
+    /**
+     * Quote a string literal for the current driver.
+     *
+     * @param string $value The string value
+     * @return string
+     */
+    private function quoteString(string $value): string
+    {
+        if (str_contains($value, "\0")) {
+            throw new InvalidArgumentException('Schema string values cannot contain NUL bytes.');
+        }
+
+        if ($this->isMySql()) {
+            $value = str_replace('\\', '\\\\', $value);
+        }
+
+        return "'" . str_replace("'", "''", $value) . "'";
     }
 
     /**
@@ -1621,18 +2663,34 @@ final class Blueprint
      */
     private function indexName(array $columns, string $type): string
     {
-        return $this->table . '_' . implode('_', $columns) . '_' . $type;
+        $table = Identifier::bareTable($this->table);
+
+        if ($type === 'primary') {
+            return $this->shortenName($table . '_pkey');
+        }
+
+        return $this->shortenName($table . '_' . implode('_', $columns) . '_' . strtolower($type));
     }
 
     /**
      * Build a deterministic foreign key name.
      *
      * @param array<int, string> $columns The local columns
-     * @param string $table The referenced table
      * @return string
      */
     private function foreignKeyName(array $columns): string
     {
-        return $this->table . '_' . implode('_', $columns) . '_foreign';
+        return $this->shortenName(Identifier::bareTable($this->table) . '_' . implode('_', $columns) . '_foreign');
+    }
+
+    /**
+     * Shorten a generated name so it fits the driver identifier limit.
+     *
+     * @param string $name The generated name
+     * @return string
+     */
+    private function shortenName(string $name): string
+    {
+        return Identifier::shorten($this->driver, $name);
     }
 }
