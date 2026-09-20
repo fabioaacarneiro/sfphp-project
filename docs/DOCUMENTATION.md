@@ -7,6 +7,7 @@
 - [SFCSS Framework](#sfcss-framework)
 - [SFJS Library](#sfjs-library)
 - [Migrations e Schema Builder](#migrations-e-schema-builder)
+- [Seeders e Factories](#seeders-e-factories)
 - [Roteamento](#roteamento)
 - [Controllers e Views](#controllers-e-views)
 - [Modelos e Repositórios](#modelos-e-repositórios)
@@ -71,6 +72,21 @@ O binário `./sfphp` fornece 20+ comandos para gerar código, gerenciar migratio
 ./sfphp db:fresh
 
 # Seeders
+./sfphp db:seed
+```
+
+### Seeders e Factories
+
+```bash
+# Criar seeder
+./sfphp make:seeder UserSeeder
+./sfphp make:seeder PostSeeder
+
+# Criar factory
+./sfphp make:factory User
+./sfphp make:factory Post
+
+# Executar seeders
 ./sfphp db:seed
 ```
 
@@ -1063,6 +1079,175 @@ $schema->create('public.users', function (Blueprint $table): void {
 
 $schema->hasTable('my_schema.users');
 ```
+
+---
+
+## Seeders e Factories
+
+**Seeders** populam o banco com dados de teste. **Factories** definem padrões de dados para criar registros.
+
+### Criar Seeder
+
+```bash
+./sfphp make:seeder UserSeeder
+./sfphp make:seeder PostSeeder
+```
+
+Arquivo gerado em `database/seeders/UserSeeder.php`:
+
+```php
+<?php
+
+namespace Database\Seeders;
+
+use SfPhp\Database\Seeder;
+
+class UserSeeder extends Seeder
+{
+    public function run(): void
+    {
+        // User::factory()->count(50)->create();
+        // Or insert directly:
+        // User::create(['name' => 'John', 'email' => 'john@example.com']);
+    }
+}
+```
+
+### Criar Factory
+
+```bash
+./sfphp make:factory User
+./sfphp make:factory Post
+```
+
+Arquivo gerado em `database/factories/UserFactory.php`:
+
+```php
+<?php
+
+namespace Database\Factories;
+
+use SfPhp\Database\Factory;
+
+class UserFactory extends Factory
+{
+    public function definition(): array
+    {
+        return [
+            'name' => 'User ' . mt_rand(1000, 9999),
+            'email' => 'user' . mt_rand(1000, 9999) . '@example.com',
+            'password' => password_hash('password', PASSWORD_BCRYPT),
+            'created_at' => date('Y-m-d H:i:s'),
+        ];
+    }
+
+    protected function model(): string
+    {
+        return \SfphpProject\app\Models\User::class;
+    }
+}
+```
+
+### Usando Factories
+
+```php
+use Database\Factories\UserFactory;
+
+// Criar 1 registro
+$user = (new UserFactory())->create();
+
+// Criar 50 registros
+$users = (new UserFactory())->count(50)->create();
+
+// Criar dados sem salvar (fazer em memória)
+$data = (new UserFactory())->make();
+
+// Sobrescrever atributos
+$admin = (new UserFactory())->create([
+    'role' => 'admin',
+    'is_active' => true,
+]);
+```
+
+### Rodando Seeders
+
+Primeiro, registre no `database/seeders/DatabaseSeeder.php`:
+
+```php
+<?php
+
+namespace Database\Seeders;
+
+use SfPhp\Database\Seeder;
+
+class DatabaseSeeder extends Seeder
+{
+    public function run(): void
+    {
+        $this->call([
+            UserSeeder::class,
+            PostSeeder::class,
+            CommentSeeder::class,
+        ]);
+    }
+}
+```
+
+Depois execute:
+
+```bash
+./sfphp db:seed
+```
+
+Ou em uma migration/setup:
+
+```php
+use Database\Seeders\UserSeeder;
+
+(new UserSeeder())->run();
+```
+
+### Factory com Relacionamentos
+
+```php
+class PostFactory extends Factory
+{
+    public function definition(): array
+    {
+        return [
+            'user_id' => fn () => (new UserFactory())->create()->id,
+            'title' => 'Post Title ' . mt_rand(1, 1000),
+            'content' => 'Lorem ipsum...',
+            'created_at' => date('Y-m-d H:i:s'),
+        ];
+    }
+
+    protected function model(): string
+    {
+        return \SfphpProject\app\Models\Post::class;
+    }
+}
+```
+
+### Exemplo Completo
+
+```php
+// database/seeders/DatabaseSeeder.php
+public function run(): void
+{
+    // Criar 100 usuários
+    (new UserFactory())->count(100)->create();
+
+    // Criar posts para cada usuário
+    foreach (User::all() as $user) {
+        (new PostFactory())->count(5)->create([
+            'user_id' => $user->id,
+        ]);
+    }
+}
+```
+
+Execute com `./sfphp db:seed`.
 
 ---
 
