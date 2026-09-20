@@ -8,6 +8,7 @@
 - [SFJS Library](#sfjs-library)
 - [Migrations e Schema Builder](#migrations-e-schema-builder)
 - [Seeders e Factories](#seeders-e-factories)
+- [Cache System](#cache-system)
 - [Roteamento](#roteamento)
 - [Controllers e Views](#controllers-e-views)
 - [Modelos e Repositórios](#modelos-e-repositórios)
@@ -88,6 +89,16 @@ O binário `./sfphp` fornece 20+ comandos para gerar código, gerenciar migratio
 
 # Executar seeders
 ./sfphp db:seed
+```
+
+### Cache Commands
+
+```bash
+# Limpar cache
+./sfphp cache:clear
+
+# Flush todos os cache
+./sfphp cache:flush
 ```
 
 ### Servidor e Utilitários
@@ -1248,6 +1259,150 @@ public function run(): void
 ```
 
 Execute com `./sfphp db:seed`.
+
+---
+
+## Cache System
+
+Sistema de cache multi-driver para armazenar dados em memória, arquivos ou Redis.
+
+### Drivers Disponíveis
+
+**FileDriver** (padrão)
+```php
+use SfPhp\Cache\FileDriver;
+
+$cache = new FileDriver('/tmp/sfphp-cache');
+```
+
+**MemoryDriver** (em memória, apenas durante request)
+```php
+use SfPhp\Cache\MemoryDriver;
+
+$cache = new MemoryDriver();
+```
+
+**RedisDriver** (persistente, distribuído)
+```php
+use SfPhp\Cache\RedisDriver;
+
+$redis = new \Redis();
+$redis->connect('127.0.0.1', 6379);
+
+$cache = new RedisDriver($redis);
+```
+
+### Uso via Helper
+
+```php
+// Get
+$user = cache()->get('user.1');
+$user = cache()->get('user.1', 'default_value');
+
+// Put (sem expiração)
+cache()->put('user.1', $user);
+
+// Put com expiração (segundos)
+cache()->put('user.1', $user, 3600);  // 1 hora
+
+// Forget
+cache()->forget('user.1');
+
+// Flush tudo
+cache()->flush();
+
+// Has
+if (cache()->has('user.1')) {
+    // ...
+}
+```
+
+### Remember + Pull
+
+```php
+// Remember: retorna do cache ou executa callback
+$user = cache()->remember('user.1', 3600, function() {
+    return User::find(1);
+});
+
+// Pull: get + forget
+$user = cache()->pull('user.1');
+```
+
+### Mudar Driver em Runtime
+
+```php
+use SfPhp\Cache\CacheManager;
+use SfPhp\Cache\RedisDriver;
+
+$manager = new CacheManager();
+
+// Usar Redis
+$redis = new \Redis();
+$redis->connect('127.0.0.1', 6379);
+$manager->driver(new RedisDriver($redis));
+
+cache()->put('key', 'value', 3600);
+```
+
+### CLI Commands
+
+```bash
+# Clear (mesma coisa que flush)
+./sfphp cache:clear
+
+# Flush tudo
+./sfphp cache:flush
+```
+
+### Exemplo Prático
+
+```php
+use SfPhp\Cache\CacheManager;
+use SfPhp\Cache\RedisDriver;
+
+// Em um controller
+class UserController
+{
+    public function show($id)
+    {
+        // Cache por 1 hora
+        $user = cache()->remember("user.{$id}", 3600, function() use ($id) {
+            return User::find($id);
+        });
+
+        return $this->view('user.show', compact('user'));
+    }
+
+    public function update($id)
+    {
+        $user = User::find($id);
+        $user->update(request()->all());
+
+        // Invalidar cache
+        cache()->forget("user.{$id}");
+
+        return redirect("/users/{$id}");
+    }
+}
+```
+
+### Estrutura de Drivers
+
+Criar driver customizado:
+
+```php
+use SfPhp\Cache\Cache;
+
+class CustomDriver implements Cache
+{
+    public function get(string $key, mixed $default = null): mixed { }
+    public function put(string $key, mixed $value, ?int $seconds = null): void { }
+    public function forget(string $key): void { }
+    public function flush(): void { }
+    public function has(string $key): bool { }
+}
+```
 
 ---
 
