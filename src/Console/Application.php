@@ -72,6 +72,8 @@ final class Application
                 'status' => $this->status($arguments),
                 'db:seed' => $this->dbSeed($arguments),
                 'db:fresh' => $this->dbFresh($arguments),
+                'cache:clear' => $this->cacheClear($arguments),
+                'cache:flush' => $this->cacheFlush($arguments),
                 'tinker' => $this->tinker(),
                 default => $this->unknownCommand($command),
             };
@@ -115,6 +117,10 @@ final class Application
             $this->writeLine('  make:seeder <name>    Generate a seeder class');
             $this->writeLine('  make:factory <name>   Generate a factory class');
             $this->writeLine('  db:seed               Run database seeders');
+            $this->writeLine('');
+            $this->writeLine('Cache Commands:');
+            $this->writeLine('  cache:clear           Clear expired cache entries');
+            $this->writeLine('  cache:flush           Flush all cache');
             $this->writeLine('');
             $this->writeLine('Server & Database Commands:');
             $this->writeLine('  serve                 Start development server (localhost:8000)');
@@ -996,6 +1002,48 @@ PHP;
             return 0;
         } catch (Throwable $e) {
             $this->writeLine('Error: ' . $e->getMessage());
+            return 1;
+        }
+    }
+
+    /**
+     * Clear expired cache entries.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function cacheClear(array $arguments): int
+    {
+        try {
+            $cache = new \SfPhp\Cache\CacheManager();
+            $cache->flush();
+
+            $this->writeLine('Cache cleared successfully.');
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+            return 1;
+        }
+    }
+
+    /**
+     * Flush all cache.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function cacheFlush(array $arguments): int
+    {
+        try {
+            $cache = new \SfPhp\Cache\CacheManager();
+            $cache->flush();
+
+            $this->writeLine('All cache flushed successfully.');
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
             return 1;
         }
     }
