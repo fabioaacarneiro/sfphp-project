@@ -2,15 +2,28 @@
 
 namespace SfphpProject\src\View;
 
+use RuntimeException;
+
 /**
  * Compiles SFHT template syntax into executable PHP code.
+ *
+ * The output starts in HTML mode: text is emitted as it is and only echoes and
+ * directives switch into PHP, using the alternative control-structure syntax.
+ * Compiled code expects an "$__engine" variable holding the SfhtEngine.
  */
 final class Compiler
 {
+    /**
+     * Compiler revision, part of the cache key so that templates compiled by
+     * an older revision are never served after an upgrade.
+     */
+    public const VERSION = 2;
+
     private Parser $parser;
-    private array $blocks = [];
-    private ?string $extends = null;
-    private int $indentLevel = 0;
+
+    /** @var array<int, array{type: string, line: int, id?: int}> */
+    private array $open = [];
+    private int $loops = 0;
 
     /**
      * Create a compiler.
@@ -25,251 +38,218 @@ final class Compiler
      *
      * @param string $content The template content
      * @return string The compiled PHP code
+     * @throws RuntimeException On a syntax error, with the offending line
      */
     public function compile(string $content): string
     {
+        $this->open = [];
+        $this->loops = 0;
+
         $tokens = $this->parser->parse($content);
         $code = '';
 
-        foreach ($tokens as $token) {
-            $code .= $this->compileToken($token);
+        foreach ($tokens as $index => $token) {
+            $code .= match ($token['type']) {
+                'text' => $this->compileText($token['content']),
+                'echo', 'raw' => $this->compileEcho($token)
+                    . $this->keepNewline($tokens[$index + 1] ?? null),
+                'directive' => '<?php ' . $this->compileDirective($token) . ' ?>',
+            };
         }
 
-        return "<?php\n" . $code . "\n";
-    }
+        if ($this->open !== []) {
+            $unclosed = end($this->open);
+            throw $this->error("@{$unclosed['type']} is never closed", $unclosed['line']);
+        }
 
-    /**
-     * Compile a single token to PHP.
-     *
-     * @param array $token The token to compile
-     * @return string The compiled PHP code
-     */
-    private function compileToken(array $token): string
-    {
-        return match ($token['type']) {
-            'directive' => $this->compileDirective($token),
-            'echo' => $this->compileEcho($token),
-            'text' => $this->compileText($token),
-            default => '',
-        };
-    }
-
-    /**
-     * Compile a directive.
-     *
-     * @param array $token The directive token
-     * @return string
-     */
-    private function compileDirective(array $token): string
-    {
-        $name = $token['name'];
-        $args = $token['args'];
-
-        return match ($name) {
-            'if' => $this->compileIf($args),
-            'elseif' => $this->compileElseif($args),
-            'else' => $this->compileElse(),
-            'endif' => $this->compileEndif(),
-            'foreach' => $this->compileForeach($args),
-            'endforeach' => $this->compileEndforeach(),
-            'for' => $this->compileFor($args),
-            'endfor' => $this->compileEndfor(),
-            'while' => $this->compileWhile($args),
-            'endwhile' => $this->compileEndwhile(),
-            'extends' => $this->compileExtends($args),
-            'block' => $this->compileBlock($args),
-            'endblock' => $this->compileEndblock(),
-            'include' => $this->compileInclude($args),
-            'includeWhen' => $this->compileIncludeWhen($args),
-            'component' => $this->compileComponent($args),
-            'use' => $this->compileUse($args),
-            default => '',
-        };
-    }
-
-    private function compileIf(string $condition): string
-    {
-        $this->indentLevel++;
-        return $this->indent() . "if ({$condition}) {\n";
-    }
-
-    private function compileElseif(string $condition): string
-    {
-        $this->indentLevel--;
-        $code = $this->indent() . "} elseif ({$condition}) {\n";
-        $this->indentLevel++;
         return $code;
     }
 
-    private function compileElse(): string
+    /**
+     * PHP swallows one newline after "?>", which would glue the line after an
+     * echo to the echo itself. Give that newline back.
+     */
+    private function keepNewline(?array $next): string
     {
-        $this->indentLevel--;
-        $code = $this->indent() . "} else {\n";
-        $this->indentLevel++;
-        return $code;
-    }
-
-    private function compileEndif(): string
-    {
-        $this->indentLevel--;
-        return $this->indent() . "}\n";
-    }
-
-    private function compileForeach(string $args): string
-    {
-        $this->indentLevel++;
-        return $this->indent() . "foreach ({$args}) {\n";
-    }
-
-    private function compileEndforeach(): string
-    {
-        $this->indentLevel--;
-        return $this->indent() . "}\n";
-    }
-
-    private function compileFor(string $args): string
-    {
-        $this->indentLevel++;
-        return $this->indent() . "for ({$args}) {\n";
-    }
-
-    private function compileEndfor(): string
-    {
-        $this->indentLevel--;
-        return $this->indent() . "}\n";
-    }
-
-    private function compileWhile(string $args): string
-    {
-        $this->indentLevel++;
-        return $this->indent() . "while ({$args}) {\n";
-    }
-
-    private function compileEndwhile(): string
-    {
-        $this->indentLevel--;
-        return $this->indent() . "}\n";
-    }
-
-    private function compileExtends(string $template): string
-    {
-        $this->extends = trim($template, '\'"');
-        return '';
-    }
-
-    private function compileBlock(string $name): string
-    {
-        return $this->indent() . "// @block('{$name}')\n";
-    }
-
-    private function compileEndblock(): string
-    {
-        return $this->indent() . "// @endblock\n";
-    }
-
-    private function compileInclude(string $template): string
-    {
-        $file = trim($template, '\'"');
-        return $this->indent() . "include \$__engine->resolve('{$file}');\n";
-    }
-
-    private function compileIncludeWhen(string $args): string
-    {
-        preg_match('/\s*(.+?)\s*,\s*[\'"](.+?)[\'"]\s*(?:,\s*(.+))?/', $args, $matches);
-        $condition = $matches[1] ?? '';
-        $template = $matches[2] ?? '';
-        $vars = $matches[3] ?? '[]';
-
-        return $this->indent() . "if ({$condition}) {\n"
-            . $this->indent() . "  include \$__engine->resolve('{$template}');\n"
-            . $this->indent() . "}\n";
-    }
-
-    private function compileComponent(string $args): string
-    {
-        preg_match('/[\'"](.+?)[\'"]\s*,\s*\[(.+)\]/', $args, $matches);
-        $component = $matches[1] ?? '';
-        $vars = $matches[2] ?? '';
-
-        return $this->indent() . "\$__vars = [{$vars}];\n"
-            . $this->indent() . "include \$__engine->resolve('{$component}');\n";
-    }
-
-    private function compileUse(string $feature): string
-    {
-        $feature = trim($feature, '\'"');
-        return $this->indent() . "// @use({$feature})\n";
+        return $next !== null && $next['type'] === 'text' && str_starts_with($next['content'], "\n")
+            ? "\n"
+            : '';
     }
 
     /**
-     * Compile an echo expression (variable output with filters).
+     * Emit literal text, defusing "<?" so template text can never run as PHP.
+     */
+    private function compileText(string $text): string
+    {
+        return str_replace('<?', "<?php echo '<?'; ?>", $text);
+    }
+
+    /**
+     * Compile "{{ expr | filter }}" (escaped) and "{!! expr !!}" (raw).
      *
-     * @param array $token The echo token
-     * @return string
+     * @param array{type: string, expression: string, line: int} $token
      */
     private function compileEcho(array $token): string
     {
-        $expr = trim($token['expression']);
-        $parsed = $this->parser->extractFilters($expr);
+        $parsed = $this->parser->extractFilters($token['expression']);
 
-        $php = $this->indent() . 'echo ';
-
-        foreach (array_reverse($parsed['filters']) as $filter) {
-            $php .= "\$__engine->filter('{$filter['name']}', ";
+        if ($parsed['expression'] === '') {
+            throw $this->error('Empty echo expression', $token['line']);
         }
 
-        $php .= $this->escapeExpression($parsed['expression']);
+        $php = $parsed['expression'];
 
         foreach ($parsed['filters'] as $filter) {
-            $args = !empty($filter['args']) ? ", [{$filter['args']}]" : ", []";
-            $php .= $args . ')';
+            $args = $filter['args'] !== '' ? ", [{$filter['args']}]" : '';
+            $php = "\$__engine->filter('{$filter['name']}', {$php}{$args})";
         }
 
-        $php .= ";\n";
+        $last = $parsed['filters'] === [] ? null : end($parsed['filters'])['name'];
 
-        return $php;
+        if ($token['type'] === 'echo' && $last !== 'escape') {
+            $php = "\$__engine->e({$php})";
+        }
+
+        return "<?= {$php} ?>";
     }
 
     /**
-     * Compile raw text output.
-     *
-     * @param array $token The text token
-     * @return string
+     * @param array{name: string, args: string, line: int} $token
      */
-    private function compileText(array $token): string
+    private function compileDirective(array $token): string
     {
-        if (empty(trim($token['content']))) {
-            return '';
+        ['name' => $name, 'args' => $args, 'line' => $line] = $token;
+
+        if ($args === '' && in_array($name, Parser::ARGUMENT_DIRECTIVES, true) && $name !== 'use') {
+            throw $this->error("@{$name} needs arguments", $line);
         }
 
-        $escaped = addslashes($token['content']);
-        return $this->indent() . "echo \"{$escaped}\";\n";
+        return match ($name) {
+            'if' => $this->begin('if', $line) . "if ({$args}):",
+            'elseif' => $this->expect('if', $line, 'elseif') . "elseif ({$args}):",
+            'else' => $this->expect('if', $line, 'else') . 'else:',
+            'endif' => $this->end('if', $line) . 'endif;',
+            'foreach' => $this->compileForeach($args, $line),
+            'endforeach' => $this->compileEndforeach($line),
+            'for' => $this->begin('for', $line) . "for ({$args}):",
+            'endfor' => $this->end('for', $line) . 'endfor;',
+            'while' => $this->begin('while', $line) . "while ({$args}):",
+            'endwhile' => $this->end('while', $line) . 'endwhile;',
+            'extends' => "\$__engine->extend({$args});",
+            'block' => $this->begin('block', $line) . "\$__engine->startBlock({$args});",
+            'endblock' => $this->end('block', $line) . 'echo $__engine->endBlock();',
+            'include' => $this->compileInclude($args, $line),
+            'includeWhen' => $this->compileIncludeWhen($args, $line),
+            'component' => $this->compileComponent($args, $line),
+            'use' => '/* @use */',
+        };
+    }
+
+    private function compileForeach(string $args, int $line): string
+    {
+        if (!preg_match('/^(.+?)\s+as\s+(.+)$/s', $args, $m)) {
+            throw $this->error('@foreach expects "$items as $item"', $line);
+        }
+
+        $id = ++$this->loops;
+        $this->open[] = ['type' => 'foreach', 'line' => $line, 'id' => $id];
+
+        return "\$__loop{$id} = \$__engine->loop({$m[1]}, \$loop ?? null); "
+            . "foreach (\$__loop{$id}->items as {$m[2]}): \$loop = \$__loop{$id}->tick();";
+    }
+
+    private function compileEndforeach(int $line): string
+    {
+        $id = $this->closeTop('foreach', $line)['id'];
+
+        return "endforeach; \$loop = \$__loop{$id}->parent;";
+    }
+
+    private function compileInclude(string $args, int $line): string
+    {
+        [$name, $vars] = $this->templateArguments($args, 'include', $line);
+
+        return "echo \$__engine->includeTemplate({$name}, {$vars}, get_defined_vars());";
+    }
+
+    private function compileIncludeWhen(string $args, int $line): string
+    {
+        $parts = $this->parser->splitArguments($args);
+
+        if (count($parts) < 2 || count($parts) > 3) {
+            throw $this->error("@includeWhen expects a condition, a template and optional data", $line);
+        }
+
+        $vars = $parts[2] ?? '[]';
+
+        return "if ({$parts[0]}): echo \$__engine->includeTemplate({$parts[1]}, {$vars}, get_defined_vars()); endif;";
+    }
+
+    private function compileComponent(string $args, int $line): string
+    {
+        [$name, $vars] = $this->templateArguments($args, 'component', $line);
+
+        return "echo \$__engine->componentTemplate({$name}, {$vars});";
     }
 
     /**
-     * Escape a PHP expression for safe evaluation.
-     *
-     * @param string $expr The expression
-     * @return string
+     * @return array{0: string, 1: string} Template name and data expressions
      */
-    private function escapeExpression(string $expr): string
+    private function templateArguments(string $args, string $directive, int $line): array
     {
-        $expr = trim($expr);
+        $parts = $this->parser->splitArguments($args);
 
-        if (preg_match('/^\$\w+/', $expr)) {
-            return $expr;
+        if (count($parts) < 1 || count($parts) > 2) {
+            throw $this->error("@{$directive} expects a template and optional data", $line);
         }
 
-        return "'{$expr}'";
+        return [$parts[0], $parts[1] ?? '[]'];
+    }
+
+    private function begin(string $type, int $line): string
+    {
+        $this->open[] = ['type' => $type, 'line' => $line];
+
+        return '';
+    }
+
+    private function end(string $type, int $line): string
+    {
+        $this->closeTop($type, $line);
+
+        return '';
     }
 
     /**
-     * Get current indentation.
-     *
-     * @return string
+     * Ensure the innermost open structure is $type, for @elseif and @else.
      */
-    private function indent(): string
+    private function expect(string $type, int $line, string $directive): string
     {
-        return str_repeat('  ', $this->indentLevel);
+        $top = end($this->open);
+
+        if ($top === false || $top['type'] !== $type) {
+            throw $this->error("@{$directive} without a matching @{$type}", $line);
+        }
+
+        return '';
+    }
+
+    /**
+     * @return array{type: string, line: int, id?: int}
+     */
+    private function closeTop(string $type, int $line): array
+    {
+        $top = array_pop($this->open);
+
+        if ($top === null || $top['type'] !== $type) {
+            throw $this->error("@end{$type} without a matching @{$type}", $line);
+        }
+
+        return $top;
+    }
+
+    private function error(string $message, int $line): RuntimeException
+    {
+        return new RuntimeException("SFHT syntax error on line {$line}: {$message}.");
     }
 }

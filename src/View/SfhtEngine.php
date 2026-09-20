@@ -2,11 +2,15 @@
 
 namespace SfphpProject\src\View;
 
+use InvalidArgumentException;
 use RuntimeException;
+use Throwable;
 
 /**
  * SFHT Template Engine - Simple Framework HTML Template.
  * Renders .sfht templates with support for control flow, inheritance, components, and filters.
+ *
+ * Variables whose names start with "__" are reserved for the engine.
  */
 final class SfhtEngine
 {
@@ -15,6 +19,18 @@ final class SfhtEngine
     private array $paths = [];
     private array $globals = [];
     private array $filters = [];
+
+    /** True while a top-level render() is running. */
+    private bool $rendering = false;
+
+    /** @var array<string, string> Block contents by name, the first definition wins. */
+    private array $blocks = [];
+
+    /** @var array<int, string> Names of the blocks currently being captured. */
+    private array $blockStack = [];
+
+    /** @var array<int, string|null> Parent layout requested by each template being rendered. */
+    private array $layouts = [];
 
     /**
      * Create the SFHT template engine.
@@ -34,24 +50,34 @@ final class SfhtEngine
     /**
      * Render a template with given data.
      *
-     * @param string $template The template file (without extension)
+     * @param string $template The template name, using dots or slashes for folders
      * @param array<string, mixed> $data Variables to pass to template
      * @return string The rendered output
+     * @throws InvalidArgumentException If the template name is invalid
      * @throws RuntimeException If template not found or rendering fails
      */
     public function render(string $template, array $data = []): string
     {
-        $path = $this->resolve($template);
+        $file = $this->locate($template);
 
-        if (!is_file($path)) {
-            throw new RuntimeException("Template not found: {$template}");
+        if ($this->rendering) {
+            return $this->renderFile($file, $data);
         }
 
-        return $this->renderFile($path, $data);
+        $this->rendering = true;
+
+        try {
+            return $this->renderFile($file, $data);
+        } finally {
+            $this->rendering = false;
+            $this->blocks = [];
+            $this->blockStack = [];
+            $this->layouts = [];
+        }
     }
 
     /**
-     * Render a template file.
+     * Render a template file, following its @extends chain.
      *
      * @param string $file The full file path
      * @param array<string, mixed> $data Template variables
@@ -67,35 +93,57 @@ final class SfhtEngine
                 throw new RuntimeException("Cannot read template file: {$file}");
             }
 
-            $compiled = $this->compiler->compile($content);
+            try {
+                $compiled = $this->compiler->compile($content);
+            } catch (RuntimeException $e) {
+                throw new RuntimeException("{$e->getMessage()} ({$file})", 0, $e);
+            }
+
             $this->cache->store($file, $compiled);
         }
 
-        return $this->executeTemplate($compiled, $data);
+        $this->layouts[] = null;
+
+        try {
+            $output = $this->executeTemplate($compiled, $data);
+            $parent = $this->layouts[array_key_last($this->layouts)];
+        } finally {
+            array_pop($this->layouts);
+        }
+
+        // A child template only defines blocks: its own output is discarded
+        // and the layout is rendered around them.
+        return $parent === null
+            ? $output
+            : $this->renderFile($this->locate($parent), $data);
     }
 
     /**
      * Execute compiled template code.
      *
-     * @param string $code The compiled PHP code
-     * @param array<string, mixed> $data Template variables
+     * @param string $__code The compiled PHP code
+     * @param array<string, mixed> $__data Template variables
      * @return string
      */
-    private function executeTemplate(string $code, array $data): string
+    private function executeTemplate(string $__code, array $__data): string
     {
         $__engine = $this;
-        $__vars = array_merge($this->globals, $data);
 
-        extract($__vars, EXTR_SKIP);
+        extract(array_merge($this->globals, $__data), EXTR_SKIP);
 
+        $__level = ob_get_level();
         ob_start();
 
         try {
-            eval('?>' . $code);
-            return ob_get_clean();
-        } catch (\Throwable $e) {
-            ob_end_clean();
-            throw new RuntimeException("Template execution error: " . $e->getMessage());
+            eval('?>' . $__code);
+
+            return (string) ob_get_clean();
+        } catch (Throwable $e) {
+            while (ob_get_level() > $__level) {
+                ob_end_clean();
+            }
+
+            throw $e;
         }
     }
 
@@ -103,12 +151,16 @@ final class SfhtEngine
      * Resolve template path.
      *
      * @param string $template The template name
-     * @return string The full file path
+     * @return string The full file path, or a relative name when not found
+     * @throws InvalidArgumentException If the template name is invalid
      */
     public function resolve(string $template): string
     {
+        if (!preg_match('/^[A-Za-z0-9_-]+(?:[\/.][A-Za-z0-9_-]+)*$/', $template)) {
+            throw new InvalidArgumentException("Template name \"{$template}\" is invalid.");
+        }
+
         $template = str_replace('.', '/', $template);
-        $template = ltrim($template, '/');
 
         foreach ($this->paths as $path) {
             $full = rtrim($path, '/') . '/' . $template . '.sfht';
@@ -122,11 +174,29 @@ final class SfhtEngine
     }
 
     /**
-     * Register a filter function.
+     * Resolve a template name to a file that exists.
+     *
+     * @throws RuntimeException If the template does not exist
+     */
+    private function locate(string $template): string
+    {
+        $path = $this->resolve($template);
+
+        if (!is_file($path)) {
+            throw new RuntimeException("Template not found: {$template}");
+        }
+
+        return $path;
+    }
+
+    /**
+     * Apply a registered filter to a value.
      *
      * @param string $name The filter name
-     * @param callable $fn The filter function
-     * @return void
+     * @param mixed $value The value being filtered
+     * @param array<int, mixed> $args Extra filter arguments
+     * @return mixed
+     * @throws RuntimeException If the filter is not registered
      */
     public function filter(string $name, $value, array $args = [])
     {
@@ -135,6 +205,29 @@ final class SfhtEngine
         }
 
         return call_user_func($this->filters[$name], $value, ...$args);
+    }
+
+    /**
+     * Register a filter function.
+     *
+     * @param string $name The filter name, used as "{{ $value | name }}"
+     * @param callable $fn Receives the value followed by the filter arguments
+     * @return void
+     */
+    public function addFilter(string $name, callable $fn): void
+    {
+        $this->filters[$name] = $fn;
+    }
+
+    /**
+     * Escape a value for HTML output. Used by "{{ }}".
+     *
+     * @param mixed $value The value to escape
+     * @return string
+     */
+    public function e(mixed $value): string
+    {
+        return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 
     /**
@@ -189,5 +282,75 @@ final class SfhtEngine
     public function clearCache(): void
     {
         $this->cache->clear();
+    }
+
+    /*
+     * Runtime API used by compiled templates. Not meant to be called directly.
+     */
+
+    /**
+     * Declare the layout the current template extends (@extends).
+     */
+    public function extend(string $template): void
+    {
+        $this->layouts[array_key_last($this->layouts)] = $template;
+    }
+
+    /**
+     * Start capturing a block (@block).
+     */
+    public function startBlock(string $name): void
+    {
+        $this->blockStack[] = $name;
+        ob_start();
+    }
+
+    /**
+     * Finish a block (@endblock) and return the content to print.
+     *
+     * The first definition of a name wins, and children render before their
+     * layout, so a child's block replaces the layout's default content.
+     */
+    public function endBlock(): string
+    {
+        $content = (string) ob_get_clean();
+        $name = (string) array_pop($this->blockStack);
+
+        return $this->blocks[$name] ??= $content;
+    }
+
+    /**
+     * Create the $loop variable for a @foreach.
+     */
+    public function loop(mixed $items, ?Loop $parent): Loop
+    {
+        return new Loop($items, $parent);
+    }
+
+    /**
+     * Render an @include: the partial sees the including template's variables.
+     *
+     * @param array<string, mixed> $vars Extra data for the partial
+     * @param array<string, mixed> $scope The including template's variables
+     */
+    public function includeTemplate(string $template, array $vars, array $scope): string
+    {
+        $scope = array_filter(
+            $scope,
+            fn ($key) => !str_starts_with((string) $key, '__'),
+            ARRAY_FILTER_USE_KEY
+        );
+
+        return $this->renderFile($this->locate($template), array_merge($scope, $vars));
+    }
+
+    /**
+     * Render a @component: it only sees the data passed to it.
+     *
+     * @param array<string, mixed> $vars Data for the component
+     */
+    public function componentTemplate(string $template, array $vars): string
+    {
+        return $this->renderFile($this->locate($template), $vars);
     }
 }

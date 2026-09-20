@@ -428,7 +428,7 @@ $tests->run('views escape output and protect view names', function () use ($test
     );
 
     ob_start();
-    View::partial('header', ['title' => '<script>']);
+    View::render('home', ['title' => '<script>']);
     $output = ob_get_clean();
     $tests->assertTrue(str_contains($output, '&lt;script&gt;'));
 });
