@@ -56,7 +56,18 @@ final class Schema
      */
     public function dropIfExists(string $table): void
     {
-        $this->statement('DROP TABLE IF EXISTS ' . $this->quoteIdentifier($table));
+        $this->statement('DROP TABLE IF EXISTS ' . Identifier::quoteTable($this->driver(), $table));
+    }
+
+    /**
+     * Drop a table, failing when it does not exist.
+     *
+     * @param string $table The table name
+     * @return void
+     */
+    public function drop(string $table): void
+    {
+        $this->statement('DROP TABLE ' . Identifier::quoteTable($this->driver(), $table));
     }
 
     /**
@@ -69,9 +80,89 @@ final class Schema
     public function rename(string $table, string $newName): void
     {
         $this->statement(
-            'ALTER TABLE ' . $this->quoteIdentifier($table)
-            . ' RENAME TO ' . $this->quoteIdentifier($newName)
+            'ALTER TABLE ' . Identifier::quoteTable($this->driver(), $table)
+            . ' RENAME TO ' . Identifier::quote($this->driver(), $newName)
         );
+    }
+
+    /**
+     * Check whether a table exists (MySQL and PostgreSQL).
+     *
+     * @param string $table The table name, optionally qualified as "schema.table"
+     * @return bool
+     */
+    public function hasTable(string $table): bool
+    {
+        [$schema, $name] = Identifier::split($table);
+        $bindings = ['table' => $name];
+
+        return match ($this->driver()) {
+            'mysql' => $this->exists(
+                'SELECT 1 FROM information_schema.tables WHERE table_schema = '
+                . $this->schemaExpression('DATABASE()', $schema, $bindings) . ' AND table_name = :table',
+                $bindings
+            ),
+            'pgsql' => $this->exists(
+                'SELECT 1 FROM information_schema.tables WHERE table_schema = '
+                . $this->schemaExpression('current_schema()', $schema, $bindings) . ' AND table_name = :table',
+                $bindings
+            ),
+            default => $this->unsupportedIntrospection(),
+        };
+    }
+
+    /**
+     * Check whether a column exists (MySQL and PostgreSQL).
+     *
+     * @param string $table The table name, optionally qualified as "schema.table"
+     * @param string $column The column name
+     * @return bool
+     */
+    public function hasColumn(string $table, string $column): bool
+    {
+        [$schema, $name] = Identifier::split($table);
+        $bindings = ['table' => $name, 'column' => $column];
+        $default = match ($this->driver()) {
+            'mysql' => 'DATABASE()',
+            'pgsql' => 'current_schema()',
+            default => $this->unsupportedIntrospection(),
+        };
+
+        return $this->exists(
+            'SELECT 1 FROM information_schema.columns WHERE table_schema = '
+            . $this->schemaExpression($default, $schema, $bindings)
+            . ' AND table_name = :table AND column_name = :column',
+            $bindings
+        );
+    }
+
+    /**
+     * Check whether an index exists (MySQL and PostgreSQL).
+     *
+     * @param string $table The table name, optionally qualified as "schema.table"
+     * @param string $index The index name
+     * @return bool
+     */
+    public function hasIndex(string $table, string $index): bool
+    {
+        [$schema, $name] = Identifier::split($table);
+        $bindings = ['table' => $name, 'index' => $index];
+
+        return match ($this->driver()) {
+            'mysql' => $this->exists(
+                'SELECT 1 FROM information_schema.statistics WHERE table_schema = '
+                . $this->schemaExpression('DATABASE()', $schema, $bindings)
+                . ' AND table_name = :table AND index_name = :index',
+                $bindings
+            ),
+            'pgsql' => $this->exists(
+                'SELECT 1 FROM pg_indexes WHERE schemaname = '
+                . $this->schemaExpression('current_schema()', $schema, $bindings)
+                . ' AND tablename = :table AND indexname = :index',
+                $bindings
+            ),
+            default => $this->unsupportedIntrospection(),
+        };
     }
 
     /**
@@ -117,21 +208,45 @@ final class Schema
     }
 
     /**
-     * Quote an identifier for the current PDO driver.
+     * Run a query and tell whether it returned any row.
      *
-     * @param string $identifier The identifier name
+     * @param string $sql The SQL statement
+     * @param array<string, mixed> $bindings The bound values
+     * @return bool
+     */
+    private function exists(string $sql, array $bindings): bool
+    {
+        return $this->statement($sql, $bindings)->fetchColumn() !== false;
+    }
+
+    /**
+     * Build the schema/database comparison, binding the schema only when one was given.
+     *
+     * @param string $default The SQL expression for the current schema or database
+     * @param string|null $schema The explicit schema name
+     * @param array<string, mixed> $bindings The bound values, extended in place
      * @return string
      */
-    private function quoteIdentifier(string $identifier): string
+    private function schemaExpression(string $default, ?string $schema, array &$bindings): string
     {
-        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $identifier)) {
-            throw new InvalidArgumentException("Invalid schema identifier: $identifier");
+        if ($schema === null) {
+            return $default;
         }
 
-        return match ($this->driver()) {
-            'mysql' => '`' . $identifier . '`',
-            'sqlsrv', 'dblib' => '[' . $identifier . ']',
-            default => '"' . $identifier . '"',
-        };
+        $bindings['schema'] = $schema;
+
+        return ':schema';
+    }
+
+    /**
+     * Fail for drivers that have no introspection support yet.
+     *
+     * @return never
+     */
+    private function unsupportedIntrospection(): never
+    {
+        throw new InvalidArgumentException(
+            'Schema introspection is only supported for mysql and pgsql, not ' . $this->driver() . '.'
+        );
     }
 }

@@ -5,6 +5,7 @@ namespace SfphpProject\src\Migrations;
 use InvalidArgumentException;
 use PDO;
 use RuntimeException;
+use Throwable;
 
 /**
  * Coordinates migration execution and rollback.
@@ -39,8 +40,10 @@ final class MigrationRunner
 
         foreach ($selected as $file) {
             $migration = $this->load($file);
-            $migration->up($schema);
-            $repository->record(basename($file), $batch);
+            $this->transactional(function () use ($migration, $schema, $repository, $file, $batch): void {
+                $migration->up($schema);
+                $repository->record(basename($file), $batch);
+            });
             $applied[] = basename($file);
         }
 
@@ -71,8 +74,10 @@ final class MigrationRunner
             }
 
             $loaded = $this->load($file);
-            $loaded->down($schema);
-            $repository->forget($migration['migration']);
+            $this->transactional(function () use ($loaded, $schema, $repository, $migration): void {
+                $loaded->down($schema);
+                $repository->forget($migration['migration']);
+            });
             $reverted[] = $migration['migration'];
         }
 
@@ -116,6 +121,38 @@ final class MigrationRunner
         sort($files, SORT_STRING);
 
         return $files;
+    }
+
+    /**
+     * Run a callback atomically when the driver supports transactional DDL.
+     *
+     * PostgreSQL rolls schema changes back with the transaction, so a failing
+     * migration leaves nothing half-applied. MySQL commits DDL implicitly, so it
+     * runs without a transaction.
+     *
+     * @param callable():void $callback The work to run
+     * @return void
+     */
+    private function transactional(callable $callback): void
+    {
+        if ($this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) !== 'pgsql' || $this->pdo->inTransaction()) {
+            $callback();
+
+            return;
+        }
+
+        $this->pdo->beginTransaction();
+
+        try {
+            $callback();
+            $this->pdo->commit();
+        } catch (Throwable $throwable) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+
+            throw $throwable;
+        }
     }
 
     /**
