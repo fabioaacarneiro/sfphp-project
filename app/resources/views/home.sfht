@@ -1,46 +1,153 @@
 @include('partials/header')
 
-<div class="container" style="padding: 3rem 0;">
-    <h1>Welcome to SFPHP</h1>
-    <p class="lead">A modern, educational PHP framework built from scratch with zero dependencies.</p>
+<!-- Hero -->
+<section class="bg-primary text-white p-4" style="padding: 4rem 1rem; text-align: center;">
+    <div class="container">
+        <h1>SFPHP Framework</h1>
+        <p>Modern. Educational. Zero Dependencies.</p>
+    </div>
+</section>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h3>CLI and Generators</h3>
-            </div>
-            <div class="card-body">
-                <p>24 powerful commands for code generation and framework management.</p>
-            </div>
-        </div>
+<!-- Features -->
+<section class="bg-light p-4" style="padding: 4rem 1rem;">
+    <div class="container">
+        <h2 style="text-align: center; margin-bottom: 3rem;">What is Included</h2>
 
-        <div class="card">
-            <div class="card-header bg-success text-white">
-                <h3>SFHT Templates</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- CLI -->
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h3>CLI and Code Generation</h3>
+                </div>
+                <div class="card-body">
+                    <p><strong>24 commands</strong> for code generation</p>
+                    <ul class="list-unstyled">
+                        <li>11 Generators</li>
+                        <li>7 Migrations</li>
+                        <li>6 Utilities</li>
+                    </ul>
+                </div>
             </div>
-            <div class="card-body">
-                <p>Native template engine with powerful directives.</p>
-            </div>
-        </div>
 
-        <div class="card">
-            <div class="card-header bg-info text-white">
-                <h3>SFCSS Styling</h3>
+            <!-- SFHT -->
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h3>SFHT Templates</h3>
+                </div>
+                <div class="card-body">
+                    <p><strong>Native Template Engine</strong> with directives</p>
+                    <ul class="list-unstyled">
+                        <li>Control Flow</li>
+                        <li>Template Inheritance</li>
+                        <li>Filters and Variables</li>
+                    </ul>
+                </div>
             </div>
-            <div class="card-body">
-                <p>Minimalista CSS framework with utilities and components.</p>
-            </div>
-        </div>
 
-        <div class="card">
-            <div class="card-header bg-warning text-dark">
-                <h3>Schema Builder</h3>
+            <!-- SFCSS -->
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h3>SFCSS Framework</h3>
+                </div>
+                <div class="card-body">
+                    <p><strong>Minimalista CSS</strong> framework with utilities</p>
+                    <ul class="list-unstyled">
+                        <li>8KB Pure CSS</li>
+                        <li>100 Utilities</li>
+                        <li>Responsive Design</li>
+                    </ul>
+                </div>
             </div>
-            <div class="card-body">
-                <p>100 percent MySQL and PostgreSQL support.</p>
+
+            <!-- Schema -->
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h3>Schema Builder</h3>
+                </div>
+                <div class="card-body">
+                    <p><strong>Database Migrations</strong> for MySQL and PostgreSQL</p>
+                    <ul class="list-unstyled">
+                        <li>30 Column Types</li>
+                        <li>Constraints and Indexes</li>
+                        <li>Full Coverage</li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
-</div>
+</section>
+
+<!-- Features Grid -->
+<section class="p-4" style="padding: 3rem 1rem;">
+    <div class="container">
+        <h2 style="text-align: center; margin-bottom: 2rem;">Complete Toolkit</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="card">
+                <div class="card-body" style="text-align: center;">
+                    <h4 class="text-primary">Security</h4>
+                    <p>JWT, CSRF Protection, Validation</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body" style="text-align: center;">
+                    <h4 class="text-success">Performance</h4>
+                    <p>Caching, Optimization, Zero Deps</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body" style="text-align: center;">
+                    <h4 class="text-info">Educational</h4>
+                    <p>Learn PHP, SQL, Architecture</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Extras -->
+<section class="bg-light p-4" style="padding: 3rem 1rem;">
+    <div class="container">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="card">
+                <div class="card-body" style="text-align: center;">
+                    <p><strong>Cache</strong></p>
+                    <p>File, Memory, Redis</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body" style="text-align: center;">
+                    <p><strong>Queue</strong></p>
+                    <p>Database, Redis, Sync</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body" style="text-align: center;">
+                    <p><strong>Seeders</strong></p>
+                    <p>Data Fixtures</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body" style="text-align: center;">
+                    <p><strong>SFJS</strong></p>
+                    <p>AJAX and DOM</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="bg-dark text-white p-4" style="padding: 3rem 1rem; text-align: center;">
+    <div class="container">
+        <h2>Get Started Today</h2>
+        <p>Build modern PHP applications</p>
+        <a href="https://github.com/fabioaacarneiro/sfphp-project" class="btn btn-primary" style="margin-top: 1rem;">
+            View on GitHub
+        </a>
+    </div>
+</section>
 
 @include('partials/footer')
