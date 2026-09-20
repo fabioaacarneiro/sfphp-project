@@ -52,6 +52,7 @@ final class Application
                 'serve' => $this->serve($arguments),
                 'env:example' => $this->envExample(),
                 'routes' => $this->routes($arguments),
+                'css:build' => $this->cssBuild($arguments),
                 'make:migration' => $this->makeMigration($arguments),
                 'make:migration:create' => $this->makeMigrationCreate($arguments),
                 'make:controller' => $this->makeController($arguments),
@@ -128,10 +129,11 @@ final class Application
             $this->writeLine('  queue:work            Start queue worker [--timeout=3600]');
             $this->writeLine('  queue:failed          List failed jobs');
             $this->writeLine('');
-            $this->writeLine('Server & Database Commands:');
+            $this->writeLine('Server & CSS Commands:');
             $this->writeLine('  serve                 Start development server (localhost:8000)');
             $this->writeLine('  env:example           Create .env from .env-example');
             $this->writeLine('  routes                List all registered routes');
+            $this->writeLine('  css:build             Build SFCSS from config.json');
             $this->writeLine('');
             $this->writeLine('Utility Commands:');
             $this->writeLine('  list                  Show all available commands');
@@ -174,6 +176,14 @@ final class Application
                 $this->writeLine('Usage: ./sfphp routes');
                 $this->writeLine('');
                 $this->writeLine('Display a table of all registered application routes');
+                break;
+            case 'css:build':
+                $this->writeLine('Usage: ./sfphp css:build');
+                $this->writeLine('');
+                $this->writeLine('Build SFCSS stylesheet from tools/css-builder/sfcss.config.json');
+                $this->writeLine('Output: public/assets/css/sfcss.css');
+                $this->writeLine('');
+                $this->writeLine('Edit tools/css-builder/sfcss.config.json to customize colors and spacing.');
                 break;
             default:
                 $this->writeLine("Help for command '$command' not available");
@@ -1102,6 +1112,56 @@ PHP;
             foreach ($failed as $job) {
                 $this->writeLine('  - ' . $job['id'] . ' (failed at ' . date('Y-m-d H:i:s', $job['failed_at']) . ')');
             }
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+            return 1;
+        }
+    }
+
+    /**
+     * Build SFCSS from config.json.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function cssBuild(array $arguments): int
+    {
+        try {
+            $configPath = $this->rootPath() . '/tools/css-builder/sfcss.config.json';
+            $builderPath = $this->rootPath() . '/tools/css-builder/sfcss-builder.php';
+            $outputPath = $this->rootPath() . '/public/assets/css/sfcss.css';
+
+            if (!is_file($configPath)) {
+                fwrite(STDERR, "Error: sfcss.config.json not found at {$configPath}" . PHP_EOL);
+                return 1;
+            }
+
+            if (!is_file($builderPath)) {
+                fwrite(STDERR, "Error: sfcss-builder.php not found at {$builderPath}" . PHP_EOL);
+                return 1;
+            }
+
+            $css = shell_exec('php ' . escapeshellarg($builderPath));
+
+            if ($css === null || $css === false) {
+                fwrite(STDERR, 'Error: Failed to build CSS' . PHP_EOL);
+                return 1;
+            }
+
+            if (!is_dir(dirname($outputPath))) {
+                mkdir(dirname($outputPath), 0755, true);
+            }
+
+            if (file_put_contents($outputPath, $css) === false) {
+                fwrite(STDERR, "Error: Failed to write CSS to {$outputPath}" . PHP_EOL);
+                return 1;
+            }
+
+            $this->writeLine("✅ SFCSS built successfully!");
+            $this->writeLine("📁 Output: {$outputPath}");
+            $this->writeLine("📊 Size: " . strlen($css) . " bytes");
 
             return 0;
         } catch (Throwable $e) {
