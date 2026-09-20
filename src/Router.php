@@ -235,7 +235,18 @@ class Router
      * @return string The generated URL
      * @throws InvalidArgumentException If the route or its parameters are invalid
      */
-    public static function url(
+    /**
+     * Get all registered routes.
+     *
+     * @return array<int, Route>
+     */
+    public function routes(): array
+    {
+        return self::$routes;
+    }
+
+    /**
+     * Generate a URL for a named route.
         string $name,
         array $parameters = [],
         array $query = []
@@ -277,6 +288,29 @@ class Router
 
         $route->setName($name);
         self::$namedRoutes[$name] = $route;
+    }
+
+    /**
+     * Generate a URL for a named route.
+     *
+     * @param string $name The route name
+     * @param array<string, mixed> $parameters The route parameters
+     * @param array<string, mixed> $query The query string parameters
+     * @return string The generated URL
+     * @throws RuntimeException If the named route does not exist
+     */
+    public static function url(string $name, array $parameters = [], array $query = []): string
+    {
+        if (!isset(self::$namedRoutes[$name])) {
+            throw new RuntimeException("Named route \"$name\" not found.");
+        }
+
+        $url = self::$namedRoutes[$name]->generateUrl($parameters);
+        if ($query === []) {
+            return $url;
+        }
+
+        return $url . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
     }
 
     /**

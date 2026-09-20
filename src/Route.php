@@ -135,6 +135,11 @@ final class Route
         return $this->method;
     }
 
+    public function getPath(): string
+    {
+        return $this->uri;
+    }
+
     /**
      * Get the controller class name.
      *
