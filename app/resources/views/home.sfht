@@ -52,7 +52,7 @@
     <div class="container">
         <h2 style="font-size: 2.5rem; font-weight: bold; color: #1e293b; margin-bottom: 3rem; text-align: center;">Complete Framework</h2>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <!-- Feature 1 -->
             <div class="card" style="border-top: 4px solid #3b82f6;">
                 <div class="card-body">
@@ -127,6 +127,19 @@
                         <li>File, Redis, Memory</li>
                         <li>Job workers</li>
                         <li>Retry logic</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 7 -->
+            <div class="card" style="border-top: 4px solid #14b8a6;">
+                <div class="card-body">
+                    <h3 style="color: #1e293b; font-weight: bold; margin-bottom: 0.5rem;">SFJS Library</h3>
+                    <p style="color: #64748b; margin-bottom: 1rem;">Lightweight JavaScript for AJAX, interactivity, and DOM manipulation.</p>
+                    <ul style="color: #64748b; font-size: 0.9rem;">
+                        <li>HTMX-like features</li>
+                        <li>Alpine-like reactivity</li>
+                        <li>8KB minified</li>
                     </ul>
                 </div>
             </div>
