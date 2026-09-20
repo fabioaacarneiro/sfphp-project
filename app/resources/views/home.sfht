@@ -1,22 +1,43 @@
 @extends('layouts.base')
 
 @block('content')
-<div class="container mx-auto p-4 pt-6 md:p-6 md:pt-12">
-    <div class="flex flex-col items-center">
-        <h1 class="text-6xl font-bold">{{ APP_NAME }}</h1>
-        <h2 class="text-3xl">Simple Framework PHP</h2>
-        <div class="bg-gray-200 rounded-2xl p-4 mt-4 md:p-6 md:mt-6">
-            <img width="500" src="{{ asset('images/php.png') }}" alt="php">
+<div class="hero">
+    <h1>{{ APP_NAME }}</h1>
+    <p>Simple Framework PHP 8.1+</p>
+    <img src="{{ asset('images/php.png') }}" alt="PHP Logo" class="php-logo" width="300">
+</div>
+
+<div class="content">
+    <div class="content-inner">
+        <h2 style="text-align: center; color: var(--primary); margin-bottom: 1rem;">Framework Educacional para Aprender PHP</h2>
+
+        <div class="feature-box">
+            <h2><i class="fas fa-code"></i> Código Limpo e Minimalista</h2>
+            <p>Sem dependências de produção. Apenas PHP 8.1+ puro. Perfeito para aprender arquitetura e padrões.</p>
         </div>
-    </div>
-    <div class="container mt-4 md:mt-6">
-        <div class="text-center">
-            <h3 class="text-2xl">Framework focado no aprendizado de PHP.</h3>
-            <p class="mt-2">
-                Um framework minimalista para quem quer usar php puro.
+
+        <div class="feature-box">
+            <h2><i class="fas fa-rocket"></i> Tudo Integrado</h2>
+            <p><strong>SFHT:</strong> Motor de templates nativo • <strong>SFCSS:</strong> Framework CSS minimalista • <strong>SFJS:</strong> JS reativo tipo Alpine.js</p>
+        </div>
+
+        <div class="feature-box">
+            <h2><i class="fas fa-wrench"></i> Ferramentas Completas</h2>
+            <p>CLI com 24 comandos, migrations com suporte MySQL e PostgreSQL, seeders, factories, cache, queue, JWT, CSRF, validação e muito mais.</p>
+        </div>
+
+        <div class="feature-box">
+            <h2><i class="fas fa-cube"></i> Pronto para Produção</h2>
+            <p>Router fluente, DI container com autowiring, query builder portável, error handling com JSON/HTML, testes integrados.</p>
+        </div>
+
+        <div style="text-align: center; margin-top: 3rem; padding-top: 2rem; border-top: 1px solid #e0e0e0;">
+            <p style="font-size: 0.95rem; color: #666;">
+                <a href="https://github.com/fabioaacarneiro/sfphp-project" style="color: var(--primary); text-decoration: none;">
+                    <i class="fab fa-github"></i> Ver no GitHub
+                </a>
             </p>
         </div>
     </div>
 </div>
-<div class="author text-center text-sm mt-4"><span class="author-name">Fabio Carneiro {{ date('Y') }} | ver. {{ APP_VERSION }}</span></div>
 @endblock

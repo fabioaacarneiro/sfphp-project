@@ -6,23 +6,112 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {!! csrf_meta() !!}
     <link rel="shortcut icon" href="{{ asset('images/logo_32.png') | escape }}" type="image/png">
-    <title>{{ $title | escape }}</title>
+    <title>{{ $title | escape }} — SFPHP</title>
     <!-- google fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@300;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <!-- sfcss framework -->
     <link rel="stylesheet" href="{{ asset('css/sfcss.css') }}">
     <!-- fontawesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" integrity="sha512-iBBXm8TSR98a5kVdGt9/gSrneJRuCL4UdzCXH04q6ixiN/iQulta/qwzFxE1a+QtQJntjeuGwV0QLpDXA732mA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVJkEZSMUkrQ6usKd8zTn0GyeajbakaUxyjDEDqhsTvCJsKoIaJLNcWBQwNYJc3yhmjOXRbUwtw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <!-- custom css -->
-    <link rel="stylesheet" href="{{ asset('app.css') }}">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 3rem 1rem;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin: 0 0 0.5rem 0;
+            letter-spacing: -1px;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            margin: 0;
+            opacity: 0.95;
+            font-weight: 300;
+        }
+
+        .php-logo {
+            max-width: 100%;
+            height: auto;
+            margin: 2rem 0;
+            filter: drop-shadow(0 10px 30px rgba(0,0,0,0.2));
+        }
+
+        .content {
+            background: white;
+            padding: 3rem 1rem;
+        }
+
+        .content-inner {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .feature-box {
+            background: #f8f9fa;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            margin: 2rem 0;
+            border-left: 4px solid var(--primary);
+        }
+
+        .feature-box h2 {
+            margin-top: 0;
+            color: var(--primary);
+        }
+
+        footer {
+            background: #2c3e50;
+            color: white;
+            text-align: center;
+            padding: 2rem 1rem;
+            font-size: 0.875rem;
+            margin-top: auto;
+        }
+
+        footer a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
 </head>
 <body>
-    @block('content')
-    @endblock
-    <!-- main app javascript -->
-    <script src="{{ asset('js/app.js') }}"></script>
+    <main>
+        @block('content')
+        @endblock
+    </main>
+
+    <footer>
+        <p><strong>SFPHP</strong> — Simple Framework educacional em PHP 8.1+</p>
+        <p>© Fabio Carneiro {{ date('Y') }} • v{{ APP_VERSION }} • <a href="https://github.com/fabioaacarneiro/sfphp-project">GitHub</a></p>
+    </footer>
+
     <!-- sfjs library -->
     <script src="{{ asset('js/sfjs.js') }}"></script>
 </body>
