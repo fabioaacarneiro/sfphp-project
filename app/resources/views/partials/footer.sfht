@@ -1,7 +1,7 @@
     <!-- SFJS Library for interactivity -->
-    <script src="<?= e(asset('js/sfjs.js')) ?>"></script>
+    <script src="/assets/js/sfjs.js"></script>
 
     <!-- Application JavaScript -->
-    <script src="<?= e(asset('js/app.js')) ?>"></script>
+    <script src="/assets/js/app.js"></script>
 </body>
 </html>
