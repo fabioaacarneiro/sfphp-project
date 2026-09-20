@@ -1,3 +1,39 @@
-/vendor/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Dependencies
+vendor/
+composer.lock
+
+# Environment
 .env
-.copilot-context.md
+.env.local
+.env.*.local
+
+# Cache and logs
+var/cache/
+var/logs/
+storage/
+tmp/
+/tmp/sfphp-*
+
+# Tests
+.phpunit.result.cache
+coverage/
+html/
+
+# Context files (local development context)
+context.md
+features-implemented.md
+
+# Node modules (for VSCode extension)
+node_modules/
+package-lock.json
+
+# Cache directories
+.claude/
