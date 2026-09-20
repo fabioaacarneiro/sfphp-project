@@ -3,12 +3,28 @@
 namespace SfphpProject\src;
 
 use InvalidArgumentException;
+use SfphpProject\src\View\SfhtEngine;
 
 /**
- * Renders application views and partials.
+ * Renders application views and partials using SFHT template engine.
  */
 final class View
 {
+    private static ?SfhtEngine $engine = null;
+
+    /**
+     * Get or create SFHT engine instance.
+     */
+    private static function engine(): SfhtEngine
+    {
+        if (self::$engine === null) {
+            $viewsPath = __DIR__ . '/../app/resources/views';
+            $cachePath = sys_get_temp_dir() . '/sfphp-sfht-cache';
+            self::$engine = new SfhtEngine([$viewsPath], $cachePath);
+        }
+        return self::$engine;
+    }
+
     /**
      * Render a view with the provided data.
      *
@@ -19,14 +35,17 @@ final class View
      */
     public static function render(
         string $view,
-        array $data
+        array $data = []
     ): void {
-        self::renderFile(
-            __DIR__ . '/../app/resources/views',
-            $view,
-            $data,
-            'View'
-        );
+        if (!preg_match('/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/', $view)) {
+            throw new InvalidArgumentException("View name \"$view\" is invalid.");
+        }
+
+        try {
+            echo self::engine()->render($view, $data);
+        } catch (\RuntimeException $e) {
+            throw new InvalidArgumentException("View $view not found: " . $e->getMessage());
+        }
     }
 
     /**
@@ -41,41 +60,14 @@ final class View
         string $view,
         array $data = []
     ): void {
-        self::renderFile(
-            __DIR__ . '/../app/resources/views/partials',
-            $view,
-            $data,
-            'Partial'
-        );
-    }
-
-    /**
-     * Render a PHP template from a trusted view directory.
-     *
-     * @param string $directory The base directory containing templates
-     * @param string $view The template name relative to the base directory
-     * @param array $data The data exposed to the template
-     * @param string $type The template type used in error messages
-     * @throws InvalidArgumentException If the template name is invalid or not found
-     * @return void
-     */
-    private static function renderFile(
-        string $directory,
-        string $view,
-        array $data,
-        string $type
-    ): void {
         if (!preg_match('/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/', $view)) {
-            throw new InvalidArgumentException("$type name \"$view\" is invalid.");
+            throw new InvalidArgumentException("Partial name \"$view\" is invalid.");
         }
 
-        $path = "$directory/$view.php";
-        if (!is_file($path)) {
-            throw new InvalidArgumentException("$type $view not found.");
+        try {
+            echo self::engine()->render("partials/$view", $data);
+        } catch (\RuntimeException $e) {
+            throw new InvalidArgumentException("Partial $view not found: " . $e->getMessage());
         }
-
-        extract($data, EXTR_SKIP);
-
-        require $path;
     }
 }
