@@ -5,6 +5,7 @@
 - [CLI e Geração de Código](#cli-e-geração-de-código)
 - [SFHT Template Engine](#sfht-template-engine)
 - [SFCSS Framework](#sfcss-framework)
+- [SFJS Library](#sfjs-library)
 - [Migrations e Schema Builder](#migrations-e-schema-builder)
 - [Roteamento](#roteamento)
 - [Controllers e Views](#controllers-e-views)
@@ -536,6 +537,197 @@ Arquivo `sfcss.config.json`:
   "transition": "all 0.3s ease"
 }
 ```
+
+---
+
+## SFJS Library
+
+**SFJS** (Simple Framework JavaScript) é uma biblioteca JavaScript minimalista tipo HTMX para AJAX, validação, e manipulação DOM sem dependências (~8KB).
+
+### Instalação
+
+```html
+<!-- No seu HTML -->
+<script src="/js/sfjs.js"></script>
+```
+
+### AJAX Declarativo
+
+Sem JavaScript customizado — use atributos HTML:
+
+```html
+<!-- GET request -->
+<button @hxGet="/api/data" @hxTarget="#content">
+  Load Data
+</button>
+
+<!-- POST request -->
+<form @hxPost="/submit" @hxTarget="#result" @hxSwap="outerHTML">
+  <input name="title" type="text">
+  <button type="submit">Save</button>
+</form>
+
+<!-- PUT/DELETE/PATCH -->
+<button @hxPut="/api/item/1" @hxTarget="#item">Update</button>
+<button @hxDelete="/api/item/1" @hxTarget="#item">Delete</button>
+```
+
+### Swap Strategies
+
+```html
+<!-- innerHTML (padrão) - substitui conteúdo -->
+<div @hxGet="/new" @hxTarget="#container" @hxSwap="innerHTML"></div>
+
+<!-- outerHTML - substitui elemento inteiro -->
+<div @hxGet="/new" @hxTarget="#container" @hxSwap="outerHTML"></div>
+
+<!-- beforebegin/afterbegin/beforeend/afterend -->
+<div @hxGet="/item" @hxSwap="beforeend"></div>
+```
+
+### Form Handling
+
+```html
+<!-- Form submit com AJAX -->
+<form @hxPost="/users" @hxTarget="#users-list">
+  <input name="name" type="text" @validate="required">
+  <input name="email" type="email" @validate="email">
+  <button type="submit">Create</button>
+</form>
+```
+
+### Validação Client-Side
+
+```html
+<!-- Validação automática em blur -->
+<input name="email" @validate="email">
+<input name="age" @validate="number">
+<input name="url" @validate="url">
+<input name="text" @validate="minLength:5">
+```
+
+**Regras disponíveis:**
+- `required` — Campo obrigatório
+- `email` — Email válido
+- `number` — Apenas dígitos
+- `url` — URL válida
+- `minLength:N` — Comprimento mínimo
+- `maxLength:N` — Comprimento máximo
+- `pattern:regex` — Expressão regular customizada
+
+### JavaScript API
+
+```javascript
+// AJAX manual
+sf.ajax.get('/api/data', {
+  target: '#content',
+  swap: 'innerHTML'
+});
+
+sf.ajax.post('/submit', { name: 'John' }, {
+  onSuccess: (html) => console.log('Done'),
+  onError: (error) => console.error(error)
+});
+
+// Form utilities
+const data = sf.form.serialize(document.querySelector('form'));
+sf.form.submit(formElement);
+
+// DOM manipulation
+sf.dom.addClass('element', 'active');
+sf.dom.removeClass('element', 'disabled');
+sf.dom.toggleClass('element', 'hidden');
+sf.dom.show('modal');
+sf.dom.hide('modal');
+
+// Event binding
+sf.dom.on('button', 'click', (e) => {
+  console.log('Clicked!');
+});
+
+// Storage
+sf.storage.set('user-id', 123);
+const userId = sf.storage.get('user-id');
+sf.storage.remove('user-id');
+sf.storage.clear();
+
+// Utilities
+const debounced = sf.util.debounce((value) => {
+  console.log('Search:', value);
+}, 300);
+
+const throttled = sf.util.throttle(() => {
+  console.log('Resized!');
+}, 500);
+
+// Wait for async
+await sf.util.wait(1000);
+console.log('Done waiting');
+```
+
+### Toggle/Show/Hide
+
+```html
+<!-- @toggle attribute -->
+<button @toggle="modal-id">
+  Open Modal
+</button>
+
+<div id="modal-id" style="display:none;">
+  Modal content
+</div>
+```
+
+### Exemplo Completo
+
+```html
+<!-- SfPHP SFJS Example -->
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="/css/sfcss.css">
+</head>
+<body>
+  <div class="container p-4">
+    <h1>Users</h1>
+    
+    <!-- Form create com validação -->
+    <form @hxPost="/users" @hxTarget="#users-list" class="card p-3 mb-4">
+      <div class="form-group">
+        <input name="name" @validate="required" placeholder="Name">
+      </div>
+      <div class="form-group">
+        <input name="email" @validate="email" placeholder="Email">
+      </div>
+      <button type="submit" class="btn btn-primary">Create</button>
+    </form>
+
+    <!-- List with AJAX refresh -->
+    <div id="users-list">
+      <div class="grid grid-cols-3">
+        <!-- Loaded via AJAX -->
+      </div>
+    </div>
+
+    <!-- Refresh button -->
+    <button @hxGet="/users" @hxTarget="#users-list" class="btn mt-3">
+      Refresh
+    </button>
+  </div>
+
+  <script src="/js/sfjs.js"></script>
+</body>
+</html>
+```
+
+### Auto-Initialization
+
+SFJS **não requer inicialização manual**:
+- Event listeners instalados automaticamente no DOMContentLoaded
+- Validação funciona sem setup
+- AJAX declarativa pronta para usar
+
+Basta incluir o script e usar os atributos `@hx*`.
 
 ---
 
