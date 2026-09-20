@@ -1,153 +1,198 @@
 @include('partials/header')
 
+<!-- Navigation -->
+<nav class="bg-white" style="border-bottom: 1px solid #e5e7eb; padding: 1rem;">
+    <div class="container" style="display: flex; justify-content: space-between;">
+        <h1 style="margin: 0; color: #3b82f6; font-weight: bold;">SFPHP</h1>
+        <div style="display: flex; gap: 2rem;">
+            <a href="/" style="color: #475569; text-decoration: none;">Features</a>
+            <a href="https://github.com" style="color: #3b82f6; text-decoration: none;">GitHub</a>
+        </div>
+    </div>
+</nav>
+
 <!-- Hero -->
-<section class="bg-gradient-to-r from-blue-600 to-purple-600 text-white" style="padding: 6rem 1rem; text-align: center;">
+<section style="background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 50%, #8b5cf6 100%); padding: 8rem 1rem; color: white; text-align: center;">
     <div class="container">
-        <h1 style="font-size: 3rem; font-weight: bold; margin-bottom: 1rem;">SFPHP Framework</h1>
-        <p style="font-size: 1.25rem; opacity: 0.95;">Modern. Educational. Zero Dependencies.</p>
+        <h1 style="font-size: 3.5rem; font-weight: bold; margin-bottom: 1rem;">Build Fast, Modern PHP Apps</h1>
+        <p style="font-size: 1.25rem; margin-bottom: 2rem; opacity: 0.95;">Zero dependencies. Production-ready.</p>
+        <div style="display: flex; gap: 1rem; justify-content: center;">
+            <a href="https://github.com" class="btn" style="background-color: white; color: #3b82f6; padding: 0.75rem 2rem; font-weight: bold; text-decoration: none; display: inline-block; border-radius: 0.5rem;">Get Started</a>
+            <a href="https://github.com" class="btn" style="background-color: rgba(255,255,255,0.2); color: white; padding: 0.75rem 2rem; font-weight: bold; text-decoration: none; display: inline-block; border-radius: 0.5rem; border: 2px solid white;">View on GitHub</a>
+        </div>
+    </div>
+</section>
+
+<!-- Stats -->
+<section class="bg-slate-50" style="padding: 3rem 1rem;">
+    <div class="container">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div style="text-align: center;">
+                <p style="font-size: 2.5rem; font-weight: bold; color: #3b82f6;">24</p>
+                <p style="color: #64748b;">CLI Commands</p>
+            </div>
+            <div style="text-align: center;">
+                <p style="font-size: 2.5rem; font-weight: bold; color: #22c55e;">100%</p>
+                <p style="color: #64748b;">MySQL + PG</p>
+            </div>
+            <div style="text-align: center;">
+                <p style="font-size: 2.5rem; font-weight: bold; color: #a855f7;">0</p>
+                <p style="color: #64748b;">Dependencies</p>
+            </div>
+            <div style="text-align: center;">
+                <p style="font-size: 2.5rem; font-weight: bold; color: #f59e0b;">8KB</p>
+                <p style="color: #64748b;">SFCSS</p>
+            </div>
+        </div>
     </div>
 </section>
 
 <!-- Features -->
-<section class="bg-slate-50" style="padding: 5rem 1rem;">
+<section style="padding: 5rem 1rem;">
     <div class="container">
-        <h2 style="text-align: center; margin-bottom: 3rem; color: #1e293b; font-weight: bold; font-size: 2rem;">What is Included</h2>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- CLI -->
-            <div class="card" style="border-left: 4px solid #3b82f6; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                <div class="card-header bg-blue-50 text-blue-900" style="border-bottom: 2px solid #3b82f6;">
-                    <h3 style="font-weight: bold; color: #1e40af;">CLI and Code Generation</h3>
-                </div>
-                <div class="card-body">
-                    <p style="font-weight: 600; color: #334155;">24 commands</p>
-                    <ul class="list-unstyled" style="color: #475569;">
-                        <li>• 11 Generators</li>
-                        <li>• 7 Migrations</li>
-                        <li>• 6 Utilities</li>
-                    </ul>
-                </div>
-            </div>
-
-            <!-- SFHT -->
-            <div class="card" style="border-left: 4px solid #22c55e; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                <div class="card-header bg-green-50 text-green-900" style="border-bottom: 2px solid #22c55e;">
-                    <h3 style="font-weight: bold; color: #15803d;">SFHT Templates</h3>
-                </div>
-                <div class="card-body">
-                    <p style="font-weight: 600; color: #334155;">Native Template Engine</p>
-                    <ul class="list-unstyled" style="color: #475569;">
-                        <li>• Control Flow</li>
-                        <li>• Template Inheritance</li>
-                        <li>• Filters & Variables</li>
-                    </ul>
-                </div>
-            </div>
-
-            <!-- SFCSS -->
-            <div class="card" style="border-left: 4px solid #a855f7; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                <div class="card-header bg-purple-50 text-purple-900" style="border-bottom: 2px solid #a855f7;">
-                    <h3 style="font-weight: bold; color: #7e22ce;">SFCSS Framework</h3>
-                </div>
-                <div class="card-body">
-                    <p style="font-weight: 600; color: #334155;">Minimalista CSS</p>
-                    <ul class="list-unstyled" style="color: #475569;">
-                        <li>• 8KB Pure CSS</li>
-                        <li>• 100+ Utilities</li>
-                        <li>• Responsive Design</li>
-                    </ul>
-                </div>
-            </div>
-
-            <!-- Schema -->
-            <div class="card" style="border-left: 4px solid #f59e0b; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                <div class="card-header bg-yellow-50 text-yellow-900" style="border-bottom: 2px solid #f59e0b;">
-                    <h3 style="font-weight: bold; color: #b45309;">Schema Builder</h3>
-                </div>
-                <div class="card-body">
-                    <p style="font-weight: 600; color: #334155;">Database Migrations</p>
-                    <ul class="list-unstyled" style="color: #475569;">
-                        <li>• 30 Column Types</li>
-                        <li>• Constraints & Indexes</li>
-                        <li>• MySQL & PostgreSQL</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Features Grid -->
-<section style="padding: 4rem 1rem;">
-    <div class="container">
-        <h2 style="text-align: center; margin-bottom: 3rem; color: #1e293b; font-weight: bold; font-size: 2rem;">Complete Toolkit</h2>
+        <h2 style="font-size: 2.5rem; font-weight: bold; color: #1e293b; margin-bottom: 3rem; text-align: center;">Complete Framework</h2>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div class="card" style="text-align: center; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);">
+            <!-- Feature 1 -->
+            <div class="card" style="border-top: 4px solid #3b82f6;">
                 <div class="card-body">
-                    <h4 style="color: #1e40af; font-weight: bold; font-size: 1.25rem; margin-bottom: 0.5rem;">🔒 Security</h4>
-                    <p style="color: #475569;">JWT, CSRF Protection, Validation</p>
+                    <h3 style="color: #1e293b; font-weight: bold; margin-bottom: 0.5rem;">CLI & Generators</h3>
+                    <p style="color: #64748b; margin-bottom: 1rem;">24 powerful commands for scaffolding controllers, models, and migrations.</p>
+                    <ul style="color: #64748b; font-size: 0.9rem;">
+                        <li>11 code generators</li>
+                        <li>7 migration commands</li>
+                        <li>Rapid scaffolding</li>
+                    </ul>
                 </div>
             </div>
 
-            <div class="card" style="text-align: center; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);">
+            <!-- Feature 2 -->
+            <div class="card" style="border-top: 4px solid #22c55e;">
                 <div class="card-body">
-                    <h4 style="color: #15803d; font-weight: bold; font-size: 1.25rem; margin-bottom: 0.5rem;">⚡ Performance</h4>
-                    <p style="color: #475569;">Caching, Optimization, Zero Deps</p>
+                    <h3 style="color: #1e293b; font-weight: bold; margin-bottom: 0.5rem;">SFHT Templates</h3>
+                    <p style="color: #64748b; margin-bottom: 1rem;">Native template engine with blocks, components, and elegant syntax.</p>
+                    <ul style="color: #64748b; font-size: 0.9rem;">
+                        <li>Control flow directives</li>
+                        <li>Template inheritance</li>
+                        <li>Built-in filters</li>
+                    </ul>
                 </div>
             </div>
 
-            <div class="card" style="text-align: center; background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);">
+            <!-- Feature 3 -->
+            <div class="card" style="border-top: 4px solid #a855f7;">
                 <div class="card-body">
-                    <h4 style="color: #7e22ce; font-weight: bold; font-size: 1.25rem; margin-bottom: 0.5rem;">📚 Educational</h4>
-                    <p style="color: #475569;">Learn PHP, SQL, Architecture</p>
+                    <h3 style="color: #1e293b; font-weight: bold; margin-bottom: 0.5rem;">SFCSS Framework</h3>
+                    <p style="color: #64748b; margin-bottom: 1rem;">Minimalista CSS with 620+ color utilities and responsive design.</p>
+                    <ul style="color: #64748b; font-size: 0.9rem;">
+                        <li>8.2KB pure CSS</li>
+                        <li>18 color families</li>
+                        <li>Fully responsive</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 4 -->
+            <div class="card" style="border-top: 4px solid #f59e0b;">
+                <div class="card-body">
+                    <h3 style="color: #1e293b; font-weight: bold; margin-bottom: 0.5rem;">Schema Builder</h3>
+                    <p style="color: #64748b; margin-bottom: 1rem;">Fluent, portable migrations with 30+ column types and constraints.</p>
+                    <ul style="color: #64748b; font-size: 0.9rem;">
+                        <li>MySQL 8.0+ support</li>
+                        <li>PostgreSQL 12+ support</li>
+                        <li>Full validation</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 5 -->
+            <div class="card" style="border-top: 4px solid #ec4899;">
+                <div class="card-body">
+                    <h3 style="color: #1e293b; font-weight: bold; margin-bottom: 0.5rem;">Security First</h3>
+                    <p style="color: #64748b; margin-bottom: 1rem;">Built-in protection with JWT, CSRF, validation, and rate limiting.</p>
+                    <ul style="color: #64748b; font-size: 0.9rem;">
+                        <li>JWT HS256 tokens</li>
+                        <li>CSRF protection</li>
+                        <li>Input validation</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 6 -->
+            <div class="card" style="border-top: 4px solid #06b6d4;">
+                <div class="card-body">
+                    <h3 style="color: #1e293b; font-weight: bold; margin-bottom: 0.5rem;">Cache & Queue</h3>
+                    <p style="color: #64748b; margin-bottom: 1rem;">High-performance caching and background job processing systems.</p>
+                    <ul style="color: #64748b; font-size: 0.9rem;">
+                        <li>File, Redis, Memory</li>
+                        <li>Job workers</li>
+                        <li>Retry logic</li>
+                    </ul>
                 </div>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Extras -->
-<section class="bg-slate-100" style="padding: 4rem 1rem;">
+<!-- Colors -->
+<section class="bg-slate-900 text-white" style="padding: 4rem 1rem;">
     <div class="container">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="card" style="text-align: center; border-top: 3px solid #3b82f6;">
-                <div class="card-body">
-                    <p style="font-weight: bold; color: #1e293b; font-size: 1.1rem;">💾 Cache</p>
-                    <p style="color: #475569; font-size: 0.9rem;">File, Memory, Redis</p>
-                </div>
+        <h2 style="font-size: 2rem; font-weight: bold; margin-bottom: 1rem; text-align: center;">18 Color Families</h2>
+        <p style="text-align: center; opacity: 0.9; margin-bottom: 2rem;">620+ color utilities for complete design flexibility</p>
+
+        <div class="grid grid-cols-3 md:grid-cols-6 gap-2">
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 60px; background-color: #3b82f6; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.8rem;">Blue</p>
             </div>
-            <div class="card" style="text-align: center; border-top: 3px solid #22c55e;">
-                <div class="card-body">
-                    <p style="font-weight: bold; color: #1e293b; font-size: 1.1rem;">📨 Queue</p>
-                    <p style="color: #475569; font-size: 0.9rem;">Database, Redis, Sync</p>
-                </div>
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 60px; background-color: #22c55e; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.8rem;">Green</p>
             </div>
-            <div class="card" style="text-align: center; border-top: 3px solid #a855f7;">
-                <div class="card-body">
-                    <p style="font-weight: bold; color: #1e293b; font-size: 1.1rem;">🌱 Seeders</p>
-                    <p style="color: #475569; font-size: 0.9rem;">Data Fixtures</p>
-                </div>
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 60px; background-color: #a855f7; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.8rem;">Purple</p>
             </div>
-            <div class="card" style="text-align: center; border-top: 3px solid #f59e0b;">
-                <div class="card-body">
-                    <p style="font-weight: bold; color: #1e293b; font-size: 1.1rem;">✨ SFJS</p>
-                    <p style="color: #475569; font-size: 0.9rem;">AJAX and DOM</p>
-                </div>
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 60px; background-color: #06b6d4; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.8rem;">Cyan</p>
+            </div>
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 60px; background-color: #f59e0b; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.8rem;">Amber</p>
+            </div>
+            <div style="text-align: center;">
+                <div style="width: 100%; height: 60px; background-color: #ec4899; border-radius: 0.5rem; margin-bottom: 0.5rem;"></div>
+                <p style="font-size: 0.8rem;">Pink</p>
             </div>
         </div>
     </div>
 </section>
 
 <!-- CTA -->
-<section class="bg-gradient-to-r from-slate-800 to-slate-900 text-white" style="padding: 4rem 1rem; text-align: center;">
-    <div class="container">
-        <h2 style="font-size: 2.5rem; font-weight: bold; margin-bottom: 1rem;">Get Started Today</h2>
-        <p style="font-size: 1.1rem; opacity: 0.9; margin-bottom: 2rem;">Build modern PHP applications with SFPHP</p>
-        <a href="https://github.com/fabioaacarneiro/sfphp-project" class="btn btn-primary" style="padding: 0.75rem 2rem; font-weight: bold; background-color: #3b82f6; border: none; display: inline-block;">
-            View on GitHub →
-        </a>
+<section style="padding: 6rem 1rem; background: linear-gradient(135deg, #dbeafe 0%, #e9d5ff 100%);">
+    <div class="container" style="text-align: center; max-width: 700px; margin: 0 auto;">
+        <h2 style="font-size: 2.5rem; font-weight: bold; color: #1e293b; margin-bottom: 1rem;">Ready to Build?</h2>
+        <p style="font-size: 1.1rem; color: #475569; margin-bottom: 2rem;">Start building modern PHP applications today. Zero setup, full power.</p>
+        <div style="display: flex; gap: 1rem; justify-content: center;">
+            <a href="https://github.com" class="btn" style="background-color: #3b82f6; color: white; padding: 1rem 2rem; font-weight: bold; text-decoration: none; display: inline-block; border-radius: 0.5rem;">Star on GitHub</a>
+            <a href="https://github.com" class="btn" style="background-color: white; color: #3b82f6; padding: 1rem 2rem; font-weight: bold; text-decoration: none; display: inline-block; border-radius: 0.5rem; border: 2px solid #3b82f6;">Read Docs</a>
+        </div>
     </div>
 </section>
+
+<!-- Footer -->
+<footer class="bg-slate-900 text-white" style="padding: 3rem 1rem; text-align: center; border-top: 1px solid #334155;">
+    <div class="container">
+        <h3 style="margin: 0 0 1rem 0;">SFPHP Framework</h3>
+        <p style="opacity: 0.7; margin: 0.5rem 0;">Modern, Educational, Zero Dependencies</p>
+        <div style="display: flex; justify-content: center; gap: 2rem; margin-top: 1rem; margin-bottom: 2rem;">
+            <a href="https://github.com" style="color: #93c5fd; text-decoration: none;">GitHub</a>
+            <a href="https://github.com" style="color: #93c5fd; text-decoration: none;">Documentation</a>
+            <a href="https://github.com" style="color: #93c5fd; text-decoration: none;">Issues</a>
+        </div>
+        <p style="opacity: 0.5; font-size: 0.9rem; margin: 0;">Made with love by Fabio Carneiro - 2026</p>
+    </div>
+</footer>
 
 @include('partials/footer')
