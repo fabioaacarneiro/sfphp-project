@@ -2,7 +2,7 @@
 
 namespace SfPhp\Database;
 
-class Seeder
+abstract class Seeder
 {
     protected function call(string|array $seeders): void
     {
