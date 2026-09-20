@@ -173,6 +173,10 @@ SQL puro e bindings.
 
 Ao optar pelo SFPHP, você estará utilizando um framework que valoriza o aprendizado do PHP puro, exigindo conhecimento em SQL e promovendo a compreensão de como as funcionalidades básicas operam. Ele oferece a flexibilidade necessária para que o desenvolvedor implemente suas próprias soluções, sem as restrições de frameworks mais pesados e complexos.
 
+## Documentação Completa
+
+Para documentação completa de todas as features, comandos e exemplos, veja [DOCUMENTATION.md](docs/DOCUMENTATION.md).
+
 ## Segurança
 
 SFPHP oferece recursos nativos para geração de JWT, pré sanitização das *super globais* **$_GET** e **$_POST**, ainda assim, você é livre para implementar medidas mais seguras e necessárias baseando em suas necessidades.
