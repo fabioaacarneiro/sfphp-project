@@ -22,9 +22,11 @@
         @endblock
     </main>
 
-    <footer>
-        <p><strong>SFPHP</strong> — Simple Framework educacional em PHP 8.1+</p>
-        <p>© Fabio Carneiro {{ date('Y') }} • v{{ APP_VERSION }} • <a href="https://github.com/fabioaacarneiro/sfphp-project">GitHub</a></p>
+    <footer style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: #cbd5e1; text-align: center; padding: 3rem 1rem; font-size: 0.875rem; margin-top: auto; border-top: 1px solid #334155;">
+        <div class="container">
+            <p style="margin: 0.5rem 0;"><strong style="color: white; font-weight: 600;">SFPHP</strong> — Simple Framework educacional em PHP 8.1+</p>
+            <p style="margin: 0.5rem 0; font-size: 0.8rem;">© Fabio Carneiro {{ date('Y') }} • v{{ APP_VERSION }} • <a href="https://github.com/fabioaacarneiro/sfphp-project" style="color: #667eea; text-decoration: none; transition: color 0.2s;">GitHub</a></p>
+        </div>
     </footer>
 
     <!-- SFJS Library -->
