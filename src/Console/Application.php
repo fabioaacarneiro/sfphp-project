@@ -2,6 +2,10 @@
 
 namespace SfphpProject\src\Console;
 
+use SfphpProject\src\Console\Generators\ControllerGenerator;
+use SfphpProject\src\Console\Generators\ModelGenerator;
+use SfphpProject\src\Console\Generators\RepositoryGenerator;
+use SfphpProject\src\Console\Generators\ServiceGenerator;
 use SfphpProject\src\Database;
 use SfphpProject\src\Migrations\MigrationCreator;
 use SfphpProject\src\Migrations\MigrationRunner;
@@ -36,6 +40,11 @@ final class Application
             return match ($command) {
                 'help', '--help', '-h' => $this->printHelp(),
                 'make:migration' => $this->makeMigration($arguments),
+                'make:controller' => $this->makeController($arguments),
+                'make:model' => $this->makeModel($arguments),
+                'make:repository' => $this->makeRepository($arguments),
+                'make:service' => $this->makeService($arguments),
+                'make:scaffold' => $this->makeScaffold($arguments),
                 'migrate' => $this->migrate($arguments),
                 'rollback' => $this->rollback($arguments),
                 'status' => $this->status($arguments),
@@ -57,13 +66,25 @@ final class Application
     {
         $this->writeLine('SFPHP CLI');
         $this->writeLine('');
-        $this->writeLine('Usage: ./sfphp <command> [options]');
+        $this->writeLine('Usage: ./sfphp <command> [arguments]');
         $this->writeLine('');
-        $this->writeLine('Commands:');
+        $this->writeLine('Generation Commands:');
+        $this->writeLine('  make:controller <name>     Generate a controller skeleton');
+        $this->writeLine('  make:model <name>          Generate a model skeleton');
+        $this->writeLine('  make:repository <name>     Generate a repository skeleton');
+        $this->writeLine('  make:service <name>        Generate a service skeleton');
+        $this->writeLine('  make:scaffold <name>       Generate full stack (controller, model, repository, service)');
+        $this->writeLine('');
+        $this->writeLine('Migration Commands:');
         $this->writeLine('  make:migration <name> [--path=database/migrations]');
-        $this->writeLine('  migrate [--path=database/migrations] [--step=1]');
-        $this->writeLine('  rollback [--path=database/migrations] [--step=1]');
+        $this->writeLine('  migrate [--path=database/migrations] [--step=N]');
+        $this->writeLine('  rollback [--path=database/migrations] [--step=N]');
         $this->writeLine('  status [--path=database/migrations]');
+        $this->writeLine('');
+        $this->writeLine('Examples:');
+        $this->writeLine('  ./sfphp make:controller Post');
+        $this->writeLine('  ./sfphp make:scaffold User');
+        $this->writeLine('  ./sfphp migrate --step=2');
 
         return 0;
     }
@@ -174,6 +195,128 @@ final class Application
         $this->writeLine('Run "./sfphp help" to see available commands.');
 
         return 1;
+    }
+
+    /**
+     * Generate a controller.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makeController(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('Controller name is required.');
+        }
+
+        $generator = new ControllerGenerator($this->rootPath());
+        $file = $generator->generate($name);
+
+        $this->writeLine('Created controller: ' . $this->relativePath($file));
+
+        return 0;
+    }
+
+    /**
+     * Generate a model.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makeModel(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('Model name is required.');
+        }
+
+        $generator = new ModelGenerator($this->rootPath());
+        $file = $generator->generate($name);
+
+        $this->writeLine('Created model: ' . $this->relativePath($file));
+
+        return 0;
+    }
+
+    /**
+     * Generate a repository.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makeRepository(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('Repository name is required.');
+        }
+
+        $generator = new RepositoryGenerator($this->rootPath());
+        $file = $generator->generate($name);
+
+        $this->writeLine('Created repository: ' . $this->relativePath($file));
+
+        return 0;
+    }
+
+    /**
+     * Generate a service.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makeService(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('Service name is required.');
+        }
+
+        $generator = new ServiceGenerator($this->rootPath());
+        $file = $generator->generate($name);
+
+        $this->writeLine('Created service: ' . $this->relativePath($file));
+
+        return 0;
+    }
+
+    /**
+     * Generate a full stack (controller, model, repository, service).
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makeScaffold(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('Name is required.');
+        }
+
+        $this->writeLine('Creating full stack for ' . $name . '...');
+        $this->writeLine('');
+
+        $controller = new ControllerGenerator($this->rootPath());
+        $controllerFile = $controller->generate($name);
+        $this->writeLine('✓ Created controller: ' . $this->relativePath($controllerFile));
+
+        $model = new ModelGenerator($this->rootPath());
+        $modelFile = $model->generate($name);
+        $this->writeLine('✓ Created model: ' . $this->relativePath($modelFile));
+
+        $repository = new RepositoryGenerator($this->rootPath());
+        $repositoryFile = $repository->generate($name);
+        $this->writeLine('✓ Created repository: ' . $this->relativePath($repositoryFile));
+
+        $service = new ServiceGenerator($this->rootPath());
+        $serviceFile = $service->generate($name);
+        $this->writeLine('✓ Created service: ' . $this->relativePath($serviceFile));
+
+        $this->writeLine('');
+        $this->writeLine('Full stack created successfully!');
+
+        return 0;
     }
 
     /**
