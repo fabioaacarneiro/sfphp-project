@@ -361,6 +361,8 @@ $engine->setGlobals([
 
 **SFCSS** (Simple Framework CSS) é um framework CSS minimalista e customizável, combinando a simplicidade do Pico CSS com a flexibilidade do Tailwind.
 
+> 📖 **[Documentação Completa do SFCSS →](SFCSS_DOCUMENTATION.md)** com todas as classes, componentes, utilitários e breakpoints responsivos.
+
 ### Características
 
 - **Minimalista:** ~8KB gzipped, sem bloat
