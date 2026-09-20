@@ -3,10 +3,15 @@
 namespace SfphpProject\src\Console;
 
 use SfphpProject\src\Console\Generators\ControllerGenerator;
+use SfphpProject\src\Console\Generators\EventGenerator;
+use SfphpProject\src\Console\Generators\ListenerGenerator;
+use SfphpProject\src\Console\Generators\MiddlewareGenerator;
 use SfphpProject\src\Console\Generators\ModelGenerator;
+use SfphpProject\src\Console\Generators\PolicyGenerator;
 use SfphpProject\src\Console\Generators\RepositoryGenerator;
 use SfphpProject\src\Console\Generators\RequestGenerator;
 use SfphpProject\src\Console\Generators\ServiceGenerator;
+use SfphpProject\src\Console\Generators\TestGenerator;
 use SfphpProject\src\Database;
 use SfphpProject\src\Migrations\MigrationCreator;
 use SfphpProject\src\Migrations\MigrationRunner;
@@ -53,9 +58,16 @@ final class Application
                 'make:request' => $this->makeRequest($arguments),
                 'make:service' => $this->makeService($arguments),
                 'make:scaffold' => $this->makeScaffold($arguments),
+                'make:test' => $this->makeTest($arguments),
+                'make:middleware' => $this->makeMiddleware($arguments),
+                'make:event' => $this->makeEvent($arguments),
+                'make:listener' => $this->makeListener($arguments),
+                'make:policy' => $this->makePolicy($arguments),
                 'migrate' => $this->migrate($arguments),
                 'rollback' => $this->rollback($arguments),
                 'status' => $this->status($arguments),
+                'db:seed' => $this->dbSeed($arguments),
+                'db:fresh' => $this->dbFresh($arguments),
                 default => $this->unknownCommand($command),
             };
         } catch (Throwable $throwable) {
@@ -166,7 +178,13 @@ final class Application
         $this->writeLine('  make:model <name>          Generate a model skeleton');
         $this->writeLine('  make:repository <name>     Generate a repository skeleton');
         $this->writeLine('  make:service <name>        Generate a service skeleton');
+        $this->writeLine('  make:request <name>        Generate a form request validation class');
         $this->writeLine('  make:scaffold <name>       Generate full stack (controller, model, repository, service)');
+        $this->writeLine('  make:test <name>           Generate a test class');
+        $this->writeLine('  make:middleware <name>     Generate a middleware class');
+        $this->writeLine('  make:event <name>          Generate an event class');
+        $this->writeLine('  make:listener <name>       Generate an event listener');
+        $this->writeLine('  make:policy <name>         Generate an authorization policy');
         $this->writeLine('');
         $this->writeLine('Migration Commands:');
         $this->writeLine('  make:migration <name>            [--path=database/migrations]');
@@ -175,22 +193,28 @@ final class Application
         $this->writeLine('  rollback                         [--path=database/migrations] [--step=N]');
         $this->writeLine('  status                           [--path=database/migrations]');
         $this->writeLine('');
-        $this->writeLine('Server & Database Commands:');
-        $this->writeLine('  serve                 Start development server (localhost:8000)');
-        $this->writeLine('  env:example           Create .env from .env-example');
-        $this->writeLine('  routes                List all registered routes');
+        $this->writeLine('Database Commands:');
+        $this->writeLine('  db:seed                    Run database seeders');
+        $this->writeLine('  db:fresh                   Reset database and run migrations');
+        $this->writeLine('');
+        $this->writeLine('Server & Development:');
+        $this->writeLine('  serve                      Start development server (localhost:8000)');
+        $this->writeLine('  env:example                Create .env from .env-example');
+        $this->writeLine('  routes                     List all registered routes');
+        $this->writeLine('  tinker                     Interactive PHP shell');
         $this->writeLine('');
         $this->writeLine('Utility Commands:');
-        $this->writeLine('  list                  Show all available commands');
-        $this->writeLine('  version               Show framework version');
-        $this->writeLine('  help [command]        Show help for a command');
+        $this->writeLine('  list                       Show all available commands');
+        $this->writeLine('  version                    Show framework version');
+        $this->writeLine('  help [command]             Show help for a command');
         $this->writeLine('');
         $this->writeLine('Examples:');
-        $this->writeLine('  ./sfphp make:controller Post');
-        $this->writeLine('  ./sfphp make:scaffold User');
+        $this->writeLine('  ./sfphp make:scaffold Post');
+        $this->writeLine('  ./sfphp make:test PostTest');
+        $this->writeLine('  ./sfphp migrate');
+        $this->writeLine('  ./sfphp db:fresh');
         $this->writeLine('  ./sfphp serve');
-        $this->writeLine('  ./sfphp routes');
-        $this->writeLine('  ./sfphp help migrate');
+        $this->writeLine('  ./sfphp tinker');
 
         return 0;
     }
@@ -756,6 +780,170 @@ PHP;
         $this->writeLine($label . ':');
         foreach ($items as $item) {
             $this->writeLine('  - ' . $item);
+        }
+    }
+
+    /**
+     * Generate a test class.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makeTest(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('Test name is required.');
+        }
+
+        $generator = new TestGenerator($this->rootPath());
+        $file = $generator->generate($name);
+
+        $this->writeLine('Created test: ' . $this->relativePath($file));
+
+        return 0;
+    }
+
+    /**
+     * Generate a middleware class.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makeMiddleware(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('Middleware name is required.');
+        }
+
+        $generator = new MiddlewareGenerator($this->rootPath());
+        $file = $generator->generate($name);
+
+        $this->writeLine('Created middleware: ' . $this->relativePath($file));
+
+        return 0;
+    }
+
+    /**
+     * Generate an event class.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makeEvent(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('Event name is required.');
+        }
+
+        $generator = new EventGenerator($this->rootPath());
+        $file = $generator->generate($name);
+
+        $this->writeLine('Created event: ' . $this->relativePath($file));
+
+        return 0;
+    }
+
+    /**
+     * Generate an event listener class.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makeListener(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('Listener name is required.');
+        }
+
+        $generator = new ListenerGenerator($this->rootPath());
+        $file = $generator->generate($name);
+
+        $this->writeLine('Created listener: ' . $this->relativePath($file));
+
+        return 0;
+    }
+
+    /**
+     * Generate a policy class.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makePolicy(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('Policy name is required.');
+        }
+
+        $generator = new PolicyGenerator($this->rootPath());
+        $file = $generator->generate($name);
+
+        $this->writeLine('Created policy: ' . $this->relativePath($file));
+
+        return 0;
+    }
+
+    /**
+     * Run database seeders.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function dbSeed(array $arguments): int
+    {
+        $seedPath = $this->projectPath('database/seeders');
+
+        if (!is_dir($seedPath)) {
+            $this->writeLine('No seeders directory found.');
+            return 0;
+        }
+
+        $files = array_diff(scandir($seedPath), ['.', '..']);
+        if (empty($files)) {
+            $this->writeLine('No seeders found.');
+            return 0;
+        }
+
+        $this->writeLine('Seeders found:');
+        foreach ($files as $file) {
+            if (str_ends_with($file, '.php')) {
+                $this->writeLine('  - ' . $file);
+            }
+        }
+
+        $this->writeLine('To run a seeder, create a seeder class in database/seeders/');
+        $this->writeLine('Example: ./sfphp make:seeder UsersSeeder (not yet implemented)');
+
+        return 0;
+    }
+
+    /**
+     * Reset the database and run migrations.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function dbFresh(array $arguments): int
+    {
+        try {
+            $runner = $this->runner($arguments);
+            $runner->fresh();
+
+            $this->writeLine('Database dropped and recreated successfully.');
+            $this->writeLine('Running migrations...');
+
+            $applied = $runner->migrate();
+            $this->printResult($applied, 'No migrations were applied.', 'Applied');
+
+            return 0;
+        } catch (Throwable $e) {
+            $this->writeLine('Error: ' . $e->getMessage());
+            return 1;
         }
     }
 

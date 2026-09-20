@@ -79,6 +79,16 @@ final class MigrationRepository
     }
 
     /**
+     * Clear all migration records (used by db:fresh).
+     *
+     * @return void
+     */
+    public function clear(): void
+    {
+        $this->pdo->exec('DELETE FROM migrations');
+    }
+
+    /**
      * Get all applied migrations.
      *
      * @return array<int, array{migration: string, batch: int, applied_at: string}>
