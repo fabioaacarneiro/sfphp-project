@@ -363,92 +363,130 @@ php public/css/sfcss-builder.php > public/css/sfcss.css
 
 ### Componentes
 
-#### Buttons
+#### Buttons com SFJS
 
-```html
+```sfpt
+<!-- Botões com interações AJAX -->
 <button class="btn">Default</button>
-<button class="btn btn-primary">Primary</button>
-<button class="btn btn-success">Success</button>
-<button class="btn btn-danger">Danger</button>
+<button class="btn btn-primary" @hxGet="/api/data" @hxTarget="#content">Load Data</button>
+<button class="btn btn-success" @hxPost="/posts" @hxTarget="#posts-list">Create Post</button>
+<button class="btn btn-danger" @hxDelete="/item/1">Delete</button>
+
+<!-- Botões com tamanhos -->
 <button class="btn btn-sm">Small</button>
+<button class="btn">Regular</button>
 <button class="btn btn-lg">Large</button>
+
+<!-- Botão desabilitado -->
 <button class="btn" disabled>Disabled</button>
+
+<!-- Botão com toggle -->
+<button class="btn btn-primary" @toggle="modal">Open Modal</button>
 ```
 
-#### Forms
+#### Forms com SFHT
 
-```html
-<div class="form-group">
-  <label class="form-label">Email</label>
-  <input type="email" placeholder="user@example.com">
-</div>
+```sfpt
+<!-- Form com validação SFJS integrada -->
+<form @hxPost="/users" @hxTarget="#users-list" class="card p-4 mb-4">
+  <div class="form-group">
+    <label class="form-label">Name</label>
+    <input type="text" name="name" @validate="required" placeholder="John Doe">
+  </div>
 
-<div class="form-group">
-  <label class="form-label">Message</label>
-  <textarea placeholder="Your message..."></textarea>
-</div>
+  <div class="form-group">
+    <label class="form-label">Email</label>
+    <input type="email" name="email" @validate="email" placeholder="user@example.com">
+  </div>
 
-<div class="form-group">
-  <label class="form-label">Country</label>
-  <select>
-    <option>Select...</option>
-    <option>Brazil</option>
-    <option>USA</option>
-  </select>
-</div>
+  <div class="form-group">
+    <label class="form-label">Country</label>
+    <select name="country">
+      <option value="">Select...</option>
+      @foreach($countries as $code => $name)
+        <option value="{{ $code }}">{{ $name }}</option>
+      @endforeach
+    </select>
+  </div>
+
+  <button type="submit" class="btn btn-primary">Submit</button>
+</form>
 ```
 
-#### Cards
+#### Cards com SFHT
 
-```html
-<div class="card">
-  <div class="card-header">
-    Card Title
+```sfpt
+<!-- Cards dinâmicas com dados -->
+@foreach($posts as $post)
+  <div class="card mb-3">
+    <div class="card-header">
+      <h3>{{ $post->title | truncate(50) }}</h3>
+    </div>
+    <div class="card-body">
+      <p>{{ $post->excerpt }}</p>
+      <small class="text-muted">By {{ $post->author->name }}</small>
+    </div>
+    <div class="card-footer">
+      <a href="/posts/{{ $post->id }}" class="btn btn-primary btn-sm">Read More</a>
+      <button @hxDelete="/posts/{{ $post->id }}" class="btn btn-danger btn-sm">Delete</button>
+    </div>
   </div>
-  <div class="card-body">
-    Card content goes here
-  </div>
-  <div class="card-footer">
-    Card footer
-  </div>
-</div>
+@endforeach
 ```
 
-#### Grid
+#### Grid com SFHT
 
-```html
-<!-- Auto responsive -->
-<div class="grid">
-  <div>Item 1</div>
-  <div>Item 2</div>
-  <div>Item 3</div>
-</div>
-
-<!-- Fixed columns -->
+```sfpt
+<!-- Grid responsiva com dados dinâmicos -->
 <div class="grid grid-cols-3">
-  <div>Col 1</div>
-  <div>Col 2</div>
-  <div>Col 3</div>
+  @foreach($products as $product)
+    <div class="card">
+      <img src="{{ $product->image }}" alt="{{ $product->name }}" style="width:100%; height:200px; object-fit:cover;">
+      <div class="card-body">
+        <h4>{{ $product->name }}</h4>
+        <p class="text-sm text-muted">{{ $product->description | truncate(80) }}</p>
+        <strong class="text-lg text-primary">${{ $product->price }}</strong>
+      </div>
+      <div class="card-footer">
+        <button @hxPost="/cart" @hxVals="{ product_id: {{ $product->id }} }" 
+                class="btn btn-primary w-100">Add to Cart</button>
+      </div>
+    </div>
+  @endforeach
 </div>
 ```
 
-#### Tables
+#### Tables com SFHT
 
-```html
+```sfpt
+<!-- Tabela dinâmica com dados do controller -->
 <table>
   <thead>
     <tr>
       <th>Name</th>
       <th>Email</th>
       <th>Status</th>
+      <th>Actions</th>
     </tr>
   </thead>
   <tbody>
-    <tr>
-      <td>John</td>
-      <td>john@example.com</td>
-      <td><span class="badge badge-success">Active</span></td>
-    </tr>
+    @foreach($users as $user)
+      <tr>
+        <td>{{ $user->name }}</td>
+        <td>{{ $user->email }}</td>
+        <td>
+          @if($user->is_active)
+            <span class="badge badge-success">Active</span>
+          @else
+            <span class="badge">Inactive</span>
+          @endif
+        </td>
+        <td>
+          <button @hxDelete="/users/{{ $user->id }}" @hxConfirm="Delete user?" 
+                  class="btn btn-sm btn-danger">Delete</button>
+        </td>
+      </tr>
+    @endforeach
   </tbody>
 </table>
 ```
@@ -461,6 +499,110 @@ php public/css/sfcss-builder.php > public/css/sfcss.css
 <div class="alert alert-danger">Danger alert</div>
 <div class="alert alert-warning">Warning alert</div>
 ```
+
+### Exemplo Completo — SFHT + SFCSS + SFJS
+
+```sfpt
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Users Dashboard</title>
+  <link rel="stylesheet" href="/css/sfcss.css">
+</head>
+<body>
+  <div class="container p-4">
+    <h1>Users Management</h1>
+
+    <!-- Form criar usuário com validação SFJS -->
+    <form @hxPost="/users" @hxTarget="#users-table" class="card p-4 mb-4">
+      <h2 class="mb-3">New User</h2>
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input type="text" name="name" @validate="required" placeholder="Full Name">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" name="email" @validate="email" placeholder="user@example.com">
+      </div>
+      <button type="submit" class="btn btn-primary">Create User</button>
+    </form>
+
+    <!-- Tabela com dados dinâmicos e AJAX actions -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Users List</h2>
+      </div>
+      <div class="card-body">
+        <table id="users-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @foreach($users as $user)
+              <tr>
+                <td>{{ $user->name }}</td>
+                <td>{{ $user->email }}</td>
+                <td>
+                  @if($user->is_active)
+                    <span class="badge badge-success">Active</span>
+                  @else
+                    <span class="badge badge-warning">Inactive</span>
+                  @endif
+                </td>
+                <td>
+                  <button @hxPut="/users/{{ $user->id }}" 
+                          @hxTarget="closest tr" @hxSwap="outerHTML"
+                          class="btn btn-sm">Edit</button>
+                  <button @hxDelete="/users/{{ $user->id }}" 
+                          @hxTarget="closest tr" @hxSwap="outerHTML"
+                          class="btn btn-sm btn-danger">Delete</button>
+                </td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Grid de estatísticas -->
+    <div class="grid grid-cols-3 mt-4">
+      <div class="card">
+        <div class="card-body text-center">
+          <h3 class="text-2xl font-bold text-primary">{{ $total_users }}</h3>
+          <p class="text-sm text-muted">Total Users</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body text-center">
+          <h3 class="text-2xl font-bold text-success">{{ $active_users }}</h3>
+          <p class="text-sm text-muted">Active</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body text-center">
+          <h3 class="text-2xl font-bold text-warning">{{ $inactive_users }}</h3>
+          <p class="text-sm text-muted">Inactive</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/sfjs.js"></script>
+</body>
+</html>
+```
+
+**O que está acontecendo aqui:**
+- **SFHT:** `@foreach`, `@if/@else`, variáveis com `{{ }}`
+- **SFCSS:** Classes `.btn`, `.card`, `.grid`, `.badge`, `.form-group`
+- **SFJS:** `@hxPost`, `@hxDelete`, `@hxPut` com `@hxTarget` e `@hxSwap`, `@validate` no input
+
+Tudo integrado, sem JavaScript customizado!
 
 ### Utilidades
 
