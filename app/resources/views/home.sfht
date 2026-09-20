@@ -175,8 +175,8 @@
         <h2 style="font-size: 2.5rem; font-weight: bold; color: #1e293b; margin-bottom: 1rem;">Ready to Build?</h2>
         <p style="font-size: 1.1rem; color: #475569; margin-bottom: 2rem;">Start building modern PHP applications today. Zero setup, full power.</p>
         <div style="display: flex; gap: 1rem; justify-content: center;">
-            <a href="https://github.com" class="btn" style="background-color: #3b82f6; color: white; padding: 1rem 2rem; font-weight: bold; text-decoration: none; display: inline-block; border-radius: 0.5rem;">Star on GitHub</a>
-            <a href="https://github.com" class="btn" style="background-color: white; color: #3b82f6; padding: 1rem 2rem; font-weight: bold; text-decoration: none; display: inline-block; border-radius: 0.5rem; border: 2px solid #3b82f6;">Read Docs</a>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project" class="btn" style="background-color: #3b82f6; color: white; padding: 1rem 2rem; font-weight: bold; text-decoration: none; display: inline-block; border-radius: 0.5rem;">Star on GitHub</a>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/DOCUMENTATION.md" class="btn" style="background-color: white; color: #3b82f6; padding: 1rem 2rem; font-weight: bold; text-decoration: none; display: inline-block; border-radius: 0.5rem; border: 2px solid #3b82f6;">Read Docs</a>
         </div>
     </div>
 </section>
@@ -187,9 +187,9 @@
         <h3 style="margin: 0 0 1rem 0;">SFPHP Framework</h3>
         <p style="opacity: 0.7; margin: 0.5rem 0;">Modern, Educational, Zero Dependencies</p>
         <div style="display: flex; justify-content: center; gap: 2rem; margin-top: 1rem; margin-bottom: 2rem;">
-            <a href="https://github.com" style="color: #93c5fd; text-decoration: none;">GitHub</a>
-            <a href="https://github.com" style="color: #93c5fd; text-decoration: none;">Documentation</a>
-            <a href="https://github.com" style="color: #93c5fd; text-decoration: none;">Issues</a>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project" style="color: #93c5fd; text-decoration: none;">GitHub</a>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/DOCUMENTATION.md" style="color: #93c5fd; text-decoration: none;">Documentation</a>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project/issues" style="color: #93c5fd; text-decoration: none;">Issues</a>
         </div>
         <p style="opacity: 0.5; font-size: 0.9rem; margin: 0;">Made with love by Fabio Carneiro - 2026</p>
     </div>

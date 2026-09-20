@@ -10,9 +10,9 @@ class MainController extends BaseController
     public function index()
     {
         $data = [
-            "title" => "FSPHP",
+            "title" => "SFPHP - Modern PHP Framework",
         ];
-        
+
         View::render("home", $data);
     }
 }
