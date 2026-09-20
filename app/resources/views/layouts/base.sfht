@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@block('title')SFPHP Framework@endblock</title>
+    <link rel="stylesheet" href="<?= asset('css/sfcss.css') ?>">
+    <link rel="stylesheet" href="<?= asset('css/app.css') ?>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    @block('head')@endblock
+</head>
+<body>
+    <main class="d-flex flex-column" style="min-height: 100vh;">
+        <header class="bg-primary text-white p-4">
+            <div class="container">
+                <h1 class="m-0">
+                    <i class="fas fa-code"></i>
+                    SFPHP Framework
+                </h1>
+                <p class="text-light m-0 mt-2">Simple, Educational, PHP 8.1+</p>
+            </div>
+        </header>
+
+        <div class="flex-grow-1">
+            <div class="container p-4">
+                @block('content')
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        Welcome to SFPHP!
+                    </div>
+                @endblock
+            </div>
+        </div>
+
+        <footer class="bg-dark text-white p-4 mt-4">
+            <div class="container text-center">
+                <p class="mb-2">
+                    <strong>SFPHP</strong> — A Simple, Educational PHP Framework
+                </p>
+                <p class="text-muted mb-0">
+                    Built with ❤️ by <a href="https://github.com/fabioaacarneiro" class="text-light">Fabio Carneiro</a>
+                </p>
+            </div>
+        </footer>
+    </main>
+
+    <script src="<?= asset('js/sfjs.js') ?>"></script>
+    @block('scripts')@endblock
+</body>
+</html>

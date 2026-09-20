@@ -1,0 +1,166 @@
+@extends('layouts.base')
+
+@block('title')Home - SFPHP Framework@endblock
+
+@block('content')
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h1 class="mb-3">Welcome to SFPHP!</h1>
+        <p class="lead text-muted">
+            A modern, educational PHP framework built from scratch with zero dependencies.
+        </p>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+    <!-- CLI & Generators -->
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h3 class="m-0">
+                <i class="fas fa-terminal"></i>
+                CLI & Generators
+            </h3>
+        </div>
+        <div class="card-body">
+            <p>24 powerful commands for code generation and framework management:</p>
+            <ul class="list-unstyled">
+                <li><code class="bg-light p-1 rounded">./sfphp make:controller</code></li>
+                <li><code class="bg-light p-1 rounded">./sfphp make:model</code></li>
+                <li><code class="bg-light p-1 rounded">./sfphp make:scaffold</code></li>
+                <li><code class="bg-light p-1 rounded">./sfphp migrate</code></li>
+                <li><code class="bg-light p-1 rounded">./sfphp serve</code></li>
+            </ul>
+        </div>
+        <div class="card-footer">
+            <a href="<?= asset('/docs/DOCUMENTATION.md') ?>" class="btn btn-primary btn-sm">
+                <i class="fas fa-book"></i> View CLI Docs
+            </a>
+        </div>
+    </div>
+
+    <!-- SFHT Template Engine -->
+    <div class="card">
+        <div class="card-header bg-success text-white">
+            <h3 class="m-0">
+                <i class="fas fa-file-code"></i>
+                SFHT Templates
+            </h3>
+        </div>
+        <div class="card-body">
+            <p>Native template engine with powerful directives:</p>
+            <ul class="list-unstyled">
+                <li><code class="bg-light p-1 rounded">@extends('layouts.base')</code></li>
+                <li><code class="bg-light p-1 rounded">@foreach($items as $item)</code></li>
+                <li><code class="bg-light p-1 rounded">@component('button')</code></li>
+                <li><code class="bg-light p-1 rounded">{{ $var | upper }}</code></li>
+            </ul>
+        </div>
+        <div class="card-footer">
+            <a href="<?= asset('/docs/DOCUMENTATION.md#sfht-template-engine') ?>" class="btn btn-success btn-sm">
+                <i class="fas fa-book"></i> View SFHT Docs
+            </a>
+        </div>
+    </div>
+
+    <!-- SFCSS Framework -->
+    <div class="card">
+        <div class="card-header bg-info text-white">
+            <h3 class="m-0">
+                <i class="fas fa-palette"></i>
+                SFCSS Styling
+            </h3>
+        </div>
+        <div class="card-body">
+            <p>Minimalista CSS framework with utilities and components:</p>
+            <p>
+                <span class="badge badge-primary">Buttons</span>
+                <span class="badge badge-success">Cards</span>
+                <span class="badge badge-warning">Forms</span>
+                <span class="badge badge-danger">Alerts</span>
+                <span class="badge badge-info">Grid</span>
+            </p>
+        </div>
+        <div class="card-footer">
+            <a href="<?= asset('/docs/SFCSS_DOCUMENTATION.md') ?>" class="btn btn-info btn-sm">
+                <i class="fas fa-book"></i> View SFCSS Docs
+            </a>
+        </div>
+    </div>
+
+    <!-- Schema Builder -->
+    <div class="card">
+        <div class="card-header bg-warning text-dark">
+            <h3 class="m-0">
+                <i class="fas fa-database"></i>
+                Schema Builder
+            </h3>
+        </div>
+        <div class="card-body">
+            <p>100% MySQL & PostgreSQL support with 30+ column types:</p>
+            <ul class="list-unstyled">
+                <li><i class="fas fa-check text-success"></i> Migrations</li>
+                <li><i class="fas fa-check text-success"></i> Query Builder</li>
+                <li><i class="fas fa-check text-success"></i> Constraints</li>
+                <li><i class="fas fa-check text-success"></i> Indexes</li>
+            </ul>
+        </div>
+        <div class="card-footer">
+            <a href="<?= asset('/docs/DOCUMENTATION.md#migrations-e-schema-builder') ?>" class="btn btn-warning btn-sm">
+                <i class="fas fa-book"></i> View Docs
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Features Grid -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+    <div class="card">
+        <div class="card-body">
+            <h4 class="text-primary mb-2">
+                <i class="fas fa-shield-alt"></i>
+                Security
+            </h4>
+            <p class="text-sm">
+                JWT authentication, CSRF protection, validated requests
+            </p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <h4 class="text-success mb-2">
+                <i class="fas fa-bolt"></i>
+                Performance
+            </h4>
+            <p class="text-sm">
+                Template caching, query optimization, no dependencies
+            </p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <h4 class="text-info mb-2">
+                <i class="fas fa-graduation-cap"></i>
+                Educational
+            </h4>
+            <p class="text-sm">
+                Learn pure PHP, SQL, and web architecture fundamentals
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Start -->
+<div class="alert alert-success mt-4">
+    <h4 class="mt-0">
+        <i class="fas fa-rocket"></i>
+        Quick Start
+    </h4>
+    <pre><code>composer install
+php -S localhost:8000 -t public server.php
+./sfphp make:scaffold Post
+./sfphp migrate</code></pre>
+</div>
+
+@endblock
