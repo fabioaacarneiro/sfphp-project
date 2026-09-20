@@ -1,42 +1,58 @@
 @extends('layouts.base')
 
 @block('content')
-<div class="hero">
-    <h1>{{ $title }}</h1>
-    <p>Simple Framework PHP 8.1+</p>
-    <img src="{{ asset('images/php.png') }}" alt="PHP Logo" class="php-logo" width="300">
+<div class="p-5 text-center" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+    <h1 class="text-5xl" style="font-weight: 800; margin: 0 0 1rem 0;">{{ $title }}</h1>
+    <p class="text-2xl" style="margin: 0 0 2rem 0; opacity: 0.95;">Simple Framework PHP 8.1+</p>
+    <img src="{{ asset('images/php.png') }}" alt="PHP Logo" style="max-width: 300px; margin: 2rem auto; display: block; filter: drop-shadow(0 20px 40px rgba(0,0,0,0.3));">
 </div>
 
-<div class="content">
-    <div class="content-inner">
-        <h2 class="section-title">Framework PHP para que tudo seja simples</h2>
-        <p class="section-subtitle">Minimalista, educacional e pronto para produção</p>
+<div style="background: white; padding: 4rem 1rem;">
+    <div class="container">
+        <h2 class="text-center text-4xl" style="color: var(--primary); margin-bottom: 1rem; font-weight: 700;">Framework PHP para que tudo seja simples</h2>
+        <p class="text-center text-lg" style="color: #64748b; margin-bottom: 3rem;">Minimalista, educacional e pronto para produção</p>
 
-        <div class="features-grid">
-            <div class="feature-box">
-                <h2><i class="fas fa-code"></i> Código Limpo e Minimalista</h2>
-                <p>Sem dependências de produção. Apenas PHP 8.1+ puro. Perfeito para aprender arquitetura e padrões.</p>
+        <div class="grid grid-cols-1 grid-cols-2">
+            <div class="card">
+                <div class="card-body">
+                    <h3 class="text-lg" style="margin: 0 0 1rem 0; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; color: var(--primary);">
+                        <i class="fas fa-code"></i> Código Limpo
+                    </h3>
+                    <p class="text-sm" style="margin: 0; line-height: 1.7; color: #475569;">Sem dependências de produção. Apenas PHP 8.1+ puro. Perfeito para aprender arquitetura e padrões.</p>
+                </div>
             </div>
 
-            <div class="feature-box">
-                <h2><i class="fas fa-rocket"></i> Tudo Integrado</h2>
-                <p><strong>SFHT:</strong> Motor de templates • <strong>SFCSS:</strong> Framework CSS • <strong>SFJS:</strong> JS reativo</p>
+            <div class="card">
+                <div class="card-body">
+                    <h3 class="text-lg" style="margin: 0 0 1rem 0; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; color: var(--primary);">
+                        <i class="fas fa-rocket"></i> Tudo Integrado
+                    </h3>
+                    <p class="text-sm" style="margin: 0; line-height: 1.7; color: #475569;"><strong>SFHT:</strong> Motor de templates • <strong>SFCSS:</strong> Framework CSS • <strong>SFJS:</strong> JS reativo</p>
+                </div>
             </div>
 
-            <div class="feature-box">
-                <h2><i class="fas fa-wrench"></i> Ferramentas Completas</h2>
-                <p>CLI, migrations, seeders, factories, cache, queue, JWT, CSRF, validação e muito mais.</p>
+            <div class="card">
+                <div class="card-body">
+                    <h3 class="text-lg" style="margin: 0 0 1rem 0; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; color: var(--primary);">
+                        <i class="fas fa-wrench"></i> Ferramentas Completas
+                    </h3>
+                    <p class="text-sm" style="margin: 0; line-height: 1.7; color: #475569;">CLI, migrations, seeders, factories, cache, queue, JWT, CSRF, validação e muito mais.</p>
+                </div>
             </div>
 
-            <div class="feature-box">
-                <h2><i class="fas fa-cube"></i> Pronto para Produção</h2>
-                <p>Router, DI container, query builder portável, error handling em JSON/HTML, testes integrados.</p>
+            <div class="card">
+                <div class="card-body">
+                    <h3 class="text-lg" style="margin: 0 0 1rem 0; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; color: var(--primary);">
+                        <i class="fas fa-cube"></i> Pronto para Produção
+                    </h3>
+                    <p class="text-sm" style="margin: 0; line-height: 1.7; color: #475569;">Router, DI container, query builder portável, error handling em JSON/HTML, testes integrados.</p>
+                </div>
             </div>
         </div>
 
-        <div class="cta-section">
+        <div class="text-center mt-5">
             <p><strong>Comece agora:</strong></p>
-            <a href="https://github.com/fabioaacarneiro/sfphp-project" target="_blank">
+            <a href="https://github.com/fabioaacarneiro/sfphp-project" target="_blank" class="btn btn-primary">
                 <i class="fab fa-github"></i> Ver no GitHub
             </a>
         </div>
