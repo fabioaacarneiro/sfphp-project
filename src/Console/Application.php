@@ -68,6 +68,7 @@ final class Application
                 'status' => $this->status($arguments),
                 'db:seed' => $this->dbSeed($arguments),
                 'db:fresh' => $this->dbFresh($arguments),
+                'tinker' => $this->tinker(),
                 default => $this->unknownCommand($command),
             };
         } catch (Throwable $throwable) {
@@ -207,6 +208,7 @@ final class Application
         $this->writeLine('  list                       Show all available commands');
         $this->writeLine('  version                    Show framework version');
         $this->writeLine('  help [command]             Show help for a command');
+        $this->writeLine('  tinker                     Interactive PHP shell');
         $this->writeLine('');
         $this->writeLine('Examples:');
         $this->writeLine('  ./sfphp make:scaffold Post');
@@ -945,6 +947,25 @@ PHP;
             $this->writeLine('Error: ' . $e->getMessage());
             return 1;
         }
+    }
+
+    /**
+     * Start the interactive Tinker shell.
+     *
+     * @return int
+     */
+    private function tinker(): int
+    {
+        if (!function_exists('readline')) {
+            $this->writeLine('Error: readline extension is required for tinker.');
+            $this->writeLine('Install it with: apt-get install php-cli-common');
+            return 1;
+        }
+
+        $tinker = new Tinker($this->rootPath());
+        $tinker->start();
+
+        return 0;
     }
 
     /**
