@@ -2,41 +2,43 @@
 
 @block('content')
 <div class="hero">
-    <h1>{{ APP_NAME }}</h1>
+    <h1>{{ $title }}</h1>
     <p>Simple Framework PHP 8.1+</p>
     <img src="{{ asset('images/php.png') }}" alt="PHP Logo" class="php-logo" width="300">
 </div>
 
 <div class="content">
     <div class="content-inner">
-        <h2 style="text-align: center; color: var(--primary); margin-bottom: 1rem;">Framework Educacional para Aprender PHP</h2>
+        <h2 class="section-title">Framework PHP para que tudo seja simples</h2>
+        <p class="section-subtitle">Minimalista, educacional e pronto para produção</p>
 
-        <div class="feature-box">
-            <h2><i class="fas fa-code"></i> Código Limpo e Minimalista</h2>
-            <p>Sem dependências de produção. Apenas PHP 8.1+ puro. Perfeito para aprender arquitetura e padrões.</p>
+        <div class="features-grid">
+            <div class="feature-box">
+                <h2><i class="fas fa-code"></i> Código Limpo e Minimalista</h2>
+                <p>Sem dependências de produção. Apenas PHP 8.1+ puro. Perfeito para aprender arquitetura e padrões.</p>
+            </div>
+
+            <div class="feature-box">
+                <h2><i class="fas fa-rocket"></i> Tudo Integrado</h2>
+                <p><strong>SFHT:</strong> Motor de templates • <strong>SFCSS:</strong> Framework CSS • <strong>SFJS:</strong> JS reativo</p>
+            </div>
+
+            <div class="feature-box">
+                <h2><i class="fas fa-wrench"></i> Ferramentas Completas</h2>
+                <p>CLI, migrations, seeders, factories, cache, queue, JWT, CSRF, validação e muito mais.</p>
+            </div>
+
+            <div class="feature-box">
+                <h2><i class="fas fa-cube"></i> Pronto para Produção</h2>
+                <p>Router, DI container, query builder portável, error handling em JSON/HTML, testes integrados.</p>
+            </div>
         </div>
 
-        <div class="feature-box">
-            <h2><i class="fas fa-rocket"></i> Tudo Integrado</h2>
-            <p><strong>SFHT:</strong> Motor de templates nativo • <strong>SFCSS:</strong> Framework CSS minimalista • <strong>SFJS:</strong> JS reativo tipo Alpine.js</p>
-        </div>
-
-        <div class="feature-box">
-            <h2><i class="fas fa-wrench"></i> Ferramentas Completas</h2>
-            <p>CLI com 24 comandos, migrations com suporte MySQL e PostgreSQL, seeders, factories, cache, queue, JWT, CSRF, validação e muito mais.</p>
-        </div>
-
-        <div class="feature-box">
-            <h2><i class="fas fa-cube"></i> Pronto para Produção</h2>
-            <p>Router fluente, DI container com autowiring, query builder portável, error handling com JSON/HTML, testes integrados.</p>
-        </div>
-
-        <div style="text-align: center; margin-top: 3rem; padding-top: 2rem; border-top: 1px solid #e0e0e0;">
-            <p style="font-size: 0.95rem; color: #666;">
-                <a href="https://github.com/fabioaacarneiro/sfphp-project" style="color: var(--primary); text-decoration: none;">
-                    <i class="fab fa-github"></i> Ver no GitHub
-                </a>
-            </p>
+        <div class="cta-section">
+            <p><strong>Comece agora:</strong></p>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project" target="_blank">
+                <i class="fab fa-github"></i> Ver no GitHub
+            </a>
         </div>
     </div>
 </div>
