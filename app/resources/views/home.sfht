@@ -1,181 +1,46 @@
 @include('partials/header')
 
-<!-- Hero Section -->
-<section class="bg-primary text-white" style="padding: 4rem 0;">
-    <div class="container">
-        <h1 style="font-size: 3rem; font-weight: 700; margin-bottom: 1rem;">
-            <i class="fas fa-code"></i>
-            SFPHP Framework
-        </h1>
-        <p style="font-size: 1.25rem; font-weight: 300; margin: 0;">
-            A modern, educational PHP framework built from scratch with zero dependencies.
-        </p>
-    </div>
-</section>
+<div class="container" style="padding: 3rem 0;">
+    <h1>Welcome to SFPHP</h1>
+    <p class="lead">A modern, educational PHP framework built from scratch with zero dependencies.</p>
 
-<!-- Features Section -->
-<section style="padding: 3rem 0; background-color: #f8f9fa;">
-    <div class="container">
-        <h2 style="text-align: center; margin-bottom: 3rem;">Core Features</h2>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4" style="margin-bottom: 3rem;">
-            <!-- CLI & Generators -->
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h3 style="margin: 0; font-size: 1.25rem;">
-                        <i class="fas fa-terminal"></i>
-                        CLI & Generators
-                    </h3>
-                </div>
-                <div class="card-body">
-                    <p><strong>24 powerful commands</strong> for code generation and framework management.</p>
-                    <ul class="list-unstyled">
-                        <li><i class="fas fa-chevron-right text-primary"></i> Controllers, Models, Repositories</li>
-                        <li><i class="fas fa-chevron-right text-primary"></i> Migrations & Schema Builder</li>
-                        <li><i class="fas fa-chevron-right text-primary"></i> Services, Requests, Tests</li>
-                        <li><i class="fas fa-chevron-right text-primary"></i> Seeders, Factories & more</li>
-                    </ul>
-                </div>
-            </div>
-
-            <!-- SFHT Templates -->
-            <div class="card">
-                <div class="card-header bg-success text-white">
-                    <h3 style="margin: 0; font-size: 1.25rem;">
-                        <i class="fas fa-file-code"></i>
-                        SFHT Templates
-                    </h3>
-                </div>
-                <div class="card-body">
-                    <p><strong>Native template engine</strong> with powerful directives.</p>
-                    <ul class="list-unstyled">
-                        <li><i class="fas fa-chevron-right text-success"></i> @if, @foreach, @for loops</li>
-                        <li><i class="fas fa-chevron-right text-success"></i> Template inheritance & blocks</li>
-                        <li><i class="fas fa-chevron-right text-success"></i> Components & includes</li>
-                        <li><i class="fas fa-chevron-right text-success"></i> Filters & loop variables</li>
-                    </ul>
-                </div>
-            </div>
-
-            <!-- SFCSS Framework -->
-            <div class="card">
-                <div class="card-header bg-info text-white">
-                    <h3 style="margin: 0; font-size: 1.25rem;">
-                        <i class="fas fa-palette"></i>
-                        SFCSS Styling
-                    </h3>
-                </div>
-                <div class="card-body">
-                    <p><strong>Minimalista CSS framework</strong> with utilities and components.</p>
-                    <div style="margin-top: 1rem;">
-                        <span class="badge badge-primary">Buttons</span>
-                        <span class="badge badge-success">Cards</span>
-                        <span class="badge badge-warning">Forms</span>
-                        <span class="badge badge-danger">Alerts</span>
-                        <span class="badge badge-info">Grid</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Schema Builder -->
-            <div class="card">
-                <div class="card-header bg-warning text-dark">
-                    <h3 style="margin: 0; font-size: 1.25rem;">
-                        <i class="fas fa-database"></i>
-                        Schema Builder
-                    </h3>
-                </div>
-                <div class="card-body">
-                    <p><strong>100% MySQL & PostgreSQL</strong> support with 30+ column types.</p>
-                    <ul class="list-unstyled">
-                        <li><i class="fas fa-check text-success"></i> Migrations with transactions</li>
-                        <li><i class="fas fa-check text-success"></i> Query builder & constraints</li>
-                        <li><i class="fas fa-check text-success"></i> Indexes & introspection</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Highlights Section -->
-<section style="padding: 3rem 0;">
-    <div class="container">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4" style="margin-bottom: 2rem;">
-            <div class="card">
-                <div class="card-body">
-                    <h4 class="text-primary" style="font-size: 1.1rem; margin-bottom: 1rem;">
-                        <i class="fas fa-shield-alt"></i>
-                        Security First
-                    </h4>
-                    <p>JWT authentication, CSRF protection, and request validation built-in.</p>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-body">
-                    <h4 class="text-success" style="font-size: 1.1rem; margin-bottom: 1rem;">
-                        <i class="fas fa-bolt"></i>
-                        Performance
-                    </h4>
-                    <p>Template caching, query optimization, and zero production dependencies.</p>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-body">
-                    <h4 class="text-info" style="font-size: 1.1rem; margin-bottom: 1rem;">
-                        <i class="fas fa-graduation-cap"></i>
-                        Educational
-                    </h4>
-                    <p>Learn pure PHP, SQL, and web architecture from the ground up.</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- What's Included -->
-        <div class="card" style="margin-bottom: 2rem;">
-            <div class="card-header bg-dark text-white">
-                <h3 style="margin: 0;">Complete Toolkit</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h3>CLI and Generators</h3>
             </div>
             <div class="card-body">
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div>
-                        <strong>Cache System</strong>
-                        <p style="font-size: 0.9rem; margin: 0.5rem 0 0 0;">File, Memory, Redis</p>
-                    </div>
-                    <div>
-                        <strong>Queue System</strong>
-                        <p style="font-size: 0.9rem; margin: 0.5rem 0 0 0;">Database, Redis, Sync</p>
-                    </div>
-                    <div>
-                        <strong>Seeders & Factories</strong>
-                        <p style="font-size: 0.9rem; margin: 0.5rem 0 0 0;">Data fixtures for testing</p>
-                    </div>
-                    <div>
-                        <strong>SFJS Library</strong>
-                        <p style="font-size: 0.9rem; margin: 0.5rem 0 0 0;">AJAX & interactivity</p>
-                    </div>
-                </div>
+                <p>24 powerful commands for code generation and framework management.</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h3>SFHT Templates</h3>
+            </div>
+            <div class="card-body">
+                <p>Native template engine with powerful directives.</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h3>SFCSS Styling</h3>
+            </div>
+            <div class="card-body">
+                <p>Minimalista CSS framework with utilities and components.</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-warning text-dark">
+                <h3>Schema Builder</h3>
+            </div>
+            <div class="card-body">
+                <p>100 percent MySQL and PostgreSQL support.</p>
             </div>
         </div>
     </div>
-</section>
-
-<!-- CTA Section -->
-<section class="bg-primary text-white" style="padding: 3rem 0; text-align: center;">
-    <div class="container">
-        <h2 style="margin-bottom: 1.5rem;">Ready to Get Started?</h2>
-        <div style="margin-bottom: 1.5rem;">
-            <a href="https://github.com/fabioaacarneiro/sfphp-project" class="btn btn-white" style="background-color: white; color: #0066cc; font-weight: 600; padding: 0.75rem 1.5rem;">
-                <i class="fab fa-github"></i>
-                View on GitHub
-            </a>
-        </div>
-        <p style="font-size: 0.95rem; opacity: 0.9; margin: 0;">
-            Built with ❤️ by <a href="https://github.com/fabioaacarneiro" style="color: white; text-decoration: underline;">Fabio Carneiro</a>
-        </p>
-    </div>
-</section>
+</div>
 
 @include('partials/footer')
