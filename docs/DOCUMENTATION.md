@@ -3,6 +3,7 @@
 ## Índice
 
 - [CLI e Geração de Código](#cli-e-geração-de-código)
+- [SFHT Template Engine](#sfht-template-engine)
 - [Migrations e Schema Builder](#migrations-e-schema-builder)
 - [Roteamento](#roteamento)
 - [Controllers e Views](#controllers-e-views)
@@ -80,6 +81,236 @@ O binário `./sfphp` fornece 20+ comandos para gerar código, gerenciar migratio
 ./sfphp list                            # Listar comandos
 ./sfphp version                         # Versão
 ./sfphp help [command]                  # Ajuda
+```
+
+---
+
+## SFHT Template Engine
+
+**SFHT** (Simple Framework HTML Template) é um motor de templates poderoso e produtivo com sintaxe clara e recursos completos para construir UIs.
+
+### Extensão
+Arquivo de template: `.sfht`
+
+### Sintaxe Básica
+
+#### Variáveis e Output
+```sfpt
+<!-- Echo simples -->
+{{ $name }}
+
+<!-- Com escape HTML -->
+{{ $user->email }}
+
+<!-- Com filtros -->
+{{ $title | upper }}
+{{ $text | truncate(50) }}
+{{ $price | format('%.2f') }}
+```
+
+#### Controle de Fluxo
+
+```sfpt
+@if($user->isAdmin())
+  <p>Welcome Admin!</p>
+@elseif($user->isPremium())
+  <p>Welcome Premium User!</p>
+@else
+  <p>Welcome!</p>
+@endif
+```
+
+#### Loops
+
+```sfpt
+<!-- Foreach -->
+@foreach($posts as $post)
+  <article>
+    <h2>{{ $post->title }}</h2>
+    @if($loop->first)
+      <strong>Featured Post</strong>
+    @endif
+    @if($loop->last)
+      <p>End of posts</p>
+    @endif
+  </article>
+@endforeach
+
+<!-- For -->
+@for($i = 0; $i < 10; $i++)
+  <p>Item {{ $i }}</p>
+@endfor
+
+<!-- While -->
+@while($count < 100)
+  {{ $count }}
+@endwhile
+```
+
+#### Herança e Componentização
+
+```sfpt
+<!-- layouts/base.sfpt -->
+<!DOCTYPE html>
+<html>
+  <head>
+    @block('head')
+      <title>Default Title</title>
+    @endblock
+  </head>
+  <body>
+    @block('content')
+    @endblock
+  </body>
+</html>
+
+<!-- pages/home.sfpt -->
+@extends('layouts.base')
+
+@block('head')
+  <title>Home Page</title>
+@endblock
+
+@block('content')
+  <h1>Welcome!</h1>
+@endblock
+```
+
+#### Includes e Components
+
+```sfpt
+<!-- Incluir um partial -->
+@include('partials.header')
+
+<!-- Incluir condicionalmente -->
+@includeWhen($showForm, 'partials.form')
+
+<!-- Componente com dados -->
+@component('components.button', [
+  'label' => 'Click me',
+  'variant' => 'primary',
+  'disabled' => false
+])
+```
+
+#### Use Statements (Ativar Features)
+
+```sfpt
+@use(RequestsFunctions)      <!-- Ativa atributos SFJS -->
+@use(SFPHPStyleFramework)   <!-- Ativa classes SFCSS -->
+
+<button @hxGet="/api/data" @hxTarget="#content" class="btn btn-primary">
+  Load Data
+</button>
+```
+
+### Filters (Filtros)
+
+```sfpt
+{{ $text | upper }}               <!-- Maiúsculas -->
+{{ $text | lower }}               <!-- Minúsculas -->
+{{ $text | capitalize }}          <!-- Primeira letra maiúscula -->
+{{ $text | truncate(50) }}        <!-- Truncar com reticências -->
+{{ $email | escape }}             <!-- Escapar HTML -->
+{{ $data | json }}                <!-- Converter para JSON -->
+{{ $price | format('%.2f') }}     <!-- Formato sprintf -->
+{{ $text | trim }}                <!-- Remover espaços -->
+{{ $string | reverse }}           <!-- Reverter string -->
+{{ $number | abs }}               <!-- Valor absoluto -->
+{{ $float | round(2) }}           <!-- Arredondar -->
+```
+
+### Variáveis Automáticas em Loops
+
+```sfpt
+@foreach($items as $item)
+  {{ $loop->iteration }}    <!-- 1, 2, 3, ... -->
+  {{ $loop->index }}        <!-- 0, 1, 2, ... -->
+  {{ $loop->count }}        <!-- Total de itens -->
+  {{ $loop->first }}        <!-- true no primeiro -->
+  {{ $loop->last }}         <!-- true no último -->
+  {{ $loop->even }}         <!-- true em índices pares -->
+  {{ $loop->odd }}          <!-- true em índices ímpares -->
+@endforeach
+```
+
+### Uso no Controller
+
+```php
+<?php
+
+namespace SfphpProject\app\controllers;
+
+use SfphpProject\src\View\SfhtEngine;
+
+final class HomeController extends BaseController
+{
+    public function index(): string
+    {
+        $engine = new SfhtEngine([__DIR__ . '/../resources/views']);
+        
+        return $engine->render('home', [
+            'title' => 'Welcome',
+            'posts' => Post::all(),
+            'user' => auth()->user(),
+        ]);
+    }
+}
+```
+
+### Estrutura de Diretórios Recomendada
+
+```
+resources/
+├── views/
+│   ├── layouts/
+│   │   ├── base.sfpt
+│   │   └── app.sfpt
+│   ├── pages/
+│   │   ├── home.sfpt
+│   │   ├── about.sfpt
+│   │   └── contact.sfpt
+│   ├── components/
+│   │   ├── button.sfpt
+│   │   ├── card.sfpt
+│   │   └── form-field.sfpt
+│   └── partials/
+│       ├── header.sfpt
+│       ├── footer.sfpt
+│       └── navigation.sfpt
+```
+
+### Performance e Caching
+
+O SFHT compila templates para PHP e cacheia o resultado automaticamente:
+
+```php
+$engine = new SfhtEngine(
+    [__DIR__ . '/views'],
+    '/tmp/sfht-cache'  // Cache directory
+);
+
+// Cache é validado automaticamente por timestamp
+// Limpar cache quando necessário:
+$engine->clearCache();
+```
+
+### Variáveis Globais
+
+```php
+$engine->setGlobal('siteName', 'My Site');
+$engine->setGlobal('user', auth()->user());
+
+// Ou múltiplas ao mesmo tempo
+$engine->setGlobals([
+    'siteName' => 'My Site',
+    'user' => auth()->user(),
+    'version' => '1.0.0',
+]);
+
+// Agora acessíveis em todas as templates
+{{ $siteName }}
+{{ $user->name }}
 ```
 
 ---
