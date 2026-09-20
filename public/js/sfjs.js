@@ -1,7 +1,7 @@
 /**
  * SFJS — Simple Framework JavaScript Library
- * HTMX-like AJAX, forms, and DOM utilities without dependencies
- * ~8KB minified
+ * HTMX + Alpine.js hybrid: AJAX, reactivity, forms, DOM utilities without dependencies
+ * ~12KB minified
  */
 
 const sf = (() => {
@@ -13,12 +13,97 @@ const sf = (() => {
     AJAX_PATCH: '[\\@hxPatch]',
     FORM_VALIDATE: '[\\@validate]',
     TOGGLE: '[\\@toggle]',
+    DATA: '[\\@data]',
   };
 
   const DEFAULTS = {
     swapStrategy: 'innerHTML',
     validateOn: 'blur',
     debounceDelay: 300,
+  };
+
+  // ========== REACTIVE DATA (Alpine.js-like) ==========
+
+  const reactive = {
+    components: new Map(),
+
+    create: (element, data = {}) => {
+      const component = reactive.createProxy(data, element);
+      reactive.components.set(element, component);
+      reactive.bindComponent(element, component);
+      return component;
+    },
+
+    createProxy: (data, element) => {
+      return new Proxy(data, {
+        set: (target, property, value) => {
+          target[property] = value;
+          reactive.update(element);
+          return true;
+        },
+        get: (target, property) => target[property],
+      });
+    },
+
+    bindComponent: (element, data) => {
+      // x-text: Set text content
+      element.querySelectorAll('[\\@text]').forEach(el => {
+        const expr = el.getAttribute('\\@text');
+        el.textContent = reactive.evaluate(expr, data);
+      });
+
+      // x-html: Set HTML content
+      element.querySelectorAll('[\\@html]').forEach(el => {
+        const expr = el.getAttribute('\\@html');
+        el.innerHTML = reactive.evaluate(expr, data);
+      });
+
+      // x-show: Toggle visibility
+      element.querySelectorAll('[\\@show]').forEach(el => {
+        const expr = el.getAttribute('\\@show');
+        const visible = reactive.evaluate(expr, data);
+        el.style.display = visible ? '' : 'none';
+      });
+
+      // x-if: Conditional rendering (simplified)
+      element.querySelectorAll('[\\@if]').forEach(el => {
+        const expr = el.getAttribute('\\@if');
+        const show = reactive.evaluate(expr, data);
+        if (el._sfPlaceholder === undefined) {
+          el._sfPlaceholder = document.createComment(`@if: ${expr}`);
+        }
+        if (!show && el.parentNode) {
+          el.parentNode.replaceChild(el._sfPlaceholder, el);
+        } else if (show && el._sfPlaceholder.parentNode) {
+          el._sfPlaceholder.parentNode.replaceChild(el, el._sfPlaceholder);
+        }
+      });
+
+      // x-model: Two-way binding
+      element.querySelectorAll('[\\@model]').forEach(el => {
+        const key = el.getAttribute('\\@model');
+        el.value = data[key] ?? '';
+        el.addEventListener('input', (e) => {
+          data[key] = e.target.value;
+        });
+      });
+    },
+
+    update: (element) => {
+      const data = reactive.components.get(element);
+      if (data) {
+        reactive.bindComponent(element, data);
+      }
+    },
+
+    evaluate: (expr, data) => {
+      try {
+        return new Function(...Object.keys(data), `return ${expr}`)(...Object.values(data));
+      } catch (e) {
+        console.error('SFJS evaluate error:', e);
+        return expr;
+      }
+    },
   };
 
   // ========== AJAX ==========
@@ -273,6 +358,27 @@ const sf = (() => {
   // ========== AUTO-INITIALIZATION ==========
 
   function init() {
+    // @data: Initialize reactive components
+    document.querySelectorAll('[\\@data]').forEach(el => {
+      const dataStr = el.getAttribute('\\@data');
+      try {
+        const data = new Function(`return ${dataStr}`)();
+        reactive.create(el, data);
+      } catch (e) {
+        console.error('SFJS @data error:', e);
+      }
+    });
+
+    // @xInit: Run initialization code
+    document.querySelectorAll('[\\@init]').forEach(el => {
+      const initFn = el.getAttribute('\\@init');
+      try {
+        new Function(initFn)();
+      } catch (e) {
+        console.error('SFJS @init error:', e);
+      }
+    });
+
     // @hxGet, @hxPost, etc
     document.addEventListener('click', (e) => {
       const target = e.target.closest('[\\@hxGet], [\\@hxPost], [\\@hxPut], [\\@hxDelete], [\\@hxPatch]');
@@ -344,6 +450,7 @@ const sf = (() => {
     validate,
     storage,
     util,
+    reactive,
   };
 })();
 

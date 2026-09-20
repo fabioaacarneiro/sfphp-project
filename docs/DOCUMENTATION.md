@@ -910,6 +910,102 @@ SFJS **não requer inicialização manual**:
 
 Basta incluir o script e usar os atributos `@hx*`.
 
+### Reactive Features (Alpine.js-like)
+
+SFJS agora inclui reatividade simples estilo Alpine.js:
+
+#### @data — Reactive Data
+
+```sfpt
+<div @data="{ count: 0, name: 'User' }">
+  <p @text="name"></p>
+  <button @on:click="count++">Count: <span @text="count"></span></button>
+</div>
+```
+
+#### @text — Bind Text Content
+
+```sfpt
+<div @data="{ message: 'Hello' }">
+  <p @text="message"></p>
+</div>
+```
+
+#### @html — Bind HTML Content
+
+```sfpt
+<div @data="{ html: '<strong>Bold text</strong>' }">
+  <div @html="html"></div>
+</div>
+```
+
+#### @show — Toggle Visibility
+
+```sfpt
+<div @data="{ visible: true }">
+  <p @show="visible">Visible when true</p>
+  <p @show="!visible">Hidden when visible is true</p>
+</div>
+```
+
+#### @if — Conditional Rendering
+
+```sfpt
+<div @data="{ showForm: false }">
+  <button @on:click="showForm = !showForm">Toggle Form</button>
+  
+  <form @if="showForm">
+    <input type="text" placeholder="Name">
+    <button type="submit">Save</button>
+  </form>
+</div>
+```
+
+#### @model — Two-way Binding
+
+```sfpt
+<div @data="{ name: '', email: '' }">
+  <input @model="name" placeholder="Name">
+  <input @model="email" placeholder="Email">
+  
+  <p @text="'Hello, ' + name"></p>
+</div>
+```
+
+#### @init — Initialize Component
+
+```sfpt
+<div @data="{ items: [] }" @init="loadItems()">
+  <ul>
+    <!-- Items rendered here -->
+  </ul>
+</div>
+
+<script>
+function loadItems() {
+  console.log('Component initialized');
+}
+</script>
+```
+
+#### Exemplo Completo — Todo App
+
+```sfpt
+<div @data="{ todos: [], newTodo: '' }">
+  <h2>Todo List</h2>
+  
+  <form @on:submit="todos.push(newTodo); newTodo = ''">
+    <input @model="newTodo" placeholder="Add todo...">
+    <button type="submit">Add</button>
+  </form>
+  
+  <ul>
+    <!-- Simplified: would need @for directive for real loop -->
+    <li @text="todos.length + ' items'"></li>
+  </ul>
+</div>
+```
+
 ---
 
 ## Migrations e Schema Builder
