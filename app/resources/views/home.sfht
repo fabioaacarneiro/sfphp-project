@@ -1,49 +1,46 @@
-@extends('layouts.base')
+@include('partials/header')
 
-@block('title')Home - SFPHP@endblock
+<main class="container p-4">
+    <h1>Welcome to SFPHP</h1>
+    <p class="lead">A modern, educational PHP framework built from scratch with zero dependencies.</p>
 
-@block('content')
-
-<h1>Welcome to SFPHP</h1>
-
-<p class="lead">A modern, educational PHP framework built from scratch with zero dependencies.</p>
-
-<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div class="card">
-        <div class="card-header bg-primary">
-            <h3>CLI & Generators</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="card">
+            <div class="card-header bg-primary">
+                <h3>CLI & Generators</h3>
+            </div>
+            <div class="card-body">
+                <p>24 powerful commands for code generation and framework management.</p>
+            </div>
         </div>
-        <div class="card-body">
-            <p>24 powerful commands for code generation and framework management.</p>
-        </div>
-    </div>
 
-    <div class="card">
-        <div class="card-header bg-success">
-            <h3>SFHT Templates</h3>
+        <div class="card">
+            <div class="card-header bg-success">
+                <h3>SFHT Templates</h3>
+            </div>
+            <div class="card-body">
+                <p>Native template engine with powerful directives.</p>
+            </div>
         </div>
-        <div class="card-body">
-            <p>Native template engine with powerful directives.</p>
-        </div>
-    </div>
 
-    <div class="card">
-        <div class="card-header bg-info">
-            <h3>SFCSS Styling</h3>
+        <div class="card">
+            <div class="card-header bg-info">
+                <h3>SFCSS Styling</h3>
+            </div>
+            <div class="card-body">
+                <p>Minimalista CSS framework with utilities and components.</p>
+            </div>
         </div>
-        <div class="card-body">
-            <p>Minimalista CSS framework with utilities and components.</p>
-        </div>
-    </div>
 
-    <div class="card">
-        <div class="card-header bg-warning">
-            <h3>Schema Builder</h3>
-        </div>
-        <div class="card-body">
-            <p>100% MySQL and PostgreSQL support.</p>
+        <div class="card">
+            <div class="card-header bg-warning">
+                <h3>Schema Builder</h3>
+            </div>
+            <div class="card-body">
+                <p>100% MySQL and PostgreSQL support.</p>
+            </div>
         </div>
     </div>
-</div>
+</main>
 
-@endblock
+@include('partials/footer')
