@@ -17,126 +17,69 @@
 
 ## CLI e Geração de Código
 
-O binário `./sfphp` fornece 15+ comandos para gerar código, gerenciar migrations, e desenvolver.
+O binário `./sfphp` fornece 20+ comandos para gerar código, gerenciar migrations, testar, e desenvolver.
 
-### Comandos de Geração
+### Geração de Código (10 Generators)
 
-Gerar arquivos esqueleto com o padrão do framework:
+#### Principais — Scaffold
 
 ```bash
-# Controller
-./sfphp make:controller User
-
-# Model
-./sfphp make:model Post
-
-# Repository
-./sfphp make:repository Post
-
-# Service
-./sfphp make:service PostService
-
-# Form Request (Validação)
+./sfphp make:controller UserController
+./sfphp make:model User
+./sfphp make:repository UserRepository
+./sfphp make:service UserService
 ./sfphp make:request StoreUserRequest
 
-# Scaffold: Gerar tudo de uma vez (controller, model, repository, service)
-./sfphp make:scaffold Article
+# Gerar tudo de uma vez (Rails-style)
+./sfphp make:scaffold Post
 ```
 
-Os arquivos são gerados nos diretórios apropriados com namespace correto e estrutura inicial.
-
-**Scaffold** é a forma recomendada para gerar um CRUD completo rapidamente, assim como Rails faz.
-
-#### Diretórios Gerados
-
-- Controllers: `app/controllers/{Name}Controller.php`
-- Models: `app/models/{Name}.php`
-- Repositories: `app/repositories/{Name}Repository.php`
-- Services: `app/services/{Name}Service.php`
-- Form Requests: `app/requests/{Name}Request.php`
-
-### Comandos de Migration
+#### Complementares
 
 ```bash
-# Criar nova migration vazia
+./sfphp make:test PostTest              # Test class
+./sfphp make:middleware CheckAdmin      # Middleware
+./sfphp make:event UserCreated          # Event
+./sfphp make:listener SendWelcomeEmail  # Event listener
+./sfphp make:policy PostPolicy          # Authorization
+```
+
+### Migrations e Banco de Dados
+
+```bash
+# Criar migration vazia
 ./sfphp make:migration create_users_table
 
-# Criar migration com schema pré-preenchida (id, timestamps)
+# Criar migration com schema pré-preenchida
 ./sfphp make:migration:create users
 
-# Aplicar todas as migrations pendentes
+# Aplicar migrations
 ./sfphp migrate
+./sfphp migrate --step=2                 # Apenas 2
 
-# Aplicar apenas 2 migrations
-./sfphp migrate --step=2
-
-# Reverter a última migration
+# Reverter migrations
 ./sfphp rollback
+./sfphp rollback --step=3                # Reverter 3
 
-# Reverter 3 migrations
-./sfphp rollback --step=3
-
-# Ver status das migrations
+# Status
 ./sfphp status
 
-# Usar diretório customizado
-./sfphp migrate --path=db/migrations
-./sfphp make:migration:create users --path=db/migrations
+# Reset (apaga e recria do zero)
+./sfphp db:fresh
+
+# Seeders
+./sfphp db:seed
 ```
 
-### Comandos do Servidor
+### Servidor e Utilitários
 
 ```bash
-# Iniciar servidor de desenvolvimento (localhost:8000)
-./sfphp serve
-
-# Criar arquivo .env a partir de .env-example
-./sfphp env:example
-
-# Listar todas as rotas registradas
-./sfphp routes
-```
-
-### Comandos de Utilidade
-
-```bash
-# Mostrar versão do SFPHP
-./sfphp version
-# ou
-./sfphp --version
-./sfphp -v
-
-# Listar todos os comandos disponíveis
-./sfphp list
-# ou
-./sfphp --list
-
-# Mostrar ajuda geral
-./sfphp help
-
-# Mostrar ajuda de um comando específico
-./sfphp help make:scaffold
-./sfphp help migrate
-./sfphp help serve
-```
-
-### Exemplos de Uso Completo
-
-```bash
-# Criar uma feature completa com um comando
-./sfphp make:scaffold Post
-
-# Criar a tabela no banco com schema básico
-./sfphp make:migration:create posts
-
-# Aplicar a migration
-./sfphp migrate
-
-# Ver as rotas que você registrou
-./sfphp routes
-
-# Iniciar servidor para testar
-./sfphp serve
+./sfphp serve                           # Dev server (localhost:8000)
+./sfphp routes                          # Listar rotas
+./sfphp tinker                          # REPL interativo
+./sfphp list                            # Listar comandos
+./sfphp version                         # Versão
+./sfphp help [command]                  # Ajuda
 ```
 
 ---

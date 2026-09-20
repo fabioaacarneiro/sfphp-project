@@ -85,6 +85,34 @@ final class MigrationRunner
     }
 
     /**
+     * Reset the database by rolling back all migrations and clearing the history.
+     *
+     * @return void
+     */
+    public function fresh(): void
+    {
+        $repository = $this->repository();
+        $schema = new Schema($this->pdo);
+        $applied = $repository->all();
+
+        foreach (array_reverse($applied) as $migration) {
+            $file = $this->filePath($migration['migration']);
+            if (!is_file($file)) {
+                continue;
+            }
+
+            $loaded = $this->load($file);
+            $this->transactional(function () use ($loaded, $schema): void {
+                $loaded->down($schema);
+            });
+        }
+
+        $this->transactional(function () use ($repository): void {
+            $repository->clear();
+        });
+    }
+
+    /**
      * List migration files and their current status.
      *
      * @return array<int, array{migration: string, status: string}>
