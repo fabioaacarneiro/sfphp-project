@@ -4,6 +4,7 @@
 
 - [CLI e Geração de Código](#cli-e-geração-de-código)
 - [SFHT Template Engine](#sfht-template-engine)
+- [SFCSS Framework](#sfcss-framework)
 - [Migrations e Schema Builder](#migrations-e-schema-builder)
 - [Roteamento](#roteamento)
 - [Controllers e Views](#controllers-e-views)
@@ -311,6 +312,229 @@ $engine->setGlobals([
 // Agora acessíveis em todas as templates
 {{ $siteName }}
 {{ $user->name }}
+>>>>>>> origin/master
+```
+
+---
+
+## SFCSS Framework
+
+**SFCSS** (Simple Framework CSS) é um framework CSS minimalista e customizável, combinando a simplicidade do Pico CSS com a flexibilidade do Tailwind.
+
+### Características
+
+- **Minimalista:** ~8KB gzipped, sem bloat
+- **Customizável:** Sistema de tema via CSS variables
+- **Responsivo:** Mobile-first com breakpoints sm/md/lg/xl
+- **Componentes:** Buttons, forms, cards, tables, alerts, badges
+- **Utilitários:** Spacing, text, display, color classes
+- **Sem lock-in:** Fácil customizar cores e valores
+
+### Instalação
+
+```html
+<!-- No seu HTML -->
+<link rel="stylesheet" href="/css/sfcss.css">
+```
+
+### Customização de Cores
+
+Edite `public/css/sfcss.config.json`:
+
+```json
+{
+  "colors": {
+    "primary": "#0066cc",
+    "secondary": "#6c757d",
+    "success": "#28a745",
+    "danger": "#dc3545",
+    "warning": "#ffc107",
+    "info": "#17a2b8"
+  }
+}
+```
+
+Depois regenere o CSS:
+
+```bash
+php public/css/sfcss-builder.php > public/css/sfcss.css
+```
+
+### Componentes
+
+#### Buttons
+
+```html
+<button class="btn">Default</button>
+<button class="btn btn-primary">Primary</button>
+<button class="btn btn-success">Success</button>
+<button class="btn btn-danger">Danger</button>
+<button class="btn btn-sm">Small</button>
+<button class="btn btn-lg">Large</button>
+<button class="btn" disabled>Disabled</button>
+```
+
+#### Forms
+
+```html
+<div class="form-group">
+  <label class="form-label">Email</label>
+  <input type="email" placeholder="user@example.com">
+</div>
+
+<div class="form-group">
+  <label class="form-label">Message</label>
+  <textarea placeholder="Your message..."></textarea>
+</div>
+
+<div class="form-group">
+  <label class="form-label">Country</label>
+  <select>
+    <option>Select...</option>
+    <option>Brazil</option>
+    <option>USA</option>
+  </select>
+</div>
+```
+
+#### Cards
+
+```html
+<div class="card">
+  <div class="card-header">
+    Card Title
+  </div>
+  <div class="card-body">
+    Card content goes here
+  </div>
+  <div class="card-footer">
+    Card footer
+  </div>
+</div>
+```
+
+#### Grid
+
+```html
+<!-- Auto responsive -->
+<div class="grid">
+  <div>Item 1</div>
+  <div>Item 2</div>
+  <div>Item 3</div>
+</div>
+
+<!-- Fixed columns -->
+<div class="grid grid-cols-3">
+  <div>Col 1</div>
+  <div>Col 2</div>
+  <div>Col 3</div>
+</div>
+```
+
+#### Tables
+
+```html
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Email</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>John</td>
+      <td>john@example.com</td>
+      <td><span class="badge badge-success">Active</span></td>
+    </tr>
+  </tbody>
+</table>
+```
+
+#### Alerts
+
+```html
+<div class="alert alert-primary">Primary alert</div>
+<div class="alert alert-success">Success alert</div>
+<div class="alert alert-danger">Danger alert</div>
+<div class="alert alert-warning">Warning alert</div>
+```
+
+### Utilidades
+
+#### Spacing
+
+```html
+<!-- Margins -->
+<div class="mt-3 mb-4">Content</div>
+
+<!-- Padding -->
+<div class="p-3">Padded content</div>
+<div class="px-4 py-2">Custom padding</div>
+```
+
+#### Typography
+
+```html
+<h1 class="text-3xl font-bold text-primary">Title</h1>
+<p class="text-lg font-semibold">Subtitle</p>
+<small class="text-sm text-muted">Small text</small>
+```
+
+#### Colors
+
+```html
+<div class="text-primary">Primary color</div>
+<div class="text-success">Success color</div>
+<div class="bg-light p-3">Light background</div>
+```
+
+### Sistema de Tema
+
+Variáveis CSS padrão (customizáveis em sfcss.config.json):
+
+```
+Colors: --primary, --secondary, --success, --danger, --warning, --info
+Spacing: --xs, --sm, --md, --lg, --xl
+Typography: --font-family, --font-size-*, --font-weight-*
+Border: --border-radius, --border-color
+Shadows: --shadow-sm, --shadow, --shadow-lg
+```
+
+### Responsividade
+
+Breakpoints automáticos:
+- **sm:** 480px (mobile)
+- **md:** 768px (tablet)
+- **lg:** 1024px (desktop)
+- **xl:** 1280px (wide)
+
+```html
+<div class="grid grid-cols-3">
+  <!-- 3 columns on desktop, 1 on mobile -->
+</div>
+```
+
+### Configuração Completa
+
+Arquivo `sfcss.config.json`:
+
+```json
+{
+  "colors": { /* 10+ color variants */ },
+  "spacing": { /* xs, sm, md, lg, xl */ },
+  "typography": {
+    "fontFamily": "system fonts",
+    "sizes": { /* sm, base, lg, xl, 2xl, 3xl */ },
+    "lineHeight": "1.6",
+    "weights": { /* normal, semibold, bold */ }
+  },
+  "border": { /* radius, color, width */ },
+  "shadows": { /* sm, base, lg */ },
+  "breakpoints": { /* sm, md, lg, xl */ },
+  "transition": "all 0.3s ease"
+}
 ```
 
 ---
