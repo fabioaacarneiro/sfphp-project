@@ -1,58 +1,73 @@
 @extends('layouts.base')
 
 @block('content')
-<div class="p-5 text-center" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-    <h1 class="text-5xl" style="font-weight: 800; margin: 0 0 1rem 0;">{{ $title }}</h1>
-    <p class="text-2xl" style="margin: 0 0 2rem 0; opacity: 0.95;">Simple Framework PHP 8.1+</p>
-    <img src="{{ asset('images/php.png') }}" alt="PHP Logo" style="max-width: 300px; margin: 2rem auto; display: block; filter: drop-shadow(0 20px 40px rgba(0,0,0,0.3));">
+<!-- Hero Section -->
+<div class="p-5 text-center" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; min-height: 400px; display: flex; flex-direction: column; justify-content: center;">
+    <h1 class="text-5xl" style="font-weight: 800; margin: 0 0 1rem 0; letter-spacing: -1px;">{{ $title }}</h1>
+    <p class="text-2xl" style="margin: 0 0 2rem 0; opacity: 0.95; font-weight: 300;">Simple Framework PHP 8.1+</p>
+    <img src="{{ asset('images/php.png') }}" alt="PHP Logo" style="max-width: 300px; height: auto; margin: 2rem auto 0; display: block; filter: drop-shadow(0 20px 40px rgba(0,0,0,0.3)); animation: float 3s ease-in-out infinite;">
+    <style>
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+    </style>
 </div>
 
+<!-- Content Section -->
 <div style="background: white; padding: 4rem 1rem;">
     <div class="container">
-        <h2 class="text-center text-4xl" style="color: var(--primary); margin-bottom: 1rem; font-weight: 700;">Framework PHP para que tudo seja simples</h2>
-        <p class="text-center text-lg" style="color: #64748b; margin-bottom: 3rem;">Minimalista, educacional e pronto para produção</p>
+        <div class="text-center mb-5">
+            <h2 class="text-4xl" style="color: #0f172a; margin: 0 0 1rem 0; font-weight: 700;">Framework PHP para que tudo seja simples</h2>
+            <p class="text-lg" style="color: #64748b; margin: 0;">Minimalista, educacional e pronto para produção</p>
+        </div>
 
-        <div class="grid grid-cols-1 grid-cols-2">
-            <div class="card">
+        <div class="grid grid-cols-1 grid-cols-2" style="gap: 2rem; margin: 3rem 0;">
+            <!-- Card 1 -->
+            <div class="card" style="box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.3s; border: none; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);">
                 <div class="card-body">
-                    <h3 class="text-lg" style="margin: 0 0 1rem 0; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; color: var(--primary);">
-                        <i class="fas fa-code"></i> Código Limpo
+                    <h3 class="text-lg" style="margin: 0 0 1rem 0; font-weight: 600; color: #667eea;">
+                        <i class="fas fa-code" style="margin-right: 0.5rem;"></i> Código Limpo
                     </h3>
                     <p class="text-sm" style="margin: 0; line-height: 1.7; color: #475569;">Sem dependências de produção. Apenas PHP 8.1+ puro. Perfeito para aprender arquitetura e padrões.</p>
                 </div>
             </div>
 
-            <div class="card">
+            <!-- Card 2 -->
+            <div class="card" style="box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.3s; border: none; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);">
                 <div class="card-body">
-                    <h3 class="text-lg" style="margin: 0 0 1rem 0; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; color: var(--primary);">
-                        <i class="fas fa-rocket"></i> Tudo Integrado
+                    <h3 class="text-lg" style="margin: 0 0 1rem 0; font-weight: 600; color: #667eea;">
+                        <i class="fas fa-rocket" style="margin-right: 0.5rem;"></i> Tudo Integrado
                     </h3>
-                    <p class="text-sm" style="margin: 0; line-height: 1.7; color: #475569;"><strong>SFHT:</strong> Motor de templates • <strong>SFCSS:</strong> Framework CSS • <strong>SFJS:</strong> JS reativo</p>
+                    <p class="text-sm" style="margin: 0; line-height: 1.7; color: #475569;"><strong>SFHT:</strong> Templates nativo • <strong>SFCSS:</strong> CSS minimalista • <strong>SFJS:</strong> JS reativo</p>
                 </div>
             </div>
 
-            <div class="card">
+            <!-- Card 3 -->
+            <div class="card" style="box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.3s; border: none; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);">
                 <div class="card-body">
-                    <h3 class="text-lg" style="margin: 0 0 1rem 0; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; color: var(--primary);">
-                        <i class="fas fa-wrench"></i> Ferramentas Completas
+                    <h3 class="text-lg" style="margin: 0 0 1rem 0; font-weight: 600; color: #667eea;">
+                        <i class="fas fa-wrench" style="margin-right: 0.5rem;"></i> Ferramentas Completas
                     </h3>
-                    <p class="text-sm" style="margin: 0; line-height: 1.7; color: #475569;">CLI, migrations, seeders, factories, cache, queue, JWT, CSRF, validação e muito mais.</p>
+                    <p class="text-sm" style="margin: 0; line-height: 1.7; color: #475569;">CLI com 24 comandos, migrations, seeders, factories, cache, queue, JWT, CSRF, validação e muito mais.</p>
                 </div>
             </div>
 
-            <div class="card">
+            <!-- Card 4 -->
+            <div class="card" style="box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.3s; border: none; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);">
                 <div class="card-body">
-                    <h3 class="text-lg" style="margin: 0 0 1rem 0; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; color: var(--primary);">
-                        <i class="fas fa-cube"></i> Pronto para Produção
+                    <h3 class="text-lg" style="margin: 0 0 1rem 0; font-weight: 600; color: #667eea;">
+                        <i class="fas fa-cube" style="margin-right: 0.5rem;"></i> Pronto para Produção
                     </h3>
-                    <p class="text-sm" style="margin: 0; line-height: 1.7; color: #475569;">Router, DI container, query builder portável, error handling em JSON/HTML, testes integrados.</p>
+                    <p class="text-sm" style="margin: 0; line-height: 1.7; color: #475569;">Router fluente, DI container, query builder portável, error handling em JSON/HTML, testes integrados.</p>
                 </div>
             </div>
         </div>
 
-        <div class="text-center mt-5">
-            <p><strong>Comece agora:</strong></p>
-            <a href="https://github.com/fabioaacarneiro/sfphp-project" target="_blank" class="btn btn-primary">
+        <!-- CTA -->
+        <div class="text-center mt-5" style="padding: 2rem; border-top: 1px solid #e2e8f0;">
+            <p style="margin-bottom: 1rem;"><strong>Começe agora:</strong></p>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project" target="_blank" class="btn btn-primary" style="padding: 0.75rem 2rem; font-size: 1rem;">
                 <i class="fab fa-github"></i> Ver no GitHub
             </a>
         </div>
