@@ -44,7 +44,7 @@ final class Application
                 'make:model' => $this->makeModel($arguments),
                 'make:repository' => $this->makeRepository($arguments),
                 'make:service' => $this->makeService($arguments),
-                'make:all' => $this->makeAll($arguments),
+                'make:scaffold' => $this->makeScaffold($arguments),
                 'migrate' => $this->migrate($arguments),
                 'rollback' => $this->rollback($arguments),
                 'status' => $this->status($arguments),
@@ -73,7 +73,7 @@ final class Application
         $this->writeLine('  make:model <name>          Generate a model skeleton');
         $this->writeLine('  make:repository <name>     Generate a repository skeleton');
         $this->writeLine('  make:service <name>        Generate a service skeleton');
-        $this->writeLine('  make:all <name>            Generate controller, model, repository and service');
+        $this->writeLine('  make:scaffold <name>       Generate full stack (controller, model, repository, service)');
         $this->writeLine('');
         $this->writeLine('Migration Commands:');
         $this->writeLine('  make:migration <name> [--path=database/migrations]');
@@ -83,7 +83,7 @@ final class Application
         $this->writeLine('');
         $this->writeLine('Examples:');
         $this->writeLine('  ./sfphp make:controller Post');
-        $this->writeLine('  ./sfphp make:all User');
+        $this->writeLine('  ./sfphp make:scaffold User');
         $this->writeLine('  ./sfphp migrate --step=2');
 
         return 0;
@@ -287,7 +287,7 @@ final class Application
      * @param array<int, string> $arguments The command arguments
      * @return int
      */
-    private function makeAll(array $arguments): int
+    private function makeScaffold(array $arguments): int
     {
         $name = $this->firstArgument($arguments);
         if ($name === null) {
