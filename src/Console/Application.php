@@ -74,6 +74,8 @@ final class Application
                 'db:fresh' => $this->dbFresh($arguments),
                 'cache:clear' => $this->cacheClear($arguments),
                 'cache:flush' => $this->cacheFlush($arguments),
+                'queue:work' => $this->queueWork($arguments),
+                'queue:failed' => $this->queueFailed($arguments),
                 'tinker' => $this->tinker(),
                 default => $this->unknownCommand($command),
             };
@@ -121,6 +123,10 @@ final class Application
             $this->writeLine('Cache Commands:');
             $this->writeLine('  cache:clear           Clear expired cache entries');
             $this->writeLine('  cache:flush           Flush all cache');
+            $this->writeLine('');
+            $this->writeLine('Queue Commands:');
+            $this->writeLine('  queue:work            Start queue worker [--timeout=3600]');
+            $this->writeLine('  queue:failed          List failed jobs');
             $this->writeLine('');
             $this->writeLine('Server & Database Commands:');
             $this->writeLine('  serve                 Start development server (localhost:8000)');
@@ -1040,6 +1046,62 @@ PHP;
             $cache->flush();
 
             $this->writeLine('All cache flushed successfully.');
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+            return 1;
+        }
+    }
+
+    /**
+     * Start queue worker.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function queueWork(array $arguments): int
+    {
+        try {
+            $timeout = $this->getOption($arguments, 'timeout', 3600);
+            $queue = new \SfPhp\Queue\QueueManager();
+
+            $this->writeLine('Starting queue worker (timeout: ' . $timeout . 's)...');
+            $this->writeLine('Press CTRL+C to stop.');
+            $this->writeLine('');
+
+            $queue->work((int) $timeout);
+
+            $this->writeLine('Queue worker stopped.');
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+            return 1;
+        }
+    }
+
+    /**
+     * Show failed jobs.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function queueFailed(array $arguments): int
+    {
+        try {
+            $queue = new \SfPhp\Queue\QueueManager();
+            $failed = $queue->failed();
+
+            if (empty($failed)) {
+                $this->writeLine('No failed jobs.');
+                return 0;
+            }
+
+            $this->writeLine('Failed Jobs:');
+            foreach ($failed as $job) {
+                $this->writeLine('  - ' . $job['id'] . ' (failed at ' . date('Y-m-d H:i:s', $job['failed_at']) . ')');
+            }
 
             return 0;
         } catch (Throwable $e) {

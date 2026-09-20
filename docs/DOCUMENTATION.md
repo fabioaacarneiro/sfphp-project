@@ -9,6 +9,7 @@
 - [Migrations e Schema Builder](#migrations-e-schema-builder)
 - [Seeders e Factories](#seeders-e-factories)
 - [Cache System](#cache-system)
+- [Queue System](#queue-system)
 - [Roteamento](#roteamento)
 - [Controllers e Views](#controllers-e-views)
 - [Modelos e Repositórios](#modelos-e-repositórios)
@@ -99,6 +100,17 @@ O binário `./sfphp` fornece 20+ comandos para gerar código, gerenciar migratio
 
 # Flush todos os cache
 ./sfphp cache:flush
+```
+
+### Queue Commands
+
+```bash
+# Iniciar queue worker
+./sfphp queue:work
+./sfphp queue:work --timeout=7200  # 2 horas
+
+# Ver jobs que falharam
+./sfphp queue:failed
 ```
 
 ### Servidor e Utilitários
@@ -1401,6 +1413,190 @@ class CustomDriver implements Cache
     public function forget(string $key): void { }
     public function flush(): void { }
     public function has(string $key): bool { }
+}
+```
+
+---
+
+## Queue System
+
+Sistema de fila para executar jobs em background via workers.
+
+### Drivers Disponíveis
+
+**DatabaseDriver** (padrão)
+```php
+use SfPhp\Queue\DatabaseDriver;
+
+$queue = new QueueManager(new DatabaseDriver());
+```
+
+**RedisDriver** (distribuído, recomendado para produção)
+```php
+use SfPhp\Queue\RedisDriver;
+
+$redis = new \Redis();
+$redis->connect('127.0.0.1', 6379);
+
+$queue = new QueueManager(new RedisDriver($redis));
+```
+
+### Criar Job
+
+```bash
+./sfphp make:job SendEmail
+./sfphp make:job ProcessImage
+```
+
+Arquivo gerado em `app/Jobs/SendEmailJob.php`:
+
+```php
+<?php
+
+namespace SfphpProject\app\Jobs;
+
+use SfPhp\Queue\Job;
+
+class SendEmailJob extends Job
+{
+    protected string $email;
+    protected string $subject;
+    protected string $message;
+
+    public function __construct(string $email = '', string $subject = '', string $message = '')
+    {
+        $this->email = $email;
+        $this->subject = $subject;
+        $this->message = $message;
+    }
+
+    public function handle(): void
+    {
+        // Envia email
+        mail($this->email, $this->subject, $this->message);
+    }
+}
+```
+
+### Dispatch Job
+
+```php
+use SfphpProject\app\Jobs\SendEmailJob;
+
+// Dispatch imediatamente
+dispatch(new SendEmailJob('user@example.com', 'Welcome!', 'Hi there!'));
+
+// Dispatch com delay (segundos)
+dispatch(
+    new SendEmailJob('user@example.com', 'Reminder', 'Don\'t forget!'),
+    delay: 3600  // 1 hora depois
+);
+```
+
+### Job Configuration
+
+```php
+class SendEmailJob extends Job
+{
+    protected int $tries = 3;       // Tentar 3 vezes antes de falhar
+    protected int $timeout = 60;    // Timeout de 60 segundos
+
+    public function handle(): void
+    {
+        // ...
+    }
+}
+```
+
+### Métodos do Job
+
+```php
+$job->tries(5);              // Tentar 5 vezes
+$job->timeout(120);          // Timeout 120 segundos
+$job->delay(3600);           // Delay 1 hora
+$job->getAttempts();         // Número de tentativas
+$job->getTries();            // Max tentativas
+```
+
+### Worker
+
+Iniciar worker para processar jobs:
+
+```bash
+./sfphp queue:work
+./sfphp queue:work --timeout=7200  # 2 horas
+```
+
+Worker vai:
+1. Buscar job disponível da fila
+2. Executar `handle()`
+3. Deletar job se sucesso
+4. Retentar se falhar (até max `tries`)
+5. Marcar como falho se max retentativas atingido
+
+Pressione CTRL+C para parar o worker.
+
+### Failed Jobs
+
+Ver jobs que falharam:
+
+```bash
+./sfphp queue:failed
+```
+
+### Exemplo Completo
+
+```php
+// Em um controller
+class UserController
+{
+    public function store()
+    {
+        $user = User::create(request()->all());
+
+        // Dispatch email em background
+        dispatch(new SendEmailJob(
+            $user->email,
+            'Welcome to SFPHP',
+            'Thanks for signing up!'
+        ));
+
+        return redirect('/')->with('success', 'User created');
+    }
+}
+```
+
+### Job com Relacionamentos
+
+```php
+class ProcessImageJob extends Job
+{
+    protected int $userId;
+
+    public function __construct(int $userId)
+    {
+        $this->userId = $userId;
+    }
+
+    public function handle(): void
+    {
+        $user = User::find($this->userId);
+        // Process image...
+    }
+}
+```
+
+### Retry e Release
+
+```php
+public function handle(): void
+{
+    try {
+        // Risca...
+    } catch (\Exception $e) {
+        // Release job volta para fila em 60 segundos
+        throw $e;
+    }
 }
 ```
 
