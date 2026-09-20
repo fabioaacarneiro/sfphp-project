@@ -275,84 +275,70 @@ Arquivo de template: `.sfht`
 @endforeach
 ```
 
-### Uso no Controller
+### Uso nos Controllers
+
+O `View` é um helper estático que gerencia o SfhtEngine singleton:
 
 ```php
 <?php
 
 namespace SfphpProject\app\controllers;
 
-use SfphpProject\src\View\SfhtEngine;
+use SfphpProject\src\View;
 
 final class HomeController extends BaseController
 {
-    public function index(): string
+    public function index(): void
     {
-        $engine = new SfhtEngine([__DIR__ . '/../resources/views']);
-        
-        return $engine->render('home', [
+        View::render('home', [
             'title' => 'Welcome',
             'posts' => Post::all(),
-            'user' => auth()->user(),
         ]);
     }
 }
 ```
 
-### Estrutura de Diretórios Recomendada
+### Estrutura de Diretórios
 
 ```
-resources/
-├── views/
-│   ├── layouts/
-│   │   ├── base.sfpt
-│   │   └── app.sfpt
-│   ├── pages/
-│   │   ├── home.sfpt
-│   │   ├── about.sfpt
-│   │   └── contact.sfpt
-│   ├── components/
-│   │   ├── button.sfpt
-│   │   ├── card.sfpt
-│   │   └── form-field.sfpt
-│   └── partials/
-│       ├── header.sfpt
-│       ├── footer.sfpt
-│       └── navigation.sfpt
+app/resources/views/
+├── home.sfht
+├── layouts/
+│   └── base.sfht
+├── components/
+│   ├── button.sfht
+│   └── card.sfht
+└── partials/
+    ├── header.sfht
+    └── footer.sfht
 ```
 
 ### Performance e Caching
 
-O SFHT compila templates para PHP e cacheia o resultado automaticamente:
+O SFHT compila templates para PHP e cacheia em `sys_get_temp_dir()/sfphp-sfht-cache` com validação automática por timestamp. Limpar manualmente:
 
 ```php
-$engine = new SfhtEngine(
-    [__DIR__ . '/views'],
-    '/tmp/sfht-cache'  // Cache directory
-);
-
-// Cache é validado automaticamente por timestamp
-// Limpar cache quando necessário:
+// Acessar o engine via View
+$engine = View::engine(); // Nota: método privado, não é parte da API pública
 $engine->clearCache();
 ```
 
-### Variáveis Globais
+### Integração com SFCSS e SFJS
 
-```php
-$engine->setGlobal('siteName', 'My Site');
-$engine->setGlobal('user', auth()->user());
+Use as classes SFCSS e atributos SFJS diretamente nos templates:
 
-// Ou múltiplas ao mesmo tempo
-$engine->setGlobals([
-    'siteName' => 'My Site',
-    'user' => auth()->user(),
-    'version' => '1.0.0',
-]);
+```sfht
+<!-- SFCSS button -->
+<button class="btn btn-primary">Click me</button>
 
-// Agora acessíveis em todas as templates
-{{ $siteName }}
-{{ $user->name }}
->>>>>>> origin/master
+<!-- SFJS AJAX -->
+<button @hxGet="/api/data" @hxTarget="#content">Load</button>
+
+<!-- SFJS reactive data -->
+<div @data="{ count: 0 }">
+  <p>{{ count }}</p>
+  <button @click="count++">Inc</button>
+</div>
 ```
 
 ---
@@ -1765,41 +1751,54 @@ Controllers herdam de `BaseController` (web) ou `BaseAPIController` (API).
 ```php
 <?php
 
-namespace SfphpProject\app\Controllers;
+namespace SfphpProject\app\controllers;
 
 use SfphpProject\app\controllers\BaseController;
+use SfphpProject\src\View;
 
 final class PostController extends BaseController
 {
-    public function index(): string
+    public function index(): void
     {
-        $posts = User::all();
-        return $this->view('posts/index', compact('posts'));
+        $posts = Post::all();
+        View::render('posts/index', ['posts' => $posts]);
     }
 
-    public function show(int $id): string
+    public function show(int $id): void
     {
         $post = Post::find($id);
-        return $this->view('posts/show', compact('post'));
+        View::render('posts/show', ['post' => $post]);
     }
 }
 ```
 
 ### Views e Partials
 
+Todas as views são arquivos `.sfht`:
+
 ```php
 // Renderizar view
-return $this->view('posts/show', ['post' => $post]);
+View::render('posts/show', ['post' => $post]);
 
-// Renderizar partial (reutilizável)
-echo View::partial('header', ['title' => 'Meu Site']);
+// Renderizar partial (reutilizável, vê as variáveis do pai)
+View::partial('header', ['title' => 'Meu Site']);
+```
 
-// Escapar output (previne XSS)
-echo e($user->name);
+Nas templates `.sfht`:
 
-// Asset URLs
-echo asset('css/style.css');  // /css/style.css
-echo asset('js/app.js');      // /js/app.js
+```sfht
+<!-- Escapar output (automático em {{ }}) -->
+<p>{{ $name }}</p>
+
+<!-- Output raw (sem escape) -->
+<p>{!! $html !!}</p>
+
+<!-- Asset URLs (helper global) -->
+<link rel="stylesheet" href="{{ asset('css/style.css') }}">
+<img src="{{ asset('images/logo.png') }}" alt="Logo">
+
+<!-- Filtros encadeados -->
+<h1>{{ $title | upper | truncate(50) }}</h1>
 ```
 
 ---
