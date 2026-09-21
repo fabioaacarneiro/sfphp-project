@@ -2836,4 +2836,128 @@ $tests->run('security headers are added, and the risky ones only on request', fu
     $tests->assertSame('max-age=31536000', $overHttps->header('Strict-Transport-Security'));
 });
 
+$tests->run('the cache counts atomically and does not move the window', function () use ($tests): void {
+    foreach ([new MemoryDriver(), new FileDriver(sys_get_temp_dir() . '/sfphp-increment-' . getmypid())] as $driver) {
+        $cache = new CacheManager($driver);
+        $cache->flush();
+
+        $tests->assertSame(1, $cache->increment('hits', 1, 60));
+        $tests->assertSame(2, $cache->increment('hits', 1, 60));
+        $tests->assertSame(7, $cache->increment('hits', 5, 60));
+
+        // The counter is readable as an ordinary value.
+        $tests->assertSame(7, (int) $cache->get('hits'));
+
+        /*
+         * The lifetime belongs to the counter that was created, not to every
+         * hit afterwards. A client that keeps knocking must not be able to
+         * push its own window forward and stay inside the limit forever.
+         */
+        $ttl = $cache->ttl('hits');
+        $tests->assertTrue($ttl !== null && $ttl <= 60);
+        $cache->increment('hits', 1, 3600);
+        $tests->assertTrue($cache->ttl('hits') <= 60);
+
+        // A counter that was never created reports no deadline.
+        $tests->assertSame(null, $cache->ttl('never-set'));
+
+        /*
+         * The corollary of "the lifetime applies only on creation": a counter
+         * first created without one never gets one. Documented, because it is
+         * the kind of thing that is only surprising after it has happened.
+         */
+        $cache->increment('immortal');
+        $cache->increment('immortal', 1, 60);
+        $tests->assertSame(null, $cache->ttl('immortal'));
+
+        $tests->assertSame(-2, $cache->decrement('down', 2, 60));
+
+        $cache->flush();
+    }
+});
+
+$tests->run('concurrent processes do not lose counts', function () use ($tests): void {
+    /*
+     * The bug this guards against cannot be reproduced in one process: get()
+     * followed by put() only loses a hit when something else writes in
+     * between. So this really does fork PHP processes that all increment the
+     * same key at once, and asserts the total is exact.
+     *
+     * Before Cache::increment() existed, the rate limiter counted with a read
+     * and a write, and this test would land well short of the total — which is
+     * how an attacker opening parallel connections got more attempts than the
+     * limit allowed.
+     */
+    $directory = sys_get_temp_dir() . '/sfphp-concurrency-' . bin2hex(random_bytes(6));
+    $autoload = __DIR__ . '/../vendor/autoload.php';
+    $script = $directory . '-worker.php';
+
+    file_put_contents($script, <<<'WORKER'
+        <?php
+        require $argv[1];
+        $driver = new SfphpProject\src\Cache\FileDriver($argv[2]);
+        for ($i = 0; $i < (int) $argv[4]; $i++) {
+            $driver->increment($argv[3], 1, 60);
+        }
+        WORKER);
+
+    $workers = 12;
+    $perWorker = 25;
+    $processes = [];
+
+    for ($i = 0; $i < $workers; $i++) {
+        $command = escapeshellcmd(PHP_BINARY)
+            . ' ' . escapeshellarg($script)
+            . ' ' . escapeshellarg($autoload)
+            . ' ' . escapeshellarg($directory)
+            . ' ' . escapeshellarg('shared')
+            . ' ' . escapeshellarg((string) $perWorker);
+
+        $processes[] = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes[$i]);
+    }
+
+    foreach ($processes as $index => $process) {
+        fclose($pipes[$index][1]);
+        fclose($pipes[$index][2]);
+        proc_close($process);
+    }
+
+    $driver = new FileDriver($directory);
+    $tests->assertSame($workers * $perWorker, (int) $driver->get('shared'));
+
+    $driver->flush();
+    @rmdir($directory);
+    @unlink($script);
+});
+
+$tests->run('the rate limiter counts through the atomic counter', function () use ($tests): void {
+    $directory = sys_get_temp_dir() . '/sfphp-ratelimit-' . bin2hex(random_bytes(6));
+    $cache = new CacheManager(new FileDriver($directory));
+    $limit = new RateLimit(maxAttempts: 2, decaySeconds: 60, name: 'atomic', cache: $cache);
+
+    $request = Request::create('POST', '/login', [
+        'server' => ['REMOTE_ADDR' => '203.0.113.9'],
+        'headers' => ['Accept' => 'application/json'],
+    ]);
+
+    $destination = static fn (Request $passed): Response => Response::text('ok');
+
+    $tests->assertSame('1', $limit->handle($request, $destination)->header('X-RateLimit-Remaining'));
+    $tests->assertSame('0', $limit->handle($request, $destination)->header('X-RateLimit-Remaining'));
+
+    $refused = $limit->handle($request, $destination);
+    $tests->assertSame(HTTP_TOO_MANY_REQUESTS, $refused->status());
+
+    /*
+     * Retry-After comes from the counter's remaining lifetime, so it counts
+     * down towards the window's close instead of restarting at the full decay
+     * on every refusal.
+     */
+    $retryAfter = (int) $refused->header('Retry-After');
+    $tests->assertTrue($retryAfter > 0 && $retryAfter <= 60);
+
+    $cache->flush();
+    @rmdir($directory);
+});
+
 $tests->finish();

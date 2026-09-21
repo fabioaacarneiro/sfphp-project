@@ -23,6 +23,11 @@ use SfphpProject\src\Http\Response;
  * shared driver is configured. With the default file driver it holds across
  * requests on one machine, which is already the common case.
  *
+ * The count is an atomic Cache::increment(), not a read followed by a write.
+ * That distinction is the whole middleware: concurrent requests counted with
+ * get() and put() overwrite one another, and the limit leaks under exactly the
+ * parallel traffic it is meant to refuse.
+ *
  * It counts by client address, and that address is only as trustworthy as the
  * trusted-proxy configuration: behind a load balancer with none declared,
  * every request looks like it comes from the balancer and the whole site
@@ -59,28 +64,26 @@ final class RateLimit implements Middleware
     public function handle(Request $request, callable $next): Response
     {
         $key = $this->key($request);
-        $window = $this->cache->get($key);
-
-        $now = time();
-
-        if (!is_array($window) || ($window['expires'] ?? 0) <= $now) {
-            $window = ['hits' => 0, 'expires' => $now + $this->decaySeconds];
-        }
-
-        $window['hits']++;
-        $remainingSeconds = max(1, $window['expires'] - $now);
 
         /*
-         * The TTL follows the window rather than being reset to the full decay
-         * on every hit. Refreshing it would let a client that keeps knocking
-         * hold its own bucket open forever, so the window would never close
-         * and the counter would never forgive.
+         * One atomic add, not a read followed by a write. Counting with
+         * get() and put() loses hits precisely when the limit matters: two
+         * requests that arrive together both read 4 and both write 5, so the
+         * fifth attempt is never seen. An attacker trying passwords opens
+         * several connections at once, which is exactly that case — the
+         * defence would come apart under the only traffic it exists for.
+         *
+         * The lifetime is applied only when the counter is created, so the
+         * window does not move. Refreshing it on every hit would let a client
+         * that keeps knocking hold its own window open forever, and the
+         * counter would never forgive.
          */
-        $this->cache->put($key, $window, $remainingSeconds);
+        $hits = $this->cache->increment($key, 1, $this->decaySeconds);
 
-        $remaining = max(0, $this->maxAttempts - $window['hits']);
+        $remainingSeconds = max(1, $this->cache->ttl($key) ?? $this->decaySeconds);
+        $remaining = max(0, $this->maxAttempts - $hits);
 
-        if ($window['hits'] > $this->maxAttempts) {
+        if ($hits > $this->maxAttempts) {
             return $this->refuse($request, $remainingSeconds);
         }
 
