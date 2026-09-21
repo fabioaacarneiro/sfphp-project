@@ -15,18 +15,26 @@ final class Csrf
     /**
      * Start the PHP session with secure defaults when needed.
      *
+     * @param bool|null $secure Whether the connection is HTTPS, or null to detect
      * @return void
      */
-    public static function startSession(): void
+    public static function startSession(?bool $secure = null): void
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
             return;
         }
 
         if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
+            /*
+             * The caller may know better than this class does. Behind a
+             * TLS-terminating proxy the PHP process sees plain HTTP, so
+             * isHttps() answers false and the cookie would lose its "secure"
+             * flag — the StartSession middleware passes the request's answer,
+             * which consults the trusted-proxy configuration.
+             */
             session_set_cookie_params([
                 'httponly' => true,
-                'secure' => self::isHttps(),
+                'secure' => $secure ?? self::isHttps(),
                 'samesite' => 'Lax',
             ]);
         }
