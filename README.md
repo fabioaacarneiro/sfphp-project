@@ -45,6 +45,7 @@ Em produção, aponte o `DocumentRoot` para `public/`.
 | | |
 |---|---|
 | **Roteamento** | Parâmetros tipados com suporte a qualquer alfabeto, grupos, rotas nomeadas, geração de URL |
+| **HTTP** | Objetos Request/Response e pipeline de middleware global, por grupo e por rota |
 | **Container DI** | Autowiring por reflexão, fábricas preguiçosas, detecção de ciclo |
 | **Query Builder** | Identificadores validados por whitelist, bind em todo valor, paginação por dialeto |
 | **Schema Builder** | 30+ tipos de coluna com paridade real MySQL 8 ↔ PostgreSQL 12 |
@@ -76,6 +77,8 @@ Router::get('/produtos/nome:alpha', 'ProdutoController', 'show');   // casa /pro
   e exige chave de 32 bytes
 - **SQL** — todo valor é vinculado, todo identificador validado contra whitelist
 - **XSS** — `{{ }}` do SFHT escapa por padrão; a saída crua exige `{!! !!}`
+- **Middleware** — `VerifyCsrfToken` aplica a verificação de CSRF por padrão a toda
+  requisição que altera estado
 
 O framework segue a regra **validar na entrada, escapar na saída**. Valores da
 requisição chegam inalterados de propósito: escapar na entrada corromperia o
@@ -85,7 +88,7 @@ dado no banco sem proteger o destino real.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 37 casos unitários
+composer run test        # 55 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 ```
 
@@ -95,9 +98,8 @@ e PostgreSQL 16 reais.
 
 ## O que não tem
 
-Dito de frente, para você decidir com informação: não há objetos
-Request/Response, pipeline de middleware, autenticação, ORM, sistema de eventos,
-i18n nem rate limiting. A lista completa, com o impacto de cada ausência, está
+Dito de frente, para você decidir com informação: não há autenticação, ORM,
+sistema de eventos, i18n nem rate limiting. A lista completa, com o impacto de cada ausência, está
 em [docs/DOCUMENTATION.md § Limitações conhecidas](docs/DOCUMENTATION.md#limitações-conhecidas).
 
 ## Documentação
