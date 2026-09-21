@@ -4,6 +4,7 @@ require __DIR__ . '/../vendor/autoload.php';
 
 use SfphpProject\app\controllers\BaseAPIController;
 use SfphpProject\src\Csrf;
+use SfphpProject\src\ErrorHandler;
 use SfphpProject\src\Container;
 use SfphpProject\src\JWT;
 use SfphpProject\src\Migrations\Blueprint;
@@ -1409,6 +1410,34 @@ $tests->run('a middleware that forgets to return fails where the mistake is', fu
         ),
         RuntimeException::class
     );
+});
+
+$tests->run('error responses are rendered, negotiated and redacted', function () use ($tests): void {
+    /*
+     * The first assertions ever written for ErrorHandler. They were impossible
+     * before: the class echoed and called exit, so there was nothing to
+     * inspect.
+     */
+    $throwable = new RuntimeException('connection to 10.0.0.5 failed for user root');
+
+    $html = ErrorHandler::toResponse($throwable);
+    $tests->assertSame(HTTP_INTERNAL_SERVER_ERROR, $html->status());
+    $tests->assertSame('text/html; charset=utf-8', $html->header('Content-Type'));
+
+    $json = ErrorHandler::toResponse(
+        $throwable,
+        Request::create('GET', '/api', ['headers' => ['Accept' => 'application/json']])
+    );
+    $tests->assertSame('application/json; charset=utf-8', $json->header('Content-Type'));
+
+    /*
+     * Outside development the driver message must not reach the client: it
+     * carries the host, the database and the user.
+     */
+    if (APP_ENV !== 'development') {
+        $tests->assertSame('{"message":"Internal Server Error"}', $json->body());
+        $tests->assertSame(false, str_contains($html->body(), '10.0.0.5'));
+    }
 });
 
 $tests->finish();
