@@ -63,6 +63,42 @@ final class ErrorHandler
      */
     public static function handleThrowable(Throwable $throwable): never
     {
+        self::report($throwable);
+
+        if (!headers_sent()) {
+            (new Emitter())->emit(self::toResponse($throwable));
+        }
+
+        exit(1);
+    }
+
+    /**
+     * Write the failure to the log.
+     *
+     * Goes through the application logger, so the record is structured and
+     * carries the request id every other line of the same request carries —
+     * which is the whole reason to have an id at all.
+     *
+     * It falls back to error_log() when logging itself fails. That is not
+     * defensive habit: this runs on the path that handles a fatal error, and a
+     * log destination that cannot be opened must not be allowed to replace the
+     * failure being reported with a different one.
+     *
+     * @param Throwable $throwable The failure to report
+     * @return void
+     */
+    private static function report(Throwable $throwable): void
+    {
+        try {
+            if (function_exists('logger')) {
+                logger()->exception($throwable);
+
+                return;
+            }
+        } catch (Throwable) {
+            // Fall through to error_log below.
+        }
+
         error_log(sprintf(
             '%s: %s in %s:%d',
             $throwable::class,
@@ -70,12 +106,6 @@ final class ErrorHandler
             $throwable->getFile(),
             $throwable->getLine()
         ));
-
-        if (!headers_sent()) {
-            (new Emitter())->emit(self::toResponse($throwable));
-        }
-
-        exit(1);
     }
 
     /**
@@ -124,10 +154,27 @@ final class ErrorHandler
             return Response::json(['message' => $message], HTTP_INTERNAL_SERVER_ERROR);
         }
 
+        /*
+         * The 404 and 405 pages were translated when the i18n layer landed and
+         * this one was missed: it shipped a Portuguese title and lang="pt-br"
+         * to every visitor, whatever language they asked for. The catalog keys
+         * had existed the whole time with nothing calling them.
+         *
+         * function_exists() is checked because this also runs on the shutdown
+         * path, where a fatal during bootstrap can mean the autoloader never
+         * finished and the helpers were never defined.
+         */
+        $translated = function_exists('__');
+        $title = $translated ? __('http.server_error_title') : 'Internal error';
+        $language = $translated ? str_replace('_', '-', locale()) : 'en';
+
         $escaped = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $escapedTitle = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
         return Response::html(
-            "<!doctype html><html lang='pt-br'><head><meta charset='UTF-8'><title>Erro interno</title></head><body><h1>500</h1><p>$escaped</p></body></html>",
+            '<!doctype html><html lang="' . $language . '">'
+            . '<head><meta charset="UTF-8"><title>' . $escapedTitle . '</title></head>'
+            . '<body><h1>500</h1><p>' . $escaped . '</p></body></html>',
             HTTP_INTERNAL_SERVER_ERROR
         );
     }
@@ -167,6 +214,8 @@ final class ErrorHandler
             return $throwable->getMessage();
         }
 
-        return 'Internal Server Error';
+        return function_exists('__')
+            ? __('http.server_error_message')
+            : 'Internal Server Error';
     }
 }

@@ -55,6 +55,26 @@ define("APP_LOCALES", array_values(array_filter(array_map(
     explode(",", (string) ($_ENV["APP_LOCALES"] ?? "en,pt_BR,es"))
 ))));
 
+/**
+ * Where log records go: "stream", "error_log" or "null".
+ */
+define("LOG_CHANNEL", $_ENV["LOG_CHANNEL"] ?? "stream");
+
+/**
+ * The stream or file the "stream" channel writes to.
+ *
+ * Defaults to stderr, which needs no directory to exist and no permission to
+ * be granted, and is where a container expects to find an application's logs.
+ */
+define("LOG_PATH", $_ENV["LOG_PATH"] ?? "php://stderr");
+
+/**
+ * The least severe level that is written: debug, info, notice, warning, error,
+ * critical, alert or emergency. Defaults to debug in development and info in
+ * production.
+ */
+define("LOG_LEVEL", $_ENV["LOG_LEVEL"] ?? (APP_ENV === "development" ? "debug" : "info"));
+
 /*
  * The application's own catalogs. Registered here rather than in the front
  * controller so that the CLI, the test runner and a queue worker all see the
