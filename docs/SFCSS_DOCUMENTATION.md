@@ -10,13 +10,47 @@
 <link rel="stylesheet" href="/assets/css/sfcss.css">
 ```
 
-## Customização
+## Build & Customização
 
-Edite `public/css/sfcss.config.json` e regenere:
+### Estrutura de Arquivos
+
+```
+tools/css-builder/
+├── sfcss.config.json      # Configuração de cores, spacing, tipografia
+├── sfcss-base.css          # Estilos base, componentes, utilities
+└── sfcss-builder.php       # Script de build
+```
+
+### Regenerar CSS
+
+Após editar `sfcss.config.json` ou `sfcss-base.css`, execute:
 
 ```bash
-php public/css/sfcss-builder.php > public/assets/css/sfcss.css
+php tools/css-builder/sfcss-builder.php
 ```
+
+Isso gera **automaticamente**:
+- `public/assets/css/sfcss.css` (49KB, legível)
+- `public/assets/css/sfcss.min.css` (39KB, minificado - 17% redução)
+
+### O Builder Faz
+
+1. **Lê configuração** → `sfcss.config.json`
+2. **Gera CSS base** → `sfcss-base.css`
+3. **Gera utilidades de cor** → 620+ classes (20 cores × 10 shades)
+4. **Gera CSS completo** → `sfcss.css`
+5. **Minifica** → Remove comentários, espaços, caracteres desnecessários
+6. **Salva versão otimizada** → `sfcss.min.css`
+
+### Customização
+
+**Cores:** Edite `sfcss.config.json` - `colorPalettes` (Tailwind-style: slate, blue, red, etc)
+
+**Spacing:** Edite `sfcss.config.json` - `spacing` (margin, padding escala)
+
+**Tipografia:** Edite `sfcss.config.json` - `typography` (fontes, tamanhos)
+
+**Componentes:** Edite `sfcss-base.css` - adicione classes direto ao final
 
 ---
 
