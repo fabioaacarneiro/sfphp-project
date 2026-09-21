@@ -16,5 +16,6 @@ return [
     'csrf_message' => 'The form has expired. Reload the page and try again.',
     'server_error_title' => 'Internal error',
     'server_error_message' => 'Internal Server Error',
+    'too_many_requests_message' => 'Too many requests. Please wait and try again.',
     'back_home' => 'Back to the home page',
 ];
