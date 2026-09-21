@@ -1,6 +1,6 @@
 <?php
 
-namespace SfPhp\Queue;
+namespace SfphpProject\src\Queue;
 
 interface Queue
 {
@@ -9,6 +9,13 @@ interface Queue
     public function pop(): ?Job;
 
     public function failed(Job $job, \Throwable $exception): void;
+
+    /**
+     * List the jobs that exhausted their retries.
+     *
+     * @return array<int, array{id: string, exception: string, failed_at: int}>
+     */
+    public function failedJobs(): array;
 
     public function retry(Job $job): void;
 

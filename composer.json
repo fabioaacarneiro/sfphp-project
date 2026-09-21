@@ -10,12 +10,15 @@
     "autoload": {
         "psr-4": {
             "SfphpProject\\src\\": "src/",
-            "SfphpProject\\app\\": "app/"
+            "SfphpProject\\app\\": "app/",
+            "Database\\Seeders\\": "database/seeders/",
+            "Database\\Factories\\": "database/factories/"
         },
         "files": [
             "app/config/config.php",
             "src/utils.php",
-            "src/http.php"
+            "src/http.php",
+            "src/helpers.php"
         ]
     },
     "authors": [
@@ -27,6 +30,16 @@
     "minimum-stability": "stable",
     "scripts": {
         "test": "php tests/run.php",
-        "lint": "find app src public tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l && php -l server.php && php -l sfphp"
+        "lint": "find app src public tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l && php -l server.php && php -l sfphp",
+        "test:db": "php tests/db.php",
+        "test:all": [
+            "@test",
+            "@test:db"
+        ]
+    },
+    "suggest": {
+        "ext-mbstring": "Improves Unicode case conversion; the framework falls back to ASCII folding without it.",
+        "ext-redis": "Enables the Redis cache and queue drivers.",
+        "ext-pcntl": "Enables graceful shutdown of the queue worker."
     }
 }

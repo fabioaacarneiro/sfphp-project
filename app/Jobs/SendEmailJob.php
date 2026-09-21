@@ -2,7 +2,7 @@
 
 namespace SfphpProject\app\Jobs;
 
-use SfPhp\Queue\Job;
+use SfphpProject\src\Queue\Job;
 
 class SendEmailJob extends Job
 {

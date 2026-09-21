@@ -1,6 +1,6 @@
 <?php
 
-namespace SfPhp\Database;
+namespace SfphpProject\src\Database;
 
 abstract class Factory
 {
