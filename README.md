@@ -58,6 +58,7 @@ In production, point `DocumentRoot` at `public/`.
 | **Schema builder** | 30+ column types with real MySQL 8 ↔ PostgreSQL 12 parity |
 | **SFHT** | Template engine with automatic escaping, layout inheritance and an OPcache-friendly cache |
 | **Logging** | JSON lines in UTC, a request id joining every line of one request, secrets redacted |
+| **Time** | UTC everywhere, including the database session; zones are a display decision |
 | **Cache** | File, memory and Redis drivers |
 | **Queue** | Workers with retries, database and Redis drivers |
 | **SFCSS** | 2,337 utility classes with `hover:` and responsive variants, 16.1KB gzipped |
@@ -115,7 +116,7 @@ data in the database without protecting its real destination.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 90 unit cases
+composer run test        # 95 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run docs        # the three documentation languages agree
 ```

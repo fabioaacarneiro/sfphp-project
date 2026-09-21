@@ -22,6 +22,57 @@ class Database
    * @return PDO
    * @throws RuntimeException If the connection cannot be established
    */
+  /**
+   * Put the connection's session on UTC.
+   *
+   * PHP is on UTC and writes UTC, but the database has a clock of its own and
+   * CURRENT_TIMESTAMP reads it. Leave them disagreeing and a single column ends
+   * up holding two different meanings — rows written by the application in UTC
+   * next to rows written by a DEFAULT CURRENT_TIMESTAMP or an ON UPDATE trigger
+   * in whatever zone the database server happens to be set to. Nothing in the
+   * data says which is which afterwards.
+   *
+   * Only the session is changed, never the server: a connection saying what it
+   * expects is correct, and a library reconfiguring a shared database for every
+   * other client on it is not.
+   *
+   * Drivers with no portable way to say this are left alone rather than sent a
+   * statement that would fail. For those, set the session zone yourself or keep
+   * the server on UTC.
+   *
+   * @param PDO $connection The open connection
+   * @param string $driver The driver name the DSN was built for
+   * @return void
+   */
+  private static function useUtc(PDO $connection, string $driver): void
+  {
+    $statement = match ($driver) {
+      'mysql' => "SET time_zone = '+00:00'",
+      'pgsql' => "SET TIME ZONE 'UTC'",
+      'oci' => "ALTER SESSION SET TIME_ZONE = '+00:00'",
+      default => null,
+    };
+
+    if ($statement === null) {
+      return;
+    }
+
+    try {
+      $connection->exec($statement);
+    } catch (PDOException $e) {
+      /*
+       * A connection that works but will not take the session zone is still
+       * usable, and refusing it here would turn a timestamp inconsistency into
+       * an outage. It is recorded instead, because it is the kind of thing
+       * nobody notices until two rows disagree by three hours.
+       */
+      logger()->warning('could not set the session time zone to UTC', [
+        'driver' => $driver,
+        'detail' => $e->getMessage(),
+      ]);
+    }
+  }
+
   public static function connect(): PDO
   {
     if (!self::$instance) {
@@ -52,6 +103,8 @@ class Database
           PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
           PDO::ATTR_EMULATE_PREPARES => false,
         ]);
+
+        self::useUtc(self::$instance, $driver);
       } catch (PDOException $e) {
         /*
          * The driver message carries the host, database name and user. It goes
@@ -60,7 +113,7 @@ class Database
          * message as part of an uncaught trace, which would put those details
          * back in front of the visitor whenever display_errors is on.
          */
-        error_log("Database connection failed: " . $e->getMessage());
+        logger()->error("database connection failed", ['detail' => $e->getMessage()]);
 
         throw new RuntimeException("Database connection failed.");
       }

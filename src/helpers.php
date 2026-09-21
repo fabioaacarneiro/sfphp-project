@@ -1,6 +1,7 @@
 <?php
 
 use SfphpProject\src\Cache\CacheManager;
+use SfphpProject\src\Time;
 use SfphpProject\src\Log\ErrorLogDriver;
 use SfphpProject\src\Log\Level;
 use SfphpProject\src\Log\LogManager;
@@ -20,6 +21,21 @@ if (!function_exists('cache')) {
         }
 
         return $cache;
+    }
+}
+
+if (!function_exists('now')) {
+    /**
+     * The current instant, in UTC.
+     *
+     * Everything the framework stores and computes is UTC, so this is what a
+     * timestamp written by application code should come from. See Time.
+     *
+     * @return DateTimeImmutable The current instant
+     */
+    function now(): DateTimeImmutable
+    {
+        return Time::now();
     }
 }
 

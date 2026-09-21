@@ -54,6 +54,7 @@ use SfphpProject\src\RawQuery;
 use SfphpProject\src\Route;
 use SfphpProject\src\Router;
 use SfphpProject\src\Str;
+use SfphpProject\src\Time;
 use SfphpProject\src\Validator;
 use SfphpProject\src\View;
 use SfphpProject\src\View\SfhtEngine;
@@ -67,6 +68,22 @@ require __DIR__ . '/TestRunner.php';
  * records swap in a driver of their own and put this one back afterwards.
  */
 logger()->driver(new LogNullDriver());
+
+/**
+ * Model used by the time zone tests.
+ */
+final class TimeTestArticle extends \SfphpProject\src\Database\Model
+{
+    protected static string $table = 'time_test_articles';
+
+    protected static array $fillable = ['published_at', 'published_on'];
+
+    protected static array $casts = [
+        'published_at' => 'datetime',
+        'published_on' => 'date',
+    ];
+}
+
 
 /**
  * Controller used by the end-to-end dispatch tests.
@@ -3198,6 +3215,119 @@ $tests->run('the 500 page follows the visitor language', function () use ($tests
     $tests->assertTrue(str_contains($english->body(), 'Internal error'));
 
     Translator::setLocale($previous);
+});
+
+$tests->run('the runtime is UTC and now() is the instant', function () use ($tests): void {
+    $tests->assertSame('UTC', date_default_timezone_get());
+    $tests->assertSame('UTC', Time::now()->getTimezone()->getName());
+    $tests->assertSame('UTC', now()->getTimezone()->getName());
+
+    // now() is the helper the documentation has been showing all along.
+    $tests->assertTrue(function_exists('now'));
+    $tests->assertTrue(abs(now()->getTimestamp() - time()) <= 1);
+});
+
+$tests->run('a naive database value is read as UTC, whatever the server is set to', function () use ($tests): void {
+    /*
+     * This is the bug the whole scope exists for. A datetime column hands back
+     * "2026-09-21 23:00:00" with no zone attached. Reading that with the PHP
+     * default zone means the same row is a different instant on a machine set
+     * to São Paulo than on one set to UTC — and once a year of rows has been
+     * written that way, nothing can repair them, because what they meant was
+     * never recorded.
+     */
+    $original = date_default_timezone_get();
+
+    try {
+        foreach (['UTC', 'America/Sao_Paulo', 'Asia/Tokyo'] as $serverZone) {
+            date_default_timezone_set($serverZone);
+
+            $parsed = Time::parse('2026-09-21 23:00:00');
+
+            $tests->assertSame('UTC', $parsed->getTimezone()->getName());
+            $tests->assertSame('2026-09-21T23:00:00+00:00', $parsed->format(DATE_ATOM));
+        }
+    } finally {
+        date_default_timezone_set($original);
+    }
+
+    // A value that carries its own offset keeps its meaning and is converted.
+    $tests->assertSame(
+        '2026-09-21T08:00:00+00:00',
+        Time::parse('2026-09-21T10:00:00+02:00')->format(DATE_ATOM)
+    );
+
+    // A naive string can still be read in a stated zone, when one is known.
+    $tests->assertSame(
+        '2026-09-22T02:00:00+00:00',
+        Time::parse('2026-09-21 23:00:00', 'America/Sao_Paulo')->format(DATE_ATOM)
+    );
+
+    // A Unix timestamp is already an instant and has no zone to guess.
+    $tests->assertSame('2026-09-21T23:00:00+00:00', Time::parse(1790031600)->format(DATE_ATOM));
+
+    $tests->assertSame(null, Time::parse('not a date'));
+    $tests->assertSame(null, Time::parse(null));
+});
+
+$tests->run('a zone is for showing a time, not for storing one', function () use ($tests): void {
+    $instant = Time::parse('2026-09-21T23:00:00+00:00');
+
+    $tokyo = Time::in($instant, 'Asia/Tokyo');
+    $tests->assertSame('2026-09-22 08:00:00', $tokyo->format('Y-m-d H:i:s'));
+
+    // The same moment, seen from elsewhere: the instant did not move.
+    $tests->assertSame($instant->getTimestamp(), $tokyo->getTimestamp());
+
+    // And storing it stores the same instant, in UTC.
+    $tests->assertSame('2026-09-21 23:00:00', Time::toDatabase($tokyo));
+
+    $tests->assertSame('2026-09-21 23:00:00', Time::display($instant));
+});
+
+$tests->run('the clock can be held still so a time test is not a race', function () use ($tests): void {
+    $frozen = Time::freeze('2026-01-01T12:00:00+00:00');
+
+    $tests->assertTrue(Time::frozen());
+    $tests->assertSame('2026-01-01T12:00:00+00:00', now()->format(DATE_ATOM));
+    $tests->assertSame($frozen->getTimestamp(), Time::now()->getTimestamp());
+
+    Time::unfreeze();
+    $tests->assertTrue(!Time::frozen());
+    $tests->assertTrue(abs(now()->getTimestamp() - time()) <= 1);
+});
+
+$tests->run('date attributes round-trip through UTC', function () use ($tests): void {
+    $article = TimeTestArticle::hydrate([
+        'id' => 1,
+        'published_at' => '2026-09-21 23:00:00',
+        'published_on' => '2026-09-21',
+    ]);
+
+    $published = $article->published_at;
+    $tests->assertTrue($published instanceof DateTimeImmutable);
+    $tests->assertSame('UTC', $published->getTimezone()->getName());
+    $tests->assertSame('2026-09-21T23:00:00+00:00', $published->format(DATE_ATOM));
+
+    // JSON carries the offset, so a consumer cannot guess the zone wrongly.
+    $tests->assertSame('2026-09-21T23:00:00+00:00', $article->toArray()['published_at']);
+
+    /*
+     * Writing a value from another zone stores the instant it names, not the
+     * wall clock it was written with: 08:00 in Tokyo is 23:00 the day before
+     * in UTC.
+     */
+    $article->published_at = new DateTimeImmutable('2026-09-22 08:00:00', new DateTimeZone('Asia/Tokyo'));
+    $article->published_on = new DateTimeImmutable('2026-09-22 08:00:00', new DateTimeZone('Asia/Tokyo'));
+
+    $forStorage = new ReflectionMethod($article, 'forStorage');
+    $forStorage->setAccessible(true);
+    $stored = $forStorage->invoke($article, $article->attributes());
+
+    $tests->assertSame('2026-09-21 23:00:00', $stored['published_at']);
+
+    // A date column keeps only the day, and the day is the UTC one.
+    $tests->assertSame('2026-09-21', $stored['published_on']);
 });
 
 $tests->finish();
