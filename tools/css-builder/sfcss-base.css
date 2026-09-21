@@ -247,6 +247,10 @@ tr:hover {
 .mt-5 { margin-top: 2rem; }
 .mt-6 { margin-top: 2.5rem; }
 .mt-8 { margin-top: 3rem; }
+.mt-12 { margin-top: 4.5rem; }
+.mt-16 { margin-top: 6rem; }
+.mt-20 { margin-top: 7.5rem; }
+.mt-24 { margin-top: 9rem; }
 
 /* Margin Bottom */
 .mb-0 { margin-bottom: 0; }
@@ -257,6 +261,10 @@ tr:hover {
 .mb-5 { margin-bottom: 2rem; }
 .mb-6 { margin-bottom: 2.5rem; }
 .mb-8 { margin-bottom: 3rem; }
+.mb-12 { margin-bottom: 4.5rem; }
+.mb-16 { margin-bottom: 6rem; }
+.mb-20 { margin-bottom: 7.5rem; }
+.mb-24 { margin-bottom: 9rem; }
 
 /* Margin Left */
 .ml-0 { margin-left: 0; }
@@ -311,6 +319,10 @@ tr:hover {
 .pt-5 { padding-top: 2rem; }
 .pt-6 { padding-top: 2.5rem; }
 .pt-8 { padding-top: 3rem; }
+.pt-12 { padding-top: 4.5rem; }
+.pt-16 { padding-top: 6rem; }
+.pt-20 { padding-top: 7.5rem; }
+.pt-24 { padding-top: 9rem; }
 
 /* Padding Bottom */
 .pb-0 { padding-bottom: 0; }
@@ -321,6 +333,10 @@ tr:hover {
 .pb-5 { padding-bottom: 2rem; }
 .pb-6 { padding-bottom: 2.5rem; }
 .pb-8 { padding-bottom: 3rem; }
+.pb-12 { padding-bottom: 4.5rem; }
+.pb-16 { padding-bottom: 6rem; }
+.pb-20 { padding-bottom: 7.5rem; }
+.pb-24 { padding-bottom: 9rem; }
 
 /* Padding Left */
 .pl-0 { padding-left: 0; }
@@ -330,6 +346,9 @@ tr:hover {
 .pl-4 { padding-left: 1.5rem; }
 .pl-5 { padding-left: 2rem; }
 .pl-6 { padding-left: 2.5rem; }
+.pl-8 { padding-left: 3rem; }
+.pl-12 { padding-left: 4.5rem; }
+.pl-16 { padding-left: 6rem; }
 
 /* Padding Right */
 .pr-0 { padding-right: 0; }
@@ -339,6 +358,9 @@ tr:hover {
 .pr-4 { padding-right: 1.5rem; }
 .pr-5 { padding-right: 2rem; }
 .pr-6 { padding-right: 2.5rem; }
+.pr-8 { padding-right: 3rem; }
+.pr-12 { padding-right: 4.5rem; }
+.pr-16 { padding-right: 6rem; }
 
 /* Padding X (horizontal) */
 .px-0 { padding-left: 0; padding-right: 0; }
@@ -347,6 +369,8 @@ tr:hover {
 .px-3 { padding-left: 1rem; padding-right: 1rem; }
 .px-4 { padding-left: 1.5rem; padding-right: 1.5rem; }
 .px-5 { padding-left: 2rem; padding-right: 2rem; }
+.px-6 { padding-left: 2.5rem; padding-right: 2.5rem; }
+.px-8 { padding-left: 3rem; padding-right: 3rem; }
 
 /* Padding Y (vertical) */
 .py-0 { padding-top: 0; padding-bottom: 0; }
@@ -356,6 +380,11 @@ tr:hover {
 .py-4 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
 .py-5 { padding-top: 2rem; padding-bottom: 2rem; }
 .py-6 { padding-top: 2.5rem; padding-bottom: 2.5rem; }
+.py-8 { padding-top: 3rem; padding-bottom: 3rem; }
+.py-12 { padding-top: 4.5rem; padding-bottom: 4.5rem; }
+.py-16 { padding-top: 6rem; padding-bottom: 6rem; }
+.py-20 { padding-top: 7.5rem; padding-bottom: 7.5rem; }
+.py-24 { padding-top: 9rem; padding-bottom: 9rem; }
 
 /* Gap - Grid and Flex */
 .gap-0 { gap: 0; }
