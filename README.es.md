@@ -59,6 +59,7 @@ En producción, apunta el `DocumentRoot` a `public/`.
 | **Constructor de esquemas** | Más de 30 tipos de columna con paridad real MySQL 8 ↔ PostgreSQL 12 |
 | **SFHT** | Motor de plantillas con escapado automático, herencia de layout y una caché compatible con OPcache |
 | **Registro** | Líneas JSON en UTC, un id de petición que une todas las líneas de una petición, secretos redactados |
+| **Tiempo** | UTC en todo, incluida la sesión de la base de datos; la zona es una decisión de presentación |
 | **Caché** | Drivers de archivo, memoria y Redis |
 | **Colas** | Workers con reintentos, drivers de base de datos y Redis |
 | **SFCSS** | 2.337 clases de utilidad con variantes `hover:` y responsivas, 16,1KB comprimidos |
@@ -119,7 +120,7 @@ corrompería el dato en la base de datos sin proteger su destino real.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 90 casos unitarios
+composer run test        # 95 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run docs        # los tres idiomas de la documentación concuerdan
 ```

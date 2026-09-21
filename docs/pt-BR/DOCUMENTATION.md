@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 90 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 95 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -32,6 +32,7 @@ hoje. Onde algo não existe, está dito que não existe — veja
 - [Queue](#queue)
 - [Validação](#validação)
 - [Internacionalização](#internacionalização)
+- [Tempo e fusos horários](#tempo-e-fusos-horários)
 - [Strings UTF-8](#strings-utf-8)
 - [Autenticação](#autenticação)
 - [Segurança](#segurança)
@@ -139,7 +140,7 @@ public/index.php
  │   └─ config.php → carrega .env (opcional) e define APP_NAME/VERSION/ENV
  │      utils.php  → helpers globais: e(), asset(), csrf_*()
  │      http.php   → constantes HTTP_OK, GET, POST, ...
- │      helpers.php→ cache(), logger(), dispatch(), __(), trans_choice(), locale()
+ │      helpers.php→ cache(), logger(), now(), dispatch(), __(), trans_choice(), locale()
  ├─ ErrorHandler::register()  rede de segurança para fatais e bootstrap
  ├─ require src/routes.php    popula o registro estático de rotas
  ├─ new Container()
@@ -408,6 +409,7 @@ E por `src/helpers.php`:
 ```php
 cache();                      // CacheManager com driver de arquivo
 logger();                     // LogManager, configurado por LOG_*
+now();                        // o instante atual, em UTC
 dispatch(new MeuJob());       // enfileira um job
 __('app.welcome', ['name' => 'Ana']);
 trans_choice('app.items', 3);
@@ -991,6 +993,10 @@ Disponíveis: `int`, `float`, `bool`, `string`, `json`, `array`, `datetime`,
 
 A conversão vale nos dois sentidos: `$artigo->meta = ['cor' => 'verde']` é
 gravado como JSON, e um `DateTimeImmutable` é gravado no formato do banco.
+
+Um atributo de data é **sempre UTC**, nos dois sentidos — ver
+[Tempo e fusos horários](#tempo-e-fusos-horários) para o motivo de a regra ser
+rígida.
 
 Em `toArray()` e no JSON, uma data sai como **ISO 8601** em vez do objeto
 `DateTimeImmutable` — que `json_encode` renderizaria como uma estrutura de
@@ -1865,6 +1871,130 @@ tornaria mais difícil pesquisar por uma delas, não mais fácil.
 
 ---
 
+## Tempo e fusos horários
+
+Tudo o que o framework armazena, calcula e registra é **UTC**.
+
+```php
+now();                                   // o instante atual, em UTC
+Time::now();                             // a mesma coisa
+Time::parse('2026-09-21 23:00:00');      // um valor gravado, lido como UTC
+Time::in($order->created_at, 'Asia/Tokyo');   // o mesmo instante, visto de lá
+Time::display($order->created_at);       // renderizado em APP_TIMEZONE
+Time::toDatabase($instant);              // o valor UTC que a coluna guarda
+```
+
+### Por que aqui a regra é rígida
+
+Um `2026-09-21 23:00:00` ingênuo numa coluna de banco só é um instante se algo
+disser em que fuso ele foi escrito. Quando essa resposta é "o que o servidor
+estivesse configurado", mudar o servidor — ou acrescentar um segundo —
+silenciosamente muda o que toda linha existente significa.
+
+O dano é **retroativo**, e é isso que diferencia esse caso de uma feature que
+falta. Uma feature pode ser acrescentada depois. Um ano de timestamps escritos
+num fuso desconhecido não pode ser consertado depois, porque a informação
+necessária para consertá-los nunca foi registrada.
+
+Por isso o fuso do runtime é UTC e **não é configurável**. Uma configuração que
+muda como timestamps gravados são interpretados é uma configuração capaz de
+reescrever o significado de dados existentes, e isso não é um botão que valha a
+pena oferecer.
+
+### Mostrar um horário para uma pessoa
+
+Isso é uma decisão separada, tomada onde o valor é renderizado e não onde ele é
+guardado:
+
+```php
+Time::display($order->created_at);                 // APP_TIMEZONE
+Time::display($order->created_at, 'd/m/Y H:i');
+Time::in($order->created_at, $user->timezone);     // por usuário
+```
+
+```ini
+APP_TIMEZONE=America/Sao_Paulo
+```
+
+O `APP_TIMEZONE` decide como os horários são **mostrados**. Ele não decide como
+são guardados, e mudá-lo não muda uma linha sequer.
+
+### Leitura de valores
+
+O `Time::parse()` aceita o que um banco, um formulário ou uma API entregam:
+
+| Recebe | Lê como |
+|---|---|
+| Uma string com offset ou fuso (`2026-09-21T10:00:00+02:00`) | Aquele instante, convertido para UTC |
+| Uma string ingênua (`2026-09-21 23:00:00`) | UTC, porque foi o que o framework escreveu |
+| Uma string ingênua com um fuso nomeado no segundo argumento | Aquele fuso, convertido para UTC |
+| Um timestamp Unix | Já é um instante; não há fuso a adivinhar |
+| Um `DateTimeInterface` em qualquer fuso | Convertido para UTC |
+| Qualquer coisa impossível de interpretar | `null`, em vez de uma exceção |
+
+### Atributos de modelo
+
+Os casts `datetime` e `date` seguem as mesmas regras, nos dois sentidos:
+
+```php
+$article->published_at;              // DateTimeImmutable, sempre UTC
+$article->toArray()['published_at']; // "2026-09-21T23:00:00+00:00"
+
+// 08:00 em Tóquio é gravado como o instante que ele nomeia, não como o relógio
+$article->published_at = new DateTimeImmutable('2026-09-22 08:00', new DateTimeZone('Asia/Tokyo'));
+// gravado: 2026-09-21 23:00:00
+```
+
+A forma JSON carrega o offset, então quem consome não pode adivinhar o fuso
+errado — que é a mesma razão de o valor ser UTC em primeiro lugar.
+
+### O banco também tem um relógio
+
+O PHP estar em UTC é só metade. O `CURRENT_TIMESTAMP` lê o relógio do servidor
+de banco, então um default de `useCurrent()` ou um trigger de `ON UPDATE`
+escreve no fuso em que **aquela** máquina estiver. Deixe os dois discordando e
+uma coluna acaba guardando dois significados diferentes, sem nada nos dados
+dizendo qual linha é qual.
+
+Por isso a conexão coloca a própria sessão em UTC:
+
+| Driver | Comando |
+|---|---|
+| MySQL | `SET time_zone = '+00:00'` |
+| PostgreSQL | `SET TIME ZONE 'UTC'` |
+| Oracle | `ALTER SESSION SET TIME_ZONE = '+00:00'` |
+| Outros | Intocados — configure o fuso da sessão você mesmo, ou mantenha o servidor em UTC |
+
+Só a sessão é alterada, nunca o servidor: uma conexão declarando o que espera
+está certa, e uma biblioteca reconfigurando um banco compartilhado para todos os
+outros clientes dele não está. Um driver que recuse o comando é registrado como
+aviso em vez de recusado, porque uma inconsistência de timestamp não deve virar
+uma indisponibilidade.
+
+### Testes
+
+Um teste que afirma sobre "agora" corre contra o relógio. Dá para segurá-lo:
+
+```php
+Time::freeze('2026-01-01T12:00:00+00:00');
+// ... now() devolve aquele instante
+Time::unfreeze();
+```
+
+**Só para testes.** O valor congelado é estático, então sob runtime persistente
+ele sobreviveria à requisição que o definiu e toda requisição seguinte receberia
+a hora errada.
+
+### O que falta
+
+| Ausência | Situação |
+|---|---|
+| Formato de data por idioma | O `Time::display()` recebe um formato de `date()`; nomes de mês e dia localizados exigem `ext-intl`. Ver [Internacionalização](#internacionalização) |
+| Tempo relativo ("3 horas atrás") | Não existe; a frase é por idioma e pertence à aplicação |
+| Coluna de fuso por usuário | O `Time::in()` aceita um; onde o fuso do usuário é guardado é decisão da aplicação |
+
+---
+
 ## Strings UTF-8
 
 `Str` dá as operações de string que o PHP padrão só faz por byte.
@@ -2724,7 +2854,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 90 casos unitários
+composer run test        # 95 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve
@@ -2766,7 +2896,7 @@ não faz, e que você deve saber antes de escolhê-lo.
 | **Sistema de eventos** | `make:event` e `make:listener` geram classes sem dispatcher |
 | **ORM completo** | Existe uma camada de [Models](#models) com hidratação, tipos de atributo, relacionamentos (incluindo muitos-para-muitos) e `with()`. Não existe identity map, unit of work, proxy de lazy loading, relação polimórfica nem schema derivado da classe — e [ORM ou Query Builder?](#orm-ou-query-builder) explica o motivo de cada um |
 | **Formatação por locale** | Data e número não são formatados por idioma; `ext-intl` faz isso bem e o framework não tenta. Ver [Internacionalização](#internacionalização) |
-| **Fusos horários** | Sem tratamento dedicado |
+| **Datas relativas e localizadas** | "3 horas atrás" e nomes de mês localizados não existem; armazenamento e conversão existem. Ver [Tempo e fusos horários](#tempo-e-fusos-horários) |
 | **Métricas** | Os registros carregam durações; contadores e tempos não são coletados. Ver [Log](#log) |
 | **Cache de rotas** | O despacho é O(n), com uma `preg_match` por rota. Adequado a dezenas, não a centenas |
 | **Sessão plugável** | `$_SESSION` nativa. Múltiplas instâncias exigem sticky sessions |
