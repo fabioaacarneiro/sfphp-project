@@ -1505,9 +1505,11 @@ tr:hover {
 .w-\[90\%\] { width: 90%; }
 .w-\[100\%\] { width: 100%; }
 
-/* Arbitrary Sizes with Percentages */
+/* Arbitrary Sizes with Percentages - Fractional */
+.h-\[25\%\] { height: 25%; }
 .h-\[33\%\] { height: 33%; }
 .h-\[66\%\] { height: 66%; }
+.h-\[75\%\] { height: 75%; }
 .w-\[25\%\] { width: 25%; }
 .w-\[33\%\] { width: 33%; }
 .w-\[66\%\] { width: 66%; }
