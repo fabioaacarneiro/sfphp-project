@@ -4,14 +4,14 @@ namespace SfphpProject\src\Database;
 
 use DateTimeImmutable;
 use DateTimeInterface;
-use Exception;
 use JsonException;
 use JsonSerializable;
-use RuntimeException;
 use PDO;
 use ReflectionClass;
+use RuntimeException;
 use SfphpProject\src\Database;
 use SfphpProject\src\QueryBuilder;
+use SfphpProject\src\Time;
 
 /**
  * A row, as an object.
@@ -747,6 +747,11 @@ abstract class Model implements JsonSerializable
             'json', 'array' => is_string($value)
                 ? $value
                 : json_encode($value, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+            /*
+             * Converted to UTC before it is formatted, so a value handed in
+             * from another zone is stored as the instant it names rather than
+             * as the wall clock it was written with.
+             */
             'datetime' => $this->toDateTime($value)?->format('Y-m-d H:i:s'),
             'date' => $this->toDateTime($value)?->format('Y-m-d'),
             default => $value,
@@ -790,29 +795,23 @@ abstract class Model implements JsonSerializable
     }
 
     /**
-     * Convert a value into a date, tolerating one that already is one.
+     * Convert a value into an instant in UTC.
+     *
+     * The zone is the whole point here. A datetime column hands back a naive
+     * "2026-09-21 23:00:00", and reading that in the server's default zone
+     * makes the same row mean different instants on two machines — the kind of
+     * damage that cannot be repaired later, because what the value meant was
+     * never written down. Everything the framework writes is UTC, so that is
+     * what a naive value is read as.
+     *
+     * A value that carries its own offset keeps its meaning and is converted,
+     * so passing a DateTimeImmutable in any zone stores the right instant.
      *
      * @param mixed $value The stored value
-     * @return DateTimeImmutable|null The date, or null when unparsable
+     * @return DateTimeImmutable|null The instant in UTC, or null when unparsable
      */
     private function toDateTime(mixed $value): ?DateTimeImmutable
     {
-        if ($value instanceof DateTimeImmutable) {
-            return $value;
-        }
-
-        if ($value instanceof DateTimeInterface) {
-            return DateTimeImmutable::createFromInterface($value);
-        }
-
-        if (is_int($value)) {
-            return (new DateTimeImmutable())->setTimestamp($value);
-        }
-
-        try {
-            return new DateTimeImmutable((string) $value);
-        } catch (Exception) {
-            return null;
-        }
+        return Time::parse($value);
     }
 }

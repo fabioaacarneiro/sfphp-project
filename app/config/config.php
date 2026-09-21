@@ -55,6 +55,23 @@ define("APP_LOCALES", array_values(array_filter(array_map(
     explode(",", (string) ($_ENV["APP_LOCALES"] ?? "en,pt_BR,es"))
 ))));
 
+/*
+ * The runtime is UTC, and deliberately not configurable.
+ *
+ * A naive timestamp in a database column is only an instant if something says
+ * which zone wrote it. If that answer is "whatever the server was set to", then
+ * moving the server — or adding a second one — silently changes what every
+ * existing row means, and no later fix can recover the intent because it was
+ * never written down. APP_TIMEZONE below decides how times are *shown*; it does
+ * not decide how they are stored.
+ */
+date_default_timezone_set("UTC");
+
+/**
+ * The zone times are displayed in. Storage is always UTC.
+ */
+define("APP_TIMEZONE", $_ENV["APP_TIMEZONE"] ?? "UTC");
+
 /**
  * Where log records go: "stream", "error_log" or "null".
  */
