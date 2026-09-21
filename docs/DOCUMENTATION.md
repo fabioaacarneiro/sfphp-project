@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 55 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 60 testes, 0 falhas
 
 ---
 
@@ -21,6 +21,7 @@ hoje. Onde algo não existe, está dito que não existe — veja
 - [Views e SFHT](#views-e-sfht)
 - [Container e injeção de dependências](#container-e-injeção-de-dependências)
 - [Banco de dados](#banco-de-dados)
+- [Models](#models)
 - [Migrations e Schema Builder](#migrations-e-schema-builder)
 - [Seeders e Factories](#seeders-e-factories)
 - [Cache](#cache)
@@ -45,7 +46,7 @@ objetos Request/Response, pipeline de middleware, container de DI, query
 builder, schema builder com paridade MySQL/PostgreSQL, template engine, cache,
 filas, e um CLI com 32 comandos.
 
-**Não é** um substituto de Laravel ou Symfony. Não há ORM, camada de
+**Não é** um substituto de Laravel ou Symfony. Não há ORM completo, camada de
 autenticação, sistema de eventos ou i18n. O que existe é pequeno o suficiente
 para ser lido inteiro.
 
@@ -816,6 +817,136 @@ Aceita placeholders posicionais e nomeados. Os métodos são `get()`, `first()`,
 
 ---
 
+## Models
+
+Uma camada fina sobre o Query Builder: linhas chegam como objetos tipados,
+relacionamentos são declarados uma vez em vez de virarem JOIN escrito à mão em
+cada chamada, e `with()` carrega esses relacionamentos em **uma** query em vez
+de uma por linha.
+
+**Não é um ORM completo.** Não há identity map, unit of work, proxy de lazy
+loading nem schema derivado da classe — e isso é deliberado, porque cada um
+deles é a diferença entre algo que se lê de uma sentada e algo que não.
+
+```bash
+./sfphp make:model Post
+```
+
+```php
+<?php
+
+namespace SfphpProject\app\models;
+
+use SfphpProject\src\Database\Model;
+use SfphpProject\src\Database\Relation;
+
+final class Post extends Model
+{
+    protected static string $table = 'posts';
+
+    public function author(): Relation
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function comments(): Relation
+    {
+        return $this->hasMany(Comment::class, 'post_id');
+    }
+}
+```
+
+Sem `$table`, o nome é inferido da classe: `Post` → `posts`, `Category` →
+`categories`, `Box` → `boxes`. A inferência é simples de propósito — um nome
+irregular deve declarar `$table`.
+
+### Lendo
+
+```php
+Post::all();                       // array<Post>
+Post::find(1);                     // Post|null
+Post::findOrFail(1);               // Post, ou RuntimeException
+Post::query()->where('publicado', 1)->orderBy('criado_em', 'desc')->limit(10)->get();
+Post::query()->count();
+
+$post->titulo;                     // atributo
+$post->author;                     // relação, resolvida ao ler
+$post->toArray();
+```
+
+`Model` implementa `JsonSerializable`, então um modelo vai direto para uma
+resposta:
+
+```php
+return Response::json(Post::findOrFail($id));
+```
+
+### Escrevendo
+
+```php
+$post = new Post(['titulo' => 'Olá']);
+$post->save();                     // INSERT, e a chave volta preenchida
+
+$post = Post::find(1);
+$post->titulo = 'Outro título';
+$post->save();                     // UPDATE só do que mudou
+
+Post::create(['titulo' => 'Direto']);
+$post->delete();
+```
+
+Um `save()` sobre modelo existente escreve **apenas os atributos alterados** —
+tocar um campo não reescreve a linha inteira. Um `save()` sem alteração não
+emite query.
+
+### Relacionamentos
+
+```php
+$this->hasMany(Comment::class, 'post_id');        // um para muitos
+$this->hasOne(Profile::class, 'user_id');         // um para um
+$this->belongsTo(User::class, 'user_id');         // o inverso
+```
+
+Ler a propriedade resolve a relação na hora. Dentro de um laço, isso é o
+problema N+1:
+
+```php
+// 1 query dos posts + 1 por post = 101 queries para 100 posts
+foreach (Post::all() as $post) {
+    echo $post->author->nome;
+}
+
+// 1 query dos posts + 1 de todos os autores = 2 queries
+foreach (Post::query()->with('author')->get() as $post) {
+    echo $post->author->nome;
+}
+```
+
+`with()` aceita várias relações: `->with('author', 'comments')`.
+
+### A saída de emergência
+
+Tudo que o `Model` não faz continua a uma chamada de distância, e volta a ser
+array:
+
+```php
+Post::query()->builder();          // o QueryBuilder por baixo
+Database::table('posts');          // sem passar pelo Model
+Database::query('SELECT ...');     // SQL cru
+```
+
+### O que não tem, e por quê
+
+| Ausente | Por quê |
+|---|---|
+| Identity map | Buscar a mesma linha duas vezes devolve dois objetos. Rastrear identidade exige um unit of work |
+| Lazy loading por proxy | A relação resolve ao ler a propriedade; não há proxy simulando o objeto ausente |
+| Relações muitos-para-muitos e polimórficas | Só `hasMany`, `hasOne` e `belongsTo` |
+| Casts e mutators | Os atributos chegam como o PDO os devolveu |
+| Migrations derivadas da classe | O schema vem das migrations, não do modelo |
+
+---
+
 ## Migrations e Schema Builder
 
 O subsistema mais completo do framework: `Blueprint` cobre MySQL 8+ e
@@ -1070,7 +1201,8 @@ $muitos = (new UserFactory())->count(50)->create();
 $admin  = (new UserFactory())->create(['role' => 'admin']);  // sobrescreve
 ```
 
-`make()` e `create()` devolvem **arrays**, não objetos — não há ORM.
+`make()` e `create()` devolvem **arrays**, não objetos. Para trabalhar com
+objetos, veja [Models](#models).
 
 ---
 
@@ -1501,7 +1633,7 @@ não faz, e que você deve saber antes de escolhê-lo.
 | **Rate limiting** | Não existe. Pode ser escrito como middleware agora, mas o framework não traz um |
 | **Autenticação / autorização** | Não existe. `make:policy` gera um esqueleto sem camada que o use; o pipeline de middleware é onde ela vai morar |
 | **Sistema de eventos** | `make:event` e `make:listener` geram classes sem dispatcher |
-| **ORM** | Models e repositories geram métodos estáticos sobre o Query Builder; retornam arrays, não objetos. Sem relacionamentos, sem lazy loading |
+| **ORM completo** | Existe uma camada de [Models](#models) com hidratação, relacionamentos e `with()`. Não existe identity map, unit of work, proxy de lazy loading, relação muitos-para-muitos nem casts |
 | **i18n / l10n** | Não existe. Mensagens de erro são fixas |
 | **Fusos horários** | Sem tratamento dedicado |
 | **Log estruturado** | Só `error_log()` — texto plano |
