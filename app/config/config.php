@@ -41,3 +41,25 @@ define("APP_VERSION", $_ENV["APP_VERSION"] ?? "1.0.0");
  * Application environment: "production" or "development".
  */
 define("APP_ENV", $_ENV["APP_ENV"] ?? "production");
+
+/**
+ * Application locale, used when the client asks for none the application has.
+ */
+define("APP_LOCALE", $_ENV["APP_LOCALE"] ?? "en");
+
+/**
+ * Locales the application offers, in order of preference.
+ */
+define("APP_LOCALES", array_values(array_filter(array_map(
+    "trim",
+    explode(",", (string) ($_ENV["APP_LOCALES"] ?? "en,pt_BR"))
+))));
+
+/*
+ * The application's own catalogs. Registered here rather than in the front
+ * controller so that the CLI, the test runner and a queue worker all see the
+ * same messages a web request would.
+ */
+\SfphpProject\src\I18n\Translator::addPath(__DIR__ . "/../../lang");
+\SfphpProject\src\I18n\Translator::setLocale(APP_LOCALE);
+\SfphpProject\src\I18n\Translator::setFallback("en");
