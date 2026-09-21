@@ -1,6 +1,11 @@
 <?php
 
 use SfphpProject\src\Cache\CacheManager;
+use SfphpProject\src\Log\ErrorLogDriver;
+use SfphpProject\src\Log\Level;
+use SfphpProject\src\Log\LogManager;
+use SfphpProject\src\Log\NullDriver;
+use SfphpProject\src\Log\StreamDriver;
 use SfphpProject\src\Queue\QueueManager;
 use SfphpProject\src\I18n\Translator;
 use SfphpProject\src\Queue\Job;
@@ -15,6 +20,42 @@ if (!function_exists('cache')) {
         }
 
         return $cache;
+    }
+}
+
+if (!function_exists('logger')) {
+    /**
+     * The application's logger.
+     *
+     * Built once from LOG_CHANNEL, LOG_PATH and LOG_LEVEL, so that a request,
+     * a queue worker and a console command all write to the same place without
+     * any of them being told where that is.
+     *
+     * @return LogManager The shared logger
+     */
+    function logger(): LogManager
+    {
+        static $log = null;
+
+        if ($log !== null) {
+            return $log;
+        }
+
+        $channel = defined('LOG_CHANNEL') ? LOG_CHANNEL : 'stream';
+        $path = defined('LOG_PATH') ? LOG_PATH : 'php://stderr';
+
+        $driver = match ($channel) {
+            'error_log' => new ErrorLogDriver(),
+            'null' => new NullDriver(),
+            default => new StreamDriver($path),
+        };
+
+        $minimum = Level::fromName(
+            defined('LOG_LEVEL') ? LOG_LEVEL : null,
+            defined('APP_ENV') && APP_ENV === 'development' ? Level::Debug : Level::Info
+        );
+
+        return $log = new LogManager($driver, $minimum);
     }
 }
 
