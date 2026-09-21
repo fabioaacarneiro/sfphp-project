@@ -2,8 +2,8 @@
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use SfphpProject\app\controllers\BaseAPIController;
 use SfphpProject\src\Csrf;
+use SfphpProject\src\ErrorHandler;
 use SfphpProject\src\Container;
 use SfphpProject\src\JWT;
 use SfphpProject\src\Migrations\Blueprint;
@@ -17,6 +17,11 @@ use SfphpProject\src\Cache\FileDriver;
 use SfphpProject\src\Cache\MemoryDriver;
 use SfphpProject\src\Database\Factory;
 use SfphpProject\src\Database\Seeder;
+use SfphpProject\src\Http\Middleware;
+use SfphpProject\src\Http\Middleware\VerifyCsrfToken;
+use SfphpProject\src\Http\Pipeline;
+use SfphpProject\src\Http\Request;
+use SfphpProject\src\Http\Response;
 use SfphpProject\src\QueryBuilder;
 use SfphpProject\src\Queue\DatabaseDriver;
 use SfphpProject\src\Queue\QueueManager;
@@ -30,6 +35,64 @@ use SfphpProject\src\View;
 use SfphpProject\src\View\SfhtEngine;
 
 require __DIR__ . '/TestRunner.php';
+
+/**
+ * Controller used by the end-to-end dispatch tests.
+ *
+ * It lives in the global namespace and the router is pointed at it with an
+ * empty controller namespace — the same seam an application uses to put its
+ * controllers wherever it likes.
+ */
+final class DispatchTestController
+{
+    public function home(Request $request): Response
+    {
+        return Response::text('home');
+    }
+
+    public function show(Request $request, string $id): Response
+    {
+        // Proves the parameter arrives positionally and on the request.
+        return Response::text(
+            $request->query('from') === 'route'
+                ? 'route:' . $request->route('id')
+                : 'post:' . $id
+        );
+    }
+
+    public function store(Request $request): Response
+    {
+        return Response::json(['title' => $request->body('title')], HTTP_CREATED);
+    }
+
+    public function trail(Request $request): Response
+    {
+        return Response::text((string) $request->attribute('trail'));
+    }
+
+    public function boom(Request $request): Response
+    {
+        throw new RuntimeException('a acao falhou');
+    }
+
+    /**
+     * Deliberately returns nothing, to prove the dispatcher refuses it.
+     */
+    public function returnsNothing(Request $request)
+    {
+    }
+}
+
+/**
+ * Middleware resolved by class name, to prove container resolution works.
+ */
+final class StampMiddlewareTest implements Middleware
+{
+    public function handle(Request $request, callable $next): Response
+    {
+        return $next($request)->withHeader('X-Stamp', 'sfphp');
+    }
+}
 
 final class QueryBuilderStatementTest extends PDOStatement
 {
@@ -452,9 +515,20 @@ $tests->run('query builder binds filtered deletes', function () use ($tests): vo
     $tests->assertSame([':binding_0' => 1], $pdo->statements[0]->bindings);
 });
 
-$tests->run('API headers accept redirected bearer tokens', function () use ($tests): void {
-    $_SERVER = ['REDIRECT_HTTP_AUTHORIZATION' => 'Bearer test-token'];
-    $tests->assertSame('test-token', (new BaseAPIController())->getBearerToken());
+$tests->run('requests accept redirected bearer tokens', function () use ($tests): void {
+    /*
+     * Apache hands the Authorization header over as REDIRECT_HTTP_* once a
+     * rewrite has run, so a token would be invisible without this. Header
+     * normalisation moved from BaseAPIController to Request.
+     */
+    $server = $_SERVER;
+    $_SERVER = ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/', 'REDIRECT_HTTP_AUTHORIZATION' => 'Bearer test-token'];
+
+    try {
+        $tests->assertSame('test-token', Request::fromGlobals()->bearerToken());
+    } finally {
+        $_SERVER = $server;
+    }
 });
 
 $tests->run('JWT rejects tampered tokens', function () use ($tests): void {
@@ -947,27 +1021,22 @@ $tests->run('routes match non-ascii paths and refuse synthesized separators', fu
     $tests->assertSame(null, $route->match('/produtos/abc123'));
     $tests->assertSame('/produtos/caf%C3%A9', $route->generateUrl(['nome' => 'café']));
 
-    $decode = new ReflectionMethod(Router::class, 'decodePath');
-    $decode->setAccessible(true);
-
-    $tests->assertSame('/produtos/café', $decode->invoke(null, '/produtos/caf%C3%A9'));
+    // Path decoding belongs to the request now, not to the router.
+    $tests->assertSame('/produtos/café', Request::create('GET', '/produtos/caf%C3%A9')->path);
 
     // An encoded separator must not become a real one, or "/a%2Fb" would
     // reach a route registered as "/a/b".
-    $tests->assertSame('/a%2Fb', $decode->invoke(null, '/a%2Fb'));
-    $tests->assertSame('/a%5Cb', $decode->invoke(null, '/a%5Cb'));
+    $tests->assertSame('/a%2Fb', Request::create('GET', '/a%2Fb')->path);
+    $tests->assertSame('/a%5Cb', Request::create('GET', '/a%5Cb')->path);
 });
 
 $tests->run('the framework error page makes no external requests', function () use ($tests): void {
-    $render = new ReflectionMethod(Router::class, 'renderErrorPage');
-    $render->setAccessible(true);
+    // No reflection and no output buffer: the error page is a Response now.
+    $response = (new Router(new Container()))->dispatch(Request::create('GET', '/rota-que-nao-existe'));
 
-    ob_start();
-    $render->invoke(null, HTTP_NOT_FOUND, '404', 'Nao encontrada');
-    $html = ob_get_clean();
-
-    $tests->assertSame(0, preg_match_all('#https?://#', $html));
-    $tests->assertTrue(str_contains($html, '<style>'));
+    $tests->assertSame(HTTP_NOT_FOUND, $response->status());
+    $tests->assertSame(0, preg_match_all('#https?://#', $response->body()));
+    $tests->assertTrue(str_contains($response->body(), '<style>'));
 });
 
 $tests->run('sfht keeps literal text that is not syntax', function () use ($tests, $sfht): void {
@@ -1172,6 +1241,451 @@ $tests->run('the built stylesheet is css, not the builder log', function () use 
 
     $source = file_get_contents(dirname(__DIR__) . '/src/Console/Application.php');
     $tests->assertSame(false, str_contains($source, "file_put_contents(\$outputPath, \$css)"));
+});
+
+$tests->run('request is built from injected arrays, never from globals', function () use ($tests): void {
+    /*
+     * The constructor taking arrays rather than reading superglobals is what
+     * makes a persistent runtime possible later, and what makes the router
+     * testable at all.
+     */
+    $request = Request::create('POST', '/produtos/caf%C3%A9?page=2&sort=name', [
+        'body' => ['nome' => 'Ana'],
+        'headers' => ['Content-Type' => 'application/json', 'Authorization' => 'Bearer abc123'],
+        'rawBody' => '{"extra":"日本語"}',
+    ]);
+
+    $tests->assertSame('POST', $request->method);
+    $tests->assertSame('/produtos/café', $request->path);
+    $tests->assertSame('2', $request->query('page'));
+    $tests->assertSame('Ana', $request->body('nome'));
+    $tests->assertSame('abc123', $request->bearerToken());
+    $tests->assertTrue($request->expectsJson());
+    $tests->assertTrue($request->isMethod('post'));
+
+    // Header lookup is case insensitive in both directions.
+    $tests->assertSame('application/json', $request->header('CONTENT-TYPE'));
+
+    // input() falls back from body to the JSON payload to the query string.
+    $tests->assertSame('日本語', $request->input('extra'));
+    $tests->assertSame('name', $request->input('sort'));
+    $tests->assertSame('fallback', $request->input('missing', 'fallback'));
+
+    $tests->assertSame(['extra' => '日本語'], $request->json());
+
+    // An encoded separator must not become a real one.
+    $tests->assertSame('/a%2Fb', Request::create('GET', '/a%2Fb')->path);
+});
+
+$tests->run('request attributes copy on write', function () use ($tests): void {
+    $request = Request::create('GET', '/posts/7');
+
+    $withId = $request->withAttribute('id', '7');
+    $withMore = $withId->withAttributes(['user' => 'ana']);
+
+    $tests->assertSame(null, $request->attribute('id'));
+    $tests->assertSame('7', $withId->route('id'));
+    $tests->assertSame(null, $withId->attribute('user'));
+    $tests->assertSame(['id' => '7', 'user' => 'ana'], $withMore->attributes());
+
+    // The HTTP fields survive the clone untouched.
+    $tests->assertSame($request->method, $withMore->method);
+    $tests->assertSame($request->path, $withMore->path);
+});
+
+$tests->run('response is a value object that never emits', function () use ($tests): void {
+    $json = Response::json(['cidade' => 'São Paulo'], HTTP_CREATED);
+
+    $tests->assertSame(HTTP_CREATED, $json->status());
+    $tests->assertSame('application/json; charset=utf-8', $json->header('Content-Type'));
+
+    // UNESCAPED_UNICODE: "São Paulo" must not ship as "São Paulo".
+    $tests->assertSame('{"cidade":"São Paulo"}', $json->body());
+
+    $tests->assertSame(HTTP_NO_CONTENT, Response::noContent()->status());
+    $tests->assertSame('/login', Response::redirect('/login')->header('Location'));
+    $tests->assertSame(HTTP_FOUND, Response::redirect('/login')->status());
+
+    /*
+     * Header names are case insensitive, so withHeader() must replace an
+     * existing one whatever its casing, or the response would carry
+     * Content-Type twice. The stored key is the one the caller wrote.
+     */
+    $replaced = Response::html('<p>oi</p>')->withHeader('content-type', 'text/plain');
+    $tests->assertSame(1, count($replaced->headers()));
+    $tests->assertSame('text/plain', $replaced->header('Content-Type'));
+
+    // Every with* method copies rather than mutating.
+    $original = Response::html('a');
+    $tests->assertSame('b', $original->withBody('b')->body());
+    $tests->assertSame('a', $original->body());
+    $tests->assertSame(HTTP_NOT_FOUND, $original->withStatus(HTTP_NOT_FOUND)->status());
+    $tests->assertSame(HTTP_OK, $original->status());
+});
+
+$tests->run('response coerces action return values and refuses null', function () use ($tests): void {
+    $response = Response::html('x');
+    $tests->assertTrue(Response::from($response) === $response);
+
+    $tests->assertSame('text/html; charset=utf-8', Response::from('<p>oi</p>')->header('Content-Type'));
+    $tests->assertSame('{"a":1}', Response::from(['a' => 1])->body());
+
+    /*
+     * Returning nothing has to be an error, not an empty 200: it is how an
+     * action that forgot its return statement announces itself, and naming
+     * the action turns a blank page into a one-line fix.
+     */
+    $tests->assertThrows(
+        fn () => Response::from(null, 'MainController::index()'),
+        LogicException::class
+    );
+
+    try {
+        Response::from(null, 'MainController::index()');
+    } catch (LogicException $exception) {
+        $tests->assertTrue(str_contains($exception->getMessage(), 'MainController::index()'));
+    }
+});
+
+$tests->run('views can be rendered to a string without echoing', function () use ($tests): void {
+    // Response needs a body it can carry; output that already escaped is no use.
+    $rendered = View::makePartial('header', ['title' => '<script>']);
+
+    $tests->assertTrue(str_contains($rendered, '&lt;script&gt;'));
+    $tests->assertSame(false, str_contains($rendered, '<script>'));
+
+    $tests->assertThrows(
+        fn () => View::make('../../../etc/passwd'),
+        InvalidArgumentException::class
+    );
+});
+
+$tests->run('the pipeline runs middleware in order and unwinds in reverse', function () use ($tests): void {
+    $trace = [];
+
+    $stage = static function (string $label) use (&$trace): callable {
+        return static function (Request $request, callable $next) use ($label, &$trace): Response {
+            $trace[] = "entra:$label";
+            $response = $next($request);
+            $trace[] = "sai:$label";
+
+            return $response;
+        };
+    };
+
+    $response = (new Pipeline(new Container()))->run(
+        Request::create('GET', '/'),
+        [$stage('a'), $stage('b')],
+        function (Request $request) use (&$trace): Response {
+            $trace[] = 'action';
+
+            return Response::text('ok');
+        }
+    );
+
+    $tests->assertSame('ok', $response->body());
+    $tests->assertSame(
+        ['entra:a', 'entra:b', 'action', 'sai:b', 'sai:a'],
+        $trace
+    );
+});
+
+$tests->run('middleware can replace the request and short-circuit the pipeline', function () use ($tests): void {
+    $reached = false;
+
+    // A stage may hand a modified request down the chain.
+    $attach = static fn (Request $request, callable $next): Response
+        => $next($request->withAttribute('user', 'ana'));
+
+    $response = (new Pipeline(new Container()))->run(
+        Request::create('GET', '/'),
+        [$attach],
+        static fn (Request $request): Response => Response::text((string) $request->attribute('user'))
+    );
+
+    $tests->assertSame('ana', $response->body());
+
+    // A stage that returns without calling $next stops everything after it.
+    $deny = static fn (Request $request, callable $next): Response
+        => Response::json(['message' => 'Unauthorized'], HTTP_UNAUTHORIZED);
+
+    $response = (new Pipeline(new Container()))->run(
+        Request::create('GET', '/'),
+        [$deny],
+        function (Request $request) use (&$reached): Response {
+            $reached = true;
+
+            return Response::text('nunca');
+        }
+    );
+
+    $tests->assertSame(HTTP_UNAUTHORIZED, $response->status());
+    $tests->assertSame(false, $reached);
+});
+
+$tests->run('the pipeline resolves middleware class names through the container', function () use ($tests): void {
+    // Naming a class lets routes declare middleware before any instance
+    // exists, and lets the middleware constructor-inject its dependencies.
+    $response = (new Pipeline(new Container()))->run(
+        Request::create('GET', '/'),
+        [StampMiddlewareTest::class],
+        static fn (Request $request): Response => Response::text('corpo')
+    );
+
+    $tests->assertSame('sfphp', $response->header('X-Stamp'));
+    $tests->assertSame('corpo', $response->body());
+
+    $tests->assertThrows(
+        fn () => (new Pipeline(new Container()))->run(
+            Request::create('GET', '/'),
+            ['NaoExisteMiddleware'],
+            static fn (Request $request): Response => Response::text('x')
+        ),
+        RuntimeException::class
+    );
+});
+
+$tests->run('a middleware that forgets to return fails where the mistake is', function () use ($tests): void {
+    /*
+     * Without the explicit check the null travels several frames before
+     * failing as "call to a member function on null", pointing at the
+     * pipeline rather than at the middleware that caused it.
+     */
+    $forgets = static function (Request $request, callable $next) {
+        $next($request);
+    };
+
+    $tests->assertThrows(
+        fn () => (new Pipeline(new Container()))->run(
+            Request::create('GET', '/'),
+            [$forgets],
+            static fn (Request $request): Response => Response::text('x')
+        ),
+        RuntimeException::class
+    );
+});
+
+$tests->run('error responses are rendered, negotiated and redacted', function () use ($tests): void {
+    /*
+     * The first assertions ever written for ErrorHandler. They were impossible
+     * before: the class echoed and called exit, so there was nothing to
+     * inspect.
+     */
+    $throwable = new RuntimeException('connection to 10.0.0.5 failed for user root');
+
+    $html = ErrorHandler::toResponse($throwable);
+    $tests->assertSame(HTTP_INTERNAL_SERVER_ERROR, $html->status());
+    $tests->assertSame('text/html; charset=utf-8', $html->header('Content-Type'));
+
+    $json = ErrorHandler::toResponse(
+        $throwable,
+        Request::create('GET', '/api', ['headers' => ['Accept' => 'application/json']])
+    );
+    $tests->assertSame('application/json; charset=utf-8', $json->header('Content-Type'));
+
+    /*
+     * Outside development the driver message must not reach the client: it
+     * carries the host, the database and the user.
+     */
+    if (APP_ENV !== 'development') {
+        $tests->assertSame('{"message":"Internal Server Error"}', $json->body());
+        $tests->assertSame(false, str_contains($html->body(), '10.0.0.5'));
+    }
+});
+
+/*
+ * End-to-end dispatch. These tests come last because Router::reset() throws
+ * away the routes the earlier named-route tests registered.
+ *
+ * The controllers live in the global namespace and the router is pointed at it
+ * with an empty prefix, which is the same seam that lets an application choose
+ * its own namespace.
+ */
+Router::reset();
+
+$tests->run('dispatch turns a request into a response through a controller', function () use ($tests): void {
+    Router::reset();
+    Router::get('/', 'DispatchTestController', 'home');
+    Router::get('/posts/id:number', 'DispatchTestController', 'show');
+    Router::post('/posts', 'DispatchTestController', 'store');
+
+    $router = new Router(new Container(), '');
+
+    $home = $router->dispatch(Request::create('GET', '/'));
+    $tests->assertSame(HTTP_OK, $home->status());
+    $tests->assertSame('home', $home->body());
+
+    // Route parameters arrive positionally, after the request.
+    $show = $router->dispatch(Request::create('GET', '/posts/42'));
+    $tests->assertSame('post:42', $show->body());
+
+    // And they are also readable from the request.
+    $tests->assertSame('route:42', $router->dispatch(
+        Request::create('GET', '/posts/42', ['query' => ['from' => 'route']])
+    )->body());
+
+    $store = $router->dispatch(Request::create('POST', '/posts', ['body' => ['title' => 'Olá']]));
+    $tests->assertSame(HTTP_CREATED, $store->status());
+    $tests->assertSame('{"title":"Olá"}', $store->body());
+});
+
+$tests->run('dispatch answers 404, 405 and OPTIONS with the right headers', function () use ($tests): void {
+    Router::reset();
+    Router::get('/posts', 'DispatchTestController', 'home');
+    Router::delete('/posts', 'DispatchTestController', 'home');
+
+    $router = new Router(new Container(), '');
+
+    $tests->assertSame(HTTP_NOT_FOUND, $router->dispatch(Request::create('GET', '/nada'))->status());
+
+    /*
+     * Allow used to be emitted once with header() before the 405 and OPTIONS
+     * branches split, so both inherited it. A returned response carries only
+     * what it was handed, so both must set it explicitly.
+     */
+    $notAllowed = $router->dispatch(Request::create('PUT', '/posts'));
+    $tests->assertSame(HTTP_METHOD_NOT_ALLOWED, $notAllowed->status());
+    $tests->assertSame('GET, DELETE', $notAllowed->header('Allow'));
+
+    $options = $router->dispatch(Request::create('OPTIONS', '/posts'));
+    $tests->assertSame(HTTP_NO_CONTENT, $options->status());
+    $tests->assertSame('GET, DELETE', $options->header('Allow'));
+    $tests->assertSame('', $options->body());
+});
+
+$tests->run('middleware runs global first, then group, then route', function () use ($tests): void {
+    Router::reset();
+
+    $stamp = static fn (string $label): callable
+        => static fn (Request $request, callable $next): Response
+            => $next($request->withAttribute(
+                'trail',
+                trim(((string) $request->attribute('trail', '')) . ' ' . $label)
+            ));
+
+    Router::group('/admin', function () use ($stamp): void {
+        Router::get('/panel', 'DispatchTestController', 'trail')
+            ->middleware($stamp('route'));
+    }, 'admin.', [$stamp('group')]);
+
+    $router = (new Router(new Container(), ''))->middleware($stamp('global'));
+
+    $tests->assertSame(
+        'global group route',
+        $router->dispatch(Request::create('GET', '/admin/panel'))->body()
+    );
+});
+
+$tests->run('middleware can refuse a request before the controller runs', function () use ($tests): void {
+    Router::reset();
+    Router::get('/private', 'DispatchTestController', 'home');
+
+    $deny = static fn (Request $request, callable $next): Response
+        => $request->bearerToken() === null
+            ? Response::json(['message' => 'Unauthorized'], HTTP_UNAUTHORIZED)
+            : $next($request);
+
+    $router = (new Router(new Container(), ''))->middleware($deny);
+
+    $refused = $router->dispatch(Request::create('GET', '/private'));
+    $tests->assertSame(HTTP_UNAUTHORIZED, $refused->status());
+    $tests->assertSame('{"message":"Unauthorized"}', $refused->body());
+
+    $allowed = $router->dispatch(Request::create('GET', '/private', [
+        'headers' => ['Authorization' => 'Bearer token'],
+    ]));
+    $tests->assertSame(HTTP_OK, $allowed->status());
+});
+
+$tests->run('global middleware also wraps requests that match no route', function () use ($tests): void {
+    // CORS headers and request logging that skip 404s are a bug.
+    Router::reset();
+
+    $router = (new Router(new Container(), ''))->middleware(
+        static fn (Request $request, callable $next): Response
+            => $next($request)->withHeader('X-Served-By', 'sfphp')
+    );
+
+    $response = $router->dispatch(Request::create('GET', '/nada'));
+
+    $tests->assertSame(HTTP_NOT_FOUND, $response->status());
+    $tests->assertSame('sfphp', $response->header('X-Served-By'));
+});
+
+$tests->run('a failing action becomes a 500 instead of a blank page', function () use ($tests): void {
+    Router::reset();
+    Router::get('/boom', 'DispatchTestController', 'boom');
+    Router::get('/silent', 'DispatchTestController', 'returnsNothing');
+    Router::get('/missing', 'DispatchTestController', 'naoExiste');
+
+    $router = new Router(new Container(), '');
+
+    $tests->assertSame(HTTP_INTERNAL_SERVER_ERROR, $router->dispatch(Request::create('GET', '/boom'))->status());
+
+    /*
+     * An action that returns nothing is the "forgot the return statement"
+     * bug. It has to fail loudly rather than serve an empty 200.
+     */
+    $tests->assertSame(HTTP_INTERNAL_SERVER_ERROR, $router->dispatch(Request::create('GET', '/silent'))->status());
+
+    $tests->assertSame(HTTP_INTERNAL_SERVER_ERROR, $router->dispatch(Request::create('GET', '/missing'))->status());
+});
+
+$tests->run('csrf verification finally applies by default', function () use ($tests): void {
+    /*
+     * Csrf has had tokens, hash_equals and the form helpers for a long time,
+     * but nothing in the framework ever called the verification: every
+     * application had to remember to do it in each action, and forgetting
+     * produced no error at all. The pipeline is the first place the check can
+     * apply by default.
+     */
+    Router::reset();
+    Router::get('/form', 'DispatchTestController', 'home');
+    Router::post('/form', 'DispatchTestController', 'home');
+
+    Csrf::startSession();
+    $token = Csrf::token();
+
+    $router = (new Router(new Container(), ''))->middleware(VerifyCsrfToken::class);
+
+    // Safe methods are never blocked.
+    $tests->assertSame(HTTP_OK, $router->dispatch(Request::create('GET', '/form'))->status());
+
+    // A state-changing request without a token is refused.
+    $tests->assertSame(
+        HTTP_FORBIDDEN,
+        $router->dispatch(Request::create('POST', '/form'))->status()
+    );
+
+    // With the right token in the field, it passes.
+    $tests->assertSame(HTTP_OK, $router->dispatch(
+        Request::create('POST', '/form', ['body' => ['_token' => $token]])
+    )->status());
+
+    // And with the token in the header, as an AJAX call sends it.
+    $tests->assertSame(HTTP_OK, $router->dispatch(
+        Request::create('POST', '/form', ['headers' => ['X-CSRF-Token' => $token]])
+    )->status());
+
+    // A wrong token is refused, and the refusal is negotiated.
+    $refused = $router->dispatch(Request::create('POST', '/form', [
+        'body' => ['_token' => 'errado'],
+        'headers' => ['Accept' => 'application/json'],
+    ]));
+    $tests->assertSame(HTTP_FORBIDDEN, $refused->status());
+    $tests->assertSame('application/json; charset=utf-8', $refused->header('Content-Type'));
+
+    /*
+     * A bearer token is attached by the client on purpose; a browser never
+     * sends one by itself, so there is no cross-site request to forge.
+     */
+    $tests->assertSame(HTTP_OK, $router->dispatch(
+        Request::create('POST', '/form', ['headers' => ['Authorization' => 'Bearer abc']])
+    )->status());
+
+    // Exempt prefixes let a token-authenticated API opt out.
+    $exempt = (new Router(new Container(), ''))->middleware(new VerifyCsrfToken(['/form']));
+    $tests->assertSame(HTTP_OK, $exempt->dispatch(Request::create('POST', '/form'))->status());
 });
 
 $tests->finish();

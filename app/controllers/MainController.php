@@ -2,17 +2,21 @@
 
 namespace SfphpProject\app\controllers;
 
-use SfphpProject\app\controllers\BaseController;
-use SfphpProject\src\View;
+use SfphpProject\src\Http\Request;
+use SfphpProject\src\Http\Response;
 
 class MainController extends BaseController
 {
-    public function index()
+    /**
+     * Show the home page.
+     *
+     * @param Request $request The incoming request
+     * @return Response The rendered page
+     */
+    public function index(Request $request): Response
     {
-        $data = [
-            "title" => "SFPHP - Modern PHP Framework",
-        ];
-
-        View::render("home", $data);
+        return $this->view('home', [
+            'title' => 'SFPHP - Modern PHP Framework',
+        ]);
     }
 }

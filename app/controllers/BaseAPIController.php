@@ -3,163 +3,68 @@
 namespace SfphpProject\app\controllers;
 
 use JsonException;
+use SfphpProject\src\Http\Request;
+use SfphpProject\src\Http\Response;
 
 /**
  * Base controller for JSON API endpoints.
+ *
+ * Reading the request — the raw body, the decoded JSON, headers, the bearer
+ * token — moved to Request, where it belongs and where it can be tested. What
+ * is left here are the two helpers for producing a response.
  */
 class BaseAPIController
 {
     /**
-     * Get the raw request body.
+     * Build a JSON response.
      *
-     * @return string The unparsed request body
+     * This returns rather than sending. An earlier version was declared
+     * "never" and called exit, so no middleware ever saw the response on its
+     * way out, and only on the routes that happened to use it.
+     *
+     * @param mixed $data The response payload
+     * @param int $status The HTTP status code
+     * @return Response The JSON response
+     * @throws JsonException If the payload cannot be encoded
      */
-    public function getRequest(): string
+    protected function json(mixed $data = [], int $status = HTTP_OK): Response
     {
-        return file_get_contents('php://input');
+        if ($status === HTTP_NO_CONTENT) {
+            return Response::noContent();
+        }
+
+        return Response::json($data, $status);
     }
 
     /**
-     * Decode the current JSON request body.
+     * Decode the request body, refusing anything that is not JSON.
      *
-     * @return array The decoded request payload
+     * Returns a Response instead of the payload when the request is not
+     * acceptable, so the action can hand it straight back:
+     *
+     *     $data = $this->payload($request);
+     *     if ($data instanceof Response) {
+     *         return $data;
+     *     }
+     *
+     * @param Request $request The incoming request
+     * @return array<string, mixed>|Response The payload, or the response to send
      */
-    public function getJsonRequest(): array
+    protected function payload(Request $request): array|Response
     {
-        $contentType = $this->getHeader('Content-Type');
-        if ($contentType !== null && !str_contains(
-            strtolower($contentType),
-            'application/json'
-        )) {
-            $this->responseJSON(
+        $contentType = $request->header('Content-Type');
+
+        if ($contentType !== null && !str_contains(strtolower($contentType), 'application/json')) {
+            return $this->json(
                 ['message' => 'Content-Type must be application/json'],
                 HTTP_UNSUPPORTED_MEDIA_TYPE
             );
         }
 
         try {
-            $data = json_decode(
-                $this->getRequest(),
-                true,
-                512,
-                JSON_THROW_ON_ERROR
-            );
+            return $request->json();
         } catch (JsonException) {
-            $this->responseJSON(
-                ['message' => 'Invalid JSON body'],
-                HTTP_BAD_REQUEST
-            );
+            return $this->json(['message' => 'Invalid JSON body'], HTTP_BAD_REQUEST);
         }
-
-        if (!is_array($data)) {
-            $this->responseJSON(
-                ['message' => 'JSON body must be an object or array'],
-                HTTP_BAD_REQUEST
-            );
-        }
-
-        return $data;
-    }
-
-    /**
-     * Get a request header without depending on server-specific casing.
-     *
-     * @param string $name The header name
-     * @return string|null The header value, or null when absent
-     */
-    public function getHeader(string $name): ?string
-    {
-        return $this->headers()[strtolower($name)] ?? null;
-    }
-
-    /**
-     * Get the Bearer token from the Authorization header.
-     *
-     * @return string|null The token, or null when absent or malformed
-     */
-    public function getBearerToken(): ?string
-    {
-        $authorization = $this->getHeader('Authorization');
-        if ($authorization === null) {
-            return null;
-        }
-
-        if (preg_match('/^Bearer\s+(\S+)$/i', trim($authorization), $matches)) {
-            return $matches[1];
-        }
-
-        return null;
-    }
-
-    /**
-     * Send a JSON response and end the request.
-     *
-     * @param array $data The response payload
-     * @param int $httpCode The HTTP response status
-     * @return never
-     */
-    public function responseJSON(
-        array $data = [],
-        int $httpCode = HTTP_OK
-    ): never {
-        if (!headers_sent()) {
-            header('Content-Type: application/json; charset=utf-8');
-            http_response_code($httpCode);
-        }
-
-        if ($httpCode === HTTP_NO_CONTENT) {
-            exit;
-        }
-
-        try {
-            echo json_encode(
-                $data,
-                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-            );
-        } catch (JsonException $exception) {
-            error_log('Failed to encode JSON response: ' . $exception->getMessage());
-
-            if (!headers_sent()) {
-                http_response_code(HTTP_INTERNAL_SERVER_ERROR);
-            }
-
-            echo '{"message":"Internal Server Error"}';
-        }
-
-        exit;
-    }
-
-    /**
-     * Get normalized request headers from available PHP server APIs.
-     *
-     * @return array The headers indexed by lowercase name
-     */
-    private function headers(): array
-    {
-        $headers = function_exists('getallheaders') ? getallheaders() : [];
-
-        foreach ($_SERVER as $key => $value) {
-            if (!str_starts_with($key, 'HTTP_')) {
-                continue;
-            }
-
-            $name = str_replace('_', '-', strtolower(substr($key, 5)));
-            $headers[$name] = $value;
-        }
-
-        if (isset($_SERVER['CONTENT_TYPE'])) {
-            $headers['content-type'] = $_SERVER['CONTENT_TYPE'];
-        }
-
-        if (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-            $headers['authorization'] = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
-        }
-
-        $normalized = [];
-        foreach ($headers as $name => $value) {
-            $normalized[strtolower($name)] = $value;
-        }
-
-        return $normalized;
     }
 }
