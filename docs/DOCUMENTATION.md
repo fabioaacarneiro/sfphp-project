@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 55 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 63 testes, 0 falhas
 
 ---
 
@@ -21,6 +21,8 @@ hoje. Onde algo não existe, está dito que não existe — veja
 - [Views e SFHT](#views-e-sfht)
 - [Container e injeção de dependências](#container-e-injeção-de-dependências)
 - [Banco de dados](#banco-de-dados)
+- [Models](#models)
+- [ORM ou Query Builder?](#orm-ou-query-builder)
 - [Migrations e Schema Builder](#migrations-e-schema-builder)
 - [Seeders e Factories](#seeders-e-factories)
 - [Cache](#cache)
@@ -45,7 +47,7 @@ objetos Request/Response, pipeline de middleware, container de DI, query
 builder, schema builder com paridade MySQL/PostgreSQL, template engine, cache,
 filas, e um CLI com 32 comandos.
 
-**Não é** um substituto de Laravel ou Symfony. Não há ORM, camada de
+**Não é** um substituto de Laravel ou Symfony. Não há ORM completo, camada de
 autenticação, sistema de eventos ou i18n. O que existe é pequeno o suficiente
 para ser lido inteiro.
 
@@ -799,6 +801,40 @@ Paginação é traduzida por dialeto: `LIMIT/OFFSET` em MySQL, PostgreSQL e
 SQLite, `TOP` em SQL Server, `FIRST` em Firebird, `OFFSET … FETCH NEXT` em
 Oracle. Driver sem suporte falha explicitamente.
 
+### Transações
+
+```php
+use SfphpProject\src\Database;
+
+Database::transaction(function (): void {
+    $pedido = Pedido::create(['cliente_id' => 7]);
+
+    foreach ($itens as $item) {
+        ItemPedido::create(['pedido_id' => $pedido->id] + $item);
+    }
+});
+```
+
+Faz commit quando o callback retorna e desfaz quando ele lança, **relançando**
+o erro em seguida. O valor de retorno do callback é repassado.
+
+```php
+$id = Database::transaction(fn (): int => Pedido::create([...])->id);
+Database::inTransaction();   // true enquanto dentro
+```
+
+Uma chamada aninhada **entra** na transação já aberta em vez de começar uma
+segunda, porque o PDO não tem transações aninhadas. A consequência vale
+conhecer: uma falha no callback interno desfaz o trabalho externo também.
+Savepoints evitariam isso, mas a sintaxe deles varia entre drivers, e degradar
+em silêncio naqueles que não os têm seria pior do que ser explícito.
+
+O helper também resolve um detalhe fácil de errar à mão: um statement que falha
+pode deixar o driver **sem** transação ativa, e um `rollBack()` cru nesse
+estado lança `There is no active transaction` de dentro do `catch` —
+substituindo o erro que realmente causou a falha. Aqui o rollback só acontece
+se houver transação ativa, então o erro original sobrevive.
+
 ### SQL cru
 
 ```php
@@ -813,6 +849,368 @@ Database::query('INSERT INTO logs (msg) VALUES (?)', ['oi'])->lastInsertId();
 
 Aceita placeholders posicionais e nomeados. Os métodos são `get()`, `first()`,
 `scalar()`, `execute()`, `rowCount()` e `lastInsertId()`.
+
+---
+
+## Models
+
+Uma camada fina sobre o Query Builder: linhas chegam como objetos tipados,
+relacionamentos são declarados uma vez em vez de virarem JOIN escrito à mão em
+cada chamada, e `with()` carrega esses relacionamentos em **uma** query em vez
+de uma por linha.
+
+**Não é um ORM completo.** Não há identity map, unit of work, proxy de lazy
+loading nem schema derivado da classe — e isso é deliberado, porque cada um
+deles é a diferença entre algo que se lê de uma sentada e algo que não.
+
+```bash
+./sfphp make:model Post
+```
+
+```php
+<?php
+
+namespace SfphpProject\app\models;
+
+use SfphpProject\src\Database\Model;
+use SfphpProject\src\Database\Relation;
+
+final class Post extends Model
+{
+    protected static string $table = 'posts';
+
+    public function author(): Relation
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function comments(): Relation
+    {
+        return $this->hasMany(Comment::class, 'post_id');
+    }
+}
+```
+
+Sem `$table`, o nome é inferido da classe: `Post` → `posts`, `Category` →
+`categories`, `Box` → `boxes`. A inferência é simples de propósito — um nome
+irregular deve declarar `$table`.
+
+### Lendo
+
+```php
+Post::all();                       // array<Post>
+Post::find(1);                     // Post|null
+Post::findOrFail(1);               // Post, ou RuntimeException
+Post::query()->where('publicado', 1)->orderBy('criado_em', 'desc')->limit(10)->get();
+Post::query()->count();
+
+$post->titulo;                     // atributo
+$post->author;                     // relação, resolvida ao ler
+$post->toArray();
+```
+
+`Model` implementa `JsonSerializable`, então um modelo vai direto para uma
+resposta:
+
+```php
+return Response::json(Post::findOrFail($id));
+```
+
+### Escrevendo
+
+```php
+$post = new Post(['titulo' => 'Olá']);
+$post->save();                     // INSERT, e a chave volta preenchida
+
+$post = Post::find(1);
+$post->titulo = 'Outro título';
+$post->save();                     // UPDATE só do que mudou
+
+Post::create(['titulo' => 'Direto']);
+$post->delete();
+```
+
+Um `save()` sobre modelo existente escreve **apenas os atributos alterados** —
+tocar um campo não reescreve a linha inteira. Um `save()` sem alteração não
+emite query.
+
+### Tipos de atributo
+
+PDO devolve o que o driver entrega: uma coluna `DATETIME` chega como string, e
+uma coluna JSON também. Declarar o tipo faz a conversão acontecer uma vez, em
+vez de em cada ponto de uso:
+
+```php
+final class Artigo extends Model
+{
+    protected static array $casts = [
+        'publicado' => 'bool',
+        'meta' => 'json',
+        'publicado_em' => 'datetime',
+        'preco' => 'decimal:2',
+        'views' => 'int',
+    ];
+}
+```
+
+```php
+$artigo->publicado;      // true, não '1'
+$artigo->meta;           // ['cor' => 'azul'], não '{"cor":"azul"}'
+$artigo->publicado_em;   // DateTimeImmutable
+$artigo->views;          // 42, não '42'
+```
+
+Disponíveis: `int`, `float`, `bool`, `string`, `json`, `array`, `datetime`,
+`date` e `decimal:N`. Uma coluna nula continua nula — não vira valor zero.
+
+A conversão vale nos dois sentidos: `$artigo->meta = ['cor' => 'verde']` é
+gravado como JSON, e um `DateTimeImmutable` é gravado no formato do banco.
+
+Em `toArray()` e no JSON, uma data sai como **ISO 8601** em vez do objeto
+`DateTimeImmutable` — que `json_encode` renderizaria como uma estrutura de
+campos internos, inútil para quem consome a API.
+
+Duas exceções que vale conhecer:
+
+```php
+$artigo->getAttribute('publicado');   // '1' — o valor cru, sem cast
+$artigo->cast('publicado');           // true — com cast
+```
+
+`getAttribute()` é cru **de propósito**: relacionamentos casam por esses
+valores, e um cast mudaria o que eles comparam — uma chave lida como `int` de
+um lado e como `string` do outro pararia de casar em silêncio.
+
+### Relacionamentos
+
+```php
+$this->hasMany(Comment::class, 'post_id');        // um para muitos
+$this->hasOne(Profile::class, 'user_id');         // um para um
+$this->belongsTo(User::class, 'user_id');         // o inverso
+
+// muitos para muitos, através de uma tabela pivô
+$this->belongsToMany(Tag::class, 'post_tag', 'post_id', 'tag_id');
+```
+
+Ler a propriedade resolve a relação na hora. Dentro de um laço, isso é o
+problema N+1:
+
+```php
+// 1 query dos posts + 1 por post = 101 queries para 100 posts
+foreach (Post::all() as $post) {
+    echo $post->author->nome;
+}
+
+// 1 query dos posts + 1 de todos os autores = 2 queries
+foreach (Post::query()->with('author')->get() as $post) {
+    echo $post->author->nome;
+}
+```
+
+`with()` aceita várias relações: `->with('author', 'comments')`, e funciona
+também para muitos-para-muitos:
+
+```php
+final class Post extends Model
+{
+    public function tags(): Relation
+    {
+        return $this->belongsToMany(Tag::class, 'post_tag', 'post_id', 'tag_id');
+    }
+}
+
+foreach (Post::query()->with('tags')->get() as $post) {
+    foreach ($post->tags as $tag) { echo $tag->nome; }
+}
+```
+
+Duas queries, independente de quantos posts existam. A coluna da pivô é
+selecionada sob um alias, e é assim que as linhas da junção são reagrupadas
+por post — sem isso, carregar em lote através de uma pivô voltaria a ser uma
+query por linha.
+
+### A saída de emergência
+
+Tudo que o `Model` não faz continua a uma chamada de distância, e volta a ser
+array:
+
+```php
+Post::query()->builder();          // o QueryBuilder por baixo
+Database::table('posts');          // sem passar pelo Model
+Database::query('SELECT ...');     // SQL cru
+```
+
+### O que não tem, e por quê
+
+Os motivos estão detalhados em [ORM ou Query Builder?](#orm-ou-query-builder).
+
+| Ausente | Por quê |
+|---|---|
+| Identity map | Buscar a mesma linha duas vezes devolve dois objetos. Rastrear identidade exige um unit of work |
+| Lazy loading por proxy | A relação resolve ao ler a propriedade; não há proxy simulando o objeto ausente |
+| Relações polimórficas | `hasMany`, `hasOne`, `belongsTo` e `belongsToMany` existem |
+| Migrations derivadas da classe | O schema vem das migrations, não do modelo |
+
+---
+
+## ORM ou Query Builder?
+
+Resposta curta: **um Query Builder, com objetos por cima.** Nem um Query
+Builder puro, nem um ORM — e a fronteira é deliberada, não inacabamento.
+Esta seção existe porque um meio-ORM que se confunde com um completo é pior
+que qualquer um dos dois: você passa a contar com transação implícita que não
+existe, ou com identidade de objeto que não é garantida.
+
+### Os dois extremos
+
+Um **Query Builder** monta SQL para você. Você continua pensando em tabelas,
+colunas e junções; ele cuida de citar identificadores, vincular valores e
+traduzir paginação entre dialetos. O resultado são linhas — arrays.
+
+```php
+Database::table('posts')
+    ->join('users', 'posts.user_id', '=', 'users.id')
+    ->where('posts.publicado', 1)
+    ->get();                                  // array de arrays
+```
+
+Um **ORM** (mapeador objeto-relacional) inverte isso. Você pensa em objetos e
+em relações entre eles; o mapeador decide o SQL. Para isso ele precisa manter
+**identidade** (a mesma linha é o mesmo objeto), **ciclo de vida** (rastrear o
+que mudou e gravar na ordem certa) e frequentemente **transação implícita**.
+
+```php
+$post->author->nome = 'Ana';
+$entityManager->flush();      // o ORM descobre o UPDATE, a ordem e a transação
+```
+
+### Onde o SFPHP fica
+
+| | Query Builder puro | **SFPHP** | ORM completo |
+|---|:--:|:--:|:--:|
+| SQL seguro, com bind e citação | ✓ | ✓ | ✓ |
+| Linhas como objetos tipados | ✗ | **✓** | ✓ |
+| Tipos declarados (data, JSON, bool) | ✗ | **✓** | ✓ |
+| Relações declaradas uma vez | ✗ | **✓** | ✓ |
+| Carga em lote contra N+1 | ✗ | **✓** | ✓ |
+| Transação explícita | ✗ | **✓** | ✓ |
+| Identity map | ✗ | ✗ | ✓ |
+| Unit of work / `flush()` | ✗ | ✗ | ✓ |
+| Proxy de lazy loading | ✗ | ✗ | ✓ |
+| Relações polimórficas | ✗ | ✗ | ✓ |
+| Schema derivado da classe | ✗ | ✗ | ✓ |
+
+A linha divisória tem uma lógica: **o SFPHP mapeia leitura e escrita de linhas,
+mas não gerencia o ciclo de vida dos objetos.** Tudo acima da divisória é
+tradução de dados; tudo abaixo exige que o framework mantenha estado sobre os
+seus objetos entre uma chamada e outra.
+
+### Por que paramos exatamente aí
+
+O que está abaixo da linha não foi omitido por falta de tempo. Cada item cobra
+um preço concreto, e em um deles o preço é risco de segurança.
+
+#### Identity map — não, e aqui o motivo é risco
+
+A ideia: `Post::find(1)` duas vezes devolve o **mesmo** objeto, então editar num
+lugar aparece no outro.
+
+O problema: um identity map é um cache, com todos os problemas de cache —
+invalidação, consumo de memória, e a surpresa de `find()` não ir ao banco
+quando você esperava dado fresco.
+
+E o motivo decisivo: **runtime persistente é objetivo declarado deste
+framework** (Swoole, FrankenPHP). Num processo que atende várias requisições,
+um identity map que não seja rigorosamente reiniciado a cada requisição vira
+vazamento de dados **entre usuários** — alguém enxergando a linha que outra
+pessoa carregou. É a única peça da lista em que o objetivo do projeto
+argumenta *contra*, não apenas de forma neutra.
+
+#### Unit of work — não, porque `transaction()` entrega o que importa
+
+A ideia: você altera objetos à vontade, chama `flush()` uma vez, e o mapeador
+calcula o conjunto mínimo de INSERT/UPDATE/DELETE, na ordem correta das
+dependências de chave estrangeira, dentro de uma transação.
+
+O preço: é a maior peça de um ORM como o Doctrine. Depende do identity map,
+de cálculo de *changeset*, de grafo de dependências e de regras de cascata. E
+torna **não óbvio quando a sua query roda** — a causa nº 1 de "por que minha
+alteração não salvou?".
+
+O que fazemos em vez disso: `save()` por objeto, que grava só o que mudou, e
+uma transação **explícita** quando você precisa de atomicidade:
+
+```php
+Database::transaction(function (): void {
+    $pedido = Pedido::create(['cliente_id' => 7]);
+
+    foreach ($itens as $item) {
+        ItemPedido::create(['pedido_id' => $pedido->id, ...]);
+    }
+});
+```
+
+Isso entrega a atomicidade sem a ambiguidade. Você vê onde a transação começa
+e termina.
+
+#### Proxy de lazy loading — não, porque já temos o valor
+
+A ideia: `$post->author` devolve um objeto que *parece* um `User` e só consulta
+o banco quando alguém toca nele de verdade.
+
+Mas ler a propriedade **já** resolve a relação sob demanda — isso *é* lazy
+loading, e é o que esta camada faz. O proxy só acrescenta o caso em que você
+precisa de um objeto tipado `User` em mãos antes da consulta, e cobra caro por
+ele: quebra `get_class()`, torna `instanceof` sutil, complica serialização, e
+`var_dump` passa a mostrar um proxy em vez do objeto que você quer inspecionar.
+
+#### Relações polimórficas — não, por causa de onde o dado mora
+
+A ideia: `$comentario->comentavel` aponta para um `Post` ou para um `Video`,
+conforme uma coluna `comentavel_type`.
+
+O problema é o que essa coluna guarda: **nome de classe PHP dentro do banco**.
+Isso acopla o schema ao seu namespace — renomear uma classe passa a exigir
+migration — e, se algum dia esse valor for instanciado a partir de entrada não
+confiável, deixa de ser questão de design e passa a ser de segurança.
+
+Muitos-para-muitos, que é o caso comum e não tem esse problema, **existe**:
+`belongsToMany()`.
+
+#### Schema derivado da classe — não, e este seria um mau negócio mesmo se fosse barato
+
+A ideia: atributos na classe geram as migrations, então a forma da tabela vive
+num lugar só.
+
+O problema é que inverte a fonte da verdade. E o Schema Builder é o
+**subsistema mais forte deste framework**: cobre MySQL e PostgreSQL com
+paridade real, emula ENUM e `ON UPDATE` no PostgreSQL via constraint e
+trigger, e **falha explicitamente** quando um dialeto não consegue honrar a
+semântica pedida, em vez de alterá-la em silêncio. Subordinar isso a
+anotações numa classe trocaria a peça mais confiável do projeto por
+conveniência.
+
+### Como saber de qual lado escrever
+
+Uma regra prática:
+
+- **Model** quando você trabalha com entidades e relações — CRUD, formulários,
+  API de recursos. É onde objetos e `with()` pagam.
+- **Query Builder** quando você trabalha com conjuntos — relatórios,
+  agregações, `GROUP BY`, atualizações em massa. Hidratação em objeto não
+  ajuda, e às vezes atrapalha.
+- **SQL cru** (`Database::query()`) quando a query é o produto: CTE, função de
+  janela, algo específico do dialeto.
+
+Os três coexistem, e sair do Model custa uma chamada:
+
+```php
+Post::query()->builder();   // devolve o QueryBuilder por baixo
+```
+
+Se um dia você precisar de identity map ou unit of work, o caminho honesto não
+é esperar que o SFPHP cresça até lá — é usar o Doctrine, que faz isso bem, e
+aceitar as dependências que vêm com ele.
 
 ---
 
@@ -1070,7 +1468,8 @@ $muitos = (new UserFactory())->count(50)->create();
 $admin  = (new UserFactory())->create(['role' => 'admin']);  // sobrescreve
 ```
 
-`make()` e `create()` devolvem **arrays**, não objetos — não há ORM.
+`make()` e `create()` devolvem **arrays**, não objetos. Para trabalhar com
+objetos, veja [Models](#models).
 
 ---
 
@@ -1501,7 +1900,7 @@ não faz, e que você deve saber antes de escolhê-lo.
 | **Rate limiting** | Não existe. Pode ser escrito como middleware agora, mas o framework não traz um |
 | **Autenticação / autorização** | Não existe. `make:policy` gera um esqueleto sem camada que o use; o pipeline de middleware é onde ela vai morar |
 | **Sistema de eventos** | `make:event` e `make:listener` geram classes sem dispatcher |
-| **ORM** | Models e repositories geram métodos estáticos sobre o Query Builder; retornam arrays, não objetos. Sem relacionamentos, sem lazy loading |
+| **ORM completo** | Existe uma camada de [Models](#models) com hidratação, tipos de atributo, relacionamentos (incluindo muitos-para-muitos) e `with()`. Não existe identity map, unit of work, proxy de lazy loading, relação polimórfica nem schema derivado da classe — e [ORM ou Query Builder?](#orm-ou-query-builder) explica o motivo de cada um |
 | **i18n / l10n** | Não existe. Mensagens de erro são fixas |
 | **Fusos horários** | Sem tratamento dedicado |
 | **Log estruturado** | Só `error_log()` — texto plano |
