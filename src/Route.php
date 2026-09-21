@@ -33,6 +33,13 @@ final class Route
     private array $parameters = [];
 
     /**
+     * Middleware that runs for this route, group middleware first.
+     *
+     * @var array<int, mixed>
+     */
+    private array $middleware = [];
+
+    /**
      * Create a route.
      *
      * @param string $method The HTTP method
@@ -65,6 +72,38 @@ final class Route
         Router::registerName($this, $name);
 
         return $this;
+    }
+
+    /**
+     * Add middleware that runs before this route's action.
+     *
+     * Accepts class names, instances and callables, singly or as arrays, and
+     * is chainable alongside name(). Middleware inherited from the enclosing
+     * group is already present and stays first, so a group's authentication
+     * still runs before a route's own checks.
+     *
+     * @param mixed ...$middleware Class names, instances or callables
+     * @return self The current route
+     */
+    public function middleware(mixed ...$middleware): self
+    {
+        foreach ($middleware as $entry) {
+            foreach (is_array($entry) ? $entry : [$entry] as $stage) {
+                $this->middleware[] = $stage;
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Get the middleware that runs for this route.
+     *
+     * @return array<int, mixed> The middleware, in execution order
+     */
+    public function getMiddleware(): array
+    {
+        return $this->middleware;
     }
 
     /**

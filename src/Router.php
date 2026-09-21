@@ -3,7 +3,12 @@
 namespace SfphpProject\src;
 
 use InvalidArgumentException;
+use LogicException;
 use RuntimeException;
+use SfphpProject\src\Http\Pipeline;
+use SfphpProject\src\Http\Request;
+use SfphpProject\src\Http\Response;
+use Throwable;
 
 /**
  * Registers routes, dispatches requests, and generates named URLs.
@@ -15,77 +20,183 @@ class Router
     private static array $groups = [];
 
     /**
-     * Create a router.
+     * Middleware that runs for every request, including 404 and 405.
      *
-     * @param Container $container The dependency injection container
+     * @var array<int, mixed>
      */
-    public function __construct(private Container $container) {}
+    private array $middleware = [];
 
     /**
-     * Dispatch the current request to the matching controller action.
+     * Create a router.
      *
-     * @return void
+     * The controller namespace is a parameter rather than a constant so that
+     * an application can live under its own namespace, and so tests can point
+     * the router at their own controllers. It was hardcoded before, which tied
+     * the framework to this one application layout.
+     *
+     * @param Container $container The dependency injection container
+     * @param string $controllerNamespace The namespace route controllers live in
      */
-    public function dispatch(): void
+    public function __construct(
+        private Container $container,
+        private string $controllerNamespace = 'SfphpProject\\app\\controllers\\'
+    ) {}
+
+    /**
+     * Add middleware that runs for every request.
+     *
+     * Global middleware wraps the whole dispatch, so it also runs for requests
+     * that match no route. That is deliberate: CORS headers and request
+     * logging that skip 404s are a bug, not an optimisation.
+     *
+     * @param mixed ...$middleware Class names, instances or callables
+     * @return self The router
+     */
+    public function middleware(mixed ...$middleware): self
     {
-        $url = self::decodePath(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/');
-        $method = $_SERVER['REQUEST_METHOD'];
+        foreach ($middleware as $entry) {
+            foreach (is_array($entry) ? $entry : [$entry] as $stage) {
+                $this->middleware[] = $stage;
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Dispatch a request and produce a response.
+     *
+     * @param Request $request The incoming request
+     * @return Response The response to send
+     */
+    public function dispatch(Request $request): Response
+    {
+        $pipeline = new Pipeline($this->container);
+
+        /*
+         * The failure boundary is here rather than in a middleware because a
+         * middleware can be registered in the wrong order and quietly stop
+         * catching anything. A try/catch around the whole pipeline cannot.
+         */
+        try {
+            return $pipeline->run(
+                $request,
+                $this->middleware,
+                fn (Request $passed): Response => $this->route($pipeline, $passed)
+            );
+        } catch (Throwable $throwable) {
+            error_log(sprintf(
+                '%s: %s in %s:%d',
+                $throwable::class,
+                $throwable->getMessage(),
+                $throwable->getFile(),
+                $throwable->getLine()
+            ));
+
+            return ErrorHandler::toResponse($throwable, $request);
+        }
+    }
+
+    /**
+     * Match the request against the registered routes.
+     *
+     * @param Pipeline $pipeline The pipeline used for route middleware
+     * @param Request $request The incoming request
+     * @return Response The response to send
+     */
+    private function route(Pipeline $pipeline, Request $request): Response
+    {
         $allowedMethods = [];
 
         foreach (self::$routes as $route) {
-            $parameters = $route->match($url);
+            $parameters = $route->match($request->path);
             if ($parameters === null) {
                 continue;
             }
 
             $allowedMethods[] = $route->getMethod();
-            if ($route->getMethod() !== $method) {
+            if ($route->getMethod() !== $request->method) {
                 continue;
             }
 
-            $controllerClass = "SfphpProject\\app\\controllers\\"
-                . $route->getController();
-
-            if (!class_exists($controllerClass)) {
-                throw new RuntimeException("Controller $controllerClass not found.");
-            }
-
-            $controller = $this->container->get($controllerClass);
-            if (!method_exists($controller, $route->getAction())) {
-                throw new RuntimeException(
-                    "Action {$route->getAction()} not found in $controllerClass."
-                );
-            }
-
-            $controller->{$route->getAction()}(...array_values($parameters));
-
-            return;
+            return $pipeline->run(
+                $request->withAttributes($parameters),
+                $route->getMiddleware(),
+                fn (Request $passed): Response => $this->call($route, $passed, $parameters)
+            );
         }
 
         $allowedMethods = array_values(array_unique($allowedMethods));
-        if ($allowedMethods !== []) {
-            header('Allow: ' . implode(', ', $allowedMethods));
-
-            if ($method === OPTIONS) {
-                http_response_code(HTTP_NO_CONTENT);
-
-                return;
-            }
-
-            self::renderErrorPage(
-                HTTP_METHOD_NOT_ALLOWED,
-                '405 - Método Não Permitido',
-                'O método HTTP usado não é permitido para esta página.'
+        if ($allowedMethods === []) {
+            return self::errorResponse(
+                HTTP_NOT_FOUND,
+                '404 - Página Não Encontrada',
+                'Desculpe, a página que você está procurando não foi encontrada.'
             );
-
-            return;
         }
 
-        self::renderErrorPage(
-            HTTP_NOT_FOUND,
-            '404 - Página Não Encontrada',
-            'Desculpe, a página que você está procurando não foi encontrada.'
-        );
+        /*
+         * Allow has to be attached to both branches. It used to be emitted
+         * once with header() before the split, so both inherited it; a
+         * returned response carries only what it was given.
+         */
+        $allow = implode(', ', $allowedMethods);
+
+        if ($request->isMethod(OPTIONS)) {
+            return Response::noContent()->withHeader('Allow', $allow);
+        }
+
+        return self::errorResponse(
+            HTTP_METHOD_NOT_ALLOWED,
+            '405 - Método Não Permitido',
+            'O método HTTP usado não é permitido para esta página.'
+        )->withHeader('Allow', $allow);
+    }
+
+    /**
+     * Resolve the controller and invoke the action.
+     *
+     * The request is always the first argument and route parameters follow in
+     * the order they appear in the URL. One rule, no reflection, no exception.
+     *
+     * @param Route $route The matched route
+     * @param Request $request The incoming request
+     * @param array<string, string> $parameters The route parameters
+     * @return Response The response the action produced
+     * @throws RuntimeException If the controller or action does not exist
+     * @throws LogicException If the action returns something unusable
+     */
+    private function call(Route $route, Request $request, array $parameters): Response
+    {
+        $controllerClass = $this->controllerNamespace . $route->getController();
+
+        if (!class_exists($controllerClass)) {
+            throw new RuntimeException("Controller $controllerClass not found.");
+        }
+
+        $controller = $this->container->get($controllerClass);
+        if (!method_exists($controller, $route->getAction())) {
+            throw new RuntimeException(
+                "Action {$route->getAction()} not found in $controllerClass."
+            );
+        }
+
+        $result = $controller->{$route->getAction()}($request, ...array_values($parameters));
+
+        return Response::from($result, $controllerClass . '::' . $route->getAction() . '()');
+    }
+
+    /**
+     * Forget every registered route.
+     *
+     * @internal Exposed for tests and for worker reloads in a persistent runtime.
+     * @return void
+     */
+    public static function reset(): void
+    {
+        self::$routes = [];
+        self::$namedRoutes = [];
+        self::$groups = [];
     }
 
     /**
@@ -211,12 +322,16 @@ class Router
     public static function group(
         string $prefix,
         callable $routes,
-        string $namePrefix = ''
+        string $namePrefix = '',
+        array $middleware = []
     ): void {
-        $parentGroup = end(self::$groups) ?: ['prefix' => '', 'namePrefix' => ''];
+        $parentGroup = end(self::$groups)
+            ?: ['prefix' => '', 'namePrefix' => '', 'middleware' => []];
+
         self::$groups[] = [
             'prefix' => self::joinUri($parentGroup['prefix'], $prefix),
             'namePrefix' => $parentGroup['namePrefix'] . $namePrefix,
+            'middleware' => array_merge($parentGroup['middleware'], $middleware),
         ];
 
         try {
@@ -301,7 +416,9 @@ class Router
         string $controller,
         string $action
     ): Route {
-        $group = end(self::$groups) ?: ['prefix' => '', 'namePrefix' => ''];
+        $group = end(self::$groups)
+            ?: ['prefix' => '', 'namePrefix' => '', 'middleware' => []];
+
         $route = new Route(
             $method,
             self::joinUri($group['prefix'], $url),
@@ -310,40 +427,11 @@ class Router
             $group['namePrefix']
         );
 
+        $route->middleware($group['middleware']);
+
         self::$routes[] = $route;
 
         return $route;
-    }
-
-    /**
-     * Decode a percent-encoded request path without inventing new segments.
-     *
-     * Route parameters are matched against the decoded path so that non-ASCII
-     * URLs work: a browser sends /produtos/caf%C3%A9, and a route declaring
-     * "name:alpha" can only match it once it reads /produtos/café.
-     *
-     * Decoding is done segment by segment, and any separator produced by the
-     * decoding is encoded straight back. Otherwise "/a%2Fb" would decode to
-     * "/a/b" and reach a route registered as "/a/b", giving the client a way
-     * to address a route through a path it never actually requested. A
-     * segment that arrives with an encoded separator keeps it encoded, so it
-     * matches a literal route segment or nothing at all.
-     *
-     * @param string $path The raw request path
-     * @return string The decoded path
-     */
-    private static function decodePath(string $path): string
-    {
-        $segments = array_map(
-            static fn (string $segment): string => str_replace(
-                ['/', '\\'],
-                ['%2F', '%5C'],
-                rawurldecode($segment)
-            ),
-            explode('/', $path)
-        );
-
-        return implode('/', $segments);
     }
 
     /**
@@ -364,20 +452,18 @@ class Router
     }
 
     /**
-     * Render an HTTP error page.
+     * Build an HTTP error response.
      *
      * @param int $statusCode The HTTP response status
      * @param string $title The error page title
      * @param string $message The error page message
-     * @return void
+     * @return Response The error response
      */
-    private static function renderErrorPage(
+    private static function errorResponse(
         int $statusCode,
         string $title,
         string $message
-    ): void {
-        http_response_code($statusCode);
-        header('Content-Type: text/html; charset=utf-8');
+    ): Response {
 
         /*
          * Styled with an inline stylesheet on purpose. An earlier version
@@ -391,7 +477,7 @@ class Router
         $title = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $message = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
-        echo <<<HTML
+        $html = <<<HTML
         <!doctype html>
         <html lang="en">
         <head>
@@ -425,5 +511,7 @@ class Router
         </body>
         </html>
         HTML;
+
+        return Response::html($html, $statusCode);
     }
 }
