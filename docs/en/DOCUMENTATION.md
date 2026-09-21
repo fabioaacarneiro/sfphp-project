@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 81 tests, 0 failures
+> Verified against PHP 8.4 · suite: 90 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -38,6 +38,7 @@ code does today. Where something does not exist, it says so — see
 - [CSRF](#csrf)
 - [JWT](#jwt)
 - [Error handling](#error-handling)
+- [Logging](#logging)
 - [CLI](#cli)
 - [SFCSS](#sfcss)
 - [SFJS](#sfjs)
@@ -138,7 +139,7 @@ public/index.php
  │   └─ config.php → loads .env (optional), defines APP_NAME/VERSION/ENV/LOCALE
  │      utils.php  → global helpers: e(), asset(), csrf_*()
  │      http.php   → HTTP_OK, GET, POST, ... constants
- │      helpers.php→ cache(), dispatch(), __(), trans_choice(), locale()
+ │      helpers.php→ cache(), logger(), dispatch(), __(), trans_choice(), locale()
  ├─ ErrorHandler::register()  safety net for fatals and bootstrap failures
  ├─ require src/routes.php    fills the static route registry
  ├─ new Container()
@@ -412,6 +413,7 @@ And by `src/helpers.php`:
 
 ```php
 cache();                      // a CacheManager with the file driver
+logger();                     // a LogManager, configured from LOG_*
 dispatch(new MyJob());        // queues a job
 __('app.welcome', ['name' => 'Ana']);
 trans_choice('app.items', 3);
@@ -488,6 +490,7 @@ dependencies in its constructor and have them autowired.
 
 | Middleware | Does |
 |---|---|
+| `LogRequests` | Gives the request an id and records its outcome |
 | `SecurityHeaders` | Adds `nosniff`, `X-Frame-Options`, `Referrer-Policy`; CSP and HSTS on request |
 | `SetLocale` | Negotiates the language from `Accept-Language` |
 | `StartSession` | Starts the session with `httponly` + `samesite=Lax` + `secure` over HTTPS |
@@ -2399,9 +2402,20 @@ php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 
 ## Error handling
 
-An exception thrown inside an action is caught by the router, which returns the
-error response through the same pipeline — so outgoing middleware still runs.
-`ErrorHandler::toResponse()` is the shared renderer.
+An exception thrown inside an action is caught by the router, at a boundary
+that sits **outside** the pipeline. `ErrorHandler::toResponse()` is the shared
+renderer.
+
+Outside matters, and this page used to claim the opposite. A middleware's
+outgoing half never runs for a failed request: the exception unwinds past it,
+so a header it would have added is not added. That is why the router attaches
+`X-Request-Id` to the error response itself — see [Logging](#logging) — and it
+is worth knowing before writing a middleware that assumes it always gets its
+turn on the way out.
+
+The boundary is deliberately not a middleware. A middleware can be registered
+in the wrong order and quietly stop catching anything; a `try/catch` around the
+pipeline structurally cannot.
 
 The global registration (`ErrorHandler::register()`) stays, because it covers
 what a `try/catch` cannot reach: a warning during bootstrap, and a fatal
@@ -2412,12 +2426,149 @@ On both paths the response is:
 
 - **500** with a negotiated `Content-Type` — JSON if the request asked for or
   sent JSON, HTML otherwise
-- The real message **only** with `APP_ENV=development`; in production, just
-  `Internal Server Error`
-- The detail always goes to `error_log`
+- The real message **only** with `APP_ENV=development`; in production, the
+  translated `http.server_error_message`
+- The detail always goes to the logger, with the request id attached — see
+  [Logging](#logging)
 
 The 404, 405 and 500 pages use inline CSS, make no external request, and
-respect `prefers-color-scheme`.
+respect `prefers-color-scheme`. All three are rendered in the visitor's
+language; until this version the 500 page alone was not, shipping a Portuguese
+title and `lang="pt-br"` whatever the request asked for.
+
+---
+
+## Logging
+
+One JSON object per line, timestamped in UTC.
+
+```php
+logger()->info('order placed', ['order_id' => $order->id]);
+logger()->warning('payment retried', ['attempt' => 3]);
+logger()->error('gateway refused', ['code' => $code]);
+logger()->exception($throwable);
+```
+
+```json
+{"timestamp":"2026-09-21T23:34:46.472Z","level":"info","message":"request handled","context":{"request_id":"cc13917b45e763edf3476b9e02818b09","method":"GET","path":"/","ip":"127.0.0.1","status":200,"duration_ms":3.488}}
+```
+
+JSON rather than a sentence, because a log line is read by a program before a
+person reads it: any collector parses this, and a field can be filtered on
+without a regular expression that breaks the first time a message contains a
+colon. UTC, because lines carrying local time cannot be put in order, and once
+there are two machines that ordering is the only thing that makes the logs
+worth keeping.
+
+### Levels
+
+The eight of RFC 5424, which is what PSR-3 uses as well — `debug`, `info`,
+`notice`, `warning`, `error`, `critical`, `alert`, `emergency`. Matching those
+names matters even without depending on the package: every collector already
+sorts records by them.
+
+Anything below `LOG_LEVEL` is dropped before it reaches the driver, so a
+`debug()` call in a hot path costs a comparison in production rather than a
+write.
+
+### Configuration
+
+```ini
+LOG_CHANNEL=stream          # stream (the default), error_log, or null
+LOG_PATH=php://stderr       # a stream or a file, for the stream channel
+LOG_LEVEL=info              # debug in development, info otherwise
+```
+
+`stderr` is the default because it needs no directory to exist and no
+permission to be granted, and it is where a container expects to find an
+application's logs. A path works too, and its directory is created if missing.
+
+`error_log` writes through PHP's own error log, for a deployment where
+something already collects that. `null` discards, which is what the test suite
+uses so that deliberate failures do not bury the output in stack traces.
+
+### The request id
+
+This is the point of the whole section. A production failure is never one line:
+it is the request that came in, the query that was slow and the exception that
+came out, written at different moments and interleaved with every other request
+the server was handling. Without something joining them, reading the log is
+guesswork.
+
+```php
+$router->middleware(new LogRequests());
+```
+
+That middleware gives every request an id and puts it in four places: the
+shared log context, so every line written afterwards carries it; the request
+itself, as the `request_id` attribute; the response, as `X-Request-Id`; and the
+record it writes when the request finishes, with the status and the duration.
+
+Because it reaches the response, the id is on the visitor's screen when
+something breaks — a support ticket can carry the one string that finds
+everything.
+
+An inbound `X-Request-Id` is honoured, which is how a trace follows a request
+from one service into the next. It is also client-controlled input going
+straight into the logs, so it must match `[A-Za-z0-9._-]{1,128}`: unbounded
+length turns a log into a disk bill, and control characters turn a log viewer
+into something that no longer shows what it says it shows. An id that does not
+match is replaced rather than refused, because the request itself is not the
+problem.
+
+**Register it first**, or as close to first as the pipeline allows. Only what
+runs after it is covered, and a request that matches no route never reaches a
+controller — a 404 is worth having logs for.
+
+> **Under a persistent runtime this middleware is mandatory.** The shared
+> context lives in an object that outlives a request in a Swoole or FrankenPHP
+> worker, so one visitor's id would follow the next visitor's logs. It calls
+> `forgetContext()` at the start of every request and is the explicit owner of
+> that reset — exactly as `SetLocale` is for the active language and
+> `Authenticate` for the user.
+
+### Failures
+
+A failing request is reported **once**, by the router's own boundary rather
+than by the middleware. The boundary is guaranteed to run and a middleware can
+be registered in the wrong order, so logging in both would mean a duplicate
+whenever both were present and nothing whenever neither was.
+
+The record still carries the request id, because an exception unwinding the
+pipeline does not touch the shared context. It carries the exception class, the
+file, the line and the trace as separate fields, so a collector can group by
+class without parsing a message.
+
+An exception skips the rest of the pipeline, so the middleware never gets its
+turn to add the response header. The router attaches it instead: the visitor
+who sees a 500 is the person most in need of the id.
+
+### Secrets
+
+Structured logging invites passing whole arrays through, and the body of a
+login form is the first array anyone reaches for. Values under these keys are
+replaced with `[redacted]`, at any depth:
+
+`password` `password_confirmation` `current_password` `new_password` `secret`
+`token` `_token` `access_token` `refresh_token` `api_key` `apikey`
+`authorization` `auth` `cookie` `set-cookie` `credit_card` `card_number` `cvv`
+`ssn` `cpf`
+
+```php
+logger()->redact('pin', 'account_number');
+```
+
+Redacting by key is crude, and it is the difference between a password reaching
+a log aggregator and not.
+
+### What is missing
+
+| Missing | Situation |
+|---|---|
+| Metrics | Counters and timings are not collected; a log line carries a duration, which is not the same thing |
+| Sampling | Every record that passes the level is written; there is no "one in a hundred" |
+| Several destinations at once | One driver at a time — no fan-out to a file and a collector together |
+| Log rotation | The file grows; rotation belongs to `logrotate` or the platform |
 
 ---
 
@@ -2584,7 +2735,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 81 unit cases
+composer run test        # 90 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
@@ -2627,7 +2778,7 @@ does not do, and you should know before choosing it.
 | **A full ORM** | There is a [Models](#models) layer with hydration, attribute types, relations (including many-to-many) and `with()`. There is no identity map, unit of work, lazy-loading proxy, polymorphic relation or schema derived from the class — and [ORM or query builder?](#orm-or-query-builder) explains the reason for each |
 | **Per-locale formatting** | Dates and numbers are not formatted per language; `ext-intl` does that well and the framework does not attempt it. See [Internationalisation](#internationalisation) |
 | **Time zones** | No dedicated handling |
-| **Structured logging** | Only `error_log()` — plain text |
+| **Metrics** | Records carry durations; counters and timings are not collected. See [Logging](#logging) |
 | **Route caching** | Dispatch is O(n), one `preg_match` per route. Fine for dozens, not hundreds |
 | **Pluggable session** | Native `$_SESSION`. Multiple instances need sticky sessions |
 | **Distribution as a package** | The controller namespace is already a Router parameter, but `composer.json` still describes an application rather than a library |

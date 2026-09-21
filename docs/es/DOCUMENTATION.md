@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 81 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 90 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -38,6 +38,7 @@ hace hoy. Donde algo no existe, se dice que no existe — véase
 - [CSRF](#csrf)
 - [JWT](#jwt)
 - [Manejo de errores](#manejo-de-errores)
+- [Registro](#registro)
 - [CLI](#cli)
 - [SFCSS](#sfcss)
 - [SFJS](#sfjs)
@@ -139,7 +140,7 @@ public/index.php
  │   └─ config.php → carga .env (opcional), define APP_NAME/VERSION/ENV/LOCALE
  │      utils.php  → helpers globales: e(), asset(), csrf_*()
  │      http.php   → constantes HTTP_OK, GET, POST, ...
- │      helpers.php→ cache(), dispatch(), __(), trans_choice(), locale()
+ │      helpers.php→ cache(), logger(), dispatch(), __(), trans_choice(), locale()
  ├─ ErrorHandler::register()  red de seguridad para fatales y arranque
  ├─ require src/routes.php    llena el registro estático de rutas
  ├─ new Container()
@@ -415,6 +416,7 @@ Y por `src/helpers.php`:
 
 ```php
 cache();                      // un CacheManager con el driver de archivos
+logger();                     // un LogManager, configurado desde LOG_*
 dispatch(new MiJob());        // encola un trabajo
 __('app.welcome', ['name' => 'Ana']);
 trans_choice('app.items', 3);
@@ -492,6 +494,7 @@ declarar dependencias en su constructor y recibirlas por autowiring.
 
 | Middleware | Hace |
 |---|---|
+| `LogRequests` | Da un id a la petición y registra su desenlace |
 | `SecurityHeaders` | Añade `nosniff`, `X-Frame-Options`, `Referrer-Policy`; CSP y HSTS bajo demanda |
 | `SetLocale` | Negocia el idioma a partir de `Accept-Language` |
 | `StartSession` | Inicia la sesión con cookie `httponly` + `samesite=Lax` + `secure` bajo HTTPS |
@@ -2437,9 +2440,20 @@ php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 
 ## Manejo de errores
 
-Una excepción lanzada dentro de una acción la captura el router, que devuelve
-la respuesta de error por el mismo pipeline — así que el middleware de salida
-sigue ejecutándose. `ErrorHandler::toResponse()` es el renderizador compartido.
+Una excepción lanzada dentro de una acción la captura el router, en un límite
+que está **fuera** del pipeline. `ErrorHandler::toResponse()` es el
+renderizador compartido.
+
+Ese "fuera" importa, y esta página afirmaba lo contrario. La mitad de salida de
+un middleware nunca se ejecuta en una petición que falló: la excepción se
+desenrolla por encima, así que una cabecera que habría añadido no se añade. Por
+eso el router adjunta `X-Request-Id` a la respuesta de error él mismo —
+consulta [Registro](#registro) — y conviene saberlo antes de escribir un
+middleware que dé por hecho que siempre tiene su turno a la vuelta.
+
+El límite deliberadamente no es un middleware. Un middleware puede registrarse
+en el orden equivocado y dejar de capturar en silencio; un `try/catch` alrededor
+del pipeline estructuralmente no puede.
 
 El registro global (`ErrorHandler::register()`) se mantiene, porque cubre lo
 que un `try/catch` no alcanza: un aviso durante el arranque, y un error fatal
@@ -2451,12 +2465,153 @@ Por ambos caminos la respuesta es:
 
 - **500** con un `Content-Type` negociado — JSON si la petición pidió o envió
   JSON, HTML en caso contrario
-- El mensaje real **solo** con `APP_ENV=development`; en producción, únicamente
-  `Internal Server Error`
-- El detalle siempre va a `error_log`
+- El mensaje real **solo** con `APP_ENV=development`; en producción, el
+  `http.server_error_message` traducido
+- El detalle siempre va al logger, con el id de la petición adjunto — consulta
+  [Registro](#registro)
 
 Las páginas 404, 405 y 500 usan CSS en línea, no hacen ninguna petición
-externa, y respetan `prefers-color-scheme`.
+externa, y respetan `prefers-color-scheme`. Las tres se renderizan en el idioma
+del visitante; hasta esta versión solo la de 500 no lo hacía, entregando un
+título en portugués y `lang="pt-br"` pidiera lo que pidiera la petición.
+
+---
+
+## Registro
+
+Un objeto JSON por línea, con marca de tiempo en UTC.
+
+```php
+logger()->info('pedido creado', ['order_id' => $order->id]);
+logger()->warning('pago reintentado', ['attempt' => 3]);
+logger()->error('la pasarela rechazó', ['code' => $code]);
+logger()->exception($throwable);
+```
+
+```json
+{"timestamp":"2026-09-21T23:34:46.472Z","level":"info","message":"request handled","context":{"request_id":"cc13917b45e763edf3476b9e02818b09","method":"GET","path":"/","ip":"127.0.0.1","status":200,"duration_ms":3.488}}
+```
+
+JSON en lugar de una frase, porque una línea de registro la lee un programa
+antes de que la lea una persona: cualquier colector la analiza, y se puede
+filtrar por un campo sin una expresión regular que se rompa con el primer
+mensaje que contenga dos puntos. UTC, porque las líneas con hora local no se
+pueden ordenar, y en cuanto hay dos máquinas ese orden es lo único que hace que
+los registros valgan algo.
+
+### Niveles
+
+Los ocho de RFC 5424, que son los mismos de PSR-3 — `debug`, `info`, `notice`,
+`warning`, `error`, `critical`, `alert`, `emergency`. Coincidir con esos
+nombres importa incluso sin depender del paquete: todo colector ya clasifica
+los registros por ellos.
+
+Todo lo que esté por debajo de `LOG_LEVEL` se descarta antes de llegar al
+driver, así que una llamada a `debug()` en un camino caliente cuesta una
+comparación en producción, no una escritura.
+
+### Configuración
+
+```ini
+LOG_CHANNEL=stream          # stream (el valor por defecto), error_log, o null
+LOG_PATH=php://stderr       # un stream o un archivo, para el canal stream
+LOG_LEVEL=info              # debug en desarrollo, info en los demás casos
+```
+
+`stderr` es el valor por defecto porque no exige que exista un directorio ni
+que se conceda un permiso, y es donde un contenedor espera encontrar los
+registros de una aplicación. Una ruta también funciona, y su directorio se crea
+si falta.
+
+`error_log` escribe a través del registro de errores de PHP, para un despliegue
+donde algo ya recoge eso. `null` descarta, que es lo que usa la suite de
+pruebas para que los fallos deliberados no entierren la salida en trazas.
+
+### El id de la petición
+
+Es el objetivo de toda la sección. Un fallo en producción nunca es una sola
+línea: es la petición que entró, la consulta que tardó y la excepción que
+salió, escritas en momentos distintos e intercaladas con todas las demás
+peticiones que el servidor estaba atendiendo. Sin algo que las una, leer el
+registro es adivinar.
+
+```php
+$router->middleware(new LogRequests());
+```
+
+Ese middleware da un id a cada petición y lo pone en cuatro sitios: en el
+contexto compartido del registro, para que toda línea escrita después lo lleve;
+en la propia petición, como el atributo `request_id`; en la respuesta, como
+`X-Request-Id`; y en el registro que escribe cuando la petición termina, con el
+estado y la duración.
+
+Como llega a la respuesta, el id está en la pantalla del visitante cuando algo
+se rompe — un ticket de soporte puede llevar la única cadena que lo encuentra
+todo.
+
+Un `X-Request-Id` que llega del cliente se respeta, que es como una traza sigue
+a una petición de un servicio al siguiente. También es entrada controlada por
+el cliente que va directa a los registros, así que debe coincidir con
+`[A-Za-z0-9._-]{1,128}`: una longitud sin límite convierte un registro en una
+factura de disco, y los caracteres de control convierten un visor de registros
+en algo que ya no muestra lo que dice mostrar. Un id que no coincide se
+sustituye, no se rechaza, porque la petición en sí no es el problema.
+
+**Regístralo primero**, o tan cerca del primero como permita el pipeline. Solo
+se cubre lo que se ejecuta después, y una petición que no casa con ninguna ruta
+nunca llega a un controlador — un 404 merece tener registros.
+
+> **Bajo un runtime persistente este middleware es obligatorio.** El contexto
+> compartido vive en un objeto que sobrevive a la petición en un worker de
+> Swoole o FrankenPHP, así que el id de un visitante seguiría a los registros
+> del siguiente. Llama a `forgetContext()` al inicio de cada petición y es el
+> dueño explícito de ese reinicio — exactamente como `SetLocale` lo es del
+> idioma activo y `Authenticate` del usuario.
+
+### Fallos
+
+Una petición que falla se reporta **una vez**, por el límite del propio router
+y no por el middleware. El límite tiene ejecución garantizada y un middleware
+puede registrarse en el orden equivocado, así que registrar en ambos
+significaría un duplicado siempre que los dos estuvieran presentes y nada
+siempre que no lo estuviera ninguno.
+
+El registro sigue llevando el id de la petición, porque una excepción que
+desenrolla el pipeline no toca el contexto compartido. Lleva la clase de la
+excepción, el archivo, la línea y la traza como campos separados, para que un
+colector pueda agrupar por clase sin analizar un mensaje.
+
+Una excepción se salta el resto del pipeline, así que el middleware nunca tiene
+su turno para añadir la cabecera a la respuesta. El router la adjunta en su
+lugar: quien ve un 500 es la persona que más necesita el id.
+
+### Secretos
+
+El registro estructurado invita a pasar arreglos enteros, y el cuerpo de un
+formulario de inicio de sesión es el primer arreglo al que alguien recurre. Los
+valores bajo estas claves se sustituyen por `[redacted]`, a cualquier
+profundidad:
+
+`password` `password_confirmation` `current_password` `new_password` `secret`
+`token` `_token` `access_token` `refresh_token` `api_key` `apikey`
+`authorization` `auth` `cookie` `set-cookie` `credit_card` `card_number` `cvv`
+`ssn` `cpf`
+
+```php
+logger()->redact('pin', 'account_number');
+```
+
+Redactar por clave es tosco, y es la diferencia entre que una contraseña llegue
+a un agregador de registros y que no llegue.
+
+### Qué falta
+
+| Ausente | Situación |
+|---|---|
+| Métricas | No se recogen contadores ni tiempos; una línea de registro lleva una duración, que no es lo mismo |
+| Muestreo | Se escribe todo registro que supera el nivel; no hay "uno de cada cien" |
+| Varios destinos a la vez | Un driver cada vez — sin repartir a un archivo y a un colector juntos |
+| Rotación de registros | El archivo crece; la rotación es de `logrotate` o de la plataforma |
 
 ---
 
@@ -2623,7 +2778,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 81 casos unitarios
+composer run test        # 90 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve
@@ -2666,7 +2821,7 @@ hace, y que deberías conocer antes de elegirlo.
 | **Un ORM completo** | Hay una capa de [Modelos](#modelos) con hidratación, tipos de atributo, relaciones (incluido muchos a muchos) y `with()`. No hay mapa de identidad, unidad de trabajo, proxy de carga perezosa, relación polimórfica ni esquema derivado de la clase — y [¿ORM o constructor de consultas?](#orm-o-constructor-de-consultas) explica el motivo de cada uno |
 | **Formato por idioma** | Las fechas y los números no se formatean por idioma; `ext-intl` hace eso bien y el framework no lo intenta. Consulta [Internacionalización](#internacionalización) |
 | **Zonas horarias** | Sin manejo dedicado |
-| **Registro estructurado** | Solo `error_log()` — texto plano |
+| **Métricas** | Los registros llevan duraciones; no se recogen contadores ni tiempos. Consulta [Registro](#registro) |
 | **Caché de rutas** | El despacho es O(n), un `preg_match` por ruta. Bien para decenas, no para centenares |
 | **Sesión conectable** | `$_SESSION` nativo. Varias instancias necesitan sesiones pegajosas |
 | **Distribución como paquete** | El espacio de nombres de los controladores ya es un parámetro del Router, pero `composer.json` sigue describiendo una aplicación en vez de una biblioteca |

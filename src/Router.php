@@ -86,15 +86,34 @@ class Router
                 fn (Request $passed): Response => $this->route($pipeline, $passed)
             );
         } catch (Throwable $throwable) {
-            error_log(sprintf(
-                '%s: %s in %s:%d',
-                $throwable::class,
-                $throwable->getMessage(),
-                $throwable->getFile(),
-                $throwable->getLine()
-            ));
+            /*
+             * The one place a failed request is reported. LogRequests does not
+             * also record it: this boundary is guaranteed to run and that
+             * middleware is not, so logging in both would mean a duplicate
+             * whenever both are present and nothing whenever neither is.
+             *
+             * The record still carries the request id, because the shared log
+             * context LogRequests set on the way in is untouched by an
+             * exception on the way out.
+             */
+            logger()->exception($throwable);
 
-            return ErrorHandler::toResponse($throwable, $request);
+            $response = ErrorHandler::toResponse($throwable, $request);
+
+            /*
+             * An exception skips the rest of the pipeline, so the middleware
+             * that would have added this header never gets its turn. A visitor
+             * reporting a 500 is the person most in need of the id, so it is
+             * attached here instead of being lost.
+             *
+             * It is read from the log context rather than from the request:
+             * withAttribute() clones, so the request this method is holding is
+             * the one that came in, not the one the middleware handed onwards.
+             * The shared context is the copy an exception does not unwind.
+             */
+            $id = logger()->context()['request_id'] ?? null;
+
+            return is_string($id) ? $response->withHeader('X-Request-Id', $id) : $response;
         }
     }
 
