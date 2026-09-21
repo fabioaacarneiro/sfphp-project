@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 68 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 74 testes, 0 falhas
 
 ---
 
@@ -30,6 +30,7 @@ hoje. Onde algo não existe, está dito que não existe — veja
 - [Validação](#validação)
 - [Internacionalização](#internacionalização)
 - [Strings UTF-8](#strings-utf-8)
+- [Autenticação](#autenticação)
 - [CSRF](#csrf)
 - [JWT](#jwt)
 - [Tratamento de erros](#tratamento-de-erros)
@@ -48,9 +49,10 @@ objetos Request/Response, pipeline de middleware, container de DI, query
 builder, schema builder com paridade MySQL/PostgreSQL, template engine, cache,
 filas, e um CLI com 32 comandos.
 
-**Não é** um substituto de Laravel ou Symfony. Não há ORM completo, camada de
-autenticação nem sistema de eventos. O que existe é pequeno o suficiente para
-ser lido inteiro.
+**Não é** um substituto de Laravel ou Symfony. Não há ORM completo nem sistema
+de eventos, e a autenticação cobre login, guards e autorização, mas não
+recuperação de senha nem dois fatores. O que existe é pequeno o suficiente
+para ser lido inteiro.
 
 ### Zero dependências, literalmente
 
@@ -1836,6 +1838,234 @@ exibição em vez de corromper dado.
 
 ---
 
+## Autenticação
+
+Três peças, separadas de propósito:
+
+- um **provider** diz onde os usuários são procurados;
+- um **guard** diz como uma requisição prova quem é;
+- o **`Auth`** amarra os dois e guarda o usuário resolvido.
+
+Separar provider de guard é o que permite o mesmo fluxo de login funcionar
+sobre uma tabela, um LDAP ou uma lista em memória num teste.
+
+### O contrato de usuário
+
+```php
+use SfphpProject\src\Auth\Authenticatable;
+use SfphpProject\src\Database\Model;
+
+final class User extends Model implements Authenticatable
+{
+    protected static string $table = 'users';
+
+    public function getAuthIdentifierName(): string { return 'id'; }
+    public function getAuthIdentifier(): mixed { return $this->id; }
+    public function getAuthPassword(): string { return (string) $this->password; }
+}
+```
+
+Três métodos, porque é tudo que o framework precisa saber: como se chama a
+chave, qual é a chave, e contra o que comparar a senha. Nome, e-mail e papéis
+pertencem à sua aplicação, e o framework nunca os lê.
+
+### Configurando
+
+```php
+use SfphpProject\src\Auth\{Auth, ModelUserProvider, SessionGuard, TokenGuard};
+
+Auth::provider(new ModelUserProvider(User::class));
+Auth::guard('web', new SessionGuard(Auth::provider()));
+Auth::guard('api', new TokenGuard(Auth::provider()));
+Auth::setDefaultGuard('web');
+```
+
+### Entrando e saindo
+
+```php
+if (Auth::attempt(['email' => $email, 'password' => $senha])) {
+    return $this->redirect('/painel');
+}
+
+return $this->view('login', ['erro' => __('auth.failed')]);
+```
+
+```php
+Auth::user();        // Authenticatable|null
+Auth::check();       // bool
+Auth::guest();       // bool
+Auth::id();          // a chave, ou null
+Auth::login($user);  // sem checar senha
+Auth::logout();
+```
+
+Dentro de um controller, o usuário também vem pela requisição:
+
+```php
+public function painel(Request $request): Response
+{
+    return $this->view('painel', ['usuario' => $request->user()]);
+}
+```
+
+### Senhas
+
+```php
+use SfphpProject\src\Auth\Hash;
+
+Hash::make($senha);                 // para gravar
+Hash::check($senha, $hashGravado);  // para conferir
+Hash::needsRehash($hashGravado);    // para atualizar
+```
+
+É um invólucro fino sobre o `password_hash()` do PHP, de propósito: ele já
+escolhe um algoritmo sólido, gera o sal e codifica os parâmetros no resultado.
+Escrever algo mais esperto aqui seria um retrocesso.
+
+Usa `PASSWORD_DEFAULT` em vez de nomear um algoritmo, então uma atualização do
+PHP que adote um padrão melhor é aproveitada automaticamente para senhas
+novas. As antigas alcançam com `needsRehash()`, logo após um login bem
+sucedido — é o único momento em que dá para atualizar o algoritmo de uma senha
+sem pedir que o usuário a digite de novo:
+
+```php
+if (Auth::attempt($credenciais) && Hash::needsRehash($usuario->password)) {
+    $usuario->password = Hash::make($credenciais['password']);
+    $usuario->save();
+}
+```
+
+### O middleware
+
+```php
+// Global: identifica quem puder, deixa anônimo seguir
+$router->middleware(new Authenticate('web'));
+
+// Por rota: recusa requisição anônima
+Router::get('/painel', 'PainelController', 'index')
+    ->middleware(new Authenticate('web', required: true));
+
+// Uma API usa o guard de token
+Router::group('/api', function (): void {
+    Router::get('/eu', 'ApiController', 'eu');
+}, 'api.', [new Authenticate('api', required: true)]);
+```
+
+Recusando, ele responde **401** para quem espera JSON e **redireciona para
+`/login`** para um navegador. O redirecionamento é deliberado: um 401 sem
+header `WWW-Authenticate` faz alguns navegadores abrirem o próprio prompt de
+credenciais, que não é o formulário da sua aplicação.
+
+> **Sob runtime persistente, este middleware é obrigatório.** O `Auth` guarda
+> o usuário resolvido num `static`, para que perguntar duas vezes não consulte
+> duas vezes. Num worker que atende várias requisições, esse mesmo `static`
+> levaria a identidade de um visitante para a requisição do seguinte. O
+> middleware chama `Auth::forgetUser()` no início de cada requisição, e é o
+> dono explícito desse reset — exatamente como o `SetLocale` é do idioma
+> ativo.
+
+### Dois guards, duas naturezas
+
+| | `SessionGuard` | `TokenGuard` |
+|---|---|---|
+| Prova | cookie de sessão | `Authorization: Bearer` |
+| Estado | no servidor | nenhum |
+| Serve para | páginas | API, workers, outro processo |
+| Revogar antes de expirar | sim, é só apagar a sessão | **não** |
+| `Auth::login()` | sim | não — lança |
+
+O `SessionGuard` guarda **apenas o identificador** na sessão, nunca o usuário.
+Serializar o modelo congelaria uma cópia da linha: alguém com permissões
+revogadas as manteria até a sessão expirar, e renomear uma coluna quebraria a
+desserialização de todas as sessões vivas.
+
+Ele também **regenera o id da sessão** no login e no logout. No login isso é o
+que impede *session fixation*: um atacante que tenha plantado um id conhecido
+antes não consegue usá-lo depois, porque o id com que a vítima termina é novo.
+
+O `TokenGuard` não guarda nada no servidor, e é isso que o torna usável fora de
+uma requisição web — e também o que significa que **um token não pode ser
+revogado antes de expirar**. Se você precisa revogar, precisa de uma lista de
+tokens inválidos, que o framework não traz.
+
+### Autorização
+
+```php
+use SfphpProject\src\Auth\Gate;
+
+Gate::policy(Post::class, PostPolicy::class);
+Gate::define('acessar-admin', fn (?Authenticatable $u): bool
+    => $u !== null && $u->papel === 'admin');
+```
+
+```php
+Gate::allows('update', $post);     // chama PostPolicy::update($usuario, $post)
+Gate::denies('update', $post);
+Gate::authorize('update', $post);  // lança AuthorizationException
+Gate::forUser($outro, 'update', $post);
+```
+
+```php
+./sfphp make:policy Post
+```
+
+```php
+final class PostPolicy
+{
+    public function update(?Authenticatable $usuario, Post $post): bool
+    {
+        return $usuario !== null && $usuario->getAuthIdentifier() === $post->user_id;
+    }
+}
+```
+
+Duas decisões que valem conhecer:
+
+**Uma habilidade que ninguém declarou é negada.** Permitir por padrão faria um
+erro de digitação no nome da habilidade abrir uma porta em silêncio.
+
+**Uma policy recebe `null` quando a requisição é anônima**, em vez de ser
+recusada antes. É isso que permite uma regra pública — ler um post publicado,
+por exemplo — conviver com as demais no mesmo lugar.
+
+`AuthorizationException` é distinta de não estar autenticado: significa que o
+framework sabe quem você é e a resposta ainda é não. Um é **403**, o outro é
+**401**.
+
+### Enumeração de contas
+
+`Auth::attempt()` verifica uma senha **mesmo quando nenhum usuário casou**,
+contra um hash descartável. Sem isso, uma tentativa de login para uma conta
+inexistente retornaria mais rápido do que uma para uma conta existente com
+senha errada — e essa diferença basta para descobrir quais contas existem.
+
+O hash descartável precisa ter sido gerado com os mesmos parâmetros que o
+`password_hash()` usa hoje. O PHP 8.4 subiu o custo padrão do bcrypt de 10
+para 12, e um hash deixado em 10 verifica cerca de quatro vezes mais rápido
+que um real — o que reabriria justamente a diferença que ele existe para
+esconder. Há um teste afirmando que a constante não precisa de rehash, então
+uma mudança futura do PHP é pega pelo CI.
+
+### Mensagens
+
+`auth.failed`, `auth.unauthenticated`, `auth.unauthorized` e `auth.logged_out`
+vêm nos três idiomas que o framework acompanha. Veja
+[Internacionalização](#internacionalização).
+
+### O que não tem
+
+| Ausente | Situação |
+|---|---|
+| "Lembrar de mim" | A migration traz a coluna `remember_token`; nada a usa |
+| Recuperação de senha | Sem tabela de tokens nem fluxo de e-mail |
+| Verificação de e-mail | A coluna `email_verified_at` existe; o fluxo não |
+| Revogação de token | Um JWT vale até expirar; não há lista de revogados |
+| Dois fatores | Não existe |
+| Rate limiting no login | Não existe. Cabe como middleware |
+| Papéis e permissões | `Gate` decide; quem guarda papéis é a sua aplicação |
+
+---
+
 ## CSRF
 
 ```php
@@ -1942,10 +2172,10 @@ respeitam `prefers-color-scheme`.
 ./sfphp make:scaffold Post     # controller + model + repository + service
 ```
 
-> `make:middleware` agora gera contra um contrato que existe e roda. Já
-> `make:event`, `make:listener` e `make:policy` seguem produzindo código para
-> infraestrutura ausente: não há dispatcher de eventos nem camada de
-> autorização. Veja [Limitações conhecidas](#limitações-conhecidas).
+> `make:middleware` e `make:policy` agora geram contra contratos que existem e
+> rodam. Já `make:event` e `make:listener` seguem produzindo código para
+> infraestrutura ausente: não há dispatcher de eventos. Veja
+> [Limitações conhecidas](#limitações-conhecidas).
 
 ### Banco
 
@@ -2109,8 +2339,8 @@ não faz, e que você deve saber antes de escolhê-lo.
 
 | Ausência | Impacto |
 |---|---|
-| **Rate limiting** | Não existe. Pode ser escrito como middleware agora, mas o framework não traz um |
-| **Autenticação / autorização** | Não existe. `make:policy` gera um esqueleto sem camada que o use; o pipeline de middleware é onde ela vai morar |
+| **Rate limiting** | Não existe. Pode ser escrito como middleware agora, mas o framework não traz um — inclusive no login |
+| **Recuperação de senha e dois fatores** | O login existe; esses fluxos não. Ver [Autenticação](#autenticação) |
 | **Sistema de eventos** | `make:event` e `make:listener` geram classes sem dispatcher |
 | **ORM completo** | Existe uma camada de [Models](#models) com hidratação, tipos de atributo, relacionamentos (incluindo muitos-para-muitos) e `with()`. Não existe identity map, unit of work, proxy de lazy loading, relação polimórfica nem schema derivado da classe — e [ORM ou Query Builder?](#orm-ou-query-builder) explica o motivo de cada um |
 | **Formatação por locale** | Data e número não são formatados por idioma; `ext-intl` faz isso bem e o framework não tenta. Ver [Internacionalização](#internacionalização) |
