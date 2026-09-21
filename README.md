@@ -46,6 +46,7 @@ Em produção, aponte o `DocumentRoot` para `public/`.
 |---|---|
 | **Roteamento** | Parâmetros tipados com suporte a qualquer alfabeto, grupos, rotas nomeadas, geração de URL |
 | **HTTP** | Objetos Request/Response e pipeline de middleware global, por grupo e por rota |
+| **i18n** | Catálogos por idioma, negociação de `Accept-Language`, plural com faixas e regra por idioma |
 | **Container DI** | Autowiring por reflexão, fábricas preguiçosas, detecção de ciclo |
 | **Query Builder** | Identificadores validados por whitelist, bind em todo valor, paginação por dialeto, transações |
 | **Models** | Hidratação em objetos, tipos de atributo, relacionamentos (incl. muitos-para-muitos) e `with()` contra N+1 |
@@ -57,7 +58,7 @@ Em produção, aponte o `DocumentRoot` para `public/`.
 | **SFJS** | AJAX, DOM, validação e atributos declarativos — 3,0KB gzipped |
 | **CLI** | 32 comandos, 12 geradores de código |
 
-## Unicode
+## Feito para qualquer idioma
 
 O tratamento UTF-8 é construído sobre **PCRE com `/u`**, não sobre `mbstring`
 — PCRE está sempre compilado no PHP, `mbstring` é opcional.
@@ -67,6 +68,14 @@ Str::length('日本語');            // 3, não 9
 Str::truncate('日本語テキスト', 5); // 日本... nunca um byte partido ao meio
 Validator::validate(['n' => 'José'], ['n' => 'alpha'])->passes();  // true
 Router::get('/produtos/nome:alpha', 'ProdutoController', 'show');   // casa /produtos/café
+```
+
+E as mensagens do framework saem no idioma do visitante — inclusive num 404,
+que nunca chega a um controller:
+
+```php
+__('http.not_found_title');     // segue o Accept-Language da requisição
+trans_choice('app.items', 5);   // formas de plural por faixa ou regra do idioma
 ```
 
 ## Segurança
@@ -89,7 +98,7 @@ dado no banco sem proteger o destino real.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 63 casos unitários
+composer run test        # 68 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 ```
 
@@ -100,7 +109,7 @@ e PostgreSQL 16 reais.
 ## O que não tem
 
 Dito de frente, para você decidir com informação: não há autenticação, sistema
-de eventos, i18n nem rate limiting. A camada de Models **não é um ORM
+de eventos nem rate limiting. A camada de Models **não é um ORM
 completo** — sem identity map, unit of work, proxy de lazy loading, relação
 polimórfica ou schema derivado da classe. O motivo de cada ausência está em
 [ORM ou Query Builder?](docs/DOCUMENTATION.md#orm-ou-query-builder), incluindo
