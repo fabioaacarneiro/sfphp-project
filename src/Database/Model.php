@@ -2,6 +2,10 @@
 
 namespace SfphpProject\src\Database;
 
+use DateTimeImmutable;
+use DateTimeInterface;
+use Exception;
+use JsonException;
 use JsonSerializable;
 use RuntimeException;
 use PDO;
@@ -42,6 +46,11 @@ use SfphpProject\src\QueryBuilder;
 abstract class Model implements JsonSerializable
 {
     /**
+     * Alias the pivot key is selected under when loading a many-to-many relation.
+     */
+    public const PIVOT_KEY = '__pivot_key';
+
+    /**
      * The table this model reads from. Inferred from the class name when unset.
      */
     protected static string $table = '';
@@ -50,6 +59,27 @@ abstract class Model implements JsonSerializable
      * The primary key column.
      */
     protected static string $primaryKey = 'id';
+
+    /**
+     * Attribute types, as column name => cast.
+     *
+     * PDO hands back what the driver gives it, which for a DATETIME column is
+     * a string and for a JSON column is also a string. Declaring the type here
+     * means the conversion happens once instead of at every call site:
+     *
+     *     protected static array $casts = [
+     *         'published' => 'bool',
+     *         'meta' => 'json',
+     *         'published_at' => 'datetime',
+     *         'price' => 'decimal:2',
+     *     ];
+     *
+     * Available casts: int, float, bool, string, json, array, datetime, date
+     * and decimal:N.
+     *
+     * @var array<string, string>
+     */
+    protected static array $casts = [];
 
     /**
      * Connection override, used by tests and by anything running outside a request.
@@ -259,7 +289,7 @@ abstract class Model implements JsonSerializable
         $builder = self::builder();
 
         if (!$this->exists) {
-            $id = $builder->insert($this->attributes);
+            $id = $builder->insert($this->forStorage($this->attributes));
 
             if (!array_key_exists(static::$primaryKey, $this->attributes)) {
                 $this->attributes[static::$primaryKey] = $id;
@@ -276,7 +306,7 @@ abstract class Model implements JsonSerializable
         }
 
         $builder->where(static::$primaryKey, $this->attributes[static::$primaryKey] ?? null)
-            ->update($this->dirty);
+            ->update($this->forStorage($this->dirty));
 
         $this->dirty = [];
 
@@ -314,14 +344,30 @@ abstract class Model implements JsonSerializable
     }
 
     /**
-     * Get an attribute without going through the property accessor.
+     * Get an attribute exactly as it is stored, without applying a cast.
+     *
+     * Relations join on these values, and a cast would change what they
+     * compare against — a key read as an int on one side and a string on the
+     * other would silently stop matching. Reading the property applies the
+     * cast; this does not.
      *
      * @param string $key The attribute name
-     * @return mixed The value, or null when absent
+     * @return mixed The stored value, or null when absent
      */
     public function getAttribute(string $key): mixed
     {
         return $this->attributes[$key] ?? null;
+    }
+
+    /**
+     * Get an attribute with its declared cast applied.
+     *
+     * @param string $key The attribute name
+     * @return mixed The converted value
+     */
+    public function cast(string $key): mixed
+    {
+        return $this->castFromDatabase($key, $this->attributes[$key] ?? null);
     }
 
     /**
@@ -365,7 +411,11 @@ abstract class Model implements JsonSerializable
      */
     public function toArray(): array
     {
-        $data = $this->attributes;
+        $data = [];
+
+        foreach ($this->attributes as $key => $value) {
+            $data[$key] = $this->castForArray((string) $key, $value);
+        }
 
         foreach ($this->relations as $name => $value) {
             if (is_array($value)) {
@@ -452,6 +502,40 @@ abstract class Model implements JsonSerializable
     }
 
     /**
+     * Declare a many-to-many relation through a join table.
+     *
+     *     public function tags(): Relation
+     *     {
+     *         return $this->belongsToMany(Tag::class, 'post_tag', 'post_id', 'tag_id');
+     *     }
+     *
+     * @param class-string<Model> $related The model on the other side
+     * @param string $pivotTable The join table
+     * @param string $foreignPivotKey The pivot column pointing at this model
+     * @param string $relatedPivotKey The pivot column pointing at the related model
+     * @param string|null $relatedKey The key on the related table
+     * @return Relation The relation description
+     */
+    protected function belongsToMany(
+        string $related,
+        string $pivotTable,
+        string $foreignPivotKey,
+        string $relatedPivotKey,
+        ?string $relatedKey = null
+    ): Relation {
+        /** @var class-string<Model> $related */
+        return new Relation(
+            Relation::BELONGS_TO_MANY,
+            $related,
+            $foreignPivotKey,
+            $relatedKey ?? $related::primaryKey(),
+            $this,
+            $pivotTable,
+            $relatedPivotKey
+        );
+    }
+
+    /**
      * Read an attribute or a relation.
      *
      * A relation that has not been loaded is resolved on the spot. Doing that
@@ -467,7 +551,7 @@ abstract class Model implements JsonSerializable
         }
 
         if (array_key_exists($name, $this->attributes)) {
-            return $this->attributes[$name];
+            return $this->castFromDatabase($name, $this->attributes[$name]);
         }
 
         if (method_exists($this, $name)) {
@@ -515,5 +599,151 @@ abstract class Model implements JsonSerializable
     {
         $this->attributes[$key] = $value;
         $this->dirty[$key] = $value;
+    }
+
+    /**
+     * Convert a set of attributes into the values to write.
+     *
+     * @param array<string, mixed> $attributes The in-memory values
+     * @return array<string, mixed> The values to store
+     */
+    private function forStorage(array $attributes): array
+    {
+        $storable = [];
+
+        foreach ($attributes as $key => $value) {
+            $storable[$key] = $this->castToDatabase((string) $key, $value);
+        }
+
+        return $storable;
+    }
+
+    /**
+     * Apply the declared cast when reading an attribute.
+     *
+     * @param string $key The attribute name
+     * @param mixed $value The stored value
+     * @return mixed The converted value
+     */
+    private function castFromDatabase(string $key, mixed $value): mixed
+    {
+        $cast = static::$casts[$key] ?? null;
+
+        if ($cast === null || $value === null) {
+            return $value;
+        }
+
+        [$type, $argument] = array_pad(explode(':', $cast, 2), 2, null);
+
+        return match ($type) {
+            'int', 'integer' => (int) $value,
+            'float', 'double' => (float) $value,
+            'bool', 'boolean' => (bool) $value,
+            'string' => (string) $value,
+            'decimal' => round((float) $value, (int) ($argument ?? 2)),
+            'json', 'array' => $this->decodeJson($value),
+            'datetime', 'date' => $this->toDateTime($value),
+            default => $value,
+        };
+    }
+
+    /**
+     * Apply the declared cast when writing an attribute.
+     *
+     * @param string $key The attribute name
+     * @param mixed $value The in-memory value
+     * @return mixed The value to store
+     */
+    private function castToDatabase(string $key, mixed $value): mixed
+    {
+        $cast = static::$casts[$key] ?? null;
+
+        if ($cast === null || $value === null) {
+            return $value;
+        }
+
+        [$type, $argument] = array_pad(explode(':', $cast, 2), 2, null);
+
+        return match ($type) {
+            'int', 'integer' => (int) $value,
+            'float', 'double' => (float) $value,
+            /*
+             * Stored as 1 and 0 rather than true and false: a boolean bound as
+             * PDO::PARAM_BOOL lands as an empty string in some drivers, which
+             * reads back as neither.
+             */
+            'bool', 'boolean' => $value ? 1 : 0,
+            'string' => (string) $value,
+            'decimal' => number_format((float) $value, (int) ($argument ?? 2), '.', ''),
+            'json', 'array' => is_string($value)
+                ? $value
+                : json_encode($value, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+            'datetime' => $this->toDateTime($value)?->format('Y-m-d H:i:s'),
+            'date' => $this->toDateTime($value)?->format('Y-m-d'),
+            default => $value,
+        };
+    }
+
+    /**
+     * Convert a cast value into something json_encode() renders usefully.
+     *
+     * A DateTimeImmutable encodes as an object full of internal fields, which
+     * is not what an API consumer wants, so dates become ISO 8601 strings.
+     *
+     * @param string $key The attribute name
+     * @param mixed $value The stored value
+     * @return mixed The representable value
+     */
+    private function castForArray(string $key, mixed $value): mixed
+    {
+        $cast = $this->castFromDatabase($key, $value);
+
+        return $cast instanceof DateTimeImmutable ? $cast->format(DATE_ATOM) : $cast;
+    }
+
+    /**
+     * Decode a JSON attribute, tolerating a value that is already decoded.
+     *
+     * @param mixed $value The stored value
+     * @return mixed The decoded value
+     */
+    private function decodeJson(mixed $value): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        try {
+            return json_decode($value, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return null;
+        }
+    }
+
+    /**
+     * Convert a value into a date, tolerating one that already is one.
+     *
+     * @param mixed $value The stored value
+     * @return DateTimeImmutable|null The date, or null when unparsable
+     */
+    private function toDateTime(mixed $value): ?DateTimeImmutable
+    {
+        if ($value instanceof DateTimeImmutable) {
+            return $value;
+        }
+
+        if ($value instanceof DateTimeInterface) {
+            return DateTimeImmutable::createFromInterface($value);
+        }
+
+        if (is_int($value)) {
+            return (new DateTimeImmutable())->setTimestamp($value);
+        }
+
+        try {
+            return new DateTimeImmutable((string) $value);
+        } catch (Exception) {
+            return null;
+        }
     }
 }
