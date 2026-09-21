@@ -8,6 +8,7 @@ use RuntimeException;
 use SfphpProject\src\Http\Pipeline;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
+use SfphpProject\src\I18n\Translator;
 use Throwable;
 
 /**
@@ -130,8 +131,8 @@ class Router
         if ($allowedMethods === []) {
             return self::errorResponse(
                 HTTP_NOT_FOUND,
-                '404 - Página Não Encontrada',
-                'Desculpe, a página que você está procurando não foi encontrada.'
+                __('http.not_found_title'),
+                __('http.not_found_message')
             );
         }
 
@@ -148,8 +149,8 @@ class Router
 
         return self::errorResponse(
             HTTP_METHOD_NOT_ALLOWED,
-            '405 - Método Não Permitido',
-            'O método HTTP usado não é permitido para esta página.'
+            __('http.method_not_allowed_title'),
+            __('http.method_not_allowed_message')
         )->withHeader('Allow', $allow);
     }
 
@@ -476,10 +477,12 @@ class Router
          */
         $title = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $message = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $home = htmlspecialchars(__('http.back_home'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $language = str_replace('_', '-', Translator::locale());
 
         $html = <<<HTML
         <!doctype html>
-        <html lang="en">
+        <html lang="{$language}">
         <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -506,7 +509,7 @@ class Router
         <main>
         <h1>$statusCode</h1>
         <p>$message</p>
-        <a href="/">Voltar para a p&aacute;gina inicial</a>
+        <a href="/">{$home}</a>
         </main>
         </body>
         </html>

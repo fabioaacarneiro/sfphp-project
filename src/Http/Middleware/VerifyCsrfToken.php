@@ -6,6 +6,7 @@ use SfphpProject\src\Csrf;
 use SfphpProject\src\Http\Middleware;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
+use SfphpProject\src\I18n\Translator;
 
 /**
  * Rejects state-changing requests that arrive without a valid CSRF token.
@@ -50,17 +51,23 @@ final class VerifyCsrfToken implements Middleware
             return $next($request);
         }
 
-        $message = 'CSRF token mismatch.';
+        $title = __('http.csrf_title');
+        $message = __('http.csrf_message');
 
-        return $request->expectsJson()
-            ? Response::json(['message' => $message], HTTP_FORBIDDEN)
-            : Response::html(
-                '<!doctype html><html lang="pt-br"><head><meta charset="UTF-8">'
-                . '<title>419</title></head><body><h1>403</h1>'
-                . '<p>O formulário expirou. Recarregue a página e tente novamente.</p>'
-                . '</body></html>',
-                HTTP_FORBIDDEN
-            );
+        if ($request->expectsJson()) {
+            return Response::json(['message' => $message], HTTP_FORBIDDEN);
+        }
+
+        $language = str_replace('_', '-', Translator::locale());
+        $escaped = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $heading = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+        return Response::html(
+            '<!doctype html><html lang="' . $language . '"><head><meta charset="UTF-8">'
+            . '<title>' . $heading . '</title></head><body><h1>403</h1>'
+            . '<p>' . $escaped . '</p></body></html>',
+            HTTP_FORBIDDEN
+        );
     }
 
     /**
