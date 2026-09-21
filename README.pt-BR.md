@@ -112,7 +112,7 @@ dado no banco sem proteger o destino real.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 78 casos unitários
+composer run test        # 81 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run docs        # os três idiomas da documentação concordam
 ```
