@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 63 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 68 testes, 0 falhas
 
 ---
 
@@ -28,6 +28,7 @@ hoje. Onde algo não existe, está dito que não existe — veja
 - [Cache](#cache)
 - [Queue](#queue)
 - [Validação](#validação)
+- [Internacionalização](#internacionalização)
 - [Strings UTF-8](#strings-utf-8)
 - [CSRF](#csrf)
 - [JWT](#jwt)
@@ -48,8 +49,8 @@ builder, schema builder com paridade MySQL/PostgreSQL, template engine, cache,
 filas, e um CLI com 32 comandos.
 
 **Não é** um substituto de Laravel ou Symfony. Não há ORM completo, camada de
-autenticação, sistema de eventos ou i18n. O que existe é pequeno o suficiente
-para ser lido inteiro.
+autenticação nem sistema de eventos. O que existe é pequeno o suficiente para
+ser lido inteiro.
 
 ### Zero dependências, literalmente
 
@@ -1595,6 +1596,217 @@ Validator::validate($dados, ['name' => 'required|min:3'], [
 
 ---
 
+## Internacionalização
+
+Mensagens ficam em catálogos por idioma; o idioma sai do `Accept-Language` da
+requisição. O framework traz os próprios catálogos, e a aplicação sobrescreve
+o que quiser sem editá-los.
+
+**O padrão é inglês.** Até esta versão, as páginas 404 e 405 do framework eram
+fixas em português — um desenvolvedor alemão que adotasse o SFPHP entregaria
+uma página de erro em português aos usuários dele. Um framework de uso global
+não pode fazer isso.
+
+### Onde as mensagens moram
+
+```
+src/I18n/lang/            catálogos do framework (menor prioridade)
+  en/http.php
+  en/validation.php
+  pt_BR/…
+
+lang/                     catálogos da sua aplicação (vencem)
+  en/app.php
+  pt_BR/app.php
+```
+
+Um catálogo é um arquivo PHP que devolve um array:
+
+```php
+<?php   // lang/pt_BR/app.php
+
+return [
+    'welcome' => 'Bem-vindo, :name!',
+    'items' => '{0} Nenhum item|{1} Um item|[2,*] :count itens',
+];
+```
+
+Nada é compilado nem parseado: o catálogo custa um `require` e entra no
+OPcache como qualquer outro arquivo.
+
+A sobrescrita é **chave a chave**. Para mudar só a mensagem do 404, crie
+`lang/pt_BR/http.php` com apenas `not_found_message` — o resto continua vindo
+do framework.
+
+### Traduzindo
+
+```php
+__('http.not_found_title');                    // 404 - Página Não Encontrada
+__('app.welcome', ['name' => 'Ana']);          // Bem-vindo, Ana!
+__('app.welcome', ['name' => 'Ana'], 'en');    // num idioma específico
+locale();                                      // 'pt_BR'
+```
+
+A chave é `grupo.entrada`, e pode aninhar mais fundo (`app.form.titulo`).
+**Uma chave sem tradução volta como está** — a falta aparece onde ela é, em
+vez de virar uma página vazia.
+
+### Plural
+
+Formas separadas por `|`. Uma forma pode vir com condição explícita — `{0}`
+para um número exato, `[2,4]` para faixa, `[5,*]` para faixa aberta:
+
+```php
+'items' => '{0} Nenhum item|{1} Um item|[2,*] :count itens',
+```
+
+```php
+trans_choice('app.items', 0);   // Nenhum item
+trans_choice('app.items', 1);   // Um item
+trans_choice('app.items', 5);   // 5 itens
+```
+
+Sem condição, a regra do idioma escolhe: a primeira forma para um, a segunda
+para o resto.
+
+#### Quando faixas não bastam
+
+Faixas cobrem a maioria dos idiomas, **mas não todos**. O polonês escolhe a
+forma pelos últimos dígitos, não por faixa: 22 e 12 usam formas diferentes,
+embora ambos passem de cinco. O árabe tem seis formas; o russo, três.
+
+Fazer isso direito exige os dados de pluralização do CLDR, que é o que a
+extensão `intl` carrega. Como a `intl` é opcional e o framework é
+zero-dependências, embarcar uma cópia incompleta dessas regras significaria
+estar **silenciosamente errado** para esses idiomas. Em vez disso, a regra é
+um gancho:
+
+```php
+Translator::pluralizer('pl', function (int $count): int {
+    if ($count === 1) {
+        return 0;
+    }
+
+    $mod10 = $count % 10;
+    $mod100 = $count % 100;
+
+    return ($mod10 >= 2 && $mod10 <= 4 && ($mod100 < 12 || $mod100 > 14)) ? 1 : 2;
+});
+```
+
+Quem conhece o idioma escreve a regra dele. É a troca honesta: o framework não
+finge saber o que não sabe.
+
+### Escolhendo o idioma da requisição
+
+O middleware `SetLocale` resolve o idioma uma vez, na borda:
+
+```php
+$router = (new Router($container))->middleware(
+    new SetLocale(APP_LOCALES, APP_LOCALE),
+    // ...
+);
+```
+
+Ele lê `Accept-Language`, respeitando as qualidades (`pt-BR,pt;q=0.9,en;q=0.8`),
+descarta o que vier com `q=0`, e escolhe o melhor par entre o que o cliente
+pediu e o que a aplicação oferece. Pedir `pt` e receber `pt_BR` é melhor do que
+receber inglês, então isso acontece.
+
+Também acrescenta o header `Content-Language` à resposta, e as páginas de erro
+do framework passam a declarar o `lang` correto no documento — antes elas
+diziam `lang="en"` independentemente do conteúdo:
+
+```html
+<html lang="pt-BR">   <!-- segue o idioma negociado -->
+```
+
+Isso não é cosmético: leitores de tela escolhem a pronúncia pelo `lang`, e o
+navegador usa o atributo para decidir se oferece tradução da página.
+
+Registrá-lo **globalmente** importa por dois motivos.
+
+O primeiro: uma requisição que não casa com rota nenhuma jamais chega a um
+controller, e é só por isso que um 404 consegue sair no idioma do visitante.
+
+O segundo aparece sob runtime persistente (Swoole, FrankenPHP). O tradutor
+guarda o idioma ativo num `static`, então um worker que atendeu uma requisição
+em português **responderia a próxima em português** se nada redefinisse o
+idioma. Esse middleware é o que redefine. Se você montar a pipeline sem ele e
+chamar `Translator::setLocale()` de dentro de um controller, o idioma vaza da
+requisição de um visitante para a do seguinte.
+
+É a mesma classe de cuidado que manteve o *identity map* fora da camada de
+Models: estado estático num processo que atende várias requisições precisa de
+um dono explícito que o reinicie.
+
+Direto da requisição, quando você precisa:
+
+```php
+$request->acceptedLanguages();                      // ['pt-BR', 'pt', 'en']
+$request->preferredLanguage(['en', 'pt_BR'], 'en'); // 'pt_BR'
+$request->attribute('locale');                      // definido pelo SetLocale
+```
+
+### Configuração
+
+```ini
+APP_LOCALE=pt_BR
+APP_LOCALES=pt_BR,en
+```
+
+`APP_LOCALE` é o idioma usado quando o cliente não pede nenhum dos que a
+aplicação oferece; `APP_LOCALES` são os oferecidos, em ordem de preferência.
+Sem configuração, ambos assumem inglês.
+
+O caminho `lang/` da aplicação é registrado em `app/config/config.php`, que
+roda pelo autoloader — então CLI, worker de fila e suíte de testes enxergam as
+mesmas mensagens que uma requisição web.
+
+### Validação
+
+As mensagens do `Validator` saem do catálogo, e uma mensagem passada pelo
+chamador continua vencendo intocada:
+
+```php
+Validator::validate($dados, ['nome' => 'required|min:5']);
+// pt_BR: "nome é obrigatório." / "nome deve ter ao menos 5 caracteres."
+// en:    "nome is required."   / "nome must be at least 5 characters long."
+
+Validator::validate($dados, ['nome' => 'required'], [
+    'nome' => ['required' => 'Informe seu nome.'],   // vence
+]);
+```
+
+As regras de comprimento flexionam pelo número, então `min:1` diz "ao menos um
+caractere" em vez de "ao menos 1 caracteres".
+
+### O que fica em inglês de propósito
+
+Só o texto que chega ao **usuário final** passa pelo tradutor. As exceções
+dirigidas a quem escreve o código — CLI, Query Builder, Schema Builder,
+Container — continuam em inglês:
+
+```
+Unknown validation rule "inexistente" for field "nome".
+Cannot resolve parameter $foo in App\Service. Bind a service or provide a default value.
+```
+
+Elas são lidas num stack trace ou num log, por um desenvolvedor, e traduzi-las
+tornaria mais difícil pesquisar por uma delas, não mais fácil.
+
+### O que não tem
+
+| Ausente | Situação |
+|---|---|
+| Regras CLDR de plural embutidas | Exigiriam `ext-intl` ou uma cópia dos dados. `pluralizer()` é o gancho |
+| Formatação de data e número por locale | `ext-intl` faz isso bem; o framework não tenta |
+| Tradução de rotas (`/products` ↔ `/produtos`) | Não existe |
+| Extração de strings para catálogo | Sem comando que varra o código |
+| Direção do texto (RTL) | É decisão de template, não do tradutor |
+
+---
+
 ## Strings UTF-8
 
 `Str` dá as operações de string que o PHP padrão só faz por byte.
@@ -1901,7 +2113,7 @@ não faz, e que você deve saber antes de escolhê-lo.
 | **Autenticação / autorização** | Não existe. `make:policy` gera um esqueleto sem camada que o use; o pipeline de middleware é onde ela vai morar |
 | **Sistema de eventos** | `make:event` e `make:listener` geram classes sem dispatcher |
 | **ORM completo** | Existe uma camada de [Models](#models) com hidratação, tipos de atributo, relacionamentos (incluindo muitos-para-muitos) e `with()`. Não existe identity map, unit of work, proxy de lazy loading, relação polimórfica nem schema derivado da classe — e [ORM ou Query Builder?](#orm-ou-query-builder) explica o motivo de cada um |
-| **i18n / l10n** | Não existe. Mensagens de erro são fixas |
+| **Formatação por locale** | Data e número não são formatados por idioma; `ext-intl` faz isso bem e o framework não tenta. Ver [Internacionalização](#internacionalização) |
 | **Fusos horários** | Sem tratamento dedicado |
 | **Log estruturado** | Só `error_log()` — texto plano |
 | **Cache de rotas** | O despacho é O(n), com uma `preg_match` por rota. Adequado a dezenas, não a centenas |
