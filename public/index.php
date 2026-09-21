@@ -4,6 +4,7 @@ use SfphpProject\src\Container;
 use SfphpProject\src\Database;
 use SfphpProject\src\ErrorHandler;
 use SfphpProject\src\Http\Emitter;
+use SfphpProject\src\Http\Middleware\SetLocale;
 use SfphpProject\src\Http\Middleware\StartSession;
 use SfphpProject\src\Http\Middleware\VerifyCsrfToken;
 use SfphpProject\src\Http\Request;
@@ -39,6 +40,11 @@ $container->set(PDO::class, fn (): PDO => Database::connect());
  * replace by swapping the first and last line.
  */
 $router = (new Router($container))->middleware(
+    /*
+     * Resolved first, so every message downstream — including a 404, which
+     * never reaches a controller — is rendered in the visitor's language.
+     */
+    new SetLocale(APP_LOCALES, APP_LOCALE),
     StartSession::class,
     /*
      * Applies to every state-changing request. Add path prefixes here to

@@ -404,6 +404,104 @@ final class Request
     }
 
     /**
+     * Get the languages the client asked for, best first.
+     *
+     * Parses Accept-Language, including the quality values that order it, so
+     * "pt-BR,pt;q=0.9,en;q=0.8" becomes ['pt-BR', 'pt', 'en']. A tag with
+     * q=0 is dropped, since that is how a client says it does not want one.
+     *
+     * @return array<int, string> The language tags, in descending preference
+     */
+    public function acceptedLanguages(): array
+    {
+        $header = $this->header('Accept-Language');
+
+        if ($header === null || trim($header) === '') {
+            return [];
+        }
+
+        $languages = [];
+
+        foreach (explode(',', $header) as $position => $part) {
+            $pieces = explode(';', trim($part));
+            $tag = trim($pieces[0]);
+
+            if ($tag === '') {
+                continue;
+            }
+
+            $quality = 1.0;
+            foreach (array_slice($pieces, 1) as $parameter) {
+                if (preg_match('/^\s*q\s*=\s*([0-9.]+)\s*$/i', $parameter, $matches) === 1) {
+                    $quality = (float) $matches[1];
+                }
+            }
+
+            if ($quality <= 0.0) {
+                continue;
+            }
+
+            /*
+             * The position is kept as a tiebreaker so that tags sharing a
+             * quality keep the order the client wrote them in, which usort
+             * alone would not guarantee.
+             */
+            $languages[] = ['tag' => $tag, 'quality' => $quality, 'position' => $position];
+        }
+
+        usort(
+            $languages,
+            static fn (array $a, array $b): int => $b['quality'] <=> $a['quality']
+                ?: $a['position'] <=> $b['position']
+        );
+
+        return array_column($languages, 'tag');
+    }
+
+    /**
+     * Pick the best match between what the client asked for and what exists.
+     *
+     * A request for "pt-BR" matches an available "pt_BR" exactly, and falls
+     * back to a plain "pt" when only that is offered — asking for Brazilian
+     * Portuguese and being served Portuguese is better than being served
+     * English.
+     *
+     * @param array<int, string> $available The locales the application has
+     * @param string|null $fallback Returned when nothing matches
+     * @return string|null The chosen locale
+     */
+    public function preferredLanguage(array $available, ?string $fallback = null): ?string
+    {
+        $normalized = [];
+        foreach ($available as $locale) {
+            $normalized[strtolower(str_replace('-', '_', $locale))] = $locale;
+        }
+
+        foreach ($this->acceptedLanguages() as $tag) {
+            $candidate = strtolower(str_replace('-', '_', $tag));
+
+            if (isset($normalized[$candidate])) {
+                return $normalized[$candidate];
+            }
+
+            $base = strstr($candidate, '_', true);
+
+            if ($base !== false && isset($normalized[$base])) {
+                return $normalized[$base];
+            }
+
+            // "pt" asked for, only "pt_BR" offered: take the regional variant.
+            foreach ($normalized as $key => $locale) {
+                if (strstr($key, '_', true) === $candidate) {
+                    return $locale;
+                }
+            }
+        }
+
+        return $fallback;
+    }
+
+    /**
      * Get a route parameter.
      *
      * @param string $name The parameter name
