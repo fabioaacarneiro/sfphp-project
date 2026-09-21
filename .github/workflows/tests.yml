@@ -31,6 +31,12 @@ jobs:
       - run: composer run lint
       - run: composer run test
 
+      # The documentation exists in English, Portuguese and Spanish, and a
+      # version that falls behind is worse than one that does not exist,
+      # because a reader cannot tell which pages are current. This compares
+      # the structure of the three and checks every link.
+      - run: composer run docs
+
   # tests/db.php checks the schema builder against real servers. It has always
   # existed but nothing ever ran it, so dialect bugs could only be found by
   # hand. Both engines run here because the builder promises parity between

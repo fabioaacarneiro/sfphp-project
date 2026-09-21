@@ -6,6 +6,9 @@ hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
 > Verificado contra PHP 8.4 · suíte: 78 testes, 0 falhas
+>
+> 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
+> [Español](../es/DOCUMENTATION.md).
 
 ---
 
@@ -199,12 +202,16 @@ Router::get('/codes/code:alphanum', 'CodeController', 'show');
 | `alpha` | `\p{L}+` | Qualquer alfabeto: `café`, `北京`, `Владимир` |
 | `alphanum` | `[\p{L}\p{N}]+` | Letras e dígitos de qualquer escrita |
 
-Os valores chegam à action **posicionalmente**, na ordem em que aparecem na URL:
+Os valores chegam à action **posicionalmente**, na ordem em que aparecem na
+URL, depois da requisição:
 
 ```php
 Router::get('/tenant/tenantId:number/posts/postId:number', 'PostController', 'show');
 
-public function show(string $tenantId, string $postId): void { /* ... */ }
+public function show(Request $request, string $tenantId, string $postId): Response
+{
+    // ...
+}
 ```
 
 O caminho da requisição é decodificado por segmento antes do casamento, então
@@ -311,8 +318,9 @@ $request->ip();
 $request->isSecure();
 $request->expectsJson();
 
+$request->user();                    // definido pelo middleware Authenticate
 $request->route('id');               // parâmetro de rota
-$request->attribute('user');         // anexado por um middleware
+$request->attribute('locale');       // anexado por um middleware
 $withUser = $request->withAttribute('user', $user);   // clona
 ```
 
@@ -399,6 +407,9 @@ E por `src/helpers.php`:
 ```php
 cache();                      // CacheManager com driver de arquivo
 dispatch(new MeuJob());       // enfileira um job
+__('app.welcome', ['name' => 'Ana']);
+trans_choice('app.items', 3);
+locale();
 ```
 
 ---
@@ -470,8 +481,12 @@ dependências no construtor e recebê-las por autowiring.
 
 | Middleware | Faz |
 |---|---|
+| `SecurityHeaders` | Acrescenta `nosniff`, `X-Frame-Options`, `Referrer-Policy`; CSP e HSTS sob demanda |
+| `SetLocale` | Negocia o idioma a partir do `Accept-Language` |
 | `StartSession` | Inicia a sessão com cookie `httponly` + `samesite=Lax` + `secure` sob HTTPS |
 | `VerifyCsrfToken` | Recusa requisição que altera estado sem token válido |
+| `Authenticate` | Identifica o usuário, e recusa anônimos quando exigido |
+| `RateLimit` | Limita quantas vezes o mesmo cliente bate numa rota |
 
 `VerifyCsrfToken` deixa passar métodos seguros e requisições com Bearer token —
 um navegador nunca anexa Bearer sozinho, então não há requisição cross-site a
@@ -2010,7 +2025,7 @@ Gate::authorize('update', $post);  // lança AuthorizationException
 Gate::forUser($outro, 'update', $post);
 ```
 
-```php
+```bash
 ./sfphp make:policy Post
 ```
 
@@ -2066,8 +2081,9 @@ vêm nos três idiomas que o framework acompanha. Veja
 | Verificação de e-mail | A coluna `email_verified_at` existe; o fluxo não |
 | Revogação de token | Um JWT vale até expirar; não há lista de revogados |
 | Dois fatores | Não existe |
-| Rate limiting no login | Não existe. Cabe como middleware |
 | Papéis e permissões | `Gate` decide; quem guarda papéis é a sua aplicação |
+
+O rate limiting no formulário de login **existe** — veja [Segurança](#segurança).
 
 ---
 
@@ -2289,6 +2305,10 @@ constante), e a sessão usa `httponly`, `samesite=Lax` e `secure` sob HTTPS. O
 token é aceito por campo `_token` ou pelos headers `X-CSRF-Token` /
 `X-XSRF-Token`.
 
+Na prática você raramente chama `csrf_verify()` à mão: o middleware
+`VerifyCsrfToken` aplica a verificação por padrão. Veja
+[Middleware](#middleware).
+
 ---
 
 ## JWT
@@ -2301,6 +2321,8 @@ $token = JWT::generate(['id' => 1, 'email' => 'joao@exemplo.com']);
 if (JWT::validate($token)) {
     // token íntegro e não expirado
 }
+
+$claims = JWT::claims($token);   // valida e devolve o payload, ou null
 ```
 
 Pontos que a assinatura impõe:
@@ -2309,6 +2331,9 @@ Pontos que a assinatura impõe:
   `InvalidArgumentException`
 - `validate()` devolve **`bool`**, não as claims, e não lança para token
   inválido
+- `claims()` valida e devolve o payload numa passada só, que é o que um guard
+  precisa — conferir a assinatura em separado significaria verificar duas
+  vezes, ou ler um payload nunca verificado
 - Valida assinatura, `alg` (só `HS256`), `typ` e `exp`. `alg: none` é rejeitado
 - Expiração fixa em 1 hora
 - `JWT_KEY` precisa ter ao menos 32 bytes; o placeholder do `.env-example` é
@@ -2423,8 +2448,8 @@ Framework CSS utilitário gerado a partir de
 | — utilitárias base | 1.209 |
 | — variantes `hover:` | 600 |
 | — variantes responsivas (`sm` `md` `lg` `xl`) | 528 |
-| Classes de cor | 620 (20 famílias × 10 tons × `bg`/`text`/`border`) |
-| Tamanho | 112KB cru · 96KB minificado · **16,1KB gzipped** |
+| Classes de cor | 600 de paleta (20 famílias × 10 tons × `bg`/`text`/`border`) + 25 de tema |
+| Tamanho | 110KB cru · 92KB minificado · **16,1KB gzipped** |
 | Dependências | nenhuma |
 
 ```bash
@@ -2435,8 +2460,8 @@ Framework CSS utilitário gerado a partir de
 <link rel="stylesheet" href="/assets/css/sfcss.css">
 ```
 
-Referência completa: [SFCSS_DOCUMENTATION.md](SFCSS_DOCUMENTATION.md) e
-[SFCSS_UTILITIES_REFERENCE.md](SFCSS_UTILITIES_REFERENCE.md).
+Referência completa: [SFCSS](SFCSS.md) e
+[referência de utilitários](SFCSS_UTILITIES.md).
 
 ---
 
@@ -2507,9 +2532,10 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 37 casos unitários
+composer run test        # 78 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
+composer run docs        # os três idiomas concordam, e todo link resolve
 ```
 
 `tests/db.php` precisa de DSN nas variáveis de ambiente e pula com aviso
@@ -2524,6 +2550,15 @@ SFPHP_TEST_MYSQL_USER=root SFPHP_TEST_MYSQL_PASS=secret \
 O CI roda dois jobs: `unit` numa matriz PHP 8.1–8.4 **sem `mbstring`**, o que
 garante que o tratamento UTF-8 não depende da extensão; e `integration` com
 MySQL 8 e PostgreSQL 16 como serviços.
+
+`composer run docs` roda no job `unit` também. A documentação existe em três
+idiomas, e prosa não dá para comparar mecanicamente — mas estrutura dá. Ele
+afirma que as três versões têm as mesmas seções, subseções, tabelas e blocos de
+código, na mesma ordem e com a mesma linguagem de cerca, e que todo link
+relativo e toda âncora interna resolvem. Isso pega as duas coisas que realmente
+dão errado quando três arquivos são editados à mão: uma seção acrescentada num
+idioma e esquecida nos outros, e um link deixado apontando para um arquivo que
+mudou de lugar.
 
 ---
 
