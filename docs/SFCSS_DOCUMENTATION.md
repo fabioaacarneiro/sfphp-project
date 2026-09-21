@@ -225,232 +225,93 @@ Isso gera **automaticamente**:
 
 ## Utilitários
 
-### Spacing
+> 📖 **VER REFERÊNCIA COMPLETA:** [SFCSS_UTILITIES_REFERENCE.md](./SFCSS_UTILITIES_REFERENCE.md)  
+> Documentação detalhada de TODOS os 1490+ classes CSS disponíveis
 
-#### Margin (Espaço Externo)
+### Resumo Rápido
+
+SFCSS fornece utilitários completos para todos os aspectos do design:
+
+**Spacing:** `m-0` a `m-24`, `p-0` a `p-24` (todos os lados)  
+**Sizing:** `h-0` a `h-64`, `w-0` a `w-64`, valores em pixels arbitrários  
+**Layout:** flexbox, grid, display  
+**Typography:** 8 tamanhos, 4 pesos, transformações  
+**Cores:** 20 famílias × 10 shades = 620+ classes  
+**Efeitos:** borders, radius, shadows, opacity  
+**Responsivo:** sm, md, lg, xl breakpoints  
+
+### Exemplos Comuns
+
+#### Spacing (Espaçamento)
 
 ```html
-<!-- Todos os lados -->
-<div class="m-1">Margin 1</div>
-<div class="m-2">Margin 2</div>
-<div class="m-3">Margin 3</div>
-<div class="m-4">Margin 4</div>
+<!-- Margin: todos os lados, individual, ou pares -->
+<div class="m-4 mt-8 mb-12 mx-auto">Espaçamento externo</div>
 
-<!-- Horizontal (left + right) -->
-<div class="mx-2">Margin X</div>
-<div class="mx-3">Margin X</div>
-
-<!-- Vertical (top + bottom) -->
-<div class="my-2">Margin Y</div>
-<div class="my-3">Margin Y</div>
-
-<!-- Individual -->
-<div class="mt-2">Margin top</div>
-<div class="mb-3">Margin bottom</div>
-<div class="ml-2">Margin left</div>
-<div class="mr-3">Margin right</div>
+<!-- Padding: similar structure -->
+<div class="p-4 px-6 py-8">Espaçamento interno</div>
 ```
 
-#### Padding (Espaço Interno)
+#### Sizing (Tamanho)
 
 ```html
-<!-- Todos os lados -->
-<div class="p-2">Padding 2</div>
-<div class="p-3">Padding 3</div>
+<!-- Altura em rem (0.25rem por unidade) -->
+<div class="h-12">Altura: 3rem</div>
 
-<!-- Horizontal -->
-<div class="px-2">Padding X</div>
-
-<!-- Vertical -->
-<div class="py-3">Padding Y</div>
-
-<!-- Individual -->
-<div class="pt-2">Padding top</div>
-<div class="pb-3">Padding bottom</div>
-<div class="pl-2">Padding left</div>
-<div class="pr-3">Padding right</div>
+<!-- Largura com múltiplas opções -->
+<div class="w-full md:w-1/2">Largura responsiva</div>
+<div class="w-[75%]">75% de largura</div>
+<div class="h-[48px] w-[96px]">Pixels específicos</div>
 ```
 
-### Tipografia
-
-#### Font Size (Tamanho)
+#### Tipografia
 
 ```html
-<small class="text-sm">Texto pequeno</small>
-<p>Texto normal</p>
-<h1 class="text-lg">Texto grande</h1>
-<h1 class="text-xl">Texto extra grande</h1>
-<h1 class="text-2xl">Texto 2x</h1>
-<h1 class="text-3xl">Texto 3x</h1>
+<p class="text-sm">Pequeno</p>
+<p class="text-base">Normal</p>
+<h1 class="text-3xl font-bold">Título Grande</h1>
+<p class="text-center uppercase">Centralizado e maiúsculo</p>
 ```
 
-#### Font Weight (Espessura)
+#### Cores (20 Famílias)
 
 ```html
-<p class="font-light">Texto light (300)</p>
-<p>Texto normal (400)</p>
-<p class="font-semibold">Texto semibold (600)</p>
-<p class="font-bold">Texto bold (700)</p>
+<!-- Exemplo com cores azuis -->
+<p class="text-blue-500">Azul médio</p>
+<div class="bg-slate-100 text-slate-900 p-4">Fundo claro com texto escuro</div>
+<button class="border border-red-600">Com borda vermelha</button>
+
+<!-- Outras cores: gray, zinc, slate, indigo, sky, green, emerald, teal, cyan,
+     lime, yellow, amber, orange, red, purple, violet, fuchsia, pink, rose -->
 ```
 
-#### Text Align (Alinhamento)
+#### Layout (Flexbox & Grid)
 
 ```html
-<p class="text-left">Alinhado à esquerda</p>
-<p class="text-center">Alinhado ao centro</p>
-<p class="text-right">Alinhado à direita</p>
-<p class="text-justify">Alinhado justificado</p>
+<!-- Flex com alinhamento -->
+<div class="d-flex justify-center items-center gap-4">
+  <div>Item 1</div>
+  <div>Item 2</div>
+  <div>Item 3</div>
+</div>
+
+<!-- Grid responsivo -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  <div class="card">Card 1</div>
+  <div class="card">Card 2</div>
+  <div class="card">Card 3</div>
+</div>
 ```
 
-#### Line Height (Altura da Linha)
+#### Position & Borders
 
 ```html
-<p class="leading-tight">Linha apertada</p>
-<p class="leading-normal">Linha normal</p>
-<p class="leading-relaxed">Linha relaxada</p>
-<p class="leading-loose">Linha solta</p>
-```
+<div class="relative">Relativo</div>
+<div class="absolute">Absoluto</div>
+<div class="fixed">Fixo</div>
 
-### Cores
-
-#### Text Color (Cor do Texto)
-
-```html
-<!-- Cores do tema -->
-<p class="text-primary">Texto primário</p>
-<p class="text-secondary">Texto secundário</p>
-<p class="text-success">Texto sucesso</p>
-<p class="text-danger">Texto perigo</p>
-<p class="text-warning">Texto atenção</p>
-<p class="text-info">Texto informação</p>
-
-<!-- Tons de cinza -->
-<p class="text-muted">Texto atenuado</p>
-<p class="text-body">Texto corpo</p>
-```
-
-#### Background Color (Cor de Fundo)
-
-```html
-<!-- Cores do tema -->
-<div class="bg-primary p-3">Fundo primário</div>
-<div class="bg-secondary p-3">Fundo secundário</div>
-<div class="bg-success p-3">Fundo sucesso</div>
-<div class="bg-danger p-3">Fundo perigo</div>
-
-<!-- Tons de cinza -->
-<div class="bg-light p-3">Fundo claro</div>
-<div class="bg-dark text-white p-3">Fundo escuro</div>
-```
-
-### Display
-
-```html
-<!-- Block -->
-<div class="d-block">Bloco</div>
-
-<!-- Inline -->
-<span class="d-inline">Inline</span>
-
-<!-- Inline-block -->
-<div class="d-inline-block">Inline-block</div>
-
-<!-- Flex -->
-<div class="d-flex">Flex container</div>
-
-<!-- Grid -->
-<div class="d-grid">Grid container</div>
-
-<!-- Hidden -->
-<div class="d-none">Escondido</div>
-```
-
-### Flexbox
-
-```html
-<!-- Justificar conteúdo -->
-<div class="d-flex justify-start">Início</div>
-<div class="d-flex justify-center">Centro</div>
-<div class="d-flex justify-end">Fim</div>
-<div class="d-flex justify-between">Espaço entre</div>
-<div class="d-flex justify-around">Espaço ao redor</div>
-
-<!-- Alinhar itens -->
-<div class="d-flex align-start">Início</div>
-<div class="d-flex align-center">Centro</div>
-<div class="d-flex align-end">Fim</div>
-<div class="d-flex align-stretch">Esticar</div>
-
-<!-- Direção -->
-<div class="flex-row">Linha (padrão)</div>
-<div class="flex-column">Coluna</div>
-<div class="flex-row-reverse">Linha reversa</div>
-
-<!-- Wrap -->
-<div class="flex-wrap">Com quebra</div>
-<div class="flex-nowrap">Sem quebra</div>
-<div class="flex-wrap-reverse">Quebra reversa</div>
-```
-
-### Borders (Bordas)
-
-```html
-<!-- Border simples -->
-<div class="border p-3">Com borda</div>
-
-<!-- Borda por lado -->
-<div class="border-top">Borda superior</div>
-<div class="border-bottom">Borda inferior</div>
-<div class="border-left">Borda esquerda</div>
-<div class="border-right">Borda direita</div>
-
-<!-- Border radius (arredondado) -->
-<div class="rounded p-3">Levemente arredondado</div>
-<div class="rounded-md p-3">Médio arredondado</div>
-<div class="rounded-lg p-3">Muito arredondado</div>
-<div class="rounded-full p-3">Completamente arredondado</div>
-```
-
-### Shadows (Sombras)
-
-```html
-<div class="shadow-sm p-3">Sombra pequena</div>
-<div class="shadow p-3">Sombra normal</div>
-<div class="shadow-md p-3">Sombra média</div>
-<div class="shadow-lg p-3">Sombra grande</div>
-```
-
-### Opacity (Transparência)
-
-```html
-<div class="opacity-25 p-3">25% opacidade</div>
-<div class="opacity-50 p-3">50% opacidade</div>
-<div class="opacity-75 p-3">75% opacidade</div>
-<div class="opacity-100 p-3">100% opacidade</div>
-```
-
-### Position e Size
-
-```html
-<!-- Position -->
-<div class="position-relative">Relativo</div>
-<div class="position-absolute">Absoluto</div>
-<div class="position-fixed">Fixo</div>
-<div class="position-sticky">Pegajoso</div>
-
-<!-- Width -->
-<div class="w-25">25% de largura</div>
-<div class="w-50">50% de largura</div>
-<div class="w-75">75% de largura</div>
-<div class="w-100">100% de largura</div>
-
-<!-- Height -->
-<div class="h-auto">Auto</div>
-<div class="h-100">100%</div>
-
-<!-- Max/Min -->
-<div class="max-w-100">Largura máxima</div>
-<div class="min-h-100">Altura mínima</div>
+<div class="border border-blue-500 rounded-lg">Com borda e arredondado</div>
+<div class="shadow-lg rounded-full">Sombra e circular</div>
 ```
 
 ---
