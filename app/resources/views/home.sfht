@@ -12,8 +12,8 @@
 </nav>
 
 <!-- Hero Section -->
-<section class="py-24 px-4 text-white text-center" style="background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 50%, #8b5cf6 100%);">
-    <div class="container mx-auto max-w-3xl">
+<section class="py-4 px-4 text-white text-center" style="background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 50%, #8b5cf6 100%);">
+    <div class="container mx-auto max-w-3xl mt-4">
         <h1 class="text-4xl font-bold mb-4">Build Fast, Modern PHP Apps</h1>
         <p class="text-xl mb-8 opacity-95">Zero dependencies. Production-ready.</p>
         <div class="d-flex gap-4 justify-center flex-wrap">
@@ -160,8 +160,8 @@
                 <p class="text-xs opacity-80">Slate</p>
             </div>
             <div class="text-center">
-                <div class="bg-gray-600 h-12 rounded-lg mb-2"></div>
                 <p class="text-xs opacity-80">Gray</p>
+                <div class="bg-gray-600 h-12 rounded-lg mb-2 card">teste</div>
             </div>
             <div class="text-center">
                 <div class="bg-zinc-600 h-12 rounded-lg mb-2"></div>
