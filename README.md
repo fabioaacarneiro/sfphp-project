@@ -1,19 +1,23 @@
 # SFPHP — Simple Framework PHP
 
-Framework PHP full-stack com **zero dependências de runtime**, pensado para uso
-em qualquer idioma e alfabeto.
+> 🌍 **Read this in:** [English](README.md) ·
+> [Português](README.pt-BR.md) · [Español](README.es.md)
 
-`composer.json` exige apenas `php ^8.1`, `ext-json` e `ext-pdo`. O diretório
-`vendor/` contém só o autoloader do Composer. Nenhuma página servida pelo
-framework — nem as de erro — carrega CSS, fontes ou JavaScript de um CDN.
+A full-stack PHP framework with **zero runtime dependencies**, built to be used
+in any language and any script.
 
-## Requisitos
+`composer.json` requires only `php ^8.1`, `ext-json` and `ext-pdo`. The
+`vendor/` directory holds nothing but Composer's autoloader. No page the
+framework serves — not even its error pages — loads CSS, fonts or JavaScript
+from a CDN.
 
-- PHP 8.1 ou superior
+## Requirements
+
+- PHP 8.1 or later
 - Composer 2
-- PDO com o driver do seu banco (opcional — só se usar banco)
+- PDO with your database's driver (optional — only if you use a database)
 
-## Instalação
+## Installing
 
 ```bash
 git clone https://github.com/fabioaacarneiro/sfphp-project.git
@@ -22,121 +26,129 @@ composer install
 cp .env-example .env
 ```
 
-Ajuste o `.env`:
+Adjust `.env`:
 
-- **`JWT_KEY`** — obrigatória para emitir ou validar tokens. Gere com
+- **`JWT_KEY`** — required to issue or validate tokens. Generate one with
   `php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"`
-- **Banco de dados** — opcional. Configure só se precisar.
+- **Database** — optional. Configure it only if you need it.
 
-O `.env` é opcional: um clone novo sobe sem configuração, e cada recurso que
-realmente precisa de um valor falha com mensagem específica.
+`.env` itself is optional: a fresh clone boots with no configuration, and every
+feature that really needs a value fails with a message naming it.
 
-## Executando
+## Running
 
 ```bash
 ./sfphp serve                                   # http://localhost:8000
-php -S localhost:8000 -t public server.php      # equivalente
+php -S localhost:8000 -t public server.php      # equivalent
 ```
 
-Em produção, aponte o `DocumentRoot` para `public/`.
+In production, point `DocumentRoot` at `public/`.
 
-## O que tem
+## What is in it
 
 | | |
 |---|---|
-| **Roteamento** | Parâmetros tipados com suporte a qualquer alfabeto, grupos, rotas nomeadas, geração de URL |
-| **HTTP** | Objetos Request/Response e pipeline de middleware global, por grupo e por rota |
-| **i18n** | Catálogos por idioma (en, pt_BR, es), negociação de `Accept-Language`, plural com faixas e regra por idioma |
-| **Autenticação** | Guards de sessão e de token, hashing sobre `password_hash`, policies via `Gate` |
-| **Container DI** | Autowiring por reflexão, fábricas preguiçosas, detecção de ciclo |
-| **Query Builder** | Identificadores validados por whitelist, bind em todo valor, paginação por dialeto, transações |
-| **Models** | Hidratação em objetos, tipos de atributo, relacionamentos (incl. muitos-para-muitos) e `with()` contra N+1 |
-| **Schema Builder** | 30+ tipos de coluna com paridade real MySQL 8 ↔ PostgreSQL 12 |
-| **SFHT** | Template engine com escape automático, herança de layout e cache compatível com OPcache |
-| **Cache** | Drivers de arquivo, memória e Redis |
-| **Queue** | Workers com retry, drivers de banco e Redis |
-| **SFCSS** | 2.337 classes utilitárias com variantes `hover:` e responsivas, 16,1KB gzipped |
-| **SFJS** | AJAX, DOM, validação e atributos declarativos — 3,0KB gzipped |
-| **CLI** | 32 comandos, 12 geradores de código |
+| **Routing** | Typed parameters that work in any script, groups, named routes, URL generation |
+| **HTTP** | Request/Response objects and a middleware pipeline — global, per group and per route |
+| **i18n** | Per-language catalogs (en, pt_BR, es), `Accept-Language` negotiation, plurals by range or per-language rule |
+| **Authentication** | Session and token guards, hashing over `password_hash`, policies through `Gate` |
+| **DI container** | Autowiring by reflection, lazy factories, cycle detection |
+| **Query builder** | Whitelisted identifiers, every value bound, pagination per dialect, transactions |
+| **Models** | Hydration into objects, attribute types, relations (including many-to-many) and `with()` against N+1 |
+| **Schema builder** | 30+ column types with real MySQL 8 ↔ PostgreSQL 12 parity |
+| **SFHT** | Template engine with automatic escaping, layout inheritance and an OPcache-friendly cache |
+| **Cache** | File, memory and Redis drivers |
+| **Queue** | Workers with retries, database and Redis drivers |
+| **SFCSS** | 2,337 utility classes with `hover:` and responsive variants, 16.1KB gzipped |
+| **SFJS** | AJAX, DOM, validation and declarative attributes — 3.0KB gzipped |
+| **CLI** | 32 commands, 12 code generators |
 
-## Feito para qualquer idioma
+## Built for any language
 
-O tratamento UTF-8 é construído sobre **PCRE com `/u`**, não sobre `mbstring`
-— PCRE está sempre compilado no PHP, `mbstring` é opcional.
+UTF-8 handling is built on **PCRE with `/u`**, not on `mbstring` — PCRE is
+always compiled into PHP, `mbstring` is optional.
 
 ```php
-Str::length('日本語');            // 3, não 9
-Str::truncate('日本語テキスト', 5); // 日本... nunca um byte partido ao meio
+Str::length('日本語');            // 3, not 9
+Str::truncate('日本語テキスト', 5); // 日本... never a byte split in half
 Validator::validate(['n' => 'José'], ['n' => 'alpha'])->passes();  // true
-Router::get('/produtos/nome:alpha', 'ProdutoController', 'show');   // casa /produtos/café
+Router::get('/products/name:alpha', 'ProductController', 'show');   // matches /products/café
 ```
 
-E as mensagens do framework saem no idioma do visitante — inclusive num 404,
-que nunca chega a um controller:
+And the framework's own messages come out in the visitor's language — including
+on a 404, which never reaches a controller:
 
 ```php
-__('http.not_found_title');     // segue o Accept-Language da requisição
-trans_choice('app.items', 5);   // formas de plural por faixa ou regra do idioma
+__('http.not_found_title');     // follows the request's Accept-Language
+trans_choice('app.items', 5);   // plural forms by range or per-language rule
 ```
 
-## Segurança
+## Security
 
-- **CSRF** — token de 32 bytes, comparação em tempo constante com `hash_equals`,
-  cookie `httponly` + `samesite=Lax` + `secure` sob HTTPS. Helpers
+- **CSRF** — a 32-byte token, constant-time comparison with `hash_equals`,
+  cookie with `httponly` + `samesite=Lax` + `secure` over HTTPS. Helpers
   `csrf_field()`, `csrf_meta()`, `csrf_verify()`
-- **JWT** — HS256, valida assinatura, `alg`, `typ` e `exp`; rejeita `alg: none`
-  e exige chave de 32 bytes
-- **SQL** — todo valor é vinculado, todo identificador validado contra whitelist
-- **XSS** — `{{ }}` do SFHT escapa por padrão; a saída crua exige `{!! !!}`
-- **Atribuição em massa** — um modelo precisa declarar `$fillable`; sem isso,
-  preencher a partir de um array lança
-- **Headers** — `nosniff`, `X-Frame-Options` e `Referrer-Policy` por padrão;
-  CSP e HSTS disponíveis e desligados por serem fáceis de errar
-- **Limite de requisições** — middleware `RateLimit`, com contadores no cache
-- **Proxies** — `X-Forwarded-*` só é lido de proxies declarados
-- **Senhas** — `password_hash` com `PASSWORD_DEFAULT`, e `Auth::attempt()`
-  equaliza o tempo de resposta para que uma conta inexistente não se distinga
-  de uma senha errada
-- **Sessão** — o id é regenerado no login e no logout, contra *session fixation*
-- **Middleware** — `VerifyCsrfToken` aplica a verificação de CSRF por padrão a toda
-  requisição que altera estado
+- **JWT** — HS256, validates signature, `alg`, `typ` and `exp`; rejects
+  `alg: none` and requires a 32-byte key
+- **SQL** — every value is bound, every identifier validated against a whitelist
+- **XSS** — SFHT's `{{ }}` escapes by default; raw output takes `{!! !!}`
+- **Mass assignment** — a model must declare `$fillable`; without it, filling
+  from an array throws
+- **Headers** — `nosniff`, `X-Frame-Options` and `Referrer-Policy` by default;
+  CSP and HSTS available and off, because both are easy to get wrong
+- **Rate limiting** — the `RateLimit` middleware, with counters in the cache
+- **Proxies** — `X-Forwarded-*` is read only from declared proxies
+- **Passwords** — `password_hash` with `PASSWORD_DEFAULT`, and `Auth::attempt()`
+  equalises response time so a non-existent account cannot be told apart from a
+  wrong password
+- **Session** — the id is regenerated on login and logout, against session
+  fixation
+- **Middleware** — `VerifyCsrfToken` applies the CSRF check by default to every
+  state-changing request
 
-O framework segue a regra **validar na entrada, escapar na saída**. Valores da
-requisição chegam inalterados de propósito: escapar na entrada corromperia o
-dado no banco sem proteger o destino real.
+The framework follows **validate on the way in, escape on the way out**.
+Request values arrive unmodified on purpose: escaping on input would corrupt the
+data in the database without protecting its real destination.
 
-## Qualidade
+## Quality
 
 ```bash
-composer run lint        # php -l em todo o projeto
-composer run test        # 78 casos unitários
-composer run test:db     # integração contra MySQL/PostgreSQL reais
+composer run lint        # php -l across the project
+composer run test        # 78 unit cases
+composer run test:db     # integration against real MySQL/PostgreSQL
+composer run docs        # the three documentation languages agree
 ```
 
-O CI roda a suíte numa matriz PHP 8.1–8.4 **sem `mbstring`**, garantindo que o
-tratamento Unicode não depende da extensão, e os testes de schema contra MySQL 8
-e PostgreSQL 16 reais.
+CI runs the suite on a PHP 8.1–8.4 matrix **without `mbstring`**, which is what
+guarantees the Unicode handling does not depend on the extension, and the schema
+tests against real MySQL 8 and PostgreSQL 16.
 
-## O que não tem
+## What is not in it
 
-Dito de frente, para você decidir com informação: não há sistema de eventos, e
-a autenticação cobre login, guards e autorização, mas não recuperação de senha,
-dois fatores nem revogação de token. A lista completa, com o motivo de cada
-ausência, está em
-[docs/DOCUMENTATION.md § Segurança](docs/DOCUMENTATION.md#segurança) e
-[§ Limitações conhecidas](docs/DOCUMENTATION.md#limitações-conhecidas). A camada de Models **não é um ORM
-completo** — sem identity map, unit of work, proxy de lazy loading, relação
-polimórfica ou schema derivado da classe. O motivo de cada ausência está em
-[ORM ou Query Builder?](docs/DOCUMENTATION.md#orm-ou-query-builder), incluindo
-um caso em que a peça faltante seria um risco de segurança sob runtime
-persistente, e não só um custo. A lista completa, com o impacto de cada ausência, está
-em [docs/DOCUMENTATION.md § Limitações conhecidas](docs/DOCUMENTATION.md#limitações-conhecidas).
+Stated up front, so you can decide with the facts: there is no event system, and
+authentication covers login, guards and authorization but not password recovery,
+two-factor or token revocation. The Models layer is **not a full ORM** — no
+identity map, unit of work, lazy-loading proxy, polymorphic relation or schema
+derived from the class. The reason for each absence is in
+[ORM or query builder?](docs/en/DOCUMENTATION.md#orm-or-query-builder),
+including one case where the missing piece would be a security risk under a
+persistent runtime rather than merely a cost. The complete list, with the impact
+of each absence, is in
+[Security](docs/en/DOCUMENTATION.md#security) and
+[Known limitations](docs/en/DOCUMENTATION.md#known-limitations).
 
-## Documentação
+## Documentation
 
-- [Documentação completa](docs/DOCUMENTATION.md)
-- [SFCSS](docs/SFCSS_DOCUMENTATION.md) · [referência de utilitários](docs/SFCSS_UTILITIES_REFERENCE.md)
+Complete in three languages — none of them a summary of another:
 
-## Licença
+| Language | Framework | SFCSS | SFCSS utilities |
+|---|---|---|---|
+| 🇬🇧 **English** *(primary)* | [Documentation](docs/en/DOCUMENTATION.md) | [SFCSS](docs/en/SFCSS.md) | [Utilities](docs/en/SFCSS_UTILITIES.md) |
+| 🇧🇷 **Português** | [Documentação](docs/pt-BR/DOCUMENTATION.md) | [SFCSS](docs/pt-BR/SFCSS.md) | [Utilitários](docs/pt-BR/SFCSS_UTILITIES.md) |
+| 🇪🇸 **Español** | [Documentación](docs/es/DOCUMENTATION.md) | [SFCSS](docs/es/SFCSS.md) | [Utilidades](docs/es/SFCSS_UTILITIES.md) |
 
-MIT. Criado por Fabio Carneiro.
+Start at [docs/](docs/README.md) to pick a language.
+
+## Licence
+
+MIT. Created by Fabio Carneiro.
