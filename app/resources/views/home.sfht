@@ -12,13 +12,13 @@
 </nav>
 
 <!-- Hero Section -->
-<section class="py-4 px-4 text-white text-center" style="background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 50%, #8b5cf6 100%);">
-    <div class="container mx-auto max-w-3xl mt-4">
+<section class="bg-blue-600 py-20 px-4 text-white text-center">
+    <div class="container mx-auto max-w-3xl">
         <h1 class="text-4xl font-bold mb-4">Build Fast, Modern PHP Apps</h1>
         <p class="text-xl mb-8 opacity-95">Zero dependencies. Production-ready.</p>
         <div class="d-flex gap-4 justify-center flex-wrap">
-            <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/DOCUMENTATION.md" class="btn btn-lg bg-white text-blue-500 font-bold rounded-md">Get Started</a>
-            <a href="https://github.com/fabioaacarneiro/sfphp-project" class="btn btn-lg bg-opacity-20 text-white font-bold rounded-md border-2" style="border-color: white;">View on GitHub</a>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/DOCUMENTATION.md" class="btn btn-lg bg-white text-blue-600 font-bold rounded-md">Get Started</a>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project" class="btn btn-lg bg-blue-700 text-white font-bold rounded-md border-2 border-white">View on GitHub</a>
         </div>
     </div>
 </section>
@@ -54,9 +54,11 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <!-- Feature 1: CLI -->
-            <div class="card" style="border-top: 4px solid #3b82f6;">
+            <div class="card shadow-lg">
+                <div class="bg-blue-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-blue-600 font-bold text-lg">CLI & Generators</h3>
+                </div>
                 <div class="card-body">
-                    <h3 class="text-slate-900 font-bold mb-2 text-lg">CLI & Generators</h3>
                     <p class="text-slate-600 mb-4">24 powerful commands for scaffolding controllers, models, and migrations.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
                         <li class="mb-1">✓ 11 code generators</li>
@@ -67,9 +69,11 @@
             </div>
 
             <!-- Feature 2: SFHT -->
-            <div class="card" style="border-top: 4px solid #22c55e;">
+            <div class="card shadow-lg">
+                <div class="bg-green-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-green-600 font-bold text-lg">SFHT Templates</h3>
+                </div>
                 <div class="card-body">
-                    <h3 class="text-slate-900 font-bold mb-2 text-lg">SFHT Templates</h3>
                     <p class="text-slate-600 mb-4">Native template engine with blocks, components, and elegant syntax.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
                         <li class="mb-1">✓ Control flow directives</li>
@@ -80,22 +84,26 @@
             </div>
 
             <!-- Feature 3: SFCSS -->
-            <div class="card" style="border-top: 4px solid #a855f7;">
+            <div class="card shadow-lg">
+                <div class="bg-purple-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-purple-600 font-bold text-lg">SFCSS Framework</h3>
+                </div>
                 <div class="card-body">
-                    <h3 class="text-slate-900 font-bold mb-2 text-lg">SFCSS Framework</h3>
-                    <p class="text-slate-600 mb-4">Minimalista CSS with 620+ color utilities and complete utilities.</p>
+                    <p class="text-slate-600 mb-4">Minimalista CSS with 600+ color utilities and complete utilities.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
-                        <li class="mb-1">✓ 40KB pure CSS</li>
-                        <li class="mb-1">✓ 18+ color families</li>
+                        <li class="mb-1">✓ 45KB pure CSS</li>
+                        <li class="mb-1">✓ 20 color families</li>
                         <li>✓ Complete utilities</li>
                     </ul>
                 </div>
             </div>
 
             <!-- Feature 4: Schema Builder -->
-            <div class="card" style="border-top: 4px solid #f59e0b;">
+            <div class="card shadow-lg">
+                <div class="bg-amber-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-amber-600 font-bold text-lg">Schema Builder</h3>
+                </div>
                 <div class="card-body">
-                    <h3 class="text-slate-900 font-bold mb-2 text-lg">Schema Builder</h3>
                     <p class="text-slate-600 mb-4">Fluent, portable migrations with 30+ column types and constraints.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
                         <li class="mb-1">✓ MySQL 8.0+ support</li>
@@ -106,9 +114,11 @@
             </div>
 
             <!-- Feature 5: Security -->
-            <div class="card" style="border-top: 4px solid #ec4899;">
+            <div class="card shadow-lg">
+                <div class="bg-pink-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-pink-600 font-bold text-lg">Security First</h3>
+                </div>
                 <div class="card-body">
-                    <h3 class="text-slate-900 font-bold mb-2 text-lg">Security First</h3>
                     <p class="text-slate-600 mb-4">Built-in protection with JWT, CSRF, validation, and rate limiting.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
                         <li class="mb-1">✓ JWT HS256 tokens</li>
@@ -119,9 +129,11 @@
             </div>
 
             <!-- Feature 6: Cache & Queue -->
-            <div class="card" style="border-top: 4px solid #06b6d4;">
+            <div class="card shadow-lg">
+                <div class="bg-cyan-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-cyan-600 font-bold text-lg">Cache & Queue</h3>
+                </div>
                 <div class="card-body">
-                    <h3 class="text-slate-900 font-bold mb-2 text-lg">Cache & Queue</h3>
                     <p class="text-slate-600 mb-4">High-performance caching and background job processing systems.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
                         <li class="mb-1">✓ File, Redis, Memory</li>
@@ -132,9 +144,11 @@
             </div>
 
             <!-- Feature 7: SFJS -->
-            <div class="card" style="border-top: 4px solid #14b8a6;">
+            <div class="card shadow-lg">
+                <div class="bg-teal-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-teal-600 font-bold text-lg">SFJS Library</h3>
+                </div>
                 <div class="card-body">
-                    <h3 class="text-slate-900 font-bold mb-2 text-lg">SFJS Library</h3>
                     <p class="text-slate-600 mb-4">Lightweight JavaScript for AJAX, interactivity, and DOM manipulation.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
                         <li class="mb-1">✓ HTMX-like features</li>
@@ -240,13 +254,13 @@
 </section>
 
 <!-- CTA Section -->
-<section class="py-24 px-4" style="background: linear-gradient(135deg, #dbeafe 0%, #e9d5ff 100%);">
+<section class="bg-blue-50 py-24 px-4">
     <div class="container mx-auto max-w-2xl text-center">
         <h2 class="text-4xl font-bold text-slate-900 mb-4">Ready to Build?</h2>
         <p class="text-lg text-slate-700 mb-8">Start building modern PHP applications today. Zero setup, full power.</p>
         <div class="d-flex gap-4 justify-center flex-wrap">
-            <a href="https://github.com/fabioaacarneiro/sfphp-project" class="btn btn-lg bg-blue-500 text-white font-bold rounded-md">Star on GitHub</a>
-            <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/DOCUMENTATION.md" class="btn btn-lg bg-white text-blue-500 font-bold rounded-md border-2 border-blue-500">Read Docs</a>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project" class="btn btn-lg bg-blue-600 text-white font-bold rounded-md shadow-lg">Star on GitHub</a>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/DOCUMENTATION.md" class="btn btn-lg bg-white text-blue-600 font-bold rounded-md border-2 border-blue-600">Read Docs</a>
         </div>
     </div>
 </section>
