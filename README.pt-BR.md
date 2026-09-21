@@ -56,6 +56,7 @@ Em produção, aponte o `DocumentRoot` para `public/`.
 | **Models** | Hidratação em objetos, tipos de atributo, relacionamentos (incl. muitos-para-muitos) e `with()` contra N+1 |
 | **Schema Builder** | 30+ tipos de coluna com paridade real MySQL 8 ↔ PostgreSQL 12 |
 | **SFHT** | Template engine com escape automático, herança de layout e cache compatível com OPcache |
+| **Log** | Linhas JSON em UTC, um id de requisição unindo todas as linhas de uma requisição, segredos redigidos |
 | **Cache** | Drivers de arquivo, memória e Redis |
 | **Queue** | Workers com retry, drivers de banco e Redis |
 | **SFCSS** | 2.337 classes utilitárias com variantes `hover:` e responsivas, 16,1KB gzipped |
@@ -112,7 +113,7 @@ dado no banco sem proteger o destino real.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 81 casos unitários
+composer run test        # 90 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run docs        # os três idiomas da documentação concordam
 ```

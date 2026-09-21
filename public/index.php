@@ -4,6 +4,7 @@ use SfphpProject\src\Container;
 use SfphpProject\src\Database;
 use SfphpProject\src\ErrorHandler;
 use SfphpProject\src\Http\Emitter;
+use SfphpProject\src\Http\Middleware\LogRequests;
 use SfphpProject\src\Http\Middleware\SecurityHeaders;
 use SfphpProject\src\Http\Middleware\SetLocale;
 use SfphpProject\src\Http\Middleware\StartSession;
@@ -55,15 +56,23 @@ Request::setTrustedProxies(array_values(array_filter(array_map(
  */
 $router = (new Router($container))->middleware(
     /*
-     * Resolved first, so every message downstream — including a 404, which
-     * never reaches a controller — is rendered in the visitor's language.
+     * First, so that every record written while handling this request carries
+     * the same id — including the ones written by middleware after it, and
+     * including a 404, which never reaches a controller. It is also what
+     * resets the shared log context, which matters the moment this runs under
+     * a worker that serves more than one request.
      */
+    new LogRequests(),
     /*
      * Content-Security-Policy is left unset: a policy that does not match the
      * application's own assets breaks the page silently, and only the
      * application knows them. See the documentation for a value to start from.
      */
     new SecurityHeaders(),
+    /*
+     * Resolved early, so every message downstream — including a 404, which
+     * never reaches a controller — is rendered in the visitor's language.
+     */
     new SetLocale(APP_LOCALES, APP_LOCALE),
     StartSession::class,
     /*
