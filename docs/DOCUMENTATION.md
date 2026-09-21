@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 37 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 55 testes, 0 falhas
 
 ---
 
@@ -17,6 +17,7 @@ hoje. Onde algo não existe, está dito que não existe — veja
 - [Ciclo de vida da requisição](#ciclo-de-vida-da-requisição)
 - [Roteamento](#roteamento)
 - [Controllers](#controllers)
+- [Middleware](#middleware)
 - [Views e SFHT](#views-e-sfht)
 - [Container e injeção de dependências](#container-e-injeção-de-dependências)
 - [Banco de dados](#banco-de-dados)
@@ -40,12 +41,13 @@ hoje. Onde algo não existe, está dito que não existe — veja
 ## O que é, o que não é
 
 **É** um framework enxuto para aplicações web e APIs, com roteamento,
-container de DI, query builder, schema builder com paridade MySQL/PostgreSQL,
-template engine, cache, filas, e um CLI com 32 comandos.
+objetos Request/Response, pipeline de middleware, container de DI, query
+builder, schema builder com paridade MySQL/PostgreSQL, template engine, cache,
+filas, e um CLI com 32 comandos.
 
 **Não é** um substituto de Laravel ou Symfony. Não há ORM, camada de
-autenticação, pipeline de middleware, sistema de eventos ou i18n. O que existe
-é pequeno o suficiente para ser lido inteiro.
+autenticação, sistema de eventos ou i18n. O que existe é pequeno o suficiente
+para ser lido inteiro.
 
 ### Zero dependências, literalmente
 
@@ -128,12 +130,14 @@ public/index.php
  │      utils.php  → helpers globais: e(), asset(), csrf_*()
  │      http.php   → constantes HTTP_OK, GET, POST, ...
  │      helpers.php→ cache(), dispatch()
- ├─ Csrf::startSession()      sessão com httponly + samesite=Lax + secure sob HTTPS
- ├─ ErrorHandler::register()  erros, exceções e fatais viram resposta HTTP
+ ├─ ErrorHandler::register()  rede de segurança para fatais e bootstrap
  ├─ require src/routes.php    popula o registro estático de rotas
  ├─ new Container()
  │   └─ set(PDO::class, closure)   conexão preguiçosa
- └─ new Router($container)->dispatch()
+ ├─ Request::fromGlobals()    único ponto que lê superglobais
+ ├─ Router->dispatch($request)
+ │   └─ middleware global → grupo → rota → action → Response
+ └─ Emitter->emit($response)  único ponto que escreve saída
 ```
 
 O `.env` é **opcional**. Um clone novo sobe sem configuração; quem precisa de
@@ -233,35 +237,77 @@ duplicados são rejeitados no registro.
 
 ## Controllers
 
-Controllers para HTML estendem `BaseController`; para JSON, `BaseAPIController`.
-Actions **escrevem a resposta** (via `View::render()` ou `echo`) e retornam
-`void` — não há objeto Response.
+Uma action recebe o `Request` como **primeiro argumento** e devolve um
+`Response`. Os parâmetros de rota vêm depois, na ordem em que aparecem na URL.
+É uma regra só, sem exceção e sem reflexão.
 
 ```php
 <?php
 
 namespace SfphpProject\app\controllers;
 
-use SfphpProject\src\View;
+use SfphpProject\src\Http\Request;
+use SfphpProject\src\Http\Response;
 
 final class PostController extends BaseController
 {
-    public function show(string $id): void
+    public function show(Request $request, string $id): Response
     {
-        View::render('posts/show', ['id' => (int) $id]);
+        return $this->view('posts/show', ['id' => (int) $id]);
+    }
+
+    public function store(Request $request): Response
+    {
+        return Response::json(['id' => 1], HTTP_CREATED);
     }
 }
 ```
 
-### BaseController
+O `Response` devolvido é o que o framework envia. Nada de `echo`, nada de
+`header()`, nada de `exit` — foi justamente o `exit` que impedia qualquer
+middleware de rodar depois do controller.
+
+### O que a action pode devolver
+
+`Response::from()` coage o retorno, então os casos comuns ficam curtos:
+
+| Retorno | Vira |
+|---|---|
+| `Response` | ele mesmo |
+| `string` | `Response::html(...)` |
+| `array` ou `JsonSerializable` | `Response::json(...)` |
+| **nada** | **erro**, nomeando `Classe::action()` |
+
+Devolver nada é erro de propósito. É como uma action que esqueceu o `return`
+se anuncia; um 200 vazio esconderia o problema.
+
+### Request
 
 ```php
-$this->query('page');            // $_GET['page'], sem modificação
-$this->input('title');           // $_POST['title'], sem modificação
-$this->input('title', 'padrão'); // com valor padrão
-$this->all();                    // todo o $_POST
-$this->filled('title');          // presente e não vazio
-$this->redirect('/posts', HTTP_FOUND);
+$request->method;                    // 'POST'
+$request->path;                      // '/produtos/café', já decodificado
+$request->isMethod('post');
+
+$request->query('page');             // query string
+$request->body('title');             // corpo parseado
+$request->input('title', 'padrão');  // corpo → JSON → query string
+$request->all();                     // tudo, mesclado
+$request->filled('title');
+
+$request->header('Authorization');   // busca sem diferenciar maiúsculas
+$request->bearerToken();
+$request->json();                    // decodifica o corpo, lança JsonException
+$request->rawBody;
+
+$request->cookie('sessao');
+$request->file('avatar');
+$request->ip();
+$request->isSecure();
+$request->expectsJson();
+
+$request->route('id');               // parâmetro de rota
+$request->attribute('user');         // anexado por um middleware
+$withUser = $request->withAttribute('user', $user);   // clona
 ```
 
 Os valores voltam **inalterados**, por decisão de projeto. Escape é
@@ -277,6 +323,54 @@ A regra do framework é: **validar na entrada, escapar na saída.**
   `RawQuery` fazem bind de tudo
 - Escapar no ponto de saída — `{{ }}` do SFHT escapa sozinho; `e()` existe
   para templates PHP crus
+
+O `Request` nunca lê uma superglobal por conta própria: o construtor recebe
+arrays, e `Request::fromGlobals()` é o único ponto do framework que toca
+`$_SERVER`, `$_GET`, `$_POST` e companhia. É isso que torna o roteamento
+testável e o que um runtime persistente precisa.
+
+### Response
+
+```php
+Response::html('<h1>Olá</h1>');
+Response::text('ok');
+Response::json(['id' => 1], HTTP_CREATED);
+Response::view('posts/index', ['posts' => $posts]);
+Response::redirect('/posts');
+Response::noContent();
+
+$response->withStatus(HTTP_NOT_FOUND);
+$response->withHeader('X-Request-Id', $id);   // substitui sem duplicar
+$response->withBody('outro corpo');
+
+$response->status();  $response->body();  $response->header('Content-Type');
+```
+
+`Response` é um value object: não chama `header()`, não ecoa, não mexe em
+buffer. Transformar em bytes é trabalho do `Emitter`, e é essa separação que
+permite testar todo o caminho sem output buffering.
+
+### BaseController
+
+```php
+$this->view('posts/index', ['posts' => $posts]);   // Response de HTML
+$this->redirect('/posts');                          // Response de redirect
+```
+
+### BaseAPIController
+
+```php
+$this->json(['ok' => true], HTTP_CREATED);
+
+// Decodifica o corpo, ou devolve a resposta de erro pronta
+$data = $this->payload($request);
+if ($data instanceof Response) {
+    return $data;
+}
+```
+
+`payload()` devolve **415** se o `Content-Type` não for `application/json` e
+**400** se o corpo não decodificar.
 
 ### Helpers globais
 
@@ -301,17 +395,89 @@ cache();                      // CacheManager com driver de arquivo
 dispatch(new MeuJob());       // enfileira um job
 ```
 
-### BaseAPIController
+---
+
+## Middleware
+
+Um middleware recebe a requisição, pode inspecioná-la ou substituí-la, e chama
+`$next` para passar adiante. O que vem antes do `$next` roda na entrada; o que
+vem depois roda na saída, com a resposta em mãos. Devolver sem chamar `$next`
+interrompe tudo abaixo.
 
 ```php
-$body   = $this->getRequest();      // corpo cru
-$data   = $this->getJsonRequest();  // decodifica JSON, valida Content-Type
-$header = $this->getHeader('Authorization');
-$this->responseJSON(['ok' => true], HTTP_CREATED);
+<?php
+
+namespace SfphpProject\app\middleware;
+
+use SfphpProject\src\Http\Middleware;
+use SfphpProject\src\Http\Request;
+use SfphpProject\src\Http\Response;
+
+final class RequireTokenMiddleware implements Middleware
+{
+    public function handle(Request $request, callable $next): Response
+    {
+        if ($request->bearerToken() === null) {
+            return Response::json(['message' => 'Unauthorized'], HTTP_UNAUTHORIZED);
+        }
+
+        return $next($request)->withHeader('X-Served-By', 'sfphp');
+    }
+}
 ```
 
-`getJsonRequest()` responde 415 se o `Content-Type` não for
-`application/json` e 400 se o corpo não decodificar.
+```bash
+./sfphp make:middleware RequireToken
+```
+
+### Registrando
+
+Três níveis, executados nesta ordem: **global → grupo → rota → action.**
+
+```php
+// Global, em public/index.php — vale inclusive para 404 e 405
+$router = (new Router($container))->middleware(
+    StartSession::class,
+    VerifyCsrfToken::class
+);
+
+// Por grupo, em src/routes.php
+Router::group('/admin', function (): void {
+    Router::get('/painel', 'AdminController', 'index');
+}, 'admin.', [RequireTokenMiddleware::class]);
+
+// Por rota
+Router::get('/relatorio', 'ReportController', 'show')
+    ->middleware(RequireTokenMiddleware::class)
+    ->name('relatorio');
+```
+
+O middleware global envolve o despacho inteiro, **incluindo requisições que não
+casam com rota nenhuma**. É deliberado: header de CORS e log de requisição que
+pulam 404 são bug, não otimização.
+
+Um middleware pode ser um nome de classe, uma instância ou um callable. Nome de
+classe é resolvido pelo **Container**, então o middleware pode declarar
+dependências no construtor e recebê-las por autowiring.
+
+### Middlewares que acompanham o framework
+
+| Middleware | Faz |
+|---|---|
+| `StartSession` | Inicia a sessão com cookie `httponly` + `samesite=Lax` + `secure` sob HTTPS |
+| `VerifyCsrfToken` | Recusa requisição que altera estado sem token válido |
+
+`VerifyCsrfToken` deixa passar métodos seguros e requisições com Bearer token —
+um navegador nunca anexa Bearer sozinho, então não há requisição cross-site a
+forjar. Prefixos podem ser isentados:
+
+```php
+new VerifyCsrfToken(['/api'])
+```
+
+> Até esta versão, a verificação de CSRF existia mas **nada no framework a
+> chamava**: cada aplicação tinha de lembrar de verificar em cada action, e
+> esquecer não produzia erro algum. Agora ela vale por padrão.
 
 ---
 
@@ -322,9 +488,16 @@ $this->responseJSON(['ok' => true], HTTP_CREATED);
 ```php
 use SfphpProject\src\View;
 
-View::render('posts/index', ['posts' => $posts]);  // ecoa a saída
-View::partial('header', ['title' => 'Meu Site']);  // resolve em partials/header
+View::make('posts/index', ['posts' => $posts]);    // devolve string
+View::makePartial('header', ['title' => 'Meu Site']);
+
+// Ou, direto para uma resposta:
+Response::view('posts/index', ['posts' => $posts]);
 ```
+
+`View::render()` e `View::partial()` ainda existem e ecoam, mas estão
+**deprecadas**: um `Response` precisa de um corpo que ele possa carregar, não
+de saída que já escapou para o cliente.
 
 Nomes de view são validados contra travessia de diretório. Templates vivem em
 `app/resources/views/` com extensão **`.sfht`**.
@@ -1113,8 +1286,16 @@ php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 
 ## Tratamento de erros
 
-`ErrorHandler::register()` converte erros do PHP em `ErrorException`, captura
-exceções não tratadas e erros fatais no shutdown, e responde:
+Uma exceção lançada dentro de uma action é capturada pelo router, que devolve
+a resposta de erro pela mesma pipeline — então o middleware de saída continua
+rodando. `ErrorHandler::toResponse()` é o renderizador compartilhado.
+
+O registro global (`ErrorHandler::register()`) continua existindo, porque cobre
+o que um `try/catch` não alcança: um warning durante o bootstrap, e um fatal
+reportado no shutdown — falta de memória, tempo de execução estourado, erro de
+parse num arquivo incluído. Sem ele, esses casos viram página em branco.
+
+Em ambos os caminhos a resposta é:
 
 - **500** com `Content-Type` negociado — JSON se a requisição pediu ou enviou
   JSON, HTML caso contrário
@@ -1150,10 +1331,10 @@ respeitam `prefers-color-scheme`.
 ./sfphp make:scaffold Post     # controller + model + repository + service
 ```
 
-> Alguns geradores produzem código para infraestrutura que **ainda não
-> existe**: middleware não tem pipeline que o execute, events/listeners não
-> têm dispatcher, policies não têm camada de autorização. Veja
-> [Limitações conhecidas](#limitações-conhecidas).
+> `make:middleware` agora gera contra um contrato que existe e roda. Já
+> `make:event`, `make:listener` e `make:policy` seguem produzindo código para
+> infraestrutura ausente: não há dispatcher de eventos nem camada de
+> autorização. Veja [Limitações conhecidas](#limitações-conhecidas).
 
 ### Banco
 
@@ -1317,10 +1498,8 @@ não faz, e que você deve saber antes de escolhê-lo.
 
 | Ausência | Impacto |
 |---|---|
-| **Objetos Request/Response** | Controllers leem superglobais e escrevem com `echo`. Não dá para testá-los unitariamente nem rodar em runtime persistente (Swoole, FrankenPHP) |
-| **Pipeline de middleware** | `make:middleware` gera a classe, mas nada a executa. CORS, rate limiting e autenticação não têm onde morar |
-| **Rate limiting** | Não existe |
-| **Autenticação / autorização** | Não existe. `make:policy` gera um esqueleto sem camada que o use |
+| **Rate limiting** | Não existe. Pode ser escrito como middleware agora, mas o framework não traz um |
+| **Autenticação / autorização** | Não existe. `make:policy` gera um esqueleto sem camada que o use; o pipeline de middleware é onde ela vai morar |
 | **Sistema de eventos** | `make:event` e `make:listener` geram classes sem dispatcher |
 | **ORM** | Models e repositories geram métodos estáticos sobre o Query Builder; retornam arrays, não objetos. Sem relacionamentos, sem lazy loading |
 | **i18n / l10n** | Não existe. Mensagens de erro são fixas |
@@ -1328,7 +1507,7 @@ não faz, e que você deve saber antes de escolhê-lo.
 | **Log estruturado** | Só `error_log()` — texto plano |
 | **Cache de rotas** | O despacho é O(n), com uma `preg_match` por rota. Adequado a dezenas, não a centenas |
 | **Sessão plugável** | `$_SESSION` nativa. Múltiplas instâncias exigem sticky sessions |
-| **Framework separado da aplicação** | O Router codifica `SfphpProject\app\controllers\`. Ainda não distribuível como pacote |
+| **Distribuição como pacote** | O namespace de controllers já é parâmetro do Router, mas `composer.json` ainda descreve uma aplicação, não uma biblioteca |
 
 O SFHT também não tem variáveis automáticas de laço (`$loop`) nem herança
 parcial de bloco (`@parent`).
