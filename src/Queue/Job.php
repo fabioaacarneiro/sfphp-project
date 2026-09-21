@@ -1,6 +1,6 @@
 <?php
 
-namespace SfPhp\Queue;
+namespace SfphpProject\src\Queue;
 
 abstract class Job
 {

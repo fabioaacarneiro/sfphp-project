@@ -2,7 +2,7 @@
 
 namespace Database\Factories;
 
-use SfPhp\Database\Factory;
+use SfphpProject\src\Database\Factory;
 
 class UserFactory extends Factory
 {
