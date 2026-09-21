@@ -1,6 +1,6 @@
 <?php
 
-namespace SfPhp\Queue;
+namespace SfphpProject\src\Queue;
 
 class RedisDriver implements Queue
 {
@@ -79,6 +79,38 @@ class RedisDriver implements Queue
         );
 
         $this->delete($job);
+    }
+
+    /**
+     * List the jobs that exhausted their retries.
+     *
+     * @return array<int, array{id: string, exception: string, failed_at: int}>
+     */
+    public function failedJobs(): array
+    {
+        $jobs = [];
+
+        foreach ($this->redis->keys($this->failedPrefix . '*') as $key) {
+            $raw = $this->redis->hGet($key, 'data');
+            if (!is_string($raw)) {
+                continue;
+            }
+
+            $decoded = json_decode($raw, true);
+            if (!is_array($decoded)) {
+                continue;
+            }
+
+            $jobs[] = [
+                'id' => (string) ($decoded['uuid'] ?? ''),
+                'exception' => (string) ($decoded['exception'] ?? ''),
+                'failed_at' => (int) ($decoded['failed_at'] ?? 0),
+            ];
+        }
+
+        usort($jobs, static fn (array $a, array $b): int => $b['failed_at'] <=> $a['failed_at']);
+
+        return $jobs;
     }
 
     public function retry(Job $job): void

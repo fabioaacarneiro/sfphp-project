@@ -1,6 +1,6 @@
 <?php
 
-namespace SfPhp\Cache;
+namespace SfphpProject\src\Cache;
 
 class MemoryDriver implements Cache
 {

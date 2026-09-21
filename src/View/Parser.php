@@ -2,127 +2,407 @@
 
 namespace SfphpProject\src\View;
 
+use RuntimeException;
+
 /**
- * Parses SFHT template syntax and tokenizes directives.
+ * Turns SFHT source into a flat token stream.
+ *
+ * The parser scans the document as a single stream, tracking byte offsets, and
+ * emits every character it does not recognise as literal text. An earlier
+ * version split the source into lines and gave each line exactly one token
+ * type, which silently dropped any line that mixed markup with a directive and
+ * treated every "@word" in the document as a directive: the "@300" inside a
+ * Google Fonts URL turned the whole line into an unknown directive and erased
+ * it from the output. Scanning by offset and only recognising known directive
+ * names removes both failure modes.
  */
 final class Parser
 {
-    private const DIRECTIVE_PATTERN = '/@(\w+)(?:\(([^)]*)\))?/';
-    private const VARIABLE_PATTERN = '/\{\{\s*([^}]+)\s*\}\}/';
-    private const ECHO_PATTERN = '/\{\{\s*(.+?)\s*\}\}/';
+    /**
+     * Directive names the compiler knows how to emit code for.
+     *
+     * An "@word" that is not in this list is literal text, which is what makes
+     * an e-mail address or a "wght@300" query parameter survive the parser.
+     */
+    public const DIRECTIVES = [
+        'if', 'elseif', 'else', 'endif',
+        'unless', 'endunless',
+        'foreach', 'endforeach',
+        'forelse', 'empty', 'endforelse',
+        'for', 'endfor',
+        'while', 'endwhile',
+        'extends', 'block', 'endblock',
+        'include', 'includeWhen',
+        'component',
+        'php', 'endphp',
+    ];
 
     /**
-     * Parse template content into tokens.
+     * Directives that must be followed by an argument list.
+     */
+    private const REQUIRE_ARGUMENTS = [
+        'if', 'elseif', 'unless', 'foreach', 'forelse', 'for', 'while',
+        'extends', 'block', 'include', 'includeWhen', 'component',
+    ];
+
+    /**
+     * Directives that must not be followed by an argument list.
+     */
+    private const REJECT_ARGUMENTS = [
+        'else', 'endif', 'endunless', 'endforeach', 'empty', 'endforelse',
+        'endfor', 'endwhile', 'endblock', 'php', 'endphp',
+    ];
+
+    /**
+     * Tokenize template source.
      *
-     * @param string $content The template content
-     * @return array<int, array{type: string, value: string, args: string|null}>
+     * @param string $content The template source
+     * @return array<int, array<string, mixed>> The token stream
+     * @throws RuntimeException If a construct is opened but never closed
      */
     public function parse(string $content): array
     {
         $tokens = [];
-        $lines = explode("\n", $content);
+        $offset = 0;
+        $length = strlen($content);
+        $pattern = '/\{\{--|\{!!|\{\{|@[A-Za-z_][A-Za-z0-9_]*/';
 
-        foreach ($lines as $lineNum => $line) {
-            $tokens = array_merge($tokens, $this->parseLine($line, $lineNum));
+        while (
+            $offset < $length
+            && preg_match($pattern, $content, $matches, PREG_OFFSET_CAPTURE, $offset) === 1
+        ) {
+            [$marker, $position] = $matches[0];
+
+            if ($position > $offset) {
+                $tokens[] = [
+                    'type' => 'text',
+                    'value' => substr($content, $offset, $position - $offset),
+                ];
+            }
+
+            $line = substr_count($content, "\n", 0, $position) + 1;
+
+            $offset = match (true) {
+                $marker === '{{--' => $this->skipComment($content, $position, $line),
+                $marker === '{!!' => $this->readEcho($content, $position, $line, $tokens, true),
+                $marker === '{{' => $this->readEcho($content, $position, $line, $tokens, false),
+                default => $this->readDirective($content, $position, $marker, $line, $tokens),
+            };
+        }
+
+        if ($offset < $length) {
+            $tokens[] = ['type' => 'text', 'value' => substr($content, $offset)];
         }
 
         return $tokens;
     }
 
     /**
-     * Parse a single line and extract tokens.
+     * Skip over a template comment.
      *
-     * @param string $line The line to parse
-     * @param int $lineNum The line number
-     * @return array<int, array>
+     * @param string $content The template source
+     * @param int $position The offset of the opening marker
+     * @param int $line The line the marker starts on
+     * @return int The offset just past the comment
+     * @throws RuntimeException If the comment is never closed
      */
-    private function parseLine(string $line, int $lineNum): array
+    private function skipComment(string $content, int $position, int $line): int
     {
-        $tokens = [];
-        $pattern = '/@(\w+)(?:\s*\(([^)]*)\))?/';
-
-        if (preg_match_all($pattern, $line, $matches, PREG_OFFSET_CAPTURE)) {
-            foreach ($matches[1] as $index => $directive) {
-                $name = $directive[0];
-                $args = $matches[2][$index][0] ?? '';
-
-                $tokens[] = [
-                    'type' => 'directive',
-                    'name' => $name,
-                    'args' => trim($args),
-                    'line' => $lineNum + 1,
-                ];
-            }
+        $end = strpos($content, '--}}', $position);
+        if ($end === false) {
+            throw new RuntimeException("Unclosed template comment on line {$line}.");
         }
 
-        if (preg_match_all(self::ECHO_PATTERN, $line, $matches)) {
-            foreach ($matches[1] as $expr) {
-                $tokens[] = [
-                    'type' => 'echo',
-                    'expression' => $expr,
-                    'line' => $lineNum + 1,
-                ];
-            }
-        }
-
-        if (!empty($line) && !preg_match('/@\w+/', $line) && !preg_match(self::ECHO_PATTERN, $line)) {
-            $tokens[] = [
-                'type' => 'text',
-                'content' => $line,
-                'line' => $lineNum + 1,
-            ];
-        }
-
-        return $tokens;
+        return $end + 4;
     }
 
     /**
-     * Extract filters from expression (e.g., "name | upper | truncate(50)").
+     * Read an escaped or raw output expression.
      *
-     * @param string $expression The expression with filters
-     * @return array{expression: string, filters: array}
+     * @param string $content The template source
+     * @param int $position The offset of the opening marker
+     * @param int $line The line the marker starts on
+     * @param array<int, array<string, mixed>> $tokens The token stream, appended to
+     * @param bool $raw Whether the expression is unescaped
+     * @return int The offset just past the expression
+     * @throws RuntimeException If the expression is never closed
+     */
+    private function readEcho(
+        string $content,
+        int $position,
+        int $line,
+        array &$tokens,
+        bool $raw
+    ): int {
+        $open = $raw ? '{!!' : '{{';
+        $close = $raw ? '!!}' : '}}';
+        $start = $position + strlen($open);
+
+        $end = strpos($content, $close, $start);
+        if ($end === false) {
+            throw new RuntimeException(
+                "Unclosed \"{$open}\" expression on line {$line}."
+            );
+        }
+
+        $expression = trim(substr($content, $start, $end - $start));
+        if ($expression === '') {
+            throw new RuntimeException("Empty expression on line {$line}.");
+        }
+
+        $tokens[] = [
+            'type' => $raw ? 'raw' : 'echo',
+            'expression' => $expression,
+            'line' => $line,
+        ];
+
+        return $end + strlen($close);
+    }
+
+    /**
+     * Read a directive and its optional argument list.
+     *
+     * @param string $content The template source
+     * @param int $position The offset of the "@"
+     * @param string $marker The matched "@name" text
+     * @param int $line The line the directive starts on
+     * @param array<int, array<string, mixed>> $tokens The token stream, appended to
+     * @return int The offset just past the directive
+     * @throws RuntimeException If the argument list is malformed
+     */
+    private function readDirective(
+        string $content,
+        int $position,
+        string $marker,
+        int $line,
+        array &$tokens
+    ): int {
+        $name = substr($marker, 1);
+
+        /*
+         * Anything that is not a known directive is content, not syntax. This
+         * is what lets "wght@300", "@media" in an inline stylesheet and an
+         * e-mail address pass through untouched.
+         */
+        if (!in_array($name, self::DIRECTIVES, true)) {
+            $tokens[] = ['type' => 'text', 'value' => $marker];
+
+            return $position + strlen($marker);
+        }
+
+        $after = $position + strlen($marker);
+
+        /*
+         * "@php" opens a raw PHP region. It is consumed whole here rather than
+         * tokenized, because everything up to "@endphp" is code, not template
+         * text: letting the normal scanner see it would emit the statements as
+         * literal output.
+         */
+        if ($name === 'php') {
+            $end = strpos($content, '@endphp', $after);
+            if ($end === false) {
+                throw new RuntimeException("Unclosed @php block opened on line {$line}.");
+            }
+
+            $tokens[] = [
+                'type' => 'php',
+                'code' => substr($content, $after, $end - $after),
+                'line' => $line,
+            ];
+
+            return $end + strlen('@endphp');
+        }
+
+        if ($name === 'endphp') {
+            throw new RuntimeException("@endphp without a matching @php on line {$line}.");
+        }
+
+        $cursor = $after;
+        while ($cursor < strlen($content) && ($content[$cursor] === ' ' || $content[$cursor] === "\t")) {
+            $cursor++;
+        }
+
+        $arguments = null;
+        $end = $after;
+
+        if ($cursor < strlen($content) && $content[$cursor] === '(') {
+            $closing = $this->matchParenthesis($content, $cursor, $line, $name);
+            $arguments = trim(substr($content, $cursor + 1, $closing - $cursor - 1));
+            $end = $closing + 1;
+        }
+
+        if ($arguments === null && in_array($name, self::REQUIRE_ARGUMENTS, true)) {
+            throw new RuntimeException("@{$name} requires arguments on line {$line}.");
+        }
+
+        if ($arguments !== null && in_array($name, self::REJECT_ARGUMENTS, true)) {
+            throw new RuntimeException("@{$name} does not take arguments on line {$line}.");
+        }
+
+        $tokens[] = [
+            'type' => 'directive',
+            'name' => $name,
+            'args' => $arguments ?? '',
+            'line' => $line,
+        ];
+
+        return $end;
+    }
+
+    /**
+     * Find the parenthesis closing the one at the given offset.
+     *
+     * Nesting and quoted strings are both tracked, so "@if(count($a) > 0)" and
+     * "@include('a(b)')" are read correctly. A regular expression stopping at
+     * the first ")" truncated both.
+     *
+     * @param string $content The template source
+     * @param int $open The offset of the opening parenthesis
+     * @param int $line The line the directive starts on
+     * @param string $name The directive name, for error messages
+     * @return int The offset of the matching closing parenthesis
+     * @throws RuntimeException If the parenthesis is never closed
+     */
+    private function matchParenthesis(string $content, int $open, int $line, string $name): int
+    {
+        $depth = 0;
+        $length = strlen($content);
+        $quote = null;
+
+        for ($i = $open; $i < $length; $i++) {
+            $character = $content[$i];
+
+            if ($quote !== null) {
+                if ($character === '\\') {
+                    $i++;
+
+                    continue;
+                }
+
+                if ($character === $quote) {
+                    $quote = null;
+                }
+
+                continue;
+            }
+
+            if ($character === '\'' || $character === '"') {
+                $quote = $character;
+
+                continue;
+            }
+
+            if ($character === '(') {
+                $depth++;
+
+                continue;
+            }
+
+            if ($character === ')') {
+                $depth--;
+
+                if ($depth === 0) {
+                    return $i;
+                }
+            }
+        }
+
+        throw new RuntimeException("Unclosed argument list for @{$name} on line {$line}.");
+    }
+
+    /**
+     * Split an output expression into its base expression and filter chain.
+     *
+     * The "|" separating filters is distinguished from PHP's bitwise or by
+     * only splitting at depth zero and outside quotes, so "{{ $a | upper }}"
+     * yields a filter while "{{ $flags | MASK }}" is left as one expression
+     * when it appears inside parentheses.
+     *
+     * @param string $expression The full expression
+     * @return array{expression: string, filters: array<int, array{name: string, args: string}>}
      */
     public function extractFilters(string $expression): array
     {
-        $parts = array_map('trim', explode('|', $expression));
-        $expr = array_shift($parts);
+        $parts = [];
+        $current = '';
+        $depth = 0;
+        $quote = null;
+        $length = strlen($expression);
+
+        for ($i = 0; $i < $length; $i++) {
+            $character = $expression[$i];
+
+            if ($quote !== null) {
+                $current .= $character;
+
+                if ($character === '\\' && $i + 1 < $length) {
+                    $current .= $expression[++$i];
+
+                    continue;
+                }
+
+                if ($character === $quote) {
+                    $quote = null;
+                }
+
+                continue;
+            }
+
+            if ($character === '\'' || $character === '"') {
+                $quote = $character;
+                $current .= $character;
+
+                continue;
+            }
+
+            if ($character === '(' || $character === '[') {
+                $depth++;
+            } elseif ($character === ')' || $character === ']') {
+                $depth--;
+            }
+
+            /*
+             * "||" is the boolean operator, never a filter separator.
+             */
+            if (
+                $character === '|'
+                && $depth === 0
+                && ($expression[$i + 1] ?? '') !== '|'
+                && ($expression[$i - 1] ?? '') !== '|'
+            ) {
+                $parts[] = $current;
+                $current = '';
+
+                continue;
+            }
+
+            $current .= $character;
+        }
+
+        $parts[] = $current;
+        $parts = array_map('trim', $parts);
+
+        $base = array_shift($parts);
         $filters = [];
 
         foreach ($parts as $filter) {
-            if (preg_match('/(\w+)(?:\(([^)]*)\))?/', $filter, $m)) {
-                $filters[] = [
-                    'name' => $m[1],
-                    'args' => $m[2] ?? '',
-                ];
+            if ($filter === '') {
+                continue;
             }
+
+            if (preg_match('/^([A-Za-z_][A-Za-z0-9_]*)\s*(?:\((.*)\))?$/s', $filter, $matches) !== 1) {
+                throw new RuntimeException("Invalid filter syntax: \"{$filter}\".");
+            }
+
+            $filters[] = [
+                'name' => $matches[1],
+                'args' => trim($matches[2] ?? ''),
+            ];
         }
 
         return [
-            'expression' => $expr,
+            'expression' => $base,
             'filters' => $filters,
         ];
-    }
-
-    /**
-     * Validate directive syntax.
-     *
-     * @param string $directive The directive name
-     * @param string $args The directive arguments
-     * @return bool
-     */
-    public function validateDirective(string $directive, string $args): bool
-    {
-        $validDirectives = [
-            'if', 'elseif', 'else', 'endif',
-            'foreach', 'endforeach',
-            'for', 'endfor',
-            'while', 'endwhile',
-            'extends', 'block', 'endblock',
-            'include', 'includeWhen',
-            'component',
-            'use',
-        ];
-
-        return in_array($directive, $validDirectives);
     }
 }

@@ -18,8 +18,8 @@ final class Cache
     {
         $this->cacheDir = $cacheDir ?: sys_get_temp_dir() . '/sfht-cache';
 
-        if (!is_dir($this->cacheDir)) {
-            mkdir($this->cacheDir, 0755, true);
+        if (!is_dir($this->cacheDir) && !mkdir($this->cacheDir, 0755, true) && !is_dir($this->cacheDir)) {
+            throw new \RuntimeException("Cannot create template cache directory: {$this->cacheDir}");
         }
     }
 
@@ -42,6 +42,17 @@ final class Cache
      */
     public function getCachePath(string $path): string
     {
+        return $this->compiledPath($path);
+    }
+
+    /**
+     * Get the path of the compiled file for a template.
+     *
+     * @param string $path The template file path
+     * @return string The compiled file path
+     */
+    public function compiledPath(string $path): string
+    {
         return $this->cacheDir . '/' . $this->getCacheKey($path) . '.php';
     }
 
@@ -63,6 +74,13 @@ final class Cache
             return false;
         }
 
+        /*
+         * filemtime() has one-second resolution, so a template edited in the
+         * same second the cache was written compares equal. Treating equal as
+         * stale forces a recompile on the next request, which is the safe
+         * direction: serving a stale template is a bug, recompiling once more
+         * than needed is not.
+         */
         return filemtime($cachePath) > filemtime($templatePath);
     }
 
@@ -75,9 +93,35 @@ final class Cache
      */
     public function store(string $templatePath, string $compiled): bool
     {
-        $cachePath = $this->getCachePath($templatePath);
+        $cachePath = $this->compiledPath($templatePath);
 
-        return file_put_contents($cachePath, $compiled) !== false;
+        /*
+         * Written to a temporary file and renamed into place. rename() is
+         * atomic on the same filesystem, so a concurrent request either
+         * includes the previous complete file or the new complete one, never
+         * a half-written file that would be a PHP parse error.
+         */
+        $temporary = $cachePath . '.' . bin2hex(random_bytes(8)) . '.tmp';
+
+        if (file_put_contents($temporary, $compiled, LOCK_EX) === false) {
+            return false;
+        }
+
+        if (!rename($temporary, $cachePath)) {
+            @unlink($temporary);
+
+            return false;
+        }
+
+        /*
+         * The compiled file is include()d, so OPcache may be holding the
+         * previous version's opcodes for this exact path.
+         */
+        if (function_exists('opcache_invalidate')) {
+            opcache_invalidate($cachePath, true);
+        }
+
+        return true;
     }
 
     /**
@@ -107,6 +151,10 @@ final class Cache
         $files = glob($this->cacheDir . '/*.php');
 
         foreach ($files as $file) {
+            if (function_exists('opcache_invalidate')) {
+                opcache_invalidate($file, true);
+            }
+
             unlink($file);
         }
 
@@ -121,9 +169,13 @@ final class Cache
      */
     public function clearFor(string $templatePath): bool
     {
-        $cachePath = $this->getCachePath($templatePath);
+        $cachePath = $this->compiledPath($templatePath);
 
         if (is_file($cachePath)) {
+            if (function_exists('opcache_invalidate')) {
+                opcache_invalidate($cachePath, true);
+            }
+
             return unlink($cachePath);
         }
 

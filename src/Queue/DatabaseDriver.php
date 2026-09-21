@@ -1,6 +1,6 @@
 <?php
 
-namespace SfPhp\Queue;
+namespace SfphpProject\src\Queue;
 
 use SfphpProject\src\Database;
 
@@ -9,13 +9,13 @@ class DatabaseDriver implements Queue
     protected string $table = 'jobs';
     protected string $failedTable = 'failed_jobs';
 
-    public function __construct()
-    {
-        $this->ensureTables();
-    }
+    private bool $tablesEnsured = false;
+
 
     public function push(Job $job, ?int $delay = null): string
     {
+        $this->ensureTables();
+
         $id = uniqid('job_', true);
         $delay = $delay ?? $job->getDelay();
         $availableAt = $delay ? time() + $delay : time();
@@ -38,8 +38,10 @@ class DatabaseDriver implements Queue
 
     public function pop(): ?Job
     {
+        $this->ensureTables();
+
         $job = Database::table($this->table)
-            ->where('reserved_at', null)
+            ->whereNull('reserved_at')
             ->where('available_at', '<=', time())
             ->orderBy('created_at', 'asc')
             ->first();
@@ -63,6 +65,8 @@ class DatabaseDriver implements Queue
 
     public function failed(Job $job, \Throwable $exception): void
     {
+        $this->ensureTables();
+
         Database::table($this->failedTable)->insert([
             'uuid' => $job->getId(),
             'connection' => 'database',
@@ -117,12 +121,16 @@ class DatabaseDriver implements Queue
 
     public function flush(): void
     {
+        $this->ensureTables();
+
         Database::table($this->table)->delete();
         Database::table($this->failedTable)->delete();
     }
 
     public function size(): int
     {
+        $this->ensureTables();
+
         return Database::table($this->table)->count();
     }
 
@@ -157,7 +165,11 @@ class DatabaseDriver implements Queue
 
     protected function ensureTables(): void
     {
-        $schema = new \SfphpProject\src\Migrations\Schema();
+        if ($this->tablesEnsured) {
+            return;
+        }
+
+        $schema = new \SfphpProject\src\Migrations\Schema(Database::connect());
 
         if (!$schema->hasTable($this->table)) {
             $schema->create($this->table, function (\SfphpProject\src\Migrations\Blueprint $table): void {
@@ -182,5 +194,27 @@ class DatabaseDriver implements Queue
                 $table->timestamp('failed_at');
             });
         }
+
+        $this->tablesEnsured = true;
+    }
+
+    /**
+     * List the jobs that exhausted their retries.
+     *
+     * @return array<int, array{id: string, exception: string, failed_at: int}>
+     */
+    public function failedJobs(): array
+    {
+        $this->ensureTables();
+
+        $rows = Database::table($this->failedTable)
+            ->orderBy('failed_at', 'desc')
+            ->get();
+
+        return array_map(static fn (array $row): array => [
+            'id' => (string) $row['uuid'],
+            'exception' => (string) $row['exception'],
+            'failed_at' => (int) $row['failed_at'],
+        ], $rows);
     }
 }

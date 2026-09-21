@@ -1514,3 +1514,1271 @@ tr:hover {
 .w-\[33\%\] { width: 33%; }
 .w-\[66\%\] { width: 66%; }
 .w-\[75\%\] { width: 75%; }
+
+/* State variants - hover */
+.hover\:text-slate-50:hover { color: #f8fafc; }
+.hover\:bg-slate-50:hover { background-color: #f8fafc; }
+.hover\:border-slate-50:hover { border-color: #f8fafc; }
+.hover\:text-slate-100:hover { color: #f1f5f9; }
+.hover\:bg-slate-100:hover { background-color: #f1f5f9; }
+.hover\:border-slate-100:hover { border-color: #f1f5f9; }
+.hover\:text-slate-200:hover { color: #e2e8f0; }
+.hover\:bg-slate-200:hover { background-color: #e2e8f0; }
+.hover\:border-slate-200:hover { border-color: #e2e8f0; }
+.hover\:text-slate-300:hover { color: #cbd5e1; }
+.hover\:bg-slate-300:hover { background-color: #cbd5e1; }
+.hover\:border-slate-300:hover { border-color: #cbd5e1; }
+.hover\:text-slate-400:hover { color: #94a3b8; }
+.hover\:bg-slate-400:hover { background-color: #94a3b8; }
+.hover\:border-slate-400:hover { border-color: #94a3b8; }
+.hover\:text-slate-500:hover { color: #64748b; }
+.hover\:bg-slate-500:hover { background-color: #64748b; }
+.hover\:border-slate-500:hover { border-color: #64748b; }
+.hover\:text-slate-600:hover { color: #475569; }
+.hover\:bg-slate-600:hover { background-color: #475569; }
+.hover\:border-slate-600:hover { border-color: #475569; }
+.hover\:text-slate-700:hover { color: #334155; }
+.hover\:bg-slate-700:hover { background-color: #334155; }
+.hover\:border-slate-700:hover { border-color: #334155; }
+.hover\:text-slate-800:hover { color: #1e293b; }
+.hover\:bg-slate-800:hover { background-color: #1e293b; }
+.hover\:border-slate-800:hover { border-color: #1e293b; }
+.hover\:text-slate-900:hover { color: #0f172a; }
+.hover\:bg-slate-900:hover { background-color: #0f172a; }
+.hover\:border-slate-900:hover { border-color: #0f172a; }
+.hover\:text-gray-50:hover { color: #f9fafb; }
+.hover\:bg-gray-50:hover { background-color: #f9fafb; }
+.hover\:border-gray-50:hover { border-color: #f9fafb; }
+.hover\:text-gray-100:hover { color: #f3f4f6; }
+.hover\:bg-gray-100:hover { background-color: #f3f4f6; }
+.hover\:border-gray-100:hover { border-color: #f3f4f6; }
+.hover\:text-gray-200:hover { color: #e5e7eb; }
+.hover\:bg-gray-200:hover { background-color: #e5e7eb; }
+.hover\:border-gray-200:hover { border-color: #e5e7eb; }
+.hover\:text-gray-300:hover { color: #d1d5db; }
+.hover\:bg-gray-300:hover { background-color: #d1d5db; }
+.hover\:border-gray-300:hover { border-color: #d1d5db; }
+.hover\:text-gray-400:hover { color: #9ca3af; }
+.hover\:bg-gray-400:hover { background-color: #9ca3af; }
+.hover\:border-gray-400:hover { border-color: #9ca3af; }
+.hover\:text-gray-500:hover { color: #6b7280; }
+.hover\:bg-gray-500:hover { background-color: #6b7280; }
+.hover\:border-gray-500:hover { border-color: #6b7280; }
+.hover\:text-gray-600:hover { color: #4b5563; }
+.hover\:bg-gray-600:hover { background-color: #4b5563; }
+.hover\:border-gray-600:hover { border-color: #4b5563; }
+.hover\:text-gray-700:hover { color: #374151; }
+.hover\:bg-gray-700:hover { background-color: #374151; }
+.hover\:border-gray-700:hover { border-color: #374151; }
+.hover\:text-gray-800:hover { color: #1f2937; }
+.hover\:bg-gray-800:hover { background-color: #1f2937; }
+.hover\:border-gray-800:hover { border-color: #1f2937; }
+.hover\:text-gray-900:hover { color: #111827; }
+.hover\:bg-gray-900:hover { background-color: #111827; }
+.hover\:border-gray-900:hover { border-color: #111827; }
+.hover\:text-zinc-50:hover { color: #fafafa; }
+.hover\:bg-zinc-50:hover { background-color: #fafafa; }
+.hover\:border-zinc-50:hover { border-color: #fafafa; }
+.hover\:text-zinc-100:hover { color: #f4f4f5; }
+.hover\:bg-zinc-100:hover { background-color: #f4f4f5; }
+.hover\:border-zinc-100:hover { border-color: #f4f4f5; }
+.hover\:text-zinc-200:hover { color: #e4e4e7; }
+.hover\:bg-zinc-200:hover { background-color: #e4e4e7; }
+.hover\:border-zinc-200:hover { border-color: #e4e4e7; }
+.hover\:text-zinc-300:hover { color: #d4d4d8; }
+.hover\:bg-zinc-300:hover { background-color: #d4d4d8; }
+.hover\:border-zinc-300:hover { border-color: #d4d4d8; }
+.hover\:text-zinc-400:hover { color: #a1a1a6; }
+.hover\:bg-zinc-400:hover { background-color: #a1a1a6; }
+.hover\:border-zinc-400:hover { border-color: #a1a1a6; }
+.hover\:text-zinc-500:hover { color: #71717a; }
+.hover\:bg-zinc-500:hover { background-color: #71717a; }
+.hover\:border-zinc-500:hover { border-color: #71717a; }
+.hover\:text-zinc-600:hover { color: #52525b; }
+.hover\:bg-zinc-600:hover { background-color: #52525b; }
+.hover\:border-zinc-600:hover { border-color: #52525b; }
+.hover\:text-zinc-700:hover { color: #3f3f46; }
+.hover\:bg-zinc-700:hover { background-color: #3f3f46; }
+.hover\:border-zinc-700:hover { border-color: #3f3f46; }
+.hover\:text-zinc-800:hover { color: #27272a; }
+.hover\:bg-zinc-800:hover { background-color: #27272a; }
+.hover\:border-zinc-800:hover { border-color: #27272a; }
+.hover\:text-zinc-900:hover { color: #18181b; }
+.hover\:bg-zinc-900:hover { background-color: #18181b; }
+.hover\:border-zinc-900:hover { border-color: #18181b; }
+.hover\:text-blue-50:hover { color: #eff6ff; }
+.hover\:bg-blue-50:hover { background-color: #eff6ff; }
+.hover\:border-blue-50:hover { border-color: #eff6ff; }
+.hover\:text-blue-100:hover { color: #dbeafe; }
+.hover\:bg-blue-100:hover { background-color: #dbeafe; }
+.hover\:border-blue-100:hover { border-color: #dbeafe; }
+.hover\:text-blue-200:hover { color: #bfdbfe; }
+.hover\:bg-blue-200:hover { background-color: #bfdbfe; }
+.hover\:border-blue-200:hover { border-color: #bfdbfe; }
+.hover\:text-blue-300:hover { color: #93c5fd; }
+.hover\:bg-blue-300:hover { background-color: #93c5fd; }
+.hover\:border-blue-300:hover { border-color: #93c5fd; }
+.hover\:text-blue-400:hover { color: #60a5fa; }
+.hover\:bg-blue-400:hover { background-color: #60a5fa; }
+.hover\:border-blue-400:hover { border-color: #60a5fa; }
+.hover\:text-blue-500:hover { color: #3b82f6; }
+.hover\:bg-blue-500:hover { background-color: #3b82f6; }
+.hover\:border-blue-500:hover { border-color: #3b82f6; }
+.hover\:text-blue-600:hover { color: #2563eb; }
+.hover\:bg-blue-600:hover { background-color: #2563eb; }
+.hover\:border-blue-600:hover { border-color: #2563eb; }
+.hover\:text-blue-700:hover { color: #1d4ed8; }
+.hover\:bg-blue-700:hover { background-color: #1d4ed8; }
+.hover\:border-blue-700:hover { border-color: #1d4ed8; }
+.hover\:text-blue-800:hover { color: #1e40af; }
+.hover\:bg-blue-800:hover { background-color: #1e40af; }
+.hover\:border-blue-800:hover { border-color: #1e40af; }
+.hover\:text-blue-900:hover { color: #1e3a8a; }
+.hover\:bg-blue-900:hover { background-color: #1e3a8a; }
+.hover\:border-blue-900:hover { border-color: #1e3a8a; }
+.hover\:text-indigo-50:hover { color: #eef2ff; }
+.hover\:bg-indigo-50:hover { background-color: #eef2ff; }
+.hover\:border-indigo-50:hover { border-color: #eef2ff; }
+.hover\:text-indigo-100:hover { color: #e0e7ff; }
+.hover\:bg-indigo-100:hover { background-color: #e0e7ff; }
+.hover\:border-indigo-100:hover { border-color: #e0e7ff; }
+.hover\:text-indigo-200:hover { color: #c7d2fe; }
+.hover\:bg-indigo-200:hover { background-color: #c7d2fe; }
+.hover\:border-indigo-200:hover { border-color: #c7d2fe; }
+.hover\:text-indigo-300:hover { color: #a5b4fc; }
+.hover\:bg-indigo-300:hover { background-color: #a5b4fc; }
+.hover\:border-indigo-300:hover { border-color: #a5b4fc; }
+.hover\:text-indigo-400:hover { color: #818cf8; }
+.hover\:bg-indigo-400:hover { background-color: #818cf8; }
+.hover\:border-indigo-400:hover { border-color: #818cf8; }
+.hover\:text-indigo-500:hover { color: #6366f1; }
+.hover\:bg-indigo-500:hover { background-color: #6366f1; }
+.hover\:border-indigo-500:hover { border-color: #6366f1; }
+.hover\:text-indigo-600:hover { color: #4f46e5; }
+.hover\:bg-indigo-600:hover { background-color: #4f46e5; }
+.hover\:border-indigo-600:hover { border-color: #4f46e5; }
+.hover\:text-indigo-700:hover { color: #4338ca; }
+.hover\:bg-indigo-700:hover { background-color: #4338ca; }
+.hover\:border-indigo-700:hover { border-color: #4338ca; }
+.hover\:text-indigo-800:hover { color: #3730a3; }
+.hover\:bg-indigo-800:hover { background-color: #3730a3; }
+.hover\:border-indigo-800:hover { border-color: #3730a3; }
+.hover\:text-indigo-900:hover { color: #312e81; }
+.hover\:bg-indigo-900:hover { background-color: #312e81; }
+.hover\:border-indigo-900:hover { border-color: #312e81; }
+.hover\:text-purple-50:hover { color: #faf5ff; }
+.hover\:bg-purple-50:hover { background-color: #faf5ff; }
+.hover\:border-purple-50:hover { border-color: #faf5ff; }
+.hover\:text-purple-100:hover { color: #f3e8ff; }
+.hover\:bg-purple-100:hover { background-color: #f3e8ff; }
+.hover\:border-purple-100:hover { border-color: #f3e8ff; }
+.hover\:text-purple-200:hover { color: #e9d5ff; }
+.hover\:bg-purple-200:hover { background-color: #e9d5ff; }
+.hover\:border-purple-200:hover { border-color: #e9d5ff; }
+.hover\:text-purple-300:hover { color: #d8b4fe; }
+.hover\:bg-purple-300:hover { background-color: #d8b4fe; }
+.hover\:border-purple-300:hover { border-color: #d8b4fe; }
+.hover\:text-purple-400:hover { color: #c084fc; }
+.hover\:bg-purple-400:hover { background-color: #c084fc; }
+.hover\:border-purple-400:hover { border-color: #c084fc; }
+.hover\:text-purple-500:hover { color: #a855f7; }
+.hover\:bg-purple-500:hover { background-color: #a855f7; }
+.hover\:border-purple-500:hover { border-color: #a855f7; }
+.hover\:text-purple-600:hover { color: #9333ea; }
+.hover\:bg-purple-600:hover { background-color: #9333ea; }
+.hover\:border-purple-600:hover { border-color: #9333ea; }
+.hover\:text-purple-700:hover { color: #7e22ce; }
+.hover\:bg-purple-700:hover { background-color: #7e22ce; }
+.hover\:border-purple-700:hover { border-color: #7e22ce; }
+.hover\:text-purple-800:hover { color: #6b21a8; }
+.hover\:bg-purple-800:hover { background-color: #6b21a8; }
+.hover\:border-purple-800:hover { border-color: #6b21a8; }
+.hover\:text-purple-900:hover { color: #581c87; }
+.hover\:bg-purple-900:hover { background-color: #581c87; }
+.hover\:border-purple-900:hover { border-color: #581c87; }
+.hover\:text-pink-50:hover { color: #fdf2f8; }
+.hover\:bg-pink-50:hover { background-color: #fdf2f8; }
+.hover\:border-pink-50:hover { border-color: #fdf2f8; }
+.hover\:text-pink-100:hover { color: #fce7f3; }
+.hover\:bg-pink-100:hover { background-color: #fce7f3; }
+.hover\:border-pink-100:hover { border-color: #fce7f3; }
+.hover\:text-pink-200:hover { color: #fbcfe8; }
+.hover\:bg-pink-200:hover { background-color: #fbcfe8; }
+.hover\:border-pink-200:hover { border-color: #fbcfe8; }
+.hover\:text-pink-300:hover { color: #f8b4d9; }
+.hover\:bg-pink-300:hover { background-color: #f8b4d9; }
+.hover\:border-pink-300:hover { border-color: #f8b4d9; }
+.hover\:text-pink-400:hover { color: #f472b6; }
+.hover\:bg-pink-400:hover { background-color: #f472b6; }
+.hover\:border-pink-400:hover { border-color: #f472b6; }
+.hover\:text-pink-500:hover { color: #ec4899; }
+.hover\:bg-pink-500:hover { background-color: #ec4899; }
+.hover\:border-pink-500:hover { border-color: #ec4899; }
+.hover\:text-pink-600:hover { color: #db2777; }
+.hover\:bg-pink-600:hover { background-color: #db2777; }
+.hover\:border-pink-600:hover { border-color: #db2777; }
+.hover\:text-pink-700:hover { color: #be185d; }
+.hover\:bg-pink-700:hover { background-color: #be185d; }
+.hover\:border-pink-700:hover { border-color: #be185d; }
+.hover\:text-pink-800:hover { color: #9d174d; }
+.hover\:bg-pink-800:hover { background-color: #9d174d; }
+.hover\:border-pink-800:hover { border-color: #9d174d; }
+.hover\:text-pink-900:hover { color: #831843; }
+.hover\:bg-pink-900:hover { background-color: #831843; }
+.hover\:border-pink-900:hover { border-color: #831843; }
+.hover\:text-red-50:hover { color: #fef2f2; }
+.hover\:bg-red-50:hover { background-color: #fef2f2; }
+.hover\:border-red-50:hover { border-color: #fef2f2; }
+.hover\:text-red-100:hover { color: #fee2e2; }
+.hover\:bg-red-100:hover { background-color: #fee2e2; }
+.hover\:border-red-100:hover { border-color: #fee2e2; }
+.hover\:text-red-200:hover { color: #fecaca; }
+.hover\:bg-red-200:hover { background-color: #fecaca; }
+.hover\:border-red-200:hover { border-color: #fecaca; }
+.hover\:text-red-300:hover { color: #fca5a5; }
+.hover\:bg-red-300:hover { background-color: #fca5a5; }
+.hover\:border-red-300:hover { border-color: #fca5a5; }
+.hover\:text-red-400:hover { color: #f87171; }
+.hover\:bg-red-400:hover { background-color: #f87171; }
+.hover\:border-red-400:hover { border-color: #f87171; }
+.hover\:text-red-500:hover { color: #ef4444; }
+.hover\:bg-red-500:hover { background-color: #ef4444; }
+.hover\:border-red-500:hover { border-color: #ef4444; }
+.hover\:text-red-600:hover { color: #dc2626; }
+.hover\:bg-red-600:hover { background-color: #dc2626; }
+.hover\:border-red-600:hover { border-color: #dc2626; }
+.hover\:text-red-700:hover { color: #b91c1c; }
+.hover\:bg-red-700:hover { background-color: #b91c1c; }
+.hover\:border-red-700:hover { border-color: #b91c1c; }
+.hover\:text-red-800:hover { color: #991b1b; }
+.hover\:bg-red-800:hover { background-color: #991b1b; }
+.hover\:border-red-800:hover { border-color: #991b1b; }
+.hover\:text-red-900:hover { color: #7f1d1d; }
+.hover\:bg-red-900:hover { background-color: #7f1d1d; }
+.hover\:border-red-900:hover { border-color: #7f1d1d; }
+.hover\:text-orange-50:hover { color: #fff7ed; }
+.hover\:bg-orange-50:hover { background-color: #fff7ed; }
+.hover\:border-orange-50:hover { border-color: #fff7ed; }
+.hover\:text-orange-100:hover { color: #fed7aa; }
+.hover\:bg-orange-100:hover { background-color: #fed7aa; }
+.hover\:border-orange-100:hover { border-color: #fed7aa; }
+.hover\:text-orange-200:hover { color: #fdba74; }
+.hover\:bg-orange-200:hover { background-color: #fdba74; }
+.hover\:border-orange-200:hover { border-color: #fdba74; }
+.hover\:text-orange-300:hover { color: #fb923c; }
+.hover\:bg-orange-300:hover { background-color: #fb923c; }
+.hover\:border-orange-300:hover { border-color: #fb923c; }
+.hover\:text-orange-400:hover { color: #f97316; }
+.hover\:bg-orange-400:hover { background-color: #f97316; }
+.hover\:border-orange-400:hover { border-color: #f97316; }
+.hover\:text-orange-500:hover { color: #ea580c; }
+.hover\:bg-orange-500:hover { background-color: #ea580c; }
+.hover\:border-orange-500:hover { border-color: #ea580c; }
+.hover\:text-orange-600:hover { color: #c2410c; }
+.hover\:bg-orange-600:hover { background-color: #c2410c; }
+.hover\:border-orange-600:hover { border-color: #c2410c; }
+.hover\:text-orange-700:hover { color: #9a3412; }
+.hover\:bg-orange-700:hover { background-color: #9a3412; }
+.hover\:border-orange-700:hover { border-color: #9a3412; }
+.hover\:text-orange-800:hover { color: #7c2d12; }
+.hover\:bg-orange-800:hover { background-color: #7c2d12; }
+.hover\:border-orange-800:hover { border-color: #7c2d12; }
+.hover\:text-orange-900:hover { color: #54170f; }
+.hover\:bg-orange-900:hover { background-color: #54170f; }
+.hover\:border-orange-900:hover { border-color: #54170f; }
+.hover\:text-amber-50:hover { color: #fffbeb; }
+.hover\:bg-amber-50:hover { background-color: #fffbeb; }
+.hover\:border-amber-50:hover { border-color: #fffbeb; }
+.hover\:text-amber-100:hover { color: #fef3c7; }
+.hover\:bg-amber-100:hover { background-color: #fef3c7; }
+.hover\:border-amber-100:hover { border-color: #fef3c7; }
+.hover\:text-amber-200:hover { color: #fde68a; }
+.hover\:bg-amber-200:hover { background-color: #fde68a; }
+.hover\:border-amber-200:hover { border-color: #fde68a; }
+.hover\:text-amber-300:hover { color: #fcd34d; }
+.hover\:bg-amber-300:hover { background-color: #fcd34d; }
+.hover\:border-amber-300:hover { border-color: #fcd34d; }
+.hover\:text-amber-400:hover { color: #fbbf24; }
+.hover\:bg-amber-400:hover { background-color: #fbbf24; }
+.hover\:border-amber-400:hover { border-color: #fbbf24; }
+.hover\:text-amber-500:hover { color: #f59e0b; }
+.hover\:bg-amber-500:hover { background-color: #f59e0b; }
+.hover\:border-amber-500:hover { border-color: #f59e0b; }
+.hover\:text-amber-600:hover { color: #d97706; }
+.hover\:bg-amber-600:hover { background-color: #d97706; }
+.hover\:border-amber-600:hover { border-color: #d97706; }
+.hover\:text-amber-700:hover { color: #b45309; }
+.hover\:bg-amber-700:hover { background-color: #b45309; }
+.hover\:border-amber-700:hover { border-color: #b45309; }
+.hover\:text-amber-800:hover { color: #92400e; }
+.hover\:bg-amber-800:hover { background-color: #92400e; }
+.hover\:border-amber-800:hover { border-color: #92400e; }
+.hover\:text-amber-900:hover { color: #78350f; }
+.hover\:bg-amber-900:hover { background-color: #78350f; }
+.hover\:border-amber-900:hover { border-color: #78350f; }
+.hover\:text-yellow-50:hover { color: #fefce8; }
+.hover\:bg-yellow-50:hover { background-color: #fefce8; }
+.hover\:border-yellow-50:hover { border-color: #fefce8; }
+.hover\:text-yellow-100:hover { color: #fef9c3; }
+.hover\:bg-yellow-100:hover { background-color: #fef9c3; }
+.hover\:border-yellow-100:hover { border-color: #fef9c3; }
+.hover\:text-yellow-200:hover { color: #fef08a; }
+.hover\:bg-yellow-200:hover { background-color: #fef08a; }
+.hover\:border-yellow-200:hover { border-color: #fef08a; }
+.hover\:text-yellow-300:hover { color: #fde047; }
+.hover\:bg-yellow-300:hover { background-color: #fde047; }
+.hover\:border-yellow-300:hover { border-color: #fde047; }
+.hover\:text-yellow-400:hover { color: #facc15; }
+.hover\:bg-yellow-400:hover { background-color: #facc15; }
+.hover\:border-yellow-400:hover { border-color: #facc15; }
+.hover\:text-yellow-500:hover { color: #eab308; }
+.hover\:bg-yellow-500:hover { background-color: #eab308; }
+.hover\:border-yellow-500:hover { border-color: #eab308; }
+.hover\:text-yellow-600:hover { color: #ca8a04; }
+.hover\:bg-yellow-600:hover { background-color: #ca8a04; }
+.hover\:border-yellow-600:hover { border-color: #ca8a04; }
+.hover\:text-yellow-700:hover { color: #a16207; }
+.hover\:bg-yellow-700:hover { background-color: #a16207; }
+.hover\:border-yellow-700:hover { border-color: #a16207; }
+.hover\:text-yellow-800:hover { color: #854d0e; }
+.hover\:bg-yellow-800:hover { background-color: #854d0e; }
+.hover\:border-yellow-800:hover { border-color: #854d0e; }
+.hover\:text-yellow-900:hover { color: #713f12; }
+.hover\:bg-yellow-900:hover { background-color: #713f12; }
+.hover\:border-yellow-900:hover { border-color: #713f12; }
+.hover\:text-lime-50:hover { color: #f7fee7; }
+.hover\:bg-lime-50:hover { background-color: #f7fee7; }
+.hover\:border-lime-50:hover { border-color: #f7fee7; }
+.hover\:text-lime-100:hover { color: #ecfdf5; }
+.hover\:bg-lime-100:hover { background-color: #ecfdf5; }
+.hover\:border-lime-100:hover { border-color: #ecfdf5; }
+.hover\:text-lime-200:hover { color: #d1fae5; }
+.hover\:bg-lime-200:hover { background-color: #d1fae5; }
+.hover\:border-lime-200:hover { border-color: #d1fae5; }
+.hover\:text-lime-300:hover { color: #a7f3d0; }
+.hover\:bg-lime-300:hover { background-color: #a7f3d0; }
+.hover\:border-lime-300:hover { border-color: #a7f3d0; }
+.hover\:text-lime-400:hover { color: #6ee7b7; }
+.hover\:bg-lime-400:hover { background-color: #6ee7b7; }
+.hover\:border-lime-400:hover { border-color: #6ee7b7; }
+.hover\:text-lime-500:hover { color: #10b981; }
+.hover\:bg-lime-500:hover { background-color: #10b981; }
+.hover\:border-lime-500:hover { border-color: #10b981; }
+.hover\:text-lime-600:hover { color: #059669; }
+.hover\:bg-lime-600:hover { background-color: #059669; }
+.hover\:border-lime-600:hover { border-color: #059669; }
+.hover\:text-lime-700:hover { color: #047857; }
+.hover\:bg-lime-700:hover { background-color: #047857; }
+.hover\:border-lime-700:hover { border-color: #047857; }
+.hover\:text-lime-800:hover { color: #065f46; }
+.hover\:bg-lime-800:hover { background-color: #065f46; }
+.hover\:border-lime-800:hover { border-color: #065f46; }
+.hover\:text-lime-900:hover { color: #064e3b; }
+.hover\:bg-lime-900:hover { background-color: #064e3b; }
+.hover\:border-lime-900:hover { border-color: #064e3b; }
+.hover\:text-green-50:hover { color: #f0fdf4; }
+.hover\:bg-green-50:hover { background-color: #f0fdf4; }
+.hover\:border-green-50:hover { border-color: #f0fdf4; }
+.hover\:text-green-100:hover { color: #dcfce7; }
+.hover\:bg-green-100:hover { background-color: #dcfce7; }
+.hover\:border-green-100:hover { border-color: #dcfce7; }
+.hover\:text-green-200:hover { color: #bbf7d0; }
+.hover\:bg-green-200:hover { background-color: #bbf7d0; }
+.hover\:border-green-200:hover { border-color: #bbf7d0; }
+.hover\:text-green-300:hover { color: #86efac; }
+.hover\:bg-green-300:hover { background-color: #86efac; }
+.hover\:border-green-300:hover { border-color: #86efac; }
+.hover\:text-green-400:hover { color: #4ade80; }
+.hover\:bg-green-400:hover { background-color: #4ade80; }
+.hover\:border-green-400:hover { border-color: #4ade80; }
+.hover\:text-green-500:hover { color: #22c55e; }
+.hover\:bg-green-500:hover { background-color: #22c55e; }
+.hover\:border-green-500:hover { border-color: #22c55e; }
+.hover\:text-green-600:hover { color: #16a34a; }
+.hover\:bg-green-600:hover { background-color: #16a34a; }
+.hover\:border-green-600:hover { border-color: #16a34a; }
+.hover\:text-green-700:hover { color: #15803d; }
+.hover\:bg-green-700:hover { background-color: #15803d; }
+.hover\:border-green-700:hover { border-color: #15803d; }
+.hover\:text-green-800:hover { color: #166534; }
+.hover\:bg-green-800:hover { background-color: #166534; }
+.hover\:border-green-800:hover { border-color: #166534; }
+.hover\:text-green-900:hover { color: #145231; }
+.hover\:bg-green-900:hover { background-color: #145231; }
+.hover\:border-green-900:hover { border-color: #145231; }
+.hover\:text-emerald-50:hover { color: #f0fdf4; }
+.hover\:bg-emerald-50:hover { background-color: #f0fdf4; }
+.hover\:border-emerald-50:hover { border-color: #f0fdf4; }
+.hover\:text-emerald-100:hover { color: #dbeafe; }
+.hover\:bg-emerald-100:hover { background-color: #dbeafe; }
+.hover\:border-emerald-100:hover { border-color: #dbeafe; }
+.hover\:text-emerald-200:hover { color: #bfdbfe; }
+.hover\:bg-emerald-200:hover { background-color: #bfdbfe; }
+.hover\:border-emerald-200:hover { border-color: #bfdbfe; }
+.hover\:text-emerald-300:hover { color: #7ee8b7; }
+.hover\:bg-emerald-300:hover { background-color: #7ee8b7; }
+.hover\:border-emerald-300:hover { border-color: #7ee8b7; }
+.hover\:text-emerald-400:hover { color: #2dd4bf; }
+.hover\:bg-emerald-400:hover { background-color: #2dd4bf; }
+.hover\:border-emerald-400:hover { border-color: #2dd4bf; }
+.hover\:text-emerald-500:hover { color: #14b8a6; }
+.hover\:bg-emerald-500:hover { background-color: #14b8a6; }
+.hover\:border-emerald-500:hover { border-color: #14b8a6; }
+.hover\:text-emerald-600:hover { color: #0d9488; }
+.hover\:bg-emerald-600:hover { background-color: #0d9488; }
+.hover\:border-emerald-600:hover { border-color: #0d9488; }
+.hover\:text-emerald-700:hover { color: #0f766e; }
+.hover\:bg-emerald-700:hover { background-color: #0f766e; }
+.hover\:border-emerald-700:hover { border-color: #0f766e; }
+.hover\:text-emerald-800:hover { color: #115e59; }
+.hover\:bg-emerald-800:hover { background-color: #115e59; }
+.hover\:border-emerald-800:hover { border-color: #115e59; }
+.hover\:text-emerald-900:hover { color: #134e4a; }
+.hover\:bg-emerald-900:hover { background-color: #134e4a; }
+.hover\:border-emerald-900:hover { border-color: #134e4a; }
+.hover\:text-teal-50:hover { color: #f0fdfa; }
+.hover\:bg-teal-50:hover { background-color: #f0fdfa; }
+.hover\:border-teal-50:hover { border-color: #f0fdfa; }
+.hover\:text-teal-100:hover { color: #ccfbf1; }
+.hover\:bg-teal-100:hover { background-color: #ccfbf1; }
+.hover\:border-teal-100:hover { border-color: #ccfbf1; }
+.hover\:text-teal-200:hover { color: #99f6e4; }
+.hover\:bg-teal-200:hover { background-color: #99f6e4; }
+.hover\:border-teal-200:hover { border-color: #99f6e4; }
+.hover\:text-teal-300:hover { color: #5eead4; }
+.hover\:bg-teal-300:hover { background-color: #5eead4; }
+.hover\:border-teal-300:hover { border-color: #5eead4; }
+.hover\:text-teal-400:hover { color: #2dd4c4; }
+.hover\:bg-teal-400:hover { background-color: #2dd4c4; }
+.hover\:border-teal-400:hover { border-color: #2dd4c4; }
+.hover\:text-teal-500:hover { color: #14b8a6; }
+.hover\:bg-teal-500:hover { background-color: #14b8a6; }
+.hover\:border-teal-500:hover { border-color: #14b8a6; }
+.hover\:text-teal-600:hover { color: #0d9488; }
+.hover\:bg-teal-600:hover { background-color: #0d9488; }
+.hover\:border-teal-600:hover { border-color: #0d9488; }
+.hover\:text-teal-700:hover { color: #0f766e; }
+.hover\:bg-teal-700:hover { background-color: #0f766e; }
+.hover\:border-teal-700:hover { border-color: #0f766e; }
+.hover\:text-teal-800:hover { color: #115e59; }
+.hover\:bg-teal-800:hover { background-color: #115e59; }
+.hover\:border-teal-800:hover { border-color: #115e59; }
+.hover\:text-teal-900:hover { color: #134e4a; }
+.hover\:bg-teal-900:hover { background-color: #134e4a; }
+.hover\:border-teal-900:hover { border-color: #134e4a; }
+.hover\:text-cyan-50:hover { color: #ecf8ff; }
+.hover\:bg-cyan-50:hover { background-color: #ecf8ff; }
+.hover\:border-cyan-50:hover { border-color: #ecf8ff; }
+.hover\:text-cyan-100:hover { color: #cffafe; }
+.hover\:bg-cyan-100:hover { background-color: #cffafe; }
+.hover\:border-cyan-100:hover { border-color: #cffafe; }
+.hover\:text-cyan-200:hover { color: #a5f3fc; }
+.hover\:bg-cyan-200:hover { background-color: #a5f3fc; }
+.hover\:border-cyan-200:hover { border-color: #a5f3fc; }
+.hover\:text-cyan-300:hover { color: #67e8f9; }
+.hover\:bg-cyan-300:hover { background-color: #67e8f9; }
+.hover\:border-cyan-300:hover { border-color: #67e8f9; }
+.hover\:text-cyan-400:hover { color: #22d3ee; }
+.hover\:bg-cyan-400:hover { background-color: #22d3ee; }
+.hover\:border-cyan-400:hover { border-color: #22d3ee; }
+.hover\:text-cyan-500:hover { color: #06b6d4; }
+.hover\:bg-cyan-500:hover { background-color: #06b6d4; }
+.hover\:border-cyan-500:hover { border-color: #06b6d4; }
+.hover\:text-cyan-600:hover { color: #0891b2; }
+.hover\:bg-cyan-600:hover { background-color: #0891b2; }
+.hover\:border-cyan-600:hover { border-color: #0891b2; }
+.hover\:text-cyan-700:hover { color: #0e7490; }
+.hover\:bg-cyan-700:hover { background-color: #0e7490; }
+.hover\:border-cyan-700:hover { border-color: #0e7490; }
+.hover\:text-cyan-800:hover { color: #155e75; }
+.hover\:bg-cyan-800:hover { background-color: #155e75; }
+.hover\:border-cyan-800:hover { border-color: #155e75; }
+.hover\:text-cyan-900:hover { color: #164e63; }
+.hover\:bg-cyan-900:hover { background-color: #164e63; }
+.hover\:border-cyan-900:hover { border-color: #164e63; }
+.hover\:text-sky-50:hover { color: #f0f9ff; }
+.hover\:bg-sky-50:hover { background-color: #f0f9ff; }
+.hover\:border-sky-50:hover { border-color: #f0f9ff; }
+.hover\:text-sky-100:hover { color: #e0f2fe; }
+.hover\:bg-sky-100:hover { background-color: #e0f2fe; }
+.hover\:border-sky-100:hover { border-color: #e0f2fe; }
+.hover\:text-sky-200:hover { color: #bae6fd; }
+.hover\:bg-sky-200:hover { background-color: #bae6fd; }
+.hover\:border-sky-200:hover { border-color: #bae6fd; }
+.hover\:text-sky-300:hover { color: #7dd3fc; }
+.hover\:bg-sky-300:hover { background-color: #7dd3fc; }
+.hover\:border-sky-300:hover { border-color: #7dd3fc; }
+.hover\:text-sky-400:hover { color: #38bdf8; }
+.hover\:bg-sky-400:hover { background-color: #38bdf8; }
+.hover\:border-sky-400:hover { border-color: #38bdf8; }
+.hover\:text-sky-500:hover { color: #0ea5e9; }
+.hover\:bg-sky-500:hover { background-color: #0ea5e9; }
+.hover\:border-sky-500:hover { border-color: #0ea5e9; }
+.hover\:text-sky-600:hover { color: #0284c7; }
+.hover\:bg-sky-600:hover { background-color: #0284c7; }
+.hover\:border-sky-600:hover { border-color: #0284c7; }
+.hover\:text-sky-700:hover { color: #0369a1; }
+.hover\:bg-sky-700:hover { background-color: #0369a1; }
+.hover\:border-sky-700:hover { border-color: #0369a1; }
+.hover\:text-sky-800:hover { color: #075985; }
+.hover\:bg-sky-800:hover { background-color: #075985; }
+.hover\:border-sky-800:hover { border-color: #075985; }
+.hover\:text-sky-900:hover { color: #0c4a6e; }
+.hover\:bg-sky-900:hover { background-color: #0c4a6e; }
+.hover\:border-sky-900:hover { border-color: #0c4a6e; }
+.hover\:text-violet-50:hover { color: #f5f3ff; }
+.hover\:bg-violet-50:hover { background-color: #f5f3ff; }
+.hover\:border-violet-50:hover { border-color: #f5f3ff; }
+.hover\:text-violet-100:hover { color: #ede9fe; }
+.hover\:bg-violet-100:hover { background-color: #ede9fe; }
+.hover\:border-violet-100:hover { border-color: #ede9fe; }
+.hover\:text-violet-200:hover { color: #ddd6fe; }
+.hover\:bg-violet-200:hover { background-color: #ddd6fe; }
+.hover\:border-violet-200:hover { border-color: #ddd6fe; }
+.hover\:text-violet-300:hover { color: #c4b5fd; }
+.hover\:bg-violet-300:hover { background-color: #c4b5fd; }
+.hover\:border-violet-300:hover { border-color: #c4b5fd; }
+.hover\:text-violet-400:hover { color: #a78bfa; }
+.hover\:bg-violet-400:hover { background-color: #a78bfa; }
+.hover\:border-violet-400:hover { border-color: #a78bfa; }
+.hover\:text-violet-500:hover { color: #8b5cf6; }
+.hover\:bg-violet-500:hover { background-color: #8b5cf6; }
+.hover\:border-violet-500:hover { border-color: #8b5cf6; }
+.hover\:text-violet-600:hover { color: #7c3aed; }
+.hover\:bg-violet-600:hover { background-color: #7c3aed; }
+.hover\:border-violet-600:hover { border-color: #7c3aed; }
+.hover\:text-violet-700:hover { color: #6d28d9; }
+.hover\:bg-violet-700:hover { background-color: #6d28d9; }
+.hover\:border-violet-700:hover { border-color: #6d28d9; }
+.hover\:text-violet-800:hover { color: #5b21b6; }
+.hover\:bg-violet-800:hover { background-color: #5b21b6; }
+.hover\:border-violet-800:hover { border-color: #5b21b6; }
+.hover\:text-violet-900:hover { color: #4c1d95; }
+.hover\:bg-violet-900:hover { background-color: #4c1d95; }
+.hover\:border-violet-900:hover { border-color: #4c1d95; }
+.hover\:text-fuchsia-50:hover { color: #fdf4ff; }
+.hover\:bg-fuchsia-50:hover { background-color: #fdf4ff; }
+.hover\:border-fuchsia-50:hover { border-color: #fdf4ff; }
+.hover\:text-fuchsia-100:hover { color: #fce7ff; }
+.hover\:bg-fuchsia-100:hover { background-color: #fce7ff; }
+.hover\:border-fuchsia-100:hover { border-color: #fce7ff; }
+.hover\:text-fuchsia-200:hover { color: #f5d0fe; }
+.hover\:bg-fuchsia-200:hover { background-color: #f5d0fe; }
+.hover\:border-fuchsia-200:hover { border-color: #f5d0fe; }
+.hover\:text-fuchsia-300:hover { color: #f0abfc; }
+.hover\:bg-fuchsia-300:hover { background-color: #f0abfc; }
+.hover\:border-fuchsia-300:hover { border-color: #f0abfc; }
+.hover\:text-fuchsia-400:hover { color: #e879f9; }
+.hover\:bg-fuchsia-400:hover { background-color: #e879f9; }
+.hover\:border-fuchsia-400:hover { border-color: #e879f9; }
+.hover\:text-fuchsia-500:hover { color: #d946ef; }
+.hover\:bg-fuchsia-500:hover { background-color: #d946ef; }
+.hover\:border-fuchsia-500:hover { border-color: #d946ef; }
+.hover\:text-fuchsia-600:hover { color: #c026d3; }
+.hover\:bg-fuchsia-600:hover { background-color: #c026d3; }
+.hover\:border-fuchsia-600:hover { border-color: #c026d3; }
+.hover\:text-fuchsia-700:hover { color: #a21caf; }
+.hover\:bg-fuchsia-700:hover { background-color: #a21caf; }
+.hover\:border-fuchsia-700:hover { border-color: #a21caf; }
+.hover\:text-fuchsia-800:hover { color: #86198f; }
+.hover\:bg-fuchsia-800:hover { background-color: #86198f; }
+.hover\:border-fuchsia-800:hover { border-color: #86198f; }
+.hover\:text-fuchsia-900:hover { color: #701c87; }
+.hover\:bg-fuchsia-900:hover { background-color: #701c87; }
+.hover\:border-fuchsia-900:hover { border-color: #701c87; }
+.hover\:text-rose-50:hover { color: #fff1f2; }
+.hover\:bg-rose-50:hover { background-color: #fff1f2; }
+.hover\:border-rose-50:hover { border-color: #fff1f2; }
+.hover\:text-rose-100:hover { color: #ffe4e6; }
+.hover\:bg-rose-100:hover { background-color: #ffe4e6; }
+.hover\:border-rose-100:hover { border-color: #ffe4e6; }
+.hover\:text-rose-200:hover { color: #fecdd3; }
+.hover\:bg-rose-200:hover { background-color: #fecdd3; }
+.hover\:border-rose-200:hover { border-color: #fecdd3; }
+.hover\:text-rose-300:hover { color: #fed7aa; }
+.hover\:bg-rose-300:hover { background-color: #fed7aa; }
+.hover\:border-rose-300:hover { border-color: #fed7aa; }
+.hover\:text-rose-400:hover { color: #fb7185; }
+.hover\:bg-rose-400:hover { background-color: #fb7185; }
+.hover\:border-rose-400:hover { border-color: #fb7185; }
+.hover\:text-rose-500:hover { color: #f43f5e; }
+.hover\:bg-rose-500:hover { background-color: #f43f5e; }
+.hover\:border-rose-500:hover { border-color: #f43f5e; }
+.hover\:text-rose-600:hover { color: #e11d48; }
+.hover\:bg-rose-600:hover { background-color: #e11d48; }
+.hover\:border-rose-600:hover { border-color: #e11d48; }
+.hover\:text-rose-700:hover { color: #be123c; }
+.hover\:bg-rose-700:hover { background-color: #be123c; }
+.hover\:border-rose-700:hover { border-color: #be123c; }
+.hover\:text-rose-800:hover { color: #9f1239; }
+.hover\:bg-rose-800:hover { background-color: #9f1239; }
+.hover\:border-rose-800:hover { border-color: #9f1239; }
+.hover\:text-rose-900:hover { color: #881337; }
+.hover\:bg-rose-900:hover { background-color: #881337; }
+.hover\:border-rose-900:hover { border-color: #881337; }
+
+/* Opacity scale */
+.opacity-0 { opacity: 0; }
+.opacity-5 { opacity: 0.05; }
+.opacity-10 { opacity: 0.1; }
+.opacity-15 { opacity: 0.15; }
+.opacity-20 { opacity: 0.2; }
+.opacity-25 { opacity: 0.25; }
+.opacity-30 { opacity: 0.3; }
+.opacity-35 { opacity: 0.35; }
+.opacity-40 { opacity: 0.4; }
+.opacity-45 { opacity: 0.45; }
+.opacity-50 { opacity: 0.5; }
+.opacity-55 { opacity: 0.55; }
+.opacity-60 { opacity: 0.6; }
+.opacity-65 { opacity: 0.65; }
+.opacity-70 { opacity: 0.7; }
+.opacity-75 { opacity: 0.75; }
+.opacity-80 { opacity: 0.8; }
+.opacity-85 { opacity: 0.85; }
+.opacity-90 { opacity: 0.9; }
+.opacity-95 { opacity: 0.95; }
+.opacity-100 { opacity: 1; }
+
+/* Border widths */
+.border-0 { border-width: 0px; border-style: solid; }
+.border-t-0 { border-top-width: 0px; border-top-style: solid; }
+.border-r-0 { border-right-width: 0px; border-right-style: solid; }
+.border-b-0 { border-bottom-width: 0px; border-bottom-style: solid; }
+.border-l-0 { border-left-width: 0px; border-left-style: solid; }
+.border-1 { border-width: 1px; border-style: solid; }
+.border-t-1 { border-top-width: 1px; border-top-style: solid; }
+.border-r-1 { border-right-width: 1px; border-right-style: solid; }
+.border-b-1 { border-bottom-width: 1px; border-bottom-style: solid; }
+.border-l-1 { border-left-width: 1px; border-left-style: solid; }
+.border-2 { border-width: 2px; border-style: solid; }
+.border-t-2 { border-top-width: 2px; border-top-style: solid; }
+.border-r-2 { border-right-width: 2px; border-right-style: solid; }
+.border-b-2 { border-bottom-width: 2px; border-bottom-style: solid; }
+.border-l-2 { border-left-width: 2px; border-left-style: solid; }
+.border-4 { border-width: 4px; border-style: solid; }
+.border-t-4 { border-top-width: 4px; border-top-style: solid; }
+.border-r-4 { border-right-width: 4px; border-right-style: solid; }
+.border-b-4 { border-bottom-width: 4px; border-bottom-style: solid; }
+.border-l-4 { border-left-width: 4px; border-left-style: solid; }
+.border-8 { border-width: 8px; border-style: solid; }
+.border-t-8 { border-top-width: 8px; border-top-style: solid; }
+.border-r-8 { border-right-width: 8px; border-right-style: solid; }
+.border-b-8 { border-bottom-width: 8px; border-bottom-style: solid; }
+.border-l-8 { border-left-width: 8px; border-left-style: solid; }
+
+/* Display */
+.none { display: none; }
+.block { display: block; }
+.inline { display: inline; }
+.inline-block { display: inline-block; }
+.flex { display: flex; }
+.inline-flex { display: inline-flex; }
+.grid { display: grid; }
+.inline-grid { display: inline-grid; }
+.hidden { display: none; }
+
+/* Named border colours */
+.border-white { border-color: #ffffff; }
+.border-black { border-color: #000000; }
+.border-transparent { border-color: transparent; }
+
+/* Corner radii */
+.rounded-t-none { border-top-left-radius: 0; border-top-right-radius: 0; }
+.rounded-t-sm { border-top-left-radius: 0.125rem; border-top-right-radius: 0.125rem; }
+.rounded-t-md { border-top-left-radius: 0.375rem; border-top-right-radius: 0.375rem; }
+.rounded-t-lg { border-top-left-radius: 0.5rem; border-top-right-radius: 0.5rem; }
+.rounded-t-xl { border-top-left-radius: 0.75rem; border-top-right-radius: 0.75rem; }
+.rounded-t-2xl { border-top-left-radius: 1rem; border-top-right-radius: 1rem; }
+.rounded-t-full { border-top-left-radius: 9999px; border-top-right-radius: 9999px; }
+.rounded-r-none { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.rounded-r-sm { border-top-right-radius: 0.125rem; border-bottom-right-radius: 0.125rem; }
+.rounded-r-md { border-top-right-radius: 0.375rem; border-bottom-right-radius: 0.375rem; }
+.rounded-r-lg { border-top-right-radius: 0.5rem; border-bottom-right-radius: 0.5rem; }
+.rounded-r-xl { border-top-right-radius: 0.75rem; border-bottom-right-radius: 0.75rem; }
+.rounded-r-2xl { border-top-right-radius: 1rem; border-bottom-right-radius: 1rem; }
+.rounded-r-full { border-top-right-radius: 9999px; border-bottom-right-radius: 9999px; }
+.rounded-b-none { border-bottom-right-radius: 0; border-bottom-left-radius: 0; }
+.rounded-b-sm { border-bottom-right-radius: 0.125rem; border-bottom-left-radius: 0.125rem; }
+.rounded-b-md { border-bottom-right-radius: 0.375rem; border-bottom-left-radius: 0.375rem; }
+.rounded-b-lg { border-bottom-right-radius: 0.5rem; border-bottom-left-radius: 0.5rem; }
+.rounded-b-xl { border-bottom-right-radius: 0.75rem; border-bottom-left-radius: 0.75rem; }
+.rounded-b-2xl { border-bottom-right-radius: 1rem; border-bottom-left-radius: 1rem; }
+.rounded-b-full { border-bottom-right-radius: 9999px; border-bottom-left-radius: 9999px; }
+.rounded-l-none { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.rounded-l-sm { border-top-left-radius: 0.125rem; border-bottom-left-radius: 0.125rem; }
+.rounded-l-md { border-top-left-radius: 0.375rem; border-bottom-left-radius: 0.375rem; }
+.rounded-l-lg { border-top-left-radius: 0.5rem; border-bottom-left-radius: 0.5rem; }
+.rounded-l-xl { border-top-left-radius: 0.75rem; border-bottom-left-radius: 0.75rem; }
+.rounded-l-2xl { border-top-left-radius: 1rem; border-bottom-left-radius: 1rem; }
+.rounded-l-full { border-top-left-radius: 9999px; border-bottom-left-radius: 9999px; }
+.rounded-tl-none { border-top-left-radius: 0; }
+.rounded-tl-sm { border-top-left-radius: 0.125rem; }
+.rounded-tl-md { border-top-left-radius: 0.375rem; }
+.rounded-tl-lg { border-top-left-radius: 0.5rem; }
+.rounded-tl-xl { border-top-left-radius: 0.75rem; }
+.rounded-tl-2xl { border-top-left-radius: 1rem; }
+.rounded-tl-full { border-top-left-radius: 9999px; }
+.rounded-tr-none { border-top-right-radius: 0; }
+.rounded-tr-sm { border-top-right-radius: 0.125rem; }
+.rounded-tr-md { border-top-right-radius: 0.375rem; }
+.rounded-tr-lg { border-top-right-radius: 0.5rem; }
+.rounded-tr-xl { border-top-right-radius: 0.75rem; }
+.rounded-tr-2xl { border-top-right-radius: 1rem; }
+.rounded-tr-full { border-top-right-radius: 9999px; }
+.rounded-br-none { border-bottom-right-radius: 0; }
+.rounded-br-sm { border-bottom-right-radius: 0.125rem; }
+.rounded-br-md { border-bottom-right-radius: 0.375rem; }
+.rounded-br-lg { border-bottom-right-radius: 0.5rem; }
+.rounded-br-xl { border-bottom-right-radius: 0.75rem; }
+.rounded-br-2xl { border-bottom-right-radius: 1rem; }
+.rounded-br-full { border-bottom-right-radius: 9999px; }
+.rounded-bl-none { border-bottom-left-radius: 0; }
+.rounded-bl-sm { border-bottom-left-radius: 0.125rem; }
+.rounded-bl-md { border-bottom-left-radius: 0.375rem; }
+.rounded-bl-lg { border-bottom-left-radius: 0.5rem; }
+.rounded-bl-xl { border-bottom-left-radius: 0.75rem; }
+.rounded-bl-2xl { border-bottom-left-radius: 1rem; }
+.rounded-bl-full { border-bottom-left-radius: 9999px; }
+
+/* Responsive variants */
+
+@media (min-width: 480px) {
+  .sm\:grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+  .sm\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sm\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .sm\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .sm\:grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .sm\:grid-cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .sm\:grid-cols-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .sm\:none { display: none; }
+  .sm\:d-none { display: none; }
+  .sm\:block { display: block; }
+  .sm\:d-block { display: block; }
+  .sm\:inline { display: inline; }
+  .sm\:d-inline { display: inline; }
+  .sm\:inline-block { display: inline-block; }
+  .sm\:d-inline-block { display: inline-block; }
+  .sm\:flex { display: flex; }
+  .sm\:d-flex { display: flex; }
+  .sm\:inline-flex { display: inline-flex; }
+  .sm\:d-inline-flex { display: inline-flex; }
+  .sm\:grid { display: grid; }
+  .sm\:d-grid { display: grid; }
+  .sm\:flex-row { flex-direction: row; }
+  .sm\:flex-column { flex-direction: column; }
+  .sm\:flex-wrap { flex-wrap: wrap; }
+  .sm\:flex-nowrap { flex-wrap: nowrap; }
+  .sm\:p-0 { padding: 0rem; }
+  .sm\:px-0 { padding-left: 0rem; padding-right: 0rem; }
+  .sm\:py-0 { padding-top: 0rem; padding-bottom: 0rem; }
+  .sm\:m-0 { margin: 0rem; }
+  .sm\:mx-0 { margin-left: 0rem; margin-right: 0rem; }
+  .sm\:my-0 { margin-top: 0rem; margin-bottom: 0rem; }
+  .sm\:gap-0 { gap: 0rem; }
+  .sm\:p-1 { padding: 0.25rem; }
+  .sm\:px-1 { padding-left: 0.25rem; padding-right: 0.25rem; }
+  .sm\:py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+  .sm\:m-1 { margin: 0.25rem; }
+  .sm\:mx-1 { margin-left: 0.25rem; margin-right: 0.25rem; }
+  .sm\:my-1 { margin-top: 0.25rem; margin-bottom: 0.25rem; }
+  .sm\:gap-1 { gap: 0.25rem; }
+  .sm\:p-2 { padding: 0.5rem; }
+  .sm\:px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+  .sm\:py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+  .sm\:m-2 { margin: 0.5rem; }
+  .sm\:mx-2 { margin-left: 0.5rem; margin-right: 0.5rem; }
+  .sm\:my-2 { margin-top: 0.5rem; margin-bottom: 0.5rem; }
+  .sm\:gap-2 { gap: 0.5rem; }
+  .sm\:p-3 { padding: 0.75rem; }
+  .sm\:px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+  .sm\:py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+  .sm\:m-3 { margin: 0.75rem; }
+  .sm\:mx-3 { margin-left: 0.75rem; margin-right: 0.75rem; }
+  .sm\:my-3 { margin-top: 0.75rem; margin-bottom: 0.75rem; }
+  .sm\:gap-3 { gap: 0.75rem; }
+  .sm\:p-4 { padding: 1rem; }
+  .sm\:px-4 { padding-left: 1rem; padding-right: 1rem; }
+  .sm\:py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+  .sm\:m-4 { margin: 1rem; }
+  .sm\:mx-4 { margin-left: 1rem; margin-right: 1rem; }
+  .sm\:my-4 { margin-top: 1rem; margin-bottom: 1rem; }
+  .sm\:gap-4 { gap: 1rem; }
+  .sm\:p-5 { padding: 1.25rem; }
+  .sm\:px-5 { padding-left: 1.25rem; padding-right: 1.25rem; }
+  .sm\:py-5 { padding-top: 1.25rem; padding-bottom: 1.25rem; }
+  .sm\:m-5 { margin: 1.25rem; }
+  .sm\:mx-5 { margin-left: 1.25rem; margin-right: 1.25rem; }
+  .sm\:my-5 { margin-top: 1.25rem; margin-bottom: 1.25rem; }
+  .sm\:gap-5 { gap: 1.25rem; }
+  .sm\:p-6 { padding: 1.5rem; }
+  .sm\:px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+  .sm\:py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+  .sm\:m-6 { margin: 1.5rem; }
+  .sm\:mx-6 { margin-left: 1.5rem; margin-right: 1.5rem; }
+  .sm\:my-6 { margin-top: 1.5rem; margin-bottom: 1.5rem; }
+  .sm\:gap-6 { gap: 1.5rem; }
+  .sm\:p-8 { padding: 2rem; }
+  .sm\:px-8 { padding-left: 2rem; padding-right: 2rem; }
+  .sm\:py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+  .sm\:m-8 { margin: 2rem; }
+  .sm\:mx-8 { margin-left: 2rem; margin-right: 2rem; }
+  .sm\:my-8 { margin-top: 2rem; margin-bottom: 2rem; }
+  .sm\:gap-8 { gap: 2rem; }
+  .sm\:p-10 { padding: 2.5rem; }
+  .sm\:px-10 { padding-left: 2.5rem; padding-right: 2.5rem; }
+  .sm\:py-10 { padding-top: 2.5rem; padding-bottom: 2.5rem; }
+  .sm\:m-10 { margin: 2.5rem; }
+  .sm\:mx-10 { margin-left: 2.5rem; margin-right: 2.5rem; }
+  .sm\:my-10 { margin-top: 2.5rem; margin-bottom: 2.5rem; }
+  .sm\:gap-10 { gap: 2.5rem; }
+  .sm\:p-12 { padding: 3rem; }
+  .sm\:px-12 { padding-left: 3rem; padding-right: 3rem; }
+  .sm\:py-12 { padding-top: 3rem; padding-bottom: 3rem; }
+  .sm\:m-12 { margin: 3rem; }
+  .sm\:mx-12 { margin-left: 3rem; margin-right: 3rem; }
+  .sm\:my-12 { margin-top: 3rem; margin-bottom: 3rem; }
+  .sm\:gap-12 { gap: 3rem; }
+  .sm\:p-16 { padding: 4rem; }
+  .sm\:px-16 { padding-left: 4rem; padding-right: 4rem; }
+  .sm\:py-16 { padding-top: 4rem; padding-bottom: 4rem; }
+  .sm\:m-16 { margin: 4rem; }
+  .sm\:mx-16 { margin-left: 4rem; margin-right: 4rem; }
+  .sm\:my-16 { margin-top: 4rem; margin-bottom: 4rem; }
+  .sm\:gap-16 { gap: 4rem; }
+  .sm\:p-20 { padding: 5rem; }
+  .sm\:px-20 { padding-left: 5rem; padding-right: 5rem; }
+  .sm\:py-20 { padding-top: 5rem; padding-bottom: 5rem; }
+  .sm\:m-20 { margin: 5rem; }
+  .sm\:mx-20 { margin-left: 5rem; margin-right: 5rem; }
+  .sm\:my-20 { margin-top: 5rem; margin-bottom: 5rem; }
+  .sm\:gap-20 { gap: 5rem; }
+  .sm\:p-24 { padding: 6rem; }
+  .sm\:px-24 { padding-left: 6rem; padding-right: 6rem; }
+  .sm\:py-24 { padding-top: 6rem; padding-bottom: 6rem; }
+  .sm\:m-24 { margin: 6rem; }
+  .sm\:mx-24 { margin-left: 6rem; margin-right: 6rem; }
+  .sm\:my-24 { margin-top: 6rem; margin-bottom: 6rem; }
+  .sm\:gap-24 { gap: 6rem; }
+  .sm\:text-xs { font-size: 0.75rem; }
+  .sm\:text-sm { font-size: 0.875rem; }
+  .sm\:text-base { font-size: 1rem; }
+  .sm\:text-lg { font-size: 1.125rem; }
+  .sm\:text-xl { font-size: 1.25rem; }
+  .sm\:text-2xl { font-size: 1.5rem; }
+  .sm\:text-3xl { font-size: 1.875rem; }
+  .sm\:text-4xl { font-size: 2.25rem; }
+  .sm\:text-5xl { font-size: 3rem; }
+  .sm\:w-full { width: 100%; }
+  .sm\:w-auto { width: auto; }
+  .sm\:w-1\/2 { width: 50%; }
+  .sm\:w-1\/3 { width: 33.333333%; }
+  .sm\:w-2\/3 { width: 66.666667%; }
+  .sm\:w-1\/4 { width: 25%; }
+  .sm\:w-3\/4 { width: 75%; }
+}
+
+@media (min-width: 768px) {
+  .md\:grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+  .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .md\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .md\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .md\:grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .md\:grid-cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .md\:grid-cols-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .md\:none { display: none; }
+  .md\:d-none { display: none; }
+  .md\:block { display: block; }
+  .md\:d-block { display: block; }
+  .md\:inline { display: inline; }
+  .md\:d-inline { display: inline; }
+  .md\:inline-block { display: inline-block; }
+  .md\:d-inline-block { display: inline-block; }
+  .md\:flex { display: flex; }
+  .md\:d-flex { display: flex; }
+  .md\:inline-flex { display: inline-flex; }
+  .md\:d-inline-flex { display: inline-flex; }
+  .md\:grid { display: grid; }
+  .md\:d-grid { display: grid; }
+  .md\:flex-row { flex-direction: row; }
+  .md\:flex-column { flex-direction: column; }
+  .md\:flex-wrap { flex-wrap: wrap; }
+  .md\:flex-nowrap { flex-wrap: nowrap; }
+  .md\:p-0 { padding: 0rem; }
+  .md\:px-0 { padding-left: 0rem; padding-right: 0rem; }
+  .md\:py-0 { padding-top: 0rem; padding-bottom: 0rem; }
+  .md\:m-0 { margin: 0rem; }
+  .md\:mx-0 { margin-left: 0rem; margin-right: 0rem; }
+  .md\:my-0 { margin-top: 0rem; margin-bottom: 0rem; }
+  .md\:gap-0 { gap: 0rem; }
+  .md\:p-1 { padding: 0.25rem; }
+  .md\:px-1 { padding-left: 0.25rem; padding-right: 0.25rem; }
+  .md\:py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+  .md\:m-1 { margin: 0.25rem; }
+  .md\:mx-1 { margin-left: 0.25rem; margin-right: 0.25rem; }
+  .md\:my-1 { margin-top: 0.25rem; margin-bottom: 0.25rem; }
+  .md\:gap-1 { gap: 0.25rem; }
+  .md\:p-2 { padding: 0.5rem; }
+  .md\:px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+  .md\:py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+  .md\:m-2 { margin: 0.5rem; }
+  .md\:mx-2 { margin-left: 0.5rem; margin-right: 0.5rem; }
+  .md\:my-2 { margin-top: 0.5rem; margin-bottom: 0.5rem; }
+  .md\:gap-2 { gap: 0.5rem; }
+  .md\:p-3 { padding: 0.75rem; }
+  .md\:px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+  .md\:py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+  .md\:m-3 { margin: 0.75rem; }
+  .md\:mx-3 { margin-left: 0.75rem; margin-right: 0.75rem; }
+  .md\:my-3 { margin-top: 0.75rem; margin-bottom: 0.75rem; }
+  .md\:gap-3 { gap: 0.75rem; }
+  .md\:p-4 { padding: 1rem; }
+  .md\:px-4 { padding-left: 1rem; padding-right: 1rem; }
+  .md\:py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+  .md\:m-4 { margin: 1rem; }
+  .md\:mx-4 { margin-left: 1rem; margin-right: 1rem; }
+  .md\:my-4 { margin-top: 1rem; margin-bottom: 1rem; }
+  .md\:gap-4 { gap: 1rem; }
+  .md\:p-5 { padding: 1.25rem; }
+  .md\:px-5 { padding-left: 1.25rem; padding-right: 1.25rem; }
+  .md\:py-5 { padding-top: 1.25rem; padding-bottom: 1.25rem; }
+  .md\:m-5 { margin: 1.25rem; }
+  .md\:mx-5 { margin-left: 1.25rem; margin-right: 1.25rem; }
+  .md\:my-5 { margin-top: 1.25rem; margin-bottom: 1.25rem; }
+  .md\:gap-5 { gap: 1.25rem; }
+  .md\:p-6 { padding: 1.5rem; }
+  .md\:px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+  .md\:py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+  .md\:m-6 { margin: 1.5rem; }
+  .md\:mx-6 { margin-left: 1.5rem; margin-right: 1.5rem; }
+  .md\:my-6 { margin-top: 1.5rem; margin-bottom: 1.5rem; }
+  .md\:gap-6 { gap: 1.5rem; }
+  .md\:p-8 { padding: 2rem; }
+  .md\:px-8 { padding-left: 2rem; padding-right: 2rem; }
+  .md\:py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+  .md\:m-8 { margin: 2rem; }
+  .md\:mx-8 { margin-left: 2rem; margin-right: 2rem; }
+  .md\:my-8 { margin-top: 2rem; margin-bottom: 2rem; }
+  .md\:gap-8 { gap: 2rem; }
+  .md\:p-10 { padding: 2.5rem; }
+  .md\:px-10 { padding-left: 2.5rem; padding-right: 2.5rem; }
+  .md\:py-10 { padding-top: 2.5rem; padding-bottom: 2.5rem; }
+  .md\:m-10 { margin: 2.5rem; }
+  .md\:mx-10 { margin-left: 2.5rem; margin-right: 2.5rem; }
+  .md\:my-10 { margin-top: 2.5rem; margin-bottom: 2.5rem; }
+  .md\:gap-10 { gap: 2.5rem; }
+  .md\:p-12 { padding: 3rem; }
+  .md\:px-12 { padding-left: 3rem; padding-right: 3rem; }
+  .md\:py-12 { padding-top: 3rem; padding-bottom: 3rem; }
+  .md\:m-12 { margin: 3rem; }
+  .md\:mx-12 { margin-left: 3rem; margin-right: 3rem; }
+  .md\:my-12 { margin-top: 3rem; margin-bottom: 3rem; }
+  .md\:gap-12 { gap: 3rem; }
+  .md\:p-16 { padding: 4rem; }
+  .md\:px-16 { padding-left: 4rem; padding-right: 4rem; }
+  .md\:py-16 { padding-top: 4rem; padding-bottom: 4rem; }
+  .md\:m-16 { margin: 4rem; }
+  .md\:mx-16 { margin-left: 4rem; margin-right: 4rem; }
+  .md\:my-16 { margin-top: 4rem; margin-bottom: 4rem; }
+  .md\:gap-16 { gap: 4rem; }
+  .md\:p-20 { padding: 5rem; }
+  .md\:px-20 { padding-left: 5rem; padding-right: 5rem; }
+  .md\:py-20 { padding-top: 5rem; padding-bottom: 5rem; }
+  .md\:m-20 { margin: 5rem; }
+  .md\:mx-20 { margin-left: 5rem; margin-right: 5rem; }
+  .md\:my-20 { margin-top: 5rem; margin-bottom: 5rem; }
+  .md\:gap-20 { gap: 5rem; }
+  .md\:p-24 { padding: 6rem; }
+  .md\:px-24 { padding-left: 6rem; padding-right: 6rem; }
+  .md\:py-24 { padding-top: 6rem; padding-bottom: 6rem; }
+  .md\:m-24 { margin: 6rem; }
+  .md\:mx-24 { margin-left: 6rem; margin-right: 6rem; }
+  .md\:my-24 { margin-top: 6rem; margin-bottom: 6rem; }
+  .md\:gap-24 { gap: 6rem; }
+  .md\:text-xs { font-size: 0.75rem; }
+  .md\:text-sm { font-size: 0.875rem; }
+  .md\:text-base { font-size: 1rem; }
+  .md\:text-lg { font-size: 1.125rem; }
+  .md\:text-xl { font-size: 1.25rem; }
+  .md\:text-2xl { font-size: 1.5rem; }
+  .md\:text-3xl { font-size: 1.875rem; }
+  .md\:text-4xl { font-size: 2.25rem; }
+  .md\:text-5xl { font-size: 3rem; }
+  .md\:w-full { width: 100%; }
+  .md\:w-auto { width: auto; }
+  .md\:w-1\/2 { width: 50%; }
+  .md\:w-1\/3 { width: 33.333333%; }
+  .md\:w-2\/3 { width: 66.666667%; }
+  .md\:w-1\/4 { width: 25%; }
+  .md\:w-3\/4 { width: 75%; }
+}
+
+@media (min-width: 1024px) {
+  .lg\:grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+  .lg\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lg\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .lg\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .lg\:grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .lg\:grid-cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .lg\:grid-cols-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .lg\:none { display: none; }
+  .lg\:d-none { display: none; }
+  .lg\:block { display: block; }
+  .lg\:d-block { display: block; }
+  .lg\:inline { display: inline; }
+  .lg\:d-inline { display: inline; }
+  .lg\:inline-block { display: inline-block; }
+  .lg\:d-inline-block { display: inline-block; }
+  .lg\:flex { display: flex; }
+  .lg\:d-flex { display: flex; }
+  .lg\:inline-flex { display: inline-flex; }
+  .lg\:d-inline-flex { display: inline-flex; }
+  .lg\:grid { display: grid; }
+  .lg\:d-grid { display: grid; }
+  .lg\:flex-row { flex-direction: row; }
+  .lg\:flex-column { flex-direction: column; }
+  .lg\:flex-wrap { flex-wrap: wrap; }
+  .lg\:flex-nowrap { flex-wrap: nowrap; }
+  .lg\:p-0 { padding: 0rem; }
+  .lg\:px-0 { padding-left: 0rem; padding-right: 0rem; }
+  .lg\:py-0 { padding-top: 0rem; padding-bottom: 0rem; }
+  .lg\:m-0 { margin: 0rem; }
+  .lg\:mx-0 { margin-left: 0rem; margin-right: 0rem; }
+  .lg\:my-0 { margin-top: 0rem; margin-bottom: 0rem; }
+  .lg\:gap-0 { gap: 0rem; }
+  .lg\:p-1 { padding: 0.25rem; }
+  .lg\:px-1 { padding-left: 0.25rem; padding-right: 0.25rem; }
+  .lg\:py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+  .lg\:m-1 { margin: 0.25rem; }
+  .lg\:mx-1 { margin-left: 0.25rem; margin-right: 0.25rem; }
+  .lg\:my-1 { margin-top: 0.25rem; margin-bottom: 0.25rem; }
+  .lg\:gap-1 { gap: 0.25rem; }
+  .lg\:p-2 { padding: 0.5rem; }
+  .lg\:px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+  .lg\:py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+  .lg\:m-2 { margin: 0.5rem; }
+  .lg\:mx-2 { margin-left: 0.5rem; margin-right: 0.5rem; }
+  .lg\:my-2 { margin-top: 0.5rem; margin-bottom: 0.5rem; }
+  .lg\:gap-2 { gap: 0.5rem; }
+  .lg\:p-3 { padding: 0.75rem; }
+  .lg\:px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+  .lg\:py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+  .lg\:m-3 { margin: 0.75rem; }
+  .lg\:mx-3 { margin-left: 0.75rem; margin-right: 0.75rem; }
+  .lg\:my-3 { margin-top: 0.75rem; margin-bottom: 0.75rem; }
+  .lg\:gap-3 { gap: 0.75rem; }
+  .lg\:p-4 { padding: 1rem; }
+  .lg\:px-4 { padding-left: 1rem; padding-right: 1rem; }
+  .lg\:py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+  .lg\:m-4 { margin: 1rem; }
+  .lg\:mx-4 { margin-left: 1rem; margin-right: 1rem; }
+  .lg\:my-4 { margin-top: 1rem; margin-bottom: 1rem; }
+  .lg\:gap-4 { gap: 1rem; }
+  .lg\:p-5 { padding: 1.25rem; }
+  .lg\:px-5 { padding-left: 1.25rem; padding-right: 1.25rem; }
+  .lg\:py-5 { padding-top: 1.25rem; padding-bottom: 1.25rem; }
+  .lg\:m-5 { margin: 1.25rem; }
+  .lg\:mx-5 { margin-left: 1.25rem; margin-right: 1.25rem; }
+  .lg\:my-5 { margin-top: 1.25rem; margin-bottom: 1.25rem; }
+  .lg\:gap-5 { gap: 1.25rem; }
+  .lg\:p-6 { padding: 1.5rem; }
+  .lg\:px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+  .lg\:py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+  .lg\:m-6 { margin: 1.5rem; }
+  .lg\:mx-6 { margin-left: 1.5rem; margin-right: 1.5rem; }
+  .lg\:my-6 { margin-top: 1.5rem; margin-bottom: 1.5rem; }
+  .lg\:gap-6 { gap: 1.5rem; }
+  .lg\:p-8 { padding: 2rem; }
+  .lg\:px-8 { padding-left: 2rem; padding-right: 2rem; }
+  .lg\:py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+  .lg\:m-8 { margin: 2rem; }
+  .lg\:mx-8 { margin-left: 2rem; margin-right: 2rem; }
+  .lg\:my-8 { margin-top: 2rem; margin-bottom: 2rem; }
+  .lg\:gap-8 { gap: 2rem; }
+  .lg\:p-10 { padding: 2.5rem; }
+  .lg\:px-10 { padding-left: 2.5rem; padding-right: 2.5rem; }
+  .lg\:py-10 { padding-top: 2.5rem; padding-bottom: 2.5rem; }
+  .lg\:m-10 { margin: 2.5rem; }
+  .lg\:mx-10 { margin-left: 2.5rem; margin-right: 2.5rem; }
+  .lg\:my-10 { margin-top: 2.5rem; margin-bottom: 2.5rem; }
+  .lg\:gap-10 { gap: 2.5rem; }
+  .lg\:p-12 { padding: 3rem; }
+  .lg\:px-12 { padding-left: 3rem; padding-right: 3rem; }
+  .lg\:py-12 { padding-top: 3rem; padding-bottom: 3rem; }
+  .lg\:m-12 { margin: 3rem; }
+  .lg\:mx-12 { margin-left: 3rem; margin-right: 3rem; }
+  .lg\:my-12 { margin-top: 3rem; margin-bottom: 3rem; }
+  .lg\:gap-12 { gap: 3rem; }
+  .lg\:p-16 { padding: 4rem; }
+  .lg\:px-16 { padding-left: 4rem; padding-right: 4rem; }
+  .lg\:py-16 { padding-top: 4rem; padding-bottom: 4rem; }
+  .lg\:m-16 { margin: 4rem; }
+  .lg\:mx-16 { margin-left: 4rem; margin-right: 4rem; }
+  .lg\:my-16 { margin-top: 4rem; margin-bottom: 4rem; }
+  .lg\:gap-16 { gap: 4rem; }
+  .lg\:p-20 { padding: 5rem; }
+  .lg\:px-20 { padding-left: 5rem; padding-right: 5rem; }
+  .lg\:py-20 { padding-top: 5rem; padding-bottom: 5rem; }
+  .lg\:m-20 { margin: 5rem; }
+  .lg\:mx-20 { margin-left: 5rem; margin-right: 5rem; }
+  .lg\:my-20 { margin-top: 5rem; margin-bottom: 5rem; }
+  .lg\:gap-20 { gap: 5rem; }
+  .lg\:p-24 { padding: 6rem; }
+  .lg\:px-24 { padding-left: 6rem; padding-right: 6rem; }
+  .lg\:py-24 { padding-top: 6rem; padding-bottom: 6rem; }
+  .lg\:m-24 { margin: 6rem; }
+  .lg\:mx-24 { margin-left: 6rem; margin-right: 6rem; }
+  .lg\:my-24 { margin-top: 6rem; margin-bottom: 6rem; }
+  .lg\:gap-24 { gap: 6rem; }
+  .lg\:text-xs { font-size: 0.75rem; }
+  .lg\:text-sm { font-size: 0.875rem; }
+  .lg\:text-base { font-size: 1rem; }
+  .lg\:text-lg { font-size: 1.125rem; }
+  .lg\:text-xl { font-size: 1.25rem; }
+  .lg\:text-2xl { font-size: 1.5rem; }
+  .lg\:text-3xl { font-size: 1.875rem; }
+  .lg\:text-4xl { font-size: 2.25rem; }
+  .lg\:text-5xl { font-size: 3rem; }
+  .lg\:w-full { width: 100%; }
+  .lg\:w-auto { width: auto; }
+  .lg\:w-1\/2 { width: 50%; }
+  .lg\:w-1\/3 { width: 33.333333%; }
+  .lg\:w-2\/3 { width: 66.666667%; }
+  .lg\:w-1\/4 { width: 25%; }
+  .lg\:w-3\/4 { width: 75%; }
+}
+
+@media (min-width: 1280px) {
+  .xl\:grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+  .xl\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .xl\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .xl\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .xl\:grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .xl\:grid-cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .xl\:grid-cols-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .xl\:none { display: none; }
+  .xl\:d-none { display: none; }
+  .xl\:block { display: block; }
+  .xl\:d-block { display: block; }
+  .xl\:inline { display: inline; }
+  .xl\:d-inline { display: inline; }
+  .xl\:inline-block { display: inline-block; }
+  .xl\:d-inline-block { display: inline-block; }
+  .xl\:flex { display: flex; }
+  .xl\:d-flex { display: flex; }
+  .xl\:inline-flex { display: inline-flex; }
+  .xl\:d-inline-flex { display: inline-flex; }
+  .xl\:grid { display: grid; }
+  .xl\:d-grid { display: grid; }
+  .xl\:flex-row { flex-direction: row; }
+  .xl\:flex-column { flex-direction: column; }
+  .xl\:flex-wrap { flex-wrap: wrap; }
+  .xl\:flex-nowrap { flex-wrap: nowrap; }
+  .xl\:p-0 { padding: 0rem; }
+  .xl\:px-0 { padding-left: 0rem; padding-right: 0rem; }
+  .xl\:py-0 { padding-top: 0rem; padding-bottom: 0rem; }
+  .xl\:m-0 { margin: 0rem; }
+  .xl\:mx-0 { margin-left: 0rem; margin-right: 0rem; }
+  .xl\:my-0 { margin-top: 0rem; margin-bottom: 0rem; }
+  .xl\:gap-0 { gap: 0rem; }
+  .xl\:p-1 { padding: 0.25rem; }
+  .xl\:px-1 { padding-left: 0.25rem; padding-right: 0.25rem; }
+  .xl\:py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+  .xl\:m-1 { margin: 0.25rem; }
+  .xl\:mx-1 { margin-left: 0.25rem; margin-right: 0.25rem; }
+  .xl\:my-1 { margin-top: 0.25rem; margin-bottom: 0.25rem; }
+  .xl\:gap-1 { gap: 0.25rem; }
+  .xl\:p-2 { padding: 0.5rem; }
+  .xl\:px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+  .xl\:py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+  .xl\:m-2 { margin: 0.5rem; }
+  .xl\:mx-2 { margin-left: 0.5rem; margin-right: 0.5rem; }
+  .xl\:my-2 { margin-top: 0.5rem; margin-bottom: 0.5rem; }
+  .xl\:gap-2 { gap: 0.5rem; }
+  .xl\:p-3 { padding: 0.75rem; }
+  .xl\:px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+  .xl\:py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+  .xl\:m-3 { margin: 0.75rem; }
+  .xl\:mx-3 { margin-left: 0.75rem; margin-right: 0.75rem; }
+  .xl\:my-3 { margin-top: 0.75rem; margin-bottom: 0.75rem; }
+  .xl\:gap-3 { gap: 0.75rem; }
+  .xl\:p-4 { padding: 1rem; }
+  .xl\:px-4 { padding-left: 1rem; padding-right: 1rem; }
+  .xl\:py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+  .xl\:m-4 { margin: 1rem; }
+  .xl\:mx-4 { margin-left: 1rem; margin-right: 1rem; }
+  .xl\:my-4 { margin-top: 1rem; margin-bottom: 1rem; }
+  .xl\:gap-4 { gap: 1rem; }
+  .xl\:p-5 { padding: 1.25rem; }
+  .xl\:px-5 { padding-left: 1.25rem; padding-right: 1.25rem; }
+  .xl\:py-5 { padding-top: 1.25rem; padding-bottom: 1.25rem; }
+  .xl\:m-5 { margin: 1.25rem; }
+  .xl\:mx-5 { margin-left: 1.25rem; margin-right: 1.25rem; }
+  .xl\:my-5 { margin-top: 1.25rem; margin-bottom: 1.25rem; }
+  .xl\:gap-5 { gap: 1.25rem; }
+  .xl\:p-6 { padding: 1.5rem; }
+  .xl\:px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+  .xl\:py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+  .xl\:m-6 { margin: 1.5rem; }
+  .xl\:mx-6 { margin-left: 1.5rem; margin-right: 1.5rem; }
+  .xl\:my-6 { margin-top: 1.5rem; margin-bottom: 1.5rem; }
+  .xl\:gap-6 { gap: 1.5rem; }
+  .xl\:p-8 { padding: 2rem; }
+  .xl\:px-8 { padding-left: 2rem; padding-right: 2rem; }
+  .xl\:py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+  .xl\:m-8 { margin: 2rem; }
+  .xl\:mx-8 { margin-left: 2rem; margin-right: 2rem; }
+  .xl\:my-8 { margin-top: 2rem; margin-bottom: 2rem; }
+  .xl\:gap-8 { gap: 2rem; }
+  .xl\:p-10 { padding: 2.5rem; }
+  .xl\:px-10 { padding-left: 2.5rem; padding-right: 2.5rem; }
+  .xl\:py-10 { padding-top: 2.5rem; padding-bottom: 2.5rem; }
+  .xl\:m-10 { margin: 2.5rem; }
+  .xl\:mx-10 { margin-left: 2.5rem; margin-right: 2.5rem; }
+  .xl\:my-10 { margin-top: 2.5rem; margin-bottom: 2.5rem; }
+  .xl\:gap-10 { gap: 2.5rem; }
+  .xl\:p-12 { padding: 3rem; }
+  .xl\:px-12 { padding-left: 3rem; padding-right: 3rem; }
+  .xl\:py-12 { padding-top: 3rem; padding-bottom: 3rem; }
+  .xl\:m-12 { margin: 3rem; }
+  .xl\:mx-12 { margin-left: 3rem; margin-right: 3rem; }
+  .xl\:my-12 { margin-top: 3rem; margin-bottom: 3rem; }
+  .xl\:gap-12 { gap: 3rem; }
+  .xl\:p-16 { padding: 4rem; }
+  .xl\:px-16 { padding-left: 4rem; padding-right: 4rem; }
+  .xl\:py-16 { padding-top: 4rem; padding-bottom: 4rem; }
+  .xl\:m-16 { margin: 4rem; }
+  .xl\:mx-16 { margin-left: 4rem; margin-right: 4rem; }
+  .xl\:my-16 { margin-top: 4rem; margin-bottom: 4rem; }
+  .xl\:gap-16 { gap: 4rem; }
+  .xl\:p-20 { padding: 5rem; }
+  .xl\:px-20 { padding-left: 5rem; padding-right: 5rem; }
+  .xl\:py-20 { padding-top: 5rem; padding-bottom: 5rem; }
+  .xl\:m-20 { margin: 5rem; }
+  .xl\:mx-20 { margin-left: 5rem; margin-right: 5rem; }
+  .xl\:my-20 { margin-top: 5rem; margin-bottom: 5rem; }
+  .xl\:gap-20 { gap: 5rem; }
+  .xl\:p-24 { padding: 6rem; }
+  .xl\:px-24 { padding-left: 6rem; padding-right: 6rem; }
+  .xl\:py-24 { padding-top: 6rem; padding-bottom: 6rem; }
+  .xl\:m-24 { margin: 6rem; }
+  .xl\:mx-24 { margin-left: 6rem; margin-right: 6rem; }
+  .xl\:my-24 { margin-top: 6rem; margin-bottom: 6rem; }
+  .xl\:gap-24 { gap: 6rem; }
+  .xl\:text-xs { font-size: 0.75rem; }
+  .xl\:text-sm { font-size: 0.875rem; }
+  .xl\:text-base { font-size: 1rem; }
+  .xl\:text-lg { font-size: 1.125rem; }
+  .xl\:text-xl { font-size: 1.25rem; }
+  .xl\:text-2xl { font-size: 1.5rem; }
+  .xl\:text-3xl { font-size: 1.875rem; }
+  .xl\:text-4xl { font-size: 2.25rem; }
+  .xl\:text-5xl { font-size: 3rem; }
+  .xl\:w-full { width: 100%; }
+  .xl\:w-auto { width: auto; }
+  .xl\:w-1\/2 { width: 50%; }
+  .xl\:w-1\/3 { width: 33.333333%; }
+  .xl\:w-2\/3 { width: 66.666667%; }
+  .xl\:w-1\/4 { width: 25%; }
+  .xl\:w-3\/4 { width: 75%; }
+}

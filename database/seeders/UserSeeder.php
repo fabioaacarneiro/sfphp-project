@@ -3,7 +3,7 @@
 namespace Database\Seeders;
 
 use Database\Factories\UserFactory;
-use SfPhp\Database\Seeder;
+use SfphpProject\src\Database\Seeder;
 
 class UserSeeder extends Seeder
 {
