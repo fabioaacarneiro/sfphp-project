@@ -17,6 +17,8 @@ use SfphpProject\src\Cache\FileDriver;
 use SfphpProject\src\Cache\MemoryDriver;
 use SfphpProject\src\Database\Factory;
 use SfphpProject\src\Database\Seeder;
+use SfphpProject\src\Http\Middleware;
+use SfphpProject\src\Http\Pipeline;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
 use SfphpProject\src\QueryBuilder;
@@ -32,6 +34,17 @@ use SfphpProject\src\View;
 use SfphpProject\src\View\SfhtEngine;
 
 require __DIR__ . '/TestRunner.php';
+
+/**
+ * Middleware resolved by class name, to prove container resolution works.
+ */
+final class StampMiddlewareTest implements Middleware
+{
+    public function handle(Request $request, callable $next): Response
+    {
+        return $next($request)->withHeader('X-Stamp', 'sfphp');
+    }
+}
 
 final class QueryBuilderStatementTest extends PDOStatement
 {
@@ -1290,6 +1303,111 @@ $tests->run('views can be rendered to a string without echoing', function () use
     $tests->assertThrows(
         fn () => View::make('../../../etc/passwd'),
         InvalidArgumentException::class
+    );
+});
+
+$tests->run('the pipeline runs middleware in order and unwinds in reverse', function () use ($tests): void {
+    $trace = [];
+
+    $stage = static function (string $label) use (&$trace): callable {
+        return static function (Request $request, callable $next) use ($label, &$trace): Response {
+            $trace[] = "entra:$label";
+            $response = $next($request);
+            $trace[] = "sai:$label";
+
+            return $response;
+        };
+    };
+
+    $response = (new Pipeline(new Container()))->run(
+        Request::create('GET', '/'),
+        [$stage('a'), $stage('b')],
+        function (Request $request) use (&$trace): Response {
+            $trace[] = 'action';
+
+            return Response::text('ok');
+        }
+    );
+
+    $tests->assertSame('ok', $response->body());
+    $tests->assertSame(
+        ['entra:a', 'entra:b', 'action', 'sai:b', 'sai:a'],
+        $trace
+    );
+});
+
+$tests->run('middleware can replace the request and short-circuit the pipeline', function () use ($tests): void {
+    $reached = false;
+
+    // A stage may hand a modified request down the chain.
+    $attach = static fn (Request $request, callable $next): Response
+        => $next($request->withAttribute('user', 'ana'));
+
+    $response = (new Pipeline(new Container()))->run(
+        Request::create('GET', '/'),
+        [$attach],
+        static fn (Request $request): Response => Response::text((string) $request->attribute('user'))
+    );
+
+    $tests->assertSame('ana', $response->body());
+
+    // A stage that returns without calling $next stops everything after it.
+    $deny = static fn (Request $request, callable $next): Response
+        => Response::json(['message' => 'Unauthorized'], HTTP_UNAUTHORIZED);
+
+    $response = (new Pipeline(new Container()))->run(
+        Request::create('GET', '/'),
+        [$deny],
+        function (Request $request) use (&$reached): Response {
+            $reached = true;
+
+            return Response::text('nunca');
+        }
+    );
+
+    $tests->assertSame(HTTP_UNAUTHORIZED, $response->status());
+    $tests->assertSame(false, $reached);
+});
+
+$tests->run('the pipeline resolves middleware class names through the container', function () use ($tests): void {
+    // Naming a class lets routes declare middleware before any instance
+    // exists, and lets the middleware constructor-inject its dependencies.
+    $response = (new Pipeline(new Container()))->run(
+        Request::create('GET', '/'),
+        [StampMiddlewareTest::class],
+        static fn (Request $request): Response => Response::text('corpo')
+    );
+
+    $tests->assertSame('sfphp', $response->header('X-Stamp'));
+    $tests->assertSame('corpo', $response->body());
+
+    $tests->assertThrows(
+        fn () => (new Pipeline(new Container()))->run(
+            Request::create('GET', '/'),
+            ['NaoExisteMiddleware'],
+            static fn (Request $request): Response => Response::text('x')
+        ),
+        RuntimeException::class
+    );
+});
+
+$tests->run('a middleware that forgets to return fails where the mistake is', function () use ($tests): void {
+    /*
+     * Without the explicit check the null travels several frames before
+     * failing as "call to a member function on null", pointing at the
+     * pipeline rather than at the middleware that caused it.
+     */
+    $forgets = static function (Request $request, callable $next) {
+        $next($request);
+    };
+
+    $tests->assertThrows(
+        fn () => (new Pipeline(new Container()))->run(
+            Request::create('GET', '/'),
+            [$forgets],
+            static fn (Request $request): Response => Response::text('x')
+        ),
+        RuntimeException::class
     );
 });
 
