@@ -20,7 +20,19 @@ if ($config === null) {
 }
 
 $css = generateCss($config);
-echo $css;
+
+// Generate both full and minified versions
+$outputPath = __DIR__ . '/../../public/assets/css/sfcss.css';
+$minOutputPath = __DIR__ . '/../../public/assets/css/sfcss.min.css';
+
+file_put_contents($outputPath, $css);
+
+// Minify CSS
+$minified = minifyCss($css);
+file_put_contents($minOutputPath, $minified);
+
+echo "✓ Generated: $outputPath (" . filesize($outputPath) . " bytes)\n";
+echo "✓ Generated: $minOutputPath (" . filesize($minOutputPath) . " bytes)\n";
 
 function generateCss(array $config): string
 {
@@ -96,4 +108,22 @@ function generateCss(array $config): string
     $css .= file_get_contents(__DIR__ . '/sfcss-base.css');
 
     return $css;
+}
+
+function minifyCss(string $css): string
+{
+    // Remove comments
+    $css = preg_replace('!/\*[^*]*\*+(?:[^/*][^*]*\*+)*/!', '', $css);
+
+    // Remove whitespace
+    $css = preg_replace('/\s+/', ' ', $css);
+
+    // Remove spaces around special characters
+    $css = preg_replace('/ ([{}:;,>+~]) /', '$1', $css);
+    $css = preg_replace('/([:;,>+~])\s/', '$1', $css);
+
+    // Remove trailing semicolons before closing brace
+    $css = preg_replace('/;(?=\})/', '', $css);
+
+    return trim($css);
 }
