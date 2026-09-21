@@ -52,7 +52,7 @@ define("APP_LOCALE", $_ENV["APP_LOCALE"] ?? "en");
  */
 define("APP_LOCALES", array_values(array_filter(array_map(
     "trim",
-    explode(",", (string) ($_ENV["APP_LOCALES"] ?? "en,pt_BR"))
+    explode(",", (string) ($_ENV["APP_LOCALES"] ?? "en,pt_BR,es"))
 ))));
 
 /*

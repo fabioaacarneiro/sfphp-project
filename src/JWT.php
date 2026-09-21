@@ -166,6 +166,29 @@ class JWT
     }
 
     /**
+     * Validate a token and return what it carries.
+     *
+     * validate() answers whether a token is trustworthy; this answers who it
+     * is about. A guard needs both, and doing it in one pass avoids verifying
+     * the signature twice — or worse, reading the payload of a token whose
+     * signature was never checked.
+     *
+     * @param string $token The token to read
+     * @return array<string, mixed>|null The claims, or null when the token is not valid
+     * @throws RuntimeException If JWT_KEY is missing or too short
+     */
+    public static function claims(string $token): ?array
+    {
+        if (!self::validate($token)) {
+            return null;
+        }
+
+        $parts = explode('.', $token);
+
+        return self::decodeJsonSegment($parts[1]);
+    }
+
+    /**
      * Decode a Base64 URL-encoded JSON object.
      *
      * @param string $segment The encoded JWT segment
