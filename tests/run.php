@@ -18,6 +18,7 @@ use SfphpProject\src\Cache\MemoryDriver;
 use SfphpProject\src\Database\Factory;
 use SfphpProject\src\Database\Seeder;
 use SfphpProject\src\Http\Middleware;
+use SfphpProject\src\Http\Middleware\VerifyCsrfToken;
 use SfphpProject\src\Http\Pipeline;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
@@ -1628,6 +1629,63 @@ $tests->run('a failing action becomes a 500 instead of a blank page', function (
     $tests->assertSame(HTTP_INTERNAL_SERVER_ERROR, $router->dispatch(Request::create('GET', '/silent'))->status());
 
     $tests->assertSame(HTTP_INTERNAL_SERVER_ERROR, $router->dispatch(Request::create('GET', '/missing'))->status());
+});
+
+$tests->run('csrf verification finally applies by default', function () use ($tests): void {
+    /*
+     * Csrf has had tokens, hash_equals and the form helpers for a long time,
+     * but nothing in the framework ever called the verification: every
+     * application had to remember to do it in each action, and forgetting
+     * produced no error at all. The pipeline is the first place the check can
+     * apply by default.
+     */
+    Router::reset();
+    Router::get('/form', 'DispatchTestController', 'home');
+    Router::post('/form', 'DispatchTestController', 'home');
+
+    Csrf::startSession();
+    $token = Csrf::token();
+
+    $router = (new Router(new Container(), ''))->middleware(VerifyCsrfToken::class);
+
+    // Safe methods are never blocked.
+    $tests->assertSame(HTTP_OK, $router->dispatch(Request::create('GET', '/form'))->status());
+
+    // A state-changing request without a token is refused.
+    $tests->assertSame(
+        HTTP_FORBIDDEN,
+        $router->dispatch(Request::create('POST', '/form'))->status()
+    );
+
+    // With the right token in the field, it passes.
+    $tests->assertSame(HTTP_OK, $router->dispatch(
+        Request::create('POST', '/form', ['body' => ['_token' => $token]])
+    )->status());
+
+    // And with the token in the header, as an AJAX call sends it.
+    $tests->assertSame(HTTP_OK, $router->dispatch(
+        Request::create('POST', '/form', ['headers' => ['X-CSRF-Token' => $token]])
+    )->status());
+
+    // A wrong token is refused, and the refusal is negotiated.
+    $refused = $router->dispatch(Request::create('POST', '/form', [
+        'body' => ['_token' => 'errado'],
+        'headers' => ['Accept' => 'application/json'],
+    ]));
+    $tests->assertSame(HTTP_FORBIDDEN, $refused->status());
+    $tests->assertSame('application/json; charset=utf-8', $refused->header('Content-Type'));
+
+    /*
+     * A bearer token is attached by the client on purpose; a browser never
+     * sends one by itself, so there is no cross-site request to forge.
+     */
+    $tests->assertSame(HTTP_OK, $router->dispatch(
+        Request::create('POST', '/form', ['headers' => ['Authorization' => 'Bearer abc']])
+    )->status());
+
+    // Exempt prefixes let a token-authenticated API opt out.
+    $exempt = (new Router(new Container(), ''))->middleware(new VerifyCsrfToken(['/form']));
+    $tests->assertSame(HTTP_OK, $exempt->dispatch(Request::create('POST', '/form'))->status());
 });
 
 $tests->finish();
