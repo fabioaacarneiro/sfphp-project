@@ -15,6 +15,7 @@ use SfphpProject\src\Console\Generators\SeederGenerator;
 use SfphpProject\src\Console\Generators\ServiceGenerator;
 use SfphpProject\src\Console\Generators\TestGenerator;
 use SfphpProject\src\Database;
+use SfphpProject\src\Database\Seeder;
 use SfphpProject\src\Migrations\MigrationCreator;
 use SfphpProject\src\Migrations\MigrationRunner;
 use Throwable;
@@ -978,23 +979,42 @@ PHP;
             return 0;
         }
 
-        $files = array_diff(scandir($seedPath), ['.', '..']);
-        if (empty($files)) {
-            $this->writeLine('No seeders found.');
-            return 0;
-        }
+        try {
+            $requested = $this->option($arguments, 'class') ?? 'DatabaseSeeder';
+            $class = str_contains((string) $requested, '\\')
+                ? (string) $requested
+                : 'Database\\Seeders\\' . $requested;
 
-        $this->writeLine('Seeders found:');
-        foreach ($files as $file) {
-            if (str_ends_with($file, '.php')) {
-                $this->writeLine('  - ' . $file);
+            if (!class_exists($class)) {
+                fwrite(STDERR, "Seeder not found: {$class}" . PHP_EOL);
+                $this->writeLine('');
+                $this->writeLine('Available seeders in database/seeders:');
+
+                foreach (glob($seedPath . '/*.php') ?: [] as $file) {
+                    $this->writeLine('  - ' . basename($file, '.php'));
+                }
+
+                return 1;
             }
+
+            $seeder = new $class();
+
+            if (!$seeder instanceof Seeder) {
+                fwrite(STDERR, "{$class} must extend " . Seeder::class . PHP_EOL);
+
+                return 1;
+            }
+
+            $this->writeLine("Seeding: {$class}");
+            $seeder->run();
+            $this->writeLine('Database seeded successfully.');
+
+            return 0;
+        } catch (Throwable $throwable) {
+            fwrite(STDERR, 'Error: ' . $throwable->getMessage() . PHP_EOL);
+
+            return 1;
         }
-
-        $this->writeLine('To run a seeder, create a seeder class in database/seeders/');
-        $this->writeLine('Example: ./sfphp make:seeder UsersSeeder (not yet implemented)');
-
-        return 0;
     }
 
     /**
@@ -1031,7 +1051,7 @@ PHP;
     private function cacheClear(array $arguments): int
     {
         try {
-            $cache = new \SfPhp\Cache\CacheManager();
+            $cache = new \SfphpProject\src\Cache\CacheManager();
             $cache->flush();
 
             $this->writeLine('Cache cleared successfully.');
@@ -1052,7 +1072,7 @@ PHP;
     private function cacheFlush(array $arguments): int
     {
         try {
-            $cache = new \SfPhp\Cache\CacheManager();
+            $cache = new \SfphpProject\src\Cache\CacheManager();
             $cache->flush();
 
             $this->writeLine('All cache flushed successfully.');
@@ -1073,8 +1093,8 @@ PHP;
     private function queueWork(array $arguments): int
     {
         try {
-            $timeout = $this->getOption($arguments, 'timeout', 3600);
-            $queue = new \SfPhp\Queue\QueueManager();
+            $timeout = $this->optionInt($arguments, 'timeout') ?? 3600;
+            $queue = new \SfphpProject\src\Queue\QueueManager();
 
             $this->writeLine('Starting queue worker (timeout: ' . $timeout . 's)...');
             $this->writeLine('Press CTRL+C to stop.');
@@ -1100,7 +1120,7 @@ PHP;
     private function queueFailed(array $arguments): int
     {
         try {
-            $queue = new \SfPhp\Queue\QueueManager();
+            $queue = new \SfphpProject\src\Queue\QueueManager();
             $failed = $queue->failed();
 
             if (empty($failed)) {
@@ -1143,25 +1163,43 @@ PHP;
                 return 1;
             }
 
-            $css = shell_exec('php ' . escapeshellarg($builderPath));
-
-            if ($css === null || $css === false) {
-                fwrite(STDERR, 'Error: Failed to build CSS' . PHP_EOL);
-                return 1;
-            }
-
             if (!is_dir(dirname($outputPath))) {
                 mkdir(dirname($outputPath), 0755, true);
             }
 
-            if (file_put_contents($outputPath, $css) === false) {
-                fwrite(STDERR, "Error: Failed to write CSS to {$outputPath}" . PHP_EOL);
+            /*
+             * The builder writes both stylesheets itself and prints a summary.
+             * This command used to capture that stdout and write it over
+             * sfcss.css, so every run replaced the stylesheet with two lines
+             * of build log. Run it and let it write; only report the result.
+             */
+            $output = [];
+            $status = 0;
+            exec('php ' . escapeshellarg($builderPath) . ' 2>&1', $output, $status);
+
+            if ($status !== 0) {
+                fwrite(STDERR, 'Error: Failed to build CSS' . PHP_EOL);
+                fwrite(STDERR, implode(PHP_EOL, $output) . PHP_EOL);
+
                 return 1;
             }
 
-            $this->writeLine("✅ SFCSS built successfully!");
-            $this->writeLine("📁 Output: {$outputPath}");
-            $this->writeLine("📊 Size: " . strlen($css) . " bytes");
+            if (!is_file($outputPath)) {
+                fwrite(STDERR, "Error: builder did not produce {$outputPath}" . PHP_EOL);
+
+                return 1;
+            }
+
+            clearstatcache(true, $outputPath);
+            $minifiedPath = dirname($outputPath) . '/sfcss.min.css';
+
+            $this->writeLine('SFCSS built successfully.');
+            $this->writeLine('  ' . $outputPath . ' (' . number_format(filesize($outputPath)) . ' bytes)');
+
+            if (is_file($minifiedPath)) {
+                clearstatcache(true, $minifiedPath);
+                $this->writeLine('  ' . $minifiedPath . ' (' . number_format(filesize($minifiedPath)) . ' bytes)');
+            }
 
             return 0;
         } catch (Throwable $e) {

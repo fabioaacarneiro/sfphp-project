@@ -28,7 +28,7 @@
     <div class="container mx-auto">
         <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div class="text-center">
-                <p class="text-4xl font-bold text-blue-500 mb-2">24</p>
+                <p class="text-4xl font-bold text-blue-500 mb-2">32</p>
                 <p class="text-slate-600">CLI Commands</p>
             </div>
             <div class="text-center">
@@ -40,8 +40,8 @@
                 <p class="text-slate-600">Dependencies</p>
             </div>
             <div class="text-center">
-                <p class="text-4xl font-bold text-amber-500 mb-2">40KB</p>
-                <p class="text-slate-600">Complete CSS</p>
+                <p class="text-4xl font-bold text-amber-500 mb-2">16KB</p>
+                <p class="text-slate-600">CSS gzipped</p>
             </div>
         </div>
     </div>
@@ -59,10 +59,10 @@
                     <h3 class="text-blue-600 font-bold text-lg">CLI & Generators</h3>
                 </div>
                 <div class="card-body">
-                    <p class="text-slate-600 mb-4">24 powerful commands for scaffolding controllers, models, and migrations.</p>
+                    <p class="text-slate-600 mb-4">32 commands for scaffolding controllers, models, migrations and more.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
-                        <li class="mb-1">✓ 11 code generators</li>
-                        <li class="mb-1">✓ 7 migration commands</li>
+                        <li class="mb-1">✓ 12 code generators</li>
+                        <li class="mb-1">✓ 7 database commands</li>
                         <li>✓ Rapid scaffolding</li>
                     </ul>
                 </div>
@@ -76,7 +76,7 @@
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Native template engine with blocks, components, and elegant syntax.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
-                        <li class="mb-1">✓ Control flow directives</li>
+                        <li class="mb-1">✓ Auto-escaped output</li>
                         <li class="mb-1">✓ Template inheritance</li>
                         <li>✓ Built-in filters</li>
                     </ul>
@@ -89,9 +89,9 @@
                     <h3 class="text-purple-600 font-bold text-lg">SFCSS Framework</h3>
                 </div>
                 <div class="card-body">
-                    <p class="text-slate-600 mb-4">Minimalista CSS with 600+ color utilities and complete utilities.</p>
+                    <p class="text-slate-600 mb-4">Utility CSS with 620 color classes, hover and responsive variants.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
-                        <li class="mb-1">✓ 45KB pure CSS</li>
+                        <li class="mb-1">✓ 16KB gzipped</li>
                         <li class="mb-1">✓ 20 color families</li>
                         <li>✓ Complete utilities</li>
                     </ul>
@@ -119,7 +119,7 @@
                     <h3 class="text-pink-600 font-bold text-lg">Security First</h3>
                 </div>
                 <div class="card-body">
-                    <p class="text-slate-600 mb-4">Built-in protection with JWT, CSRF, validation, and rate limiting.</p>
+                    <p class="text-slate-600 mb-4">Built-in protection with JWT, CSRF, bound queries and escaped output.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
                         <li class="mb-1">✓ JWT HS256 tokens</li>
                         <li class="mb-1">✓ CSRF protection</li>
@@ -149,11 +149,11 @@
                     <h3 class="text-teal-600 font-bold text-lg">SFJS Library</h3>
                 </div>
                 <div class="card-body">
-                    <p class="text-slate-600 mb-4">Lightweight JavaScript for AJAX, interactivity, and DOM manipulation.</p>
+                    <p class="text-slate-600 mb-4">Lightweight JavaScript for AJAX, DOM work and form validation.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
-                        <li class="mb-1">✓ HTMX-like features</li>
-                        <li class="mb-1">✓ Alpine-like reactivity</li>
-                        <li>✓ 8KB minified</li>
+                        <li class="mb-1">✓ Declarative AJAX attributes</li>
+                        <li class="mb-1">✓ Client-side validation</li>
+                        <li>✓ 3KB gzipped</li>
                     </ul>
                 </div>
             </div>
@@ -165,7 +165,7 @@
 <section class="bg-slate-900 text-white py-16 px-4">
     <div class="container mx-auto">
         <h2 class="text-3xl font-bold text-center mb-2">20 Color Families</h2>
-        <p class="text-center opacity-90 mb-12">600+ color utilities (20 families × 10 shades each)</p>
+        <p class="text-center opacity-90 mb-12">620 color utilities (20 families × 10 shades × bg/text/border)</p>
 
         <div class="grid grid-cols-3 md:grid-cols-6 gap-4">
             <!-- Color swatches -->

@@ -1,6 +1,6 @@
 <?php
 
-namespace SfPhp\Queue;
+namespace SfphpProject\src\Queue;
 
 class QueueManager
 {
@@ -58,10 +58,14 @@ class QueueManager
         }
     }
 
+    /**
+     * List the jobs that exhausted their retries.
+     *
+     * @return array<int, array{id: string, exception: string, failed_at: int}>
+     */
     public function failed(): array
     {
-        // Placeholder for failed jobs retrieval
-        return [];
+        return $this->driver->failedJobs();
     }
 
     public function flush(): void

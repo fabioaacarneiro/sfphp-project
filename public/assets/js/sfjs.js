@@ -112,10 +112,19 @@ const sf = (() => {
 
     submit: (formElement, options = {}) => {
       const data = form.serialize(formElement);
-      const method = (formElement.getAttribute('method') || 'POST').toUpperCase();
-      const action = formElement.getAttribute('action') || '';
-      const swapTarget = formElement.getAttribute('\\@hxTarget');
-      const swapStrategy = formElement.getAttribute('\\@hxSwap') || 'innerHTML';
+      const declarative = Array.from(formElement.attributes || []).find((attr) =>
+        /^@hx(get|post|put|delete|patch)$/.test(attr.name.toLowerCase())
+      );
+
+      const method = declarative
+        ? declarative.name.toLowerCase().replace('@hx', '').toUpperCase()
+        : (formElement.getAttribute('method') || 'POST').toUpperCase();
+
+      const action = (declarative && declarative.value)
+        || formElement.getAttribute('action')
+        || '';
+      const swapTarget = formElement.getAttribute('@hxTarget');
+      const swapStrategy = formElement.getAttribute('@hxSwap') || 'innerHTML';
 
       return ajax[method.toLowerCase()](action, data, {
         target: swapTarget || null,
@@ -202,7 +211,7 @@ const sf = (() => {
 
   const form_validation = {
     validate: (element) => {
-      const rule = element.getAttribute('\\@validate');
+      const rule = element.getAttribute('@validate');
       const value = element.value;
 
       if (!rule || !validate[rule]) return true;
@@ -280,16 +289,25 @@ const sf = (() => {
 
       e.preventDefault();
 
-      const method = Object.keys(target.attributes).find(key =>
-        target.attributes[key].nodeName.match(/^@hx(Get|Post|Put|Delete|Patch)$/)
+      /*
+       * HTML lowercases attribute names, so an attribute written as "@hxGet"
+       * is read back as "@hxget". Matching case-sensitively against
+       * /^@hx(Get|Post)/ never succeeded, which is why the declarative
+       * attributes did nothing in an HTML document. The name is compared in
+       * lower case, and the attribute is read back by its real name.
+       */
+      const attribute = Array.from(target.attributes).find((attr) =>
+        /^@hx(get|post|put|delete|patch)$/.test(attr.name.toLowerCase())
       );
 
-      if (!method) return;
+      if (!attribute) return;
 
-      const httpMethod = method.replace('@hx', '').toLowerCase();
-      const url = target.getAttribute(`@hx${method.replace('@hx', '')}`);
+      const httpMethod = attribute.name.toLowerCase().replace('@hx', '');
+      const url = attribute.value;
       const swapTarget = target.getAttribute('@hxTarget');
       const swapStrategy = target.getAttribute('@hxSwap') || 'innerHTML';
+
+      if (!url) return;
 
       ajax[httpMethod](url, {
         target: swapTarget,
@@ -299,16 +317,21 @@ const sf = (() => {
 
     // Form submit with @hxPost
     document.addEventListener('submit', (e) => {
-      if (!e.target.hasAttribute('\\@hxPost')) return;
+      const declarative = Array.from(e.target.attributes || []).some((attr) =>
+        /^@hx(get|post|put|delete|patch)$/.test(attr.name.toLowerCase())
+      );
+
+      if (!declarative) return;
+
       e.preventDefault();
       form.submit(e.target);
     });
 
     // Validation on blur/change
     document.addEventListener('blur', (e) => {
-      if (!e.target.hasAttribute('\\@validate')) return;
+      if (!e.target.hasAttribute('@validate')) return;
 
-      const rule = e.target.getAttribute('\\@validate');
+      const rule = e.target.getAttribute('@validate');
       const isValid = form_validation.validate(e.target);
 
       if (!isValid) {
@@ -323,7 +346,7 @@ const sf = (() => {
       const target = e.target.closest('[\\@toggle]');
       if (!target) return;
 
-      const toggleId = target.getAttribute('\\@toggle');
+      const toggleId = target.getAttribute('@toggle');
       const toggleTarget = document.getElementById(toggleId);
 
       if (toggleTarget) {

@@ -1,8 +1,8 @@
 <?php
 
-use SfPhp\Cache\CacheManager;
-use SfPhp\Queue\QueueManager;
-use SfPhp\Queue\Job;
+use SfphpProject\src\Cache\CacheManager;
+use SfphpProject\src\Queue\QueueManager;
+use SfphpProject\src\Queue\Job;
 
 if (!function_exists('cache')) {
     function cache(): CacheManager

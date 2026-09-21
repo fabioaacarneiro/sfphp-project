@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use SfPhp\Database\Seeder;
+use SfphpProject\src\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
