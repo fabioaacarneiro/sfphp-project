@@ -29,13 +29,17 @@ final class {CLASS}Request
     /**
      * Get the validation rules.
      *
-     * @return array<string, array<int, string>>
+     * Rules are a pipe-separated string, and an argument follows a colon.
+     * The available rules are: required, email, min:N, max:N, alpha,
+     * alphanum and number.
+     *
+     * @return array<string, string>
      */
     public static function rules(): array
     {
         return [
-            // 'field' => ['required', 'string', 'max:255'],
-            // 'email' => ['required', 'email'],
+            // 'name' => 'required|min:3|max:255',
+            // 'email' => 'required|email',
         ];
     }
 
@@ -56,9 +60,9 @@ final class {CLASS}Request
      * @param array<string, mixed> $data The data to validate
      * @return bool
      */
-    public static function isValid(array $data): bool
+    public static function passes(array $data): bool
     {
-        return self::validate($data)->isValid();
+        return self::validate($data)->passes();
     }
 }
 PHP;

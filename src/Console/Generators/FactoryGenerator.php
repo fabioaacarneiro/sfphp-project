@@ -29,7 +29,7 @@ class {CLASS}Factory extends Factory
 
     protected function model(): string
     {
-        return \SfphpProject\app\Models\{MODEL}::class;
+        return \SfphpProject\app\models\{MODEL}::class;
     }
 }
 PHP;

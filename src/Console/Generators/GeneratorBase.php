@@ -60,19 +60,24 @@ abstract class GeneratorBase
         $dir = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($directory, DIRECTORY_SEPARATOR));
         $parts = explode(DIRECTORY_SEPARATOR, $dir);
 
-        $namespace = 'SfphpProject\\app';
-        if ($parts[0] !== 'app') {
-            foreach ($parts as $part) {
-                if ($part !== '') {
-                    $namespace .= '\\' . ucfirst($part);
-                }
-            }
-        } else {
+        if ($parts[0] === 'app') {
             array_shift($parts);
-            foreach ($parts as $part) {
-                if ($part !== '') {
-                    $namespace .= '\\' . ucfirst($part);
-                }
+        }
+
+        /*
+         * The segment is used exactly as the directory is spelled. It used to
+         * be ucfirst()'d, which produced "SfphpProject\app\Models" for a file
+         * written to app/models: under PSR-4 on a case-sensitive filesystem
+         * the autoloader then looked for app/Models/ and found nothing, so
+         * every generator produced a class that could not be loaded. The
+         * controller case was worse still, because the router looks for
+         * "SfphpProject\app\controllers\" in lower case and would never have
+         * matched a generated controller.
+         */
+        $namespace = 'SfphpProject\\app';
+        foreach ($parts as $part) {
+            if ($part !== '') {
+                $namespace .= '\\' . $part;
             }
         }
 

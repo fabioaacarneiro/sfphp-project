@@ -5,6 +5,7 @@ namespace SfphpProject\src;
 use PDO;
 use PDOException;
 use RuntimeException;
+use Throwable;
 
 class Database
 {
@@ -89,6 +90,93 @@ class Database
   public static function query(string $sql, array $bindings = []): RawQuery
   {
     return new RawQuery(self::connect(), $sql, $bindings);
+  }
+
+  /**
+   * Nesting depth of the transactions currently open.
+   */
+  private static int $transactions = 0;
+
+  /**
+   * Run a callback inside a transaction.
+   *
+   * Commits when the callback returns and rolls back when it throws, then
+   * re-throws so the failure is not swallowed. The callback's return value is
+   * passed through.
+   *
+   *   Database::transaction(function (): void {
+   *       $order = Order::create([...]);
+   *       foreach ($items as $item) {
+   *           OrderItem::create(['order_id' => $order->id, ...]);
+   *       }
+   *   });
+   *
+   * Until now nothing in the framework offered this. The only transaction
+   * handling lived in a private method inside the migration runner, so an
+   * application had to reach past the abstraction with Database::connect() and
+   * drive the PDO handle itself. That was possible, but it meant re-writing
+   * the same begin/commit/rollback in every project — including the part that
+   * is easy to miss, that a failed statement can leave the driver with no
+   * active transaction, so a bare rollBack() in the catch block throws and
+   * hides the error that actually caused the failure.
+   *
+   * A nested call JOINS the transaction already open rather than starting a
+   * second one, because PDO has no nested transactions. The consequence is
+   * worth knowing: a failure inside the inner callback rolls back the outer
+   * work too. Savepoints would avoid that, but their syntax differs between
+   * drivers, and silently degrading on the ones that lack them would be worse
+   * than being explicit about this.
+   *
+   * @template T
+   * @param callable(): T $callback The work to run
+   * @return T The callback's return value
+   * @throws Throwable Whatever the callback threw, after rolling back
+   */
+  public static function transaction(callable $callback): mixed
+  {
+    $pdo = self::connect();
+
+    if (self::$transactions > 0) {
+      self::$transactions++;
+
+      try {
+        return $callback();
+      } finally {
+        self::$transactions--;
+      }
+    }
+
+    $pdo->beginTransaction();
+    self::$transactions = 1;
+
+    try {
+      $result = $callback();
+      $pdo->commit();
+
+      return $result;
+    } catch (Throwable $throwable) {
+      /*
+       * A failed statement can leave the driver with no active transaction,
+       * in which case rollBack() would throw and mask the real error.
+       */
+      if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+      }
+
+      throw $throwable;
+    } finally {
+      self::$transactions = 0;
+    }
+  }
+
+  /**
+   * Check whether a transaction opened through transaction() is active.
+   *
+   * @return bool True while inside a transaction
+   */
+  public static function inTransaction(): bool
+  {
+    return self::$transactions > 0;
   }
 
   /**

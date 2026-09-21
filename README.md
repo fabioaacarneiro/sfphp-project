@@ -47,7 +47,8 @@ Em produção, aponte o `DocumentRoot` para `public/`.
 | **Roteamento** | Parâmetros tipados com suporte a qualquer alfabeto, grupos, rotas nomeadas, geração de URL |
 | **HTTP** | Objetos Request/Response e pipeline de middleware global, por grupo e por rota |
 | **Container DI** | Autowiring por reflexão, fábricas preguiçosas, detecção de ciclo |
-| **Query Builder** | Identificadores validados por whitelist, bind em todo valor, paginação por dialeto |
+| **Query Builder** | Identificadores validados por whitelist, bind em todo valor, paginação por dialeto, transações |
+| **Models** | Hidratação em objetos, tipos de atributo, relacionamentos (incl. muitos-para-muitos) e `with()` contra N+1 |
 | **Schema Builder** | 30+ tipos de coluna com paridade real MySQL 8 ↔ PostgreSQL 12 |
 | **SFHT** | Template engine com escape automático, herança de layout e cache compatível com OPcache |
 | **Cache** | Drivers de arquivo, memória e Redis |
@@ -88,7 +89,7 @@ dado no banco sem proteger o destino real.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 55 casos unitários
+composer run test        # 63 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 ```
 
@@ -98,8 +99,13 @@ e PostgreSQL 16 reais.
 
 ## O que não tem
 
-Dito de frente, para você decidir com informação: não há autenticação, ORM,
-sistema de eventos, i18n nem rate limiting. A lista completa, com o impacto de cada ausência, está
+Dito de frente, para você decidir com informação: não há autenticação, sistema
+de eventos, i18n nem rate limiting. A camada de Models **não é um ORM
+completo** — sem identity map, unit of work, proxy de lazy loading, relação
+polimórfica ou schema derivado da classe. O motivo de cada ausência está em
+[ORM ou Query Builder?](docs/DOCUMENTATION.md#orm-ou-query-builder), incluindo
+um caso em que a peça faltante seria um risco de segurança sob runtime
+persistente, e não só um custo. A lista completa, com o impacto de cada ausência, está
 em [docs/DOCUMENTATION.md § Limitações conhecidas](docs/DOCUMENTATION.md#limitações-conhecidas).
 
 ## Documentação
