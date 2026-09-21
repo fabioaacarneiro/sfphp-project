@@ -118,7 +118,7 @@ corrompería el dato en la base de datos sin proteger su destino real.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 78 casos unitarios
+composer run test        # 81 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run docs        # los tres idiomas de la documentación concuerdan
 ```

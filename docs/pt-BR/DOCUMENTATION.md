@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 78 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 81 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -1509,7 +1509,40 @@ $cache->forget('chave');
 $cache->flush();
 $cache->pull('chave');                          // lê e remove
 $cache->remember('users', 600, fn () => /* ... */);   // calcula se faltar
+
+$cache->increment('hits');           // atômico; devolve o novo valor
+$cache->increment('hits', 5);        // soma mais de um
+$cache->decrement('slots');
+
+$cache->increment('window', 1, 60);  // um contador que expira em 60 segundos
+$cache->ttl('window');               // segundos restantes, ou null
 ```
+
+### Contadores
+
+`increment()` não é `get()` mais `put()`, e a diferença é justamente o ponto.
+Duas requisições que chegam juntas leem 4 as duas e gravam 5 as duas — um
+acesso se perde. Isso é inofensivo numa página em cache e não é inofensivo num
+limitador de requisições, que conta precisamente quando várias chegam ao mesmo
+tempo.
+
+A soma acontece onde o dado está: dentro de um lock exclusivo no driver de
+arquivo, e como `INCRBY` no Redis, de modo que quem soma é o driver, não o PHP.
+
+O tempo de vida é aplicado **só quando o contador é criado**. Um contador que
+já existe mantém a expiração que tinha, então um cliente que continua batendo
+não consegue empurrar a própria janela para a frente e ficar dentro do limite
+para sempre.
+
+O corolário vale conhecer: um contador criado **sem** tempo de vida nunca ganha
+um. `increment('hits')` seguido de `increment('hits', 1, 60)` deixa um contador
+que não expira nunca, e `ttl()` responde `null`. Passe o tempo de vida na
+chamada que cria o contador, ou em todas — o limitador de requisições faz a
+segunda coisa.
+
+> Acrescentar `increment()` e `ttl()` à interface `Cache` é uma **quebra de
+> compatibilidade** para uma aplicação que traga o próprio driver: uma classe
+> que implementa `Cache` passa a precisar implementar os dois.
 
 Trocar o driver:
 
@@ -2184,9 +2217,17 @@ driver compartilhado. Uma requisição autenticada conta **por usuário**, para
 que várias pessoas atrás do mesmo endereço de escritório não consumam a cota
 umas das outras.
 
+A contagem é um `Cache::increment()` **atômico**, não uma leitura seguida de
+escrita. Essa distinção é o middleware inteiro: requisições contadas com
+`get()` e `put()` sobrescrevem umas às outras, e o limite vaza exatamente sob o
+tráfego paralelo que ele existe para recusar — quem tenta senhas abre várias
+conexões ao mesmo tempo, em vez de esperar cada resposta. Ver
+[Contadores](#contadores).
+
 A janela **não** é renovada a cada tentativa: renovar deixaria quem continua
 batendo manter a própria janela aberta indefinidamente, e o contador nunca
-perdoaria.
+perdoaria. O `Retry-After` informa o tempo de vida restante do contador, então
+ele decresce rumo ao fechamento da janela em vez de reiniciar a cada recusa.
 
 > O endereço do cliente é tão confiável quanto a configuração de proxies. Atrás
 > de um balanceador sem proxies declarados, **todo o site divide um único
@@ -2532,7 +2573,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 78 casos unitários
+composer run test        # 81 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve
