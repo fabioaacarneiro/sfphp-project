@@ -16,6 +16,8 @@ use SfphpProject\src\Console\Application;
 use SfphpProject\src\Cache\FileDriver;
 use SfphpProject\src\Cache\MemoryDriver;
 use SfphpProject\src\Database\Factory;
+use SfphpProject\src\Database\Model;
+use SfphpProject\src\Database\Relation;
 use SfphpProject\src\Database\Seeder;
 use SfphpProject\src\Http\Middleware;
 use SfphpProject\src\Http\Middleware\VerifyCsrfToken;
@@ -82,6 +84,110 @@ final class DispatchTestController
     {
     }
 }
+
+/**
+ * A PDO that answers from canned tables, so the model layer can be tested
+ * without a database driver.
+ */
+final class ModelStatementTest extends PDOStatement
+{
+    public string $sql = '';
+    public array $rows = [];
+
+    public function bindValue(string|int $param, mixed $value, int $type = PDO::PARAM_STR): bool
+    {
+        return true;
+    }
+
+    public function execute(?array $params = null): bool
+    {
+        return true;
+    }
+
+    public function fetchAll(int $mode = PDO::FETCH_DEFAULT, mixed ...$args): array
+    {
+        return $this->rows;
+    }
+
+    public function fetch(
+        int $mode = PDO::FETCH_DEFAULT,
+        int $cursorOrientation = PDO::FETCH_ORI_NEXT,
+        int $cursorOffset = 0
+    ): mixed {
+        return $this->rows[0] ?? false;
+    }
+
+    public function rowCount(): int
+    {
+        return count($this->rows);
+    }
+}
+
+final class ModelPdoTest extends PDO
+{
+    public array $queries = [];
+
+    public function __construct(private array $tables = []) {}
+
+    public function getAttribute(int $attribute): mixed
+    {
+        return 'mysql';
+    }
+
+    public function prepare(string $query, array $options = []): PDOStatement|false
+    {
+        $this->queries[] = $query;
+
+        $statement = new ModelStatementTest();
+        $statement->sql = $query;
+
+        if (str_contains($query, 'COUNT(*)')) {
+            $statement->rows = [['aggregate' => 7]];
+
+            return $statement;
+        }
+
+        if (preg_match('/FROM `(\w+)`/', $query, $matches) === 1) {
+            $statement->rows = $this->tables[$matches[1]] ?? [];
+        }
+
+        return $statement;
+    }
+
+    public function lastInsertId(?string $name = null): string
+    {
+        return '99';
+    }
+}
+
+final class UserModelTest extends Model
+{
+    protected static string $table = 'users';
+
+    public function posts(): Relation
+    {
+        return $this->hasMany(PostModelTest::class, 'user_id');
+    }
+}
+
+final class PostModelTest extends Model
+{
+    protected static string $table = 'posts';
+
+    public function author(): Relation
+    {
+        return $this->belongsTo(UserModelTest::class, 'user_id');
+    }
+}
+
+/*
+ * No $table on these three, so the table name is inferred from the class
+ * name. The rules are deliberately simple and a model with an irregular name
+ * is expected to declare $table instead.
+ */
+final class Category extends Model {}
+final class Box extends Model {}
+final class Article extends Model {}
 
 /**
  * Middleware resolved by class name, to prove container resolution works.
@@ -1686,6 +1792,185 @@ $tests->run('csrf verification finally applies by default', function () use ($te
     // Exempt prefixes let a token-authenticated API opt out.
     $exempt = (new Router(new Container(), ''))->middleware(new VerifyCsrfToken(['/form']));
     $tests->assertSame(HTTP_OK, $exempt->dispatch(Request::create('POST', '/form'))->status());
+});
+
+$tests->run('models hydrate rows into objects', function () use ($tests): void {
+    $pdo = new ModelPdoTest([
+        'users' => [['id' => 1, 'name' => 'Ana'], ['id' => 2, 'name' => 'Bia']],
+    ]);
+    Model::useConnection($pdo);
+
+    try {
+        $users = UserModelTest::all();
+
+        $tests->assertTrue($users[0] instanceof UserModelTest);
+        $tests->assertSame('Ana', $users[0]->name);
+        $tests->assertSame(null, $users[0]->naoExiste);
+        $tests->assertSame(['id' => 1, 'name' => 'Ana'], $users[0]->toArray());
+        $tests->assertTrue($users[0]->exists());
+
+        // JsonSerializable, so a model goes straight into a response — and
+        // Response::json() keeps UTF-8 unescaped.
+        $tests->assertSame('{"id":1,"name":"Ana"}', Response::json($users[0])->body());
+
+        // The table name is inferred when not declared.
+        $tests->assertSame('categories', Category::table());   // y → ies
+        $tests->assertSame('boxes', Box::table());             // x → es
+        $tests->assertSame('articles', Article::table());      // default
+        $tests->assertSame('posts', PostModelTest::table());   // declared wins
+    } finally {
+        Model::useConnection(null);
+    }
+});
+
+$tests->run('saving writes only what changed', function () use ($tests): void {
+    $pdo = new ModelPdoTest(['users' => [['id' => 1, 'name' => 'Ana', 'email' => 'a@b.co']]]);
+    Model::useConnection($pdo);
+
+    try {
+        $novo = new UserModelTest(['name' => 'Caio']);
+        $tests->assertSame(false, $novo->exists());
+
+        $novo->save();
+        $tests->assertTrue($novo->exists());
+        $tests->assertSame('99', $novo->id);
+
+        $pdo->queries = [];
+        $user = UserModelTest::all()[0];
+        $pdo->queries = [];
+
+        $user->name = 'Ana Silva';
+        $tests->assertTrue($user->save());
+
+        /*
+         * Touching one field must not rewrite every column: the SET clause
+         * carries the changed attribute and nothing else.
+         */
+        preg_match('/SET (.+?) WHERE/', $pdo->queries[0], $set);
+        $tests->assertSame('`name` = ?', preg_replace('/:binding_\d+/', '?', $set[1] ?? ''));
+
+        // Nothing changed, so nothing is written.
+        $pdo->queries = [];
+        $tests->assertSame(false, $user->save());
+        $tests->assertSame([], $pdo->queries);
+    } finally {
+        Model::useConnection(null);
+    }
+});
+
+$tests->run('with() loads relations in one query instead of N+1', function () use ($tests): void {
+    $pdo = new ModelPdoTest([
+        'users' => [['id' => 1, 'name' => 'Ana'], ['id' => 2, 'name' => 'Bia']],
+        'posts' => [
+            ['id' => 10, 'title' => 'Olá', 'user_id' => 1],
+            ['id' => 11, 'title' => 'Oi', 'user_id' => 2],
+        ],
+    ]);
+    Model::useConnection($pdo);
+
+    try {
+        // Lazy: reading the property resolves the relation on the spot.
+        $tests->assertTrue(PostModelTest::all()[0]->author instanceof UserModelTest);
+        $tests->assertTrue(is_array(UserModelTest::all()[0]->posts));
+
+        /*
+         * Eager: one query for the posts and one for every author, not one
+         * author query per post. This is the whole point of the relation
+         * metadata being a description rather than a live query.
+         */
+        $pdo->queries = [];
+        $posts = PostModelTest::query()->with('author')->get();
+
+        $tests->assertSame(2, count($pdo->queries));
+        $tests->assertTrue(str_contains($pdo->queries[1], 'IN ('));
+        $tests->assertSame('Ana', $posts[0]->author->name);
+
+        $before = count($pdo->queries);
+        foreach ($posts as $post) {
+            $post->author->name;
+        }
+        $tests->assertSame($before, count($pdo->queries));
+
+        $tests->assertTrue(array_key_exists('author', $posts[0]->toArray()));
+    } finally {
+        Model::useConnection(null);
+    }
+});
+
+$tests->run('the query builder stays one call away', function () use ($tests): void {
+    $pdo = new ModelPdoTest(['posts' => []]);
+    Model::useConnection($pdo);
+
+    try {
+        $tests->assertSame(7, PostModelTest::query()->count());
+        $tests->assertSame(
+            'SELECT * FROM `posts` WHERE `id` = :binding_0',
+            PostModelTest::query()->where('id', 1)->toSql()
+        );
+        $tests->assertTrue(PostModelTest::query()->builder() instanceof QueryBuilder);
+        $tests->assertThrows(
+            fn () => PostModelTest::findOrFail(999),
+            RuntimeException::class
+        );
+    } finally {
+        Model::useConnection(null);
+    }
+});
+
+$tests->run('every generator produces a class that actually loads', function () use ($tests): void {
+    /*
+     * getNamespace() used to ucfirst() the directory, so a file written to
+     * app/models declared SfphpProject\app\Models and PSR-4 looked for
+     * app/Models on a case-sensitive filesystem. Every generator was affected,
+     * and a generated controller could not even be found by the router, which
+     * looks for the lower-case namespace.
+     */
+    $root = dirname(__DIR__);
+    $generators = [
+        'controller' => 'app/controllers/GenProbeController.php',
+        'model' => 'app/models/GenProbe.php',
+        'repository' => 'app/repositories/GenProbeRepository.php',
+        'service' => 'app/services/GenProbeService.php',
+        'request' => 'app/requests/GenProbeRequest.php',
+        'policy' => 'app/policies/GenProbePolicy.php',
+        'event' => 'app/events/GenProbeEvent.php',
+        'listener' => 'app/listeners/GenProbeListener.php',
+        'middleware' => 'app/middleware/GenProbeMiddleware.php',
+    ];
+
+    $created = [];
+
+    try {
+        foreach ($generators as $command => $relative) {
+            (new Application(['sfphp', "make:$command", 'GenProbe']))->run();
+
+            $path = $root . '/' . $relative;
+            $tests->assertTrue(is_file($path));
+            $created[] = $path;
+
+            $source = file_get_contents($path);
+            preg_match('/^namespace (.+);/m', $source, $namespace);
+            preg_match('/(?:final )?class (\w+)/', $source, $class);
+
+            $fqcn = $namespace[1] . '\\' . $class[1];
+
+            require_once $path;
+            $tests->assertTrue(class_exists($fqcn, false));
+        }
+    } finally {
+        foreach ($created as $path) {
+            @unlink($path);
+        }
+
+        foreach (array_unique(array_map(
+            static fn (string $relative): string => $root . '/' . dirname($relative),
+            $generators
+        )) as $directory) {
+            if (is_dir($directory) && (glob($directory . '/*') ?: []) === []) {
+                @rmdir($directory);
+            }
+        }
+    }
 });
 
 $tests->finish();

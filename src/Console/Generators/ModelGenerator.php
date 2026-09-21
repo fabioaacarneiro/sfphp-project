@@ -12,80 +12,51 @@ final class ModelGenerator extends GeneratorBase
         $name = $this->validateName($name);
         $namespace = $this->getNamespace('app/models');
         $filePath = $this->getFilePath('app/models', $name);
-        $table = strtolower($name . 's');
+        $table = strtolower($name) . 's';
 
         $content = <<<'PHP'
 <?php
 
 namespace {NAMESPACE};
 
-use SfphpProject\src\Database;
+use SfphpProject\src\Database\Model;
+use SfphpProject\src\Database\Relation;
 
 /**
- * {CLASS} model for interacting with the database.
+ * {CLASS} model.
  */
-final class {CLASS}
+final class {CLASS} extends Model
 {
     /**
-     * Get all records.
-     *
-     * @return array<int, array<string, mixed>>
+     * The table this model reads from.
      */
-    public static function all(): array
-    {
-        return Database::table('{TABLE}')->get();
-    }
+    protected static string $table = '{TABLE}';
 
-    /**
-     * Find a record by ID.
+    /*
+     * Declare relations as methods returning a Relation. Reading the property
+     * of the same name resolves it:
      *
-     * @param int $id The record ID
-     * @return array<string, mixed>|null
-     */
-    public static function find(int $id): ?array
-    {
-        return Database::table('{TABLE}')->where('id', $id)->first();
-    }
-
-    /**
-     * Create a new record.
+     *     public function author(): Relation
+     *     {
+     *         return $this->belongsTo(User::class, 'user_id');
+     *     }
      *
-     * @param array<string, mixed> $data The record data
-     * @return int The inserted ID
-     */
-    public static function create(array $data): int
-    {
-        return Database::table('{TABLE}')->insert($data);
-    }
-
-    /**
-     * Update a record.
+     *     public function comments(): Relation
+     *     {
+     *         return $this->hasMany(Comment::class, '{TABLE_SINGULAR}_id');
+     *     }
      *
-     * @param int $id The record ID
-     * @param array<string, mixed> $data The data to update
-     * @return int The number of affected rows
-     */
-    public static function update(int $id, array $data): int
-    {
-        return Database::table('{TABLE}')->where('id', $id)->update($data);
-    }
-
-    /**
-     * Delete a record.
+     * Reading a relation inside a loop runs one query per row. Load them in
+     * one query instead:
      *
-     * @param int $id The record ID
-     * @return int The number of affected rows
+     *     {CLASS}::query()->with('author')->get();
      */
-    public static function delete(int $id): int
-    {
-        return Database::table('{TABLE}')->where('id', $id)->delete();
-    }
 }
 PHP;
 
         $content = str_replace(
-            ['{NAMESPACE}', '{CLASS}', '{TABLE}'],
-            [$namespace, $name, $table],
+            ['{NAMESPACE}', '{CLASS}', '{TABLE_SINGULAR}', '{TABLE}'],
+            [$namespace, $name, strtolower($name), $table],
             $content
         );
 
