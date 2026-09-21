@@ -514,6 +514,20 @@ final class Request
     }
 
     /**
+     * Get the authenticated user, when the request has one.
+     *
+     * Set by the Authenticate middleware. A request that never went through it
+     * reports no user, rather than resolving one here — resolving lazily would
+     * mean a route could read a user the pipeline never authenticated.
+     *
+     * @return mixed The user, or null when the request is anonymous
+     */
+    public function user(): mixed
+    {
+        return $this->attributes['user'] ?? null;
+    }
+
+    /**
      * Get a value attached to the request.
      *
      * @param string $key The attribute name
