@@ -11,10 +11,23 @@ use SfphpProject\src\Migrations\Identifier;
 use SfphpProject\src\Migrations\MigrationCreator;
 use SfphpProject\src\Migrations\MigrationRunner;
 use SfphpProject\src\Migrations\Schema;
+use SfphpProject\src\Cache\CacheManager;
+use SfphpProject\src\Console\Application;
+use SfphpProject\src\Cache\FileDriver;
+use SfphpProject\src\Cache\MemoryDriver;
+use SfphpProject\src\Database\Factory;
+use SfphpProject\src\Database\Seeder;
 use SfphpProject\src\QueryBuilder;
+use SfphpProject\src\Queue\DatabaseDriver;
+use SfphpProject\src\Queue\QueueManager;
+use SfphpProject\src\Queue\RedisDriver;
+use SfphpProject\src\RawQuery;
+use SfphpProject\src\Route;
 use SfphpProject\src\Router;
+use SfphpProject\src\Str;
 use SfphpProject\src\Validator;
 use SfphpProject\src\View;
+use SfphpProject\src\View\SfhtEngine;
 
 require __DIR__ . '/TestRunner.php';
 
@@ -22,6 +35,15 @@ final class QueryBuilderStatementTest extends PDOStatement
 {
     public string $sql;
     public array $bindings = [];
+    public mixed $row = ['aggregate' => 0];
+
+    public function fetch(
+        int $mode = PDO::FETCH_DEFAULT,
+        int $cursorOrientation = PDO::FETCH_ORI_NEXT,
+        int $cursorOffset = 0
+    ): mixed {
+        return $this->row;
+    }
 
     public function bindValue(
         string|int $param,
@@ -335,6 +357,36 @@ PHP);
 }
 
 $tests = new TestRunner();
+
+/*
+ * SFHT fixtures. Templates are written to a throwaway directory and rendered
+ * through a real engine, so the tests exercise the parser, the compiler and
+ * the on-disk compilation cache together.
+ */
+$sfhtDirectory = sys_get_temp_dir() . '/sfphp-sfht-tests-' . bin2hex(random_bytes(6));
+mkdir($sfhtDirectory, 0755, true);
+
+$sfhtEngine = new SfhtEngine([$sfhtDirectory], $sfhtDirectory . '/cache');
+
+$sfht = static function (string $template, array $data = []) use ($sfhtDirectory, $sfhtEngine): string {
+    $name = 'tpl_' . bin2hex(random_bytes(6));
+    file_put_contents($sfhtDirectory . '/' . $name . '.sfht', $template);
+
+    return $sfhtEngine->render($name, $data);
+};
+
+register_shutdown_function(static function () use ($sfhtDirectory): void {
+    $items = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($sfhtDirectory, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST
+    );
+
+    foreach ($items as $item) {
+        $item->isDir() ? rmdir($item->getPathname()) : unlink($item->getPathname());
+    }
+
+    rmdir($sfhtDirectory);
+});
 
 $tests->run('csrf tokens persist and validate requests', function () use ($tests): void {
     $savedServer = $_SERVER;
@@ -838,6 +890,288 @@ $tests->run('raw columns and convenience drops', function () use ($tests, $compi
             $table->dropMorphs('owner');
         })
     );
+});
+
+$tests->run('unicode aware string helpers count characters, not bytes', function () use ($tests): void {
+    $tests->assertSame(3, Str::length('日本語'));
+    $tests->assertSame(4, Str::length('José'));
+    $tests->assertSame('日本...', Str::truncate('日本語テキスト', 5));
+    $tests->assertSame('本', Str::substr('日本語', 1, 1));
+    $tests->assertSame('語本日', Str::reverse('日本語'));
+    $tests->assertTrue(Str::isUtf8(Str::truncate('日本語テキスト', 5)));
+
+    $tests->assertTrue(Str::isAlpha('José'));
+    $tests->assertTrue(Str::isAlpha('Владимир'));
+    $tests->assertTrue(Str::isAlpha('北京'));
+    $tests->assertSame(false, Str::isAlpha('abc123'));
+    $tests->assertTrue(Str::isAlphanumeric('José99'));
+
+    // ASCII-only on purpose: the value is meant to survive an (int) cast.
+    $tests->assertTrue(Str::isNumeric('123'));
+    $tests->assertSame(false, Str::isNumeric('١٢٣'));
+});
+
+$tests->run('validator measures characters and accepts every alphabet', function () use ($tests): void {
+    $tests->assertTrue(Validator::validate(
+        ['name' => 'José'],
+        ['name' => 'alpha']
+    )->passes());
+
+    $tests->assertTrue(Validator::validate(
+        ['name' => '北京'],
+        ['name' => 'alpha']
+    )->passes());
+
+    // "日本語" is 3 characters but 9 bytes; a byte-based max:5 rejected it.
+    $tests->assertTrue(Validator::validate(
+        ['bio' => '日本語'],
+        ['bio' => 'max:5']
+    )->passes());
+
+    $tests->assertSame(false, Validator::validate(
+        ['bio' => '日本語テキスト'],
+        ['bio' => 'max:5']
+    )->passes());
+
+    $tests->assertSame(false, Validator::validate(
+        ['name' => 'abc123'],
+        ['name' => 'alpha']
+    )->passes());
+});
+
+$tests->run('routes match non-ascii paths and refuse synthesized separators', function () use ($tests): void {
+    $route = new Route('GET', '/produtos/nome:alpha', 'MainController', 'show');
+
+    $tests->assertSame(['nome' => 'café'], $route->match('/produtos/café'));
+    $tests->assertSame(['nome' => '北京'], $route->match('/produtos/北京'));
+    $tests->assertSame(null, $route->match('/produtos/abc123'));
+    $tests->assertSame('/produtos/caf%C3%A9', $route->generateUrl(['nome' => 'café']));
+
+    $decode = new ReflectionMethod(Router::class, 'decodePath');
+    $decode->setAccessible(true);
+
+    $tests->assertSame('/produtos/café', $decode->invoke(null, '/produtos/caf%C3%A9'));
+
+    // An encoded separator must not become a real one, or "/a%2Fb" would
+    // reach a route registered as "/a/b".
+    $tests->assertSame('/a%2Fb', $decode->invoke(null, '/a%2Fb'));
+    $tests->assertSame('/a%5Cb', $decode->invoke(null, '/a%5Cb'));
+});
+
+$tests->run('the framework error page makes no external requests', function () use ($tests): void {
+    $render = new ReflectionMethod(Router::class, 'renderErrorPage');
+    $render->setAccessible(true);
+
+    ob_start();
+    $render->invoke(null, HTTP_NOT_FOUND, '404', 'Nao encontrada');
+    $html = ob_get_clean();
+
+    $tests->assertSame(0, preg_match_all('#https?://#', $html));
+    $tests->assertTrue(str_contains($html, '<style>'));
+});
+
+$tests->run('sfht keeps literal text that is not syntax', function () use ($tests, $sfht): void {
+    // "@300" used to be read as a directive, which erased the whole line.
+    $tests->assertSame(
+        '<link href="?family=Inter:wght@300;400">',
+        $sfht('<link href="?family=Inter:wght@300;400">')
+    );
+
+    // Text sharing a line with a directive used to be dropped.
+    $tests->assertSame('<p>Ola sim</p>', $sfht('<p>Ola @if($x)sim@endif</p>', ['x' => true]));
+
+    // addslashes() does not escape "$", so page text was interpolated.
+    $tests->assertSame('Total: $valor', $sfht('Total: $valor', ['valor' => 'LEAKED']));
+
+    $tests->assertSame('a@b.com', $sfht('a@b.com'));
+    $tests->assertSame('AB', $sfht('A{{-- hidden --}}B'));
+});
+
+$tests->run('sfht escapes output unless raw is asked for', function () use ($tests, $sfht): void {
+    $tests->assertSame(
+        '&lt;script&gt;alert(1)&lt;/script&gt;',
+        $sfht('{{ $v }}', ['v' => '<script>alert(1)</script>'])
+    );
+
+    $tests->assertSame('<b>', $sfht('{!! $v !!}', ['v' => '<b>']));
+
+    // Expressions are compiled as PHP, not quoted into a literal string.
+    $tests->assertSame('3', $sfht('{{ count($items) }}', ['items' => [1, 2, 3]]));
+    $tests->assertSame('HELL...', $sfht('{{ $s | upper | truncate(7) }}', ['s' => 'hello world']));
+    $tests->assertSame('日本...', $sfht('{{ $s | truncate(5) }}', ['s' => '日本語テキスト']));
+});
+
+$tests->run('sfht resolves template inheritance', function () use ($tests, $sfhtDirectory, $sfhtEngine): void {
+    mkdir($sfhtDirectory . '/layouts', 0755, true);
+    file_put_contents(
+        $sfhtDirectory . '/layouts/base.sfht',
+        "<title>@block('title')Default@endblock</title><body>@block('content')empty@endblock</body>"
+    );
+
+    file_put_contents(
+        $sfhtDirectory . '/child.sfht',
+        "@extends('layouts/base')@block('title')Page@endblock@block('content')<p>Hi</p>@endblock"
+    );
+    $tests->assertSame(
+        '<title>Page</title><body><p>Hi</p></body>',
+        $sfhtEngine->render('child')
+    );
+
+    // A block the child leaves alone falls back to the layout's version.
+    file_put_contents(
+        $sfhtDirectory . '/partial-child.sfht',
+        "@extends('layouts/base')@block('content')only content@endblock"
+    );
+    $tests->assertSame(
+        '<title>Default</title><body>only content</body>',
+        $sfhtEngine->render('partial-child')
+    );
+
+    $tests->assertSame(
+        '<title>Default</title><body>empty</body>',
+        $sfhtEngine->render('layouts/base')
+    );
+});
+
+$tests->run('sfht reports unbalanced directives instead of failing silently', function () use ($tests, $sfht): void {
+    $tests->assertThrows(fn () => $sfht('@if(true)no end'), RuntimeException::class);
+    $tests->assertThrows(fn () => $sfht('@endif'), RuntimeException::class);
+    $tests->assertThrows(fn () => $sfht('@foreach($a as $b)@endif', ['a' => []]), RuntimeException::class);
+    $tests->assertThrows(fn () => $sfht('{{ $unclosed'), RuntimeException::class);
+    $tests->assertThrows(fn () => $sfht('{{ $x | nosuchfilter }}', ['x' => 1]), RuntimeException::class);
+});
+
+$tests->run('sfht compiles to an includable file rather than eval', function () use ($tests, $sfht, $sfhtDirectory): void {
+    $sfht('<p>{{ $a }}</p>', ['a' => 1]);
+
+    $compiled = glob($sfhtDirectory . '/cache/*.php');
+    $tests->assertTrue($compiled !== [] && $compiled !== false);
+    $tests->assertTrue(str_starts_with(file_get_contents($compiled[0]), '<?php'));
+});
+
+$tests->run('cache and queue classes are autoloadable', function () use ($tests): void {
+    // These lived under a "SfPhp\" namespace the PSR-4 map never covered, so
+    // every one of them was a fatal error at runtime.
+    foreach ([
+        CacheManager::class,
+        FileDriver::class,
+        MemoryDriver::class,
+        QueueManager::class,
+        DatabaseDriver::class,
+        Seeder::class,
+        Factory::class,
+    ] as $class) {
+        $tests->assertTrue(class_exists($class));
+    }
+
+    $tests->assertTrue(function_exists('cache'));
+    $tests->assertTrue(function_exists('dispatch'));
+
+    // Every queue driver has to be able to list what failed; the manager used
+    // to return a hardcoded empty array.
+    foreach ([DatabaseDriver::class, RedisDriver::class] as $driver) {
+        $tests->assertTrue((new ReflectionClass($driver))->hasMethod('failedJobs'));
+    }
+});
+
+$tests->run('memory cache driver honours the cache contract', function () use ($tests): void {
+    $cache = new CacheManager(new MemoryDriver());
+
+    $cache->put('key', ['a' => 1]);
+    $tests->assertSame(['a' => 1], $cache->get('key'));
+    $tests->assertTrue($cache->has('key'));
+    $tests->assertSame('computed', $cache->remember('lazy', 60, fn () => 'computed'));
+    $tests->assertSame('computed', $cache->get('lazy'));
+
+    $cache->forget('key');
+    $tests->assertSame(false, $cache->has('key'));
+
+    $cache->flush();
+    $tests->assertSame(false, $cache->has('lazy'));
+});
+
+$tests->run('raw queries are autoloadable on their own', function () use ($tests): void {
+    // RawQuery used to be declared inside QueryBuilder.php, so PSR-4 could
+    // not find it and Database::query() was fatal as a first call.
+    $tests->assertTrue(class_exists(RawQuery::class));
+    $tests->assertSame(
+        'src/RawQuery.php',
+        str_replace(dirname(__DIR__) . '/', '', (new ReflectionClass(RawQuery::class))->getFileName())
+    );
+});
+
+$tests->run('application seeders and factories are autoloadable', function () use ($tests): void {
+    // The generators emit "Database\Seeders" and "Database\Factories", which
+    // the PSR-4 map did not cover, so generated code never loaded.
+    $tests->assertTrue(class_exists('Database\\Seeders\\DatabaseSeeder'));
+    $tests->assertTrue(class_exists('Database\\Factories\\UserFactory'));
+    $tests->assertTrue(is_subclass_of('Database\\Seeders\\DatabaseSeeder', Seeder::class));
+    $tests->assertTrue(is_subclass_of('Database\\Factories\\UserFactory', Factory::class));
+});
+
+$tests->run('cli commands only call helpers that exist', function () use ($tests): void {
+    /*
+     * db:seed and queue:work called $this->getOption(), which was never
+     * defined: both died with "undefined method" the moment they ran. Nothing
+     * caught it because no test executed a CLI command body.
+     */
+    $reflection = new ReflectionClass(Application::class);
+    $source = file_get_contents($reflection->getFileName());
+
+    preg_match_all('/\$this->([A-Za-z_][A-Za-z0-9_]*)\(/', $source, $matches);
+
+    foreach (array_unique($matches[1]) as $method) {
+        $tests->assertTrue($reflection->hasMethod($method));
+    }
+});
+
+$tests->run('sfht runs @php blocks as code, not as text', function () use ($tests, $sfht): void {
+    // Listed as a directive but never implemented: the body was tokenized as
+    // template text, so "@php $x = 1; @endphp" printed the statement.
+    $tests->assertSame('2', trim($sfht('@php $x = 1 + 1; @endphp{{ $x }}')));
+    $tests->assertThrows(fn () => $sfht('@php $x = 1;'), RuntimeException::class);
+    $tests->assertThrows(fn () => $sfht('@endphp'), RuntimeException::class);
+});
+
+$tests->run('query builder counts rows without disturbing the query', function () use ($tests): void {
+    // count() was called by the queue driver and documented, but never existed.
+    $pdo = new QueryBuilderPdoTest();
+    $builder = (new QueryBuilder($pdo))
+        ->from('users')
+        ->where('age', '>', 18)
+        ->orderBy('name')
+        ->limit(10);
+
+    $builder->count();
+
+    $tests->assertSame(
+        'SELECT COUNT(*) AS `aggregate` FROM `users` WHERE `age` > :binding_0',
+        $pdo->statements[0]->sql
+    );
+
+    // Ordering and pagination are restored for the caller.
+    $tests->assertSame(
+        'SELECT * FROM `users` WHERE `age` > :binding_0 ORDER BY `name` ASC LIMIT 10',
+        $builder->toSql()
+    );
+});
+
+$tests->run('the built stylesheet is css, not the builder log', function () use ($tests): void {
+    /*
+     * ./sfphp css:build captured the builder's stdout and wrote it over
+     * sfcss.css. The builder writes both files itself and only prints a
+     * summary, so every run replaced the stylesheet with two lines of log.
+     */
+    $stylesheet = dirname(__DIR__) . '/public/assets/css/sfcss.css';
+
+    $tests->assertTrue(is_file($stylesheet));
+
+    $head = file_get_contents($stylesheet, false, null, 0, 64);
+    $tests->assertTrue(str_starts_with($head, '/* SFCSS'));
+    $tests->assertTrue(filesize($stylesheet) > 10000);
+
+    $source = file_get_contents(dirname(__DIR__) . '/src/Console/Application.php');
+    $tests->assertSame(false, str_contains($source, "file_put_contents(\$outputPath, \$css)"));
 });
 
 $tests->finish();
