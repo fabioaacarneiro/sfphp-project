@@ -18,24 +18,30 @@ final class MiddlewareGenerator extends GeneratorBase
 
 namespace {NAMESPACE};
 
+use SfphpProject\src\Http\Middleware;
+use SfphpProject\src\Http\Request;
+use SfphpProject\src\Http\Response;
+
 /**
  * {CLASS}Middleware handles request processing.
  */
-final class {CLASS}Middleware
+final class {CLASS}Middleware implements Middleware
 {
     /**
      * Handle the request.
      *
-     * @param callable $next The next middleware handler
-     * @return mixed
+     * @param Request $request The incoming request
+     * @param callable(Request): Response $next The rest of the pipeline
+     * @return Response The response to send
      */
-    public function handle(callable $next): mixed
+    public function handle(Request $request, callable $next): Response
     {
-        // Before request processing
+        // Runs on the way in. Return a Response here to stop the pipeline
+        // without reaching the controller.
 
-        $response = $next();
+        $response = $next($request);
 
-        // After request processing
+        // Runs on the way out, with the response in hand.
 
         return $response;
     }
