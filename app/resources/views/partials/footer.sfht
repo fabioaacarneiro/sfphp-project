@@ -1,7 +1,4 @@
     <!-- SFJS Library for interactivity -->
     <script src="/assets/js/sfjs.js"></script>
-
-    <!-- Application JavaScript -->
-    <script src="/assets/js/app.js"></script>
 </body>
 </html>
