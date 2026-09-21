@@ -3,10 +3,20 @@
 namespace SfphpProject\src;
 
 use ErrorException;
+use SfphpProject\src\Http\Emitter;
+use SfphpProject\src\Http\Request;
+use SfphpProject\src\Http\Response;
 use Throwable;
 
 /**
  * Converts uncaught PHP failures into safe HTTP responses.
+ *
+ * The global registration stays even now that the router catches failures in
+ * the pipeline, because two of these handlers cover ground a try/catch
+ * structurally cannot: set_error_handler applies during bootstrap, before any
+ * request exists, and register_shutdown_function is the only way to report a
+ * fatal — out of memory, exceeded execution time, a parse error in an included
+ * file. Remove it and those become blank pages.
  */
 final class ErrorHandler
 {
@@ -61,7 +71,9 @@ final class ErrorHandler
             $throwable->getLine()
         ));
 
-        self::sendResponse($throwable);
+        if (!headers_sent()) {
+            (new Emitter())->emit(self::toResponse($throwable));
+        }
 
         exit(1);
     }
@@ -92,44 +104,55 @@ final class ErrorHandler
     }
 
     /**
-     * Send a safe error response for the current request.
+     * Render a failure as a client-safe response.
+     *
+     * Rendering is separated from sending so that the same code serves both
+     * paths: the router catches a failing action and returns this response
+     * through the pipeline, while the global handler below emits it for
+     * failures no try/catch can reach. It also makes the error page the first
+     * part of this class that a test can assert on.
      *
      * @param Throwable $throwable The failure being handled
-     * @return void
+     * @param Request|null $request The current request, when one exists
+     * @return Response The response to send
      */
-    private static function sendResponse(Throwable $throwable): void
+    public static function toResponse(Throwable $throwable, ?Request $request = null): Response
     {
-        if (headers_sent()) {
-            return;
+        $message = self::message($throwable);
+
+        if (self::expectsJson($request)) {
+            return Response::json(['message' => $message], HTTP_INTERNAL_SERVER_ERROR);
         }
 
-        http_response_code(HTTP_INTERNAL_SERVER_ERROR);
+        $escaped = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
-        if (self::expectsJson()) {
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['message' => self::message($throwable)]);
-
-            return;
-        }
-
-        header('Content-Type: text/html; charset=utf-8');
-
-        $message = htmlspecialchars(self::message($throwable), ENT_QUOTES, 'UTF-8');
-        echo "<!doctype html><html lang='pt-br'><head><meta charset='UTF-8'><title>Erro interno</title></head><body><h1>500</h1><p>$message</p></body></html>";
+        return Response::html(
+            "<!doctype html><html lang='pt-br'><head><meta charset='UTF-8'><title>Erro interno</title></head><body><h1>500</h1><p>$escaped</p></body></html>",
+            HTTP_INTERNAL_SERVER_ERROR
+        );
     }
 
     /**
-     * Determine whether the current request expects a JSON response.
+     * Determine whether the client expects a JSON response.
      *
+     * Falls back to the server environment when no request is available, which
+     * is the case on the shutdown path: a fatal error can happen before the
+     * request object is ever built.
+     *
+     * @param Request|null $request The current request, when one exists
      * @return bool True when JSON is requested or submitted
      */
-    private static function expectsJson(): bool
+    private static function expectsJson(?Request $request): bool
     {
-        $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
-        $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+        if ($request !== null) {
+            return $request->expectsJson();
+        }
 
-        return str_contains(strtolower($accept), 'application/json')
-            || str_contains(strtolower($contentType), 'application/json');
+        $accept = strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? ''));
+        $contentType = strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? ''));
+
+        return str_contains($accept, 'application/json')
+            || str_contains($contentType, 'application/json');
     }
 
     /**
