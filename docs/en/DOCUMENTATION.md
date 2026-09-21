@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 78 tests, 0 failures
+> Verified against PHP 8.4 · suite: 81 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -1523,7 +1523,38 @@ $cache->forget('key');
 $cache->flush();
 $cache->pull('key');                            // reads and removes
 $cache->remember('users', 600, fn () => /* ... */);   // computes when missing
+
+$cache->increment('hits');           // atomic; returns the new value
+$cache->increment('hits', 5);        // add more than one
+$cache->decrement('slots');
+
+$cache->increment('window', 1, 60);  // a counter that expires in 60 seconds
+$cache->ttl('window');               // seconds left, or null
 ```
+
+### Counters
+
+`increment()` is not `get()` plus `put()`, and the difference is the point.
+Two requests that arrive together both read 4 and both write 5 — one hit is
+lost. That is harmless for a cached page and not harmless for a rate limiter,
+which counts precisely when several requests arrive at once.
+
+The addition happens where the data lives: inside an exclusive lock for the
+file driver, and as `INCRBY` for Redis, so the driver adds rather than PHP.
+
+The lifetime is applied **only when the counter is created**. A counter that
+already exists keeps the expiry it had, so a client that keeps knocking cannot
+push its own window forward and sit inside a limit forever.
+
+The corollary is worth knowing: a counter first created **without** a lifetime
+never gets one. `increment('hits')` followed by `increment('hits', 1, 60)`
+leaves a counter that never expires, and `ttl()` answers `null`. Pass the
+lifetime on the call that creates the counter, or on every call — the rate
+limiter does the latter.
+
+> Adding `increment()` and `ttl()` to the `Cache` interface is a **breaking
+> change** for an application that ships its own driver: a class implementing
+> `Cache` must now implement both.
 
 Changing the driver:
 
@@ -2198,9 +2229,17 @@ Counters live in the cache, so the limit holds across processes when a shared
 driver is configured. An authenticated request counts **per user**, so several
 people behind the same office address do not consume each other's allowance.
 
+The count is an **atomic** `Cache::increment()`, not a read followed by a
+write. That distinction is the whole middleware: requests counted with `get()`
+and `put()` overwrite one another, so the limit leaks under exactly the
+parallel traffic it exists to refuse — an attacker trying passwords opens
+several connections at once rather than waiting for each answer. See
+[Counters](#counters).
+
 The window is **not** renewed on each attempt: renewing would let a client that
 keeps knocking hold its own window open indefinitely, and the counter would
-never forgive.
+never forgive. `Retry-After` reports the counter's remaining lifetime, so it
+counts down towards the window's close instead of restarting on every refusal.
 
 > The client's address is only as trustworthy as the proxy configuration.
 > Behind a balancer with no proxies declared, **the whole site shares one
@@ -2545,7 +2584,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 78 unit cases
+composer run test        # 81 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves

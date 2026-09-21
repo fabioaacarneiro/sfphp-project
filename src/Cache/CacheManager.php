@@ -45,6 +45,43 @@ class CacheManager
         return $this->driver->has($key);
     }
 
+    /**
+     * Add to a counter and return its new value, atomically.
+     *
+     * @param string $key The counter's key
+     * @param int $by How much to add
+     * @param int|null $seconds Lifetime for a counter being created, or null for none
+     * @return int The value after adding
+     */
+    public function increment(string $key, int $by = 1, ?int $seconds = null): int
+    {
+        return $this->driver->increment($key, $by, $seconds);
+    }
+
+    /**
+     * Subtract from a counter and return its new value, atomically.
+     *
+     * @param string $key The counter's key
+     * @param int $by How much to subtract
+     * @param int|null $seconds Lifetime for a counter being created, or null for none
+     * @return int The value after subtracting
+     */
+    public function decrement(string $key, int $by = 1, ?int $seconds = null): int
+    {
+        return $this->driver->increment($key, -$by, $seconds);
+    }
+
+    /**
+     * How many seconds remain before an entry expires.
+     *
+     * @param string $key The entry's key
+     * @return int|null The seconds remaining, or null when the key is absent or never expires
+     */
+    public function ttl(string $key): ?int
+    {
+        return $this->driver->ttl($key);
+    }
+
     public function remember(string $key, ?int $seconds, callable $callback): mixed
     {
         if ($this->has($key)) {
