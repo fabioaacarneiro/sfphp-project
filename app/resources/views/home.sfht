@@ -5,7 +5,7 @@
     <div class="container d-flex justify-between items-center py-4 px-4">
         <h1 class="m-0 text-blue-500 font-bold text-2xl">SFPHP</h1>
         <div class="d-flex gap-6">
-            <a href="https://github.com/fabioaacarneiro/sfphp-project#features" class="text-slate-600 no-underline font-semibold hover:text-blue-500">Features</a>
+            <a href="#features" class="text-slate-600 no-underline font-semibold hover:text-blue-500">Features</a>
             <a href="https://github.com/fabioaacarneiro/sfphp-project" class="text-blue-500 no-underline font-semibold hover:text-blue-600">GitHub</a>
         </div>
     </div>
@@ -48,7 +48,7 @@
 </section>
 
 <!-- Features Section -->
-<section class="py-20 px-4">
+<section class="py-20 px-4" id="features">
     <div class="container mx-auto">
         <h2 class="text-4xl font-bold text-center mb-12 text-slate-900">Complete Framework</h2>
 
