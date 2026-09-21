@@ -28,7 +28,7 @@ class Router
      */
     public function dispatch(): void
     {
-        $url = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+        $url = self::decodePath(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/');
         $method = $_SERVER['REQUEST_METHOD'];
         $allowedMethods = [];
 
@@ -227,40 +227,13 @@ class Router
     }
 
     /**
-     * Generate a URL for a named route.
-     *
-     * @param string $name The route name
-     * @param array $parameters Values for the route parameters
-     * @param array $query Query string values
-     * @return string The generated URL
-     * @throws InvalidArgumentException If the route or its parameters are invalid
-     */
-    /**
      * Get all registered routes.
      *
-     * @return array<int, Route>
+     * @return array<int, Route> The routes in registration order
      */
     public function routes(): array
     {
         return self::$routes;
-    }
-
-    /**
-     * Generate a URL for a named route.
-        string $name,
-        array $parameters = [],
-        array $query = []
-    ): string {
-        if (!isset(self::$namedRoutes[$name])) {
-            throw new InvalidArgumentException("Route \"$name\" is not registered.");
-        }
-
-        $url = self::$namedRoutes[$name]->generateUrl($parameters);
-        if ($query === []) {
-            return $url;
-        }
-
-        return $url . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
     }
 
     /**
@@ -343,6 +316,37 @@ class Router
     }
 
     /**
+     * Decode a percent-encoded request path without inventing new segments.
+     *
+     * Route parameters are matched against the decoded path so that non-ASCII
+     * URLs work: a browser sends /produtos/caf%C3%A9, and a route declaring
+     * "name:alpha" can only match it once it reads /produtos/café.
+     *
+     * Decoding is done segment by segment, and any separator produced by the
+     * decoding is encoded straight back. Otherwise "/a%2Fb" would decode to
+     * "/a/b" and reach a route registered as "/a/b", giving the client a way
+     * to address a route through a path it never actually requested. A
+     * segment that arrives with an encoded separator keeps it encoded, so it
+     * matches a literal route segment or nothing at all.
+     *
+     * @param string $path The raw request path
+     * @return string The decoded path
+     */
+    private static function decodePath(string $path): string
+    {
+        $segments = array_map(
+            static fn (string $segment): string => str_replace(
+                ['/', '\\'],
+                ['%2F', '%5C'],
+                rawurldecode($segment)
+            ),
+            explode('/', $path)
+        );
+
+        return implode('/', $segments);
+    }
+
+    /**
      * Join a group prefix and route URI into a normalized path.
      *
      * @param string $prefix The group URL prefix
@@ -373,7 +377,53 @@ class Router
         string $message
     ): void {
         http_response_code($statusCode);
+        header('Content-Type: text/html; charset=utf-8');
 
-        echo "<html lang='pt-br'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><link href='https://unpkg.com/tailwindcss@^1.0/dist/tailwind.min.css' rel='stylesheet'><title>$title</title></head><body class='bg-gray-100 flex items-center justify-center h-screen'><div class='text-center'><h1 class='text-6xl font-bold text-gray-900'>$statusCode</h1><p class='text-xl text-gray-600 mt-4'>$message</p><a href='/' class='mt-8 inline-block bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600'>Voltar para a página inicial</a></div></body></html>";
+        /*
+         * Styled with an inline stylesheet on purpose. An earlier version
+         * pulled Tailwind from a public CDN, which made the framework's own
+         * error page depend on a third-party network request: it broke
+         * offline and behind restrictive Content-Security-Policy headers,
+         * added a round trip on the slowest path of the request, and leaked
+         * visitor IPs to another origin. A framework that ships zero
+         * dependencies cannot make its error path depend on one.
+         */
+        $title = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $message = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+        echo <<<HTML
+        <!doctype html>
+        <html lang="en">
+        <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>$title</title>
+        <style>
+        *{box-sizing:border-box}
+        body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+        padding:1.5rem;background:#f8fafc;color:#0f172a;
+        font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+        main{max-width:32rem;text-align:center}
+        h1{margin:0;font-size:clamp(3.5rem,15vw,5rem);font-weight:700;line-height:1;letter-spacing:-.02em}
+        p{margin:1rem 0 2rem;font-size:1.125rem;color:#475569}
+        a{display:inline-block;padding:.625rem 1.25rem;border-radius:.5rem;
+        background:#2563eb;color:#fff;text-decoration:none;font-weight:600}
+        a:hover{background:#1d4ed8}
+        a:focus-visible{outline:2px solid #1d4ed8;outline-offset:2px}
+        @media(prefers-color-scheme:dark){
+        body{background:#0f172a;color:#f1f5f9}
+        p{color:#94a3b8}
+        }
+        </style>
+        </head>
+        <body>
+        <main>
+        <h1>$statusCode</h1>
+        <p>$message</p>
+        <a href="/">Voltar para a p&aacute;gina inicial</a>
+        </main>
+        </body>
+        </html>
+        HTML;
     }
 }

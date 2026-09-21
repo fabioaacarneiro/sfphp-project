@@ -10,10 +10,21 @@ use LogicException;
  */
 final class Route
 {
+    /*
+     * "alpha" and "alphanum" match Unicode letters and digits so that routes
+     * work outside ASCII: /produtos/cafe-expresso and /produtos/日本語 are both
+     * legitimate paths for an application serving a global audience, and the
+     * previous [a-zA-Z] classes rejected every one of them.
+     *
+     * "number" stays ASCII on purpose. Its values are meant to be cast to int
+     * by the receiving controller, and PHP's integer cast does not understand
+     * Eastern Arabic or Devanagari digits, so accepting them would turn a
+     * valid-looking id into a silent zero.
+     */
     private const PARAMETER_TYPES = [
         'number' => '[0-9]+',
-        'alphanum' => '[a-zA-Z0-9]+',
-        'alpha' => '[a-zA-Z]+',
+        'alphanum' => '[\p{L}\p{N}]+',
+        'alpha' => '\p{L}+',
     ];
 
     private const PARAMETER_PATTERN = '/([A-Za-z_][A-Za-z0-9_]*):(number|alphanum|alpha)/';
@@ -103,7 +114,7 @@ final class Route
                 unset($remaining[$name]);
 
                 if (!is_scalar($value) || !preg_match(
-                    '/^' . self::PARAMETER_TYPES[$type] . '$/',
+                    '/^' . self::PARAMETER_TYPES[$type] . '$/u',
                     (string) $value
                 )) {
                     throw new InvalidArgumentException(
@@ -252,6 +263,6 @@ final class Route
             array_keys($parameterPatterns),
             $parameterPatterns,
             preg_quote($uri, '#')
-        ) . '$#D';
+        ) . '$#Du';
     }
 }
