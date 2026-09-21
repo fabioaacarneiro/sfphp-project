@@ -1,924 +1,669 @@
-# SFPHP Documentação
+# SFPHP — Documentação
+
+Framework PHP full-stack com **zero dependências de runtime** e correção
+Unicode em toda a superfície. Esta documentação descreve o que o código faz
+hoje. Onde algo não existe, está dito que não existe — veja
+[Limitações conhecidas](#limitações-conhecidas).
+
+> Verificado contra PHP 8.4 · suíte: 37 testes, 0 falhas
+
+---
 
 ## Índice
 
-- [CLI e Geração de Código](#cli-e-geração-de-código)
-- [SFHT Template Engine](#sfht-template-engine)
-- [SFCSS Framework](#sfcss-framework)
-- [SFJS Library](#sfjs-library)
+- [O que é, o que não é](#o-que-é-o-que-não-é)
+- [Requisitos e instalação](#requisitos-e-instalação)
+- [Estrutura do projeto](#estrutura-do-projeto)
+- [Ciclo de vida da requisição](#ciclo-de-vida-da-requisição)
+- [Roteamento](#roteamento)
+- [Controllers](#controllers)
+- [Views e SFHT](#views-e-sfht)
+- [Container e injeção de dependências](#container-e-injeção-de-dependências)
+- [Banco de dados](#banco-de-dados)
 - [Migrations e Schema Builder](#migrations-e-schema-builder)
 - [Seeders e Factories](#seeders-e-factories)
-- [Cache System](#cache-system)
-- [Queue System](#queue-system)
-- [Roteamento](#roteamento)
-- [Controllers e Views](#controllers-e-views)
-- [Modelos e Repositórios](#modelos-e-repositórios)
-- [Query Builder](#query-builder)
+- [Cache](#cache)
+- [Queue](#queue)
 - [Validação](#validação)
+- [Strings UTF-8](#strings-utf-8)
 - [CSRF](#csrf)
 - [JWT](#jwt)
-- [Container e DI](#container-e-di)
+- [Tratamento de erros](#tratamento-de-erros)
+- [CLI](#cli)
+- [SFCSS](#sfcss)
+- [SFJS](#sfjs)
+- [Testes](#testes)
+- [Limitações conhecidas](#limitações-conhecidas)
 
 ---
 
-## CLI e Geração de Código
+## O que é, o que não é
 
-O binário `./sfphp` fornece 20+ comandos para gerar código, gerenciar migrations, testar, e desenvolver.
+**É** um framework enxuto para aplicações web e APIs, com roteamento,
+container de DI, query builder, schema builder com paridade MySQL/PostgreSQL,
+template engine, cache, filas, e um CLI com 32 comandos.
 
-### Geração de Código (10 Generators)
+**Não é** um substituto de Laravel ou Symfony. Não há ORM, camada de
+autenticação, pipeline de middleware, sistema de eventos ou i18n. O que existe
+é pequeno o suficiente para ser lido inteiro.
 
-#### Principais — Scaffold
+### Zero dependências, literalmente
 
-```bash
-./sfphp make:controller UserController
-./sfphp make:model User
-./sfphp make:repository UserRepository
-./sfphp make:service UserService
-./sfphp make:request StoreUserRequest
+`composer.json` exige apenas `php ^8.1`, `ext-json` e `ext-pdo`. O diretório
+`vendor/` contém **só o autoloader do Composer**.
 
-# Gerar tudo de uma vez (Rails-style)
-./sfphp make:scaffold Post
-```
+Isso vale também para o runtime do navegador: nenhuma página servida pelo
+framework — incluindo as páginas de erro 404 e 500 — carrega CSS, fontes ou
+JavaScript de um CDN.
 
-#### Complementares
+Extensões opcionais, declaradas em `suggest`:
 
-```bash
-./sfphp make:test PostTest              # Test class
-./sfphp make:middleware CheckAdmin      # Middleware
-./sfphp make:event UserCreated          # Event
-./sfphp make:listener SendWelcomeEmail  # Event listener
-./sfphp make:policy PostPolicy          # Authorization
-```
-
-### Migrations e Banco de Dados
-
-```bash
-# Criar migration vazia
-./sfphp make:migration create_users_table
-
-# Criar migration com schema pré-preenchida
-./sfphp make:migration:create users
-
-# Aplicar migrations
-./sfphp migrate
-./sfphp migrate --step=2                 # Apenas 2
-
-# Reverter migrations
-./sfphp rollback
-./sfphp rollback --step=3                # Reverter 3
-
-# Status
-./sfphp status
-
-# Reset (apaga e recria do zero)
-./sfphp db:fresh
-
-# Seeders
-./sfphp db:seed
-```
-
-### Seeders e Factories
-
-```bash
-# Criar seeder
-./sfphp make:seeder UserSeeder
-./sfphp make:seeder PostSeeder
-
-# Criar factory
-./sfphp make:factory User
-./sfphp make:factory Post
-
-# Executar seeders
-./sfphp db:seed
-```
-
-### Cache Commands
-
-```bash
-# Limpar cache
-./sfphp cache:clear
-
-# Flush todos os cache
-./sfphp cache:flush
-```
-
-### Queue Commands
-
-```bash
-# Iniciar queue worker
-./sfphp queue:work
-./sfphp queue:work --timeout=7200  # 2 horas
-
-# Ver jobs que falharam
-./sfphp queue:failed
-```
-
-### Servidor e Utilitários
-
-```bash
-./sfphp serve                           # Dev server (localhost:8000)
-./sfphp routes                          # Listar rotas
-./sfphp tinker                          # REPL interativo
-./sfphp list                            # Listar comandos
-./sfphp version                         # Versão
-./sfphp help [command]                  # Ajuda
-```
+| Extensão | Habilita |
+|---|---|
+| `ext-mbstring` | Conversão de caixa Unicode mais precisa. Sem ela, `upper`/`lower` caem para ASCII; o resto do tratamento UTF-8 não depende dela |
+| `ext-redis` | Drivers Redis de cache e fila |
+| `ext-pcntl` | Encerramento gracioso do worker de fila |
 
 ---
 
-## SFHT Template Engine
+## Requisitos e instalação
 
-**SFHT** (Simple Framework HTML Template) é um motor de templates poderoso e produtivo com sintaxe clara e recursos completos para construir UIs.
+- PHP 8.1 ou superior
+- Composer 2
+- PDO com o driver do seu banco (opcional — só se usar banco)
 
-### Extensão
-Arquivo de template: `.sfht`
+```bash
+git clone https://github.com/fabioaacarneiro/sfphp-project.git
+cd sfphp-project
+composer install
+cp .env-example .env
 
-### Sintaxe Básica
-
-#### Variáveis e Output
-```sfpt
-<!-- Echo simples -->
-{{ $name }}
-
-<!-- Com escape HTML -->
-{{ $user->email }}
-
-<!-- Com filtros -->
-{{ $title | upper }}
-{{ $text | truncate(50) }}
-{{ $price | format('%.2f') }}
+# Gere a chave JWT (obrigatória para emitir ou validar tokens)
+php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 ```
 
-#### Controle de Fluxo
-
-```sfpt
-@if($user->isAdmin())
-  <p>Welcome Admin!</p>
-@elseif($user->isPremium())
-  <p>Welcome Premium User!</p>
-@else
-  <p>Welcome!</p>
-@endif
+```bash
+./sfphp serve                                   # http://localhost:8000
+php -S localhost:8000 -t public server.php      # equivalente
 ```
 
-#### Loops
+Em produção, aponte o `DocumentRoot` para `public/`.
 
-```sfpt
-<!-- Foreach -->
-@foreach($posts as $post)
-  <article>
-    <h2>{{ $post->title }}</h2>
-    @if($loop->first)
-      <strong>Featured Post</strong>
-    @endif
-    @if($loop->last)
-      <p>End of posts</p>
-    @endif
-  </article>
-@endforeach
+---
 
-<!-- For -->
-@for($i = 0; $i < 10; $i++)
-  <p>Item {{ $i }}</p>
-@endfor
+## Estrutura do projeto
 
-<!-- While -->
-@while($count < 100)
-  {{ $count }}
-@endwhile
+```
+src/            O framework (namespace SfphpProject\src)
+app/            Código de EXEMPLO da aplicação — ilustra o uso, não é prescritivo
+public/         Document root: index.php e assets/ (css, js, images)
+database/       migrations/, seeders/, factories/ da aplicação
+tools/          Gerador do SFCSS
+tests/          Suíte própria, sem PHPUnit
+docs/           Esta documentação
+sfphp           Entrypoint do CLI
+server.php      Router script do servidor embutido
 ```
 
-#### Herança e Componentização
+Autoload PSR-4 configurado:
 
-```sfpt
-<!-- layouts/base.sfpt -->
-<!DOCTYPE html>
-<html>
-  <head>
-    @block('head')
-      <title>Default Title</title>
-    @endblock
-  </head>
-  <body>
-    @block('content')
-    @endblock
-  </body>
-</html>
+| Prefixo | Diretório |
+|---|---|
+| `SfphpProject\src\` | `src/` |
+| `SfphpProject\app\` | `app/` |
+| `Database\Seeders\` | `database/seeders/` |
+| `Database\Factories\` | `database/factories/` |
 
-<!-- pages/home.sfpt -->
-@extends('layouts.base')
+E três arquivos carregados sempre (`autoload.files`): `app/config/config.php`,
+`src/utils.php`, `src/http.php`, `src/helpers.php`.
 
-@block('head')
-  <title>Home Page</title>
-@endblock
+---
 
-@block('content')
-  <h1>Welcome!</h1>
-@endblock
+## Ciclo de vida da requisição
+
+```
+public/index.php
+ ├─ vendor/autoload.php
+ │   └─ config.php → carrega .env (opcional) e define APP_NAME/VERSION/ENV
+ │      utils.php  → helpers globais: e(), asset(), csrf_*()
+ │      http.php   → constantes HTTP_OK, GET, POST, ...
+ │      helpers.php→ cache(), dispatch()
+ ├─ Csrf::startSession()      sessão com httponly + samesite=Lax + secure sob HTTPS
+ ├─ ErrorHandler::register()  erros, exceções e fatais viram resposta HTTP
+ ├─ require src/routes.php    popula o registro estático de rotas
+ ├─ new Container()
+ │   └─ set(PDO::class, closure)   conexão preguiçosa
+ └─ new Router($container)->dispatch()
 ```
 
-#### Includes e Components
+O `.env` é **opcional**. Um clone novo sobe sem configuração; quem precisa de
+valor (banco, JWT) falha por conta própria, com mensagem específica.
 
-```sfpt
-<!-- Incluir um partial -->
-@include('partials.header')
+---
 
-<!-- Incluir condicionalmente -->
-@includeWhen($showForm, 'partials.form')
+## Roteamento
 
-<!-- Componente com dados -->
-@component('components.button', [
-  'label' => 'Click me',
-  'variant' => 'primary',
-  'disabled' => false
-])
+Rotas ficam em `src/routes.php`. A API é **estática**.
+
+```php
+use SfphpProject\src\Router;
+
+Router::get('/', 'MainController', 'index')->name('home');
+Router::post('/users', 'UserController', 'store')->name('users.store');
 ```
 
-#### Use Statements (Ativar Features)
+A assinatura é sempre `(string $url, string $controller, string $action)` — três
+argumentos separados, não `'Controller@action'`.
 
-```sfpt
-@use(RequestsFunctions)      <!-- Ativa atributos SFJS -->
-@use(SFPHPStyleFramework)   <!-- Ativa classes SFCSS -->
+O controller é resolvido como `SfphpProject\app\controllers\{Controller}`.
 
-<button @hxGet="/api/data" @hxTarget="#content" class="btn btn-primary">
-  Load Data
-</button>
+### Métodos
+
+```php
+Router::get($url, $controller, $action);
+Router::post(...);
+Router::put(...);
+Router::patch(...);
+Router::delete(...);
+Router::head(...);
+Router::options(...);
 ```
 
-### Filters (Filtros)
+Uma rota não casada devolve **404**. Um caminho que casa mas com método errado
+devolve **405** com header `Allow`. `OPTIONS` devolve **204** automaticamente
+quando há rotas no caminho.
 
-```sfpt
-{{ $text | upper }}               <!-- Maiúsculas -->
-{{ $text | lower }}               <!-- Minúsculas -->
-{{ $text | capitalize }}          <!-- Primeira letra maiúscula -->
-{{ $text | truncate(50) }}        <!-- Truncar com reticências -->
-{{ $email | escape }}             <!-- Escapar HTML -->
-{{ $data | json }}                <!-- Converter para JSON -->
-{{ $price | format('%.2f') }}     <!-- Formato sprintf -->
-{{ $text | trim }}                <!-- Remover espaços -->
-{{ $string | reverse }}           <!-- Reverter string -->
-{{ $number | abs }}               <!-- Valor absoluto -->
-{{ $float | round(2) }}           <!-- Arredondar -->
+### Parâmetros
+
+A sintaxe é `nome:tipo`, **sem chaves**:
+
+```php
+Router::get('/posts/id:number', 'PostController', 'show');
+Router::get('/users/username:alpha', 'UserController', 'profile');
+Router::get('/codes/code:alphanum', 'CodeController', 'show');
 ```
 
-### Variáveis Automáticas em Loops
+| Tipo | Casa | Observação |
+|---|---|---|
+| `number` | `[0-9]+` | ASCII de propósito: o valor existe para sobreviver a um `(int)`, e o cast do PHP não entende algarismos indo-arábicos ou devanágari |
+| `alpha` | `\p{L}+` | Qualquer alfabeto: `café`, `北京`, `Владимир` |
+| `alphanum` | `[\p{L}\p{N}]+` | Letras e dígitos de qualquer escrita |
 
-```sfpt
-@foreach($items as $item)
-  {{ $loop->iteration }}    <!-- 1, 2, 3, ... -->
-  {{ $loop->index }}        <!-- 0, 1, 2, ... -->
-  {{ $loop->count }}        <!-- Total de itens -->
-  {{ $loop->first }}        <!-- true no primeiro -->
-  {{ $loop->last }}         <!-- true no último -->
-  {{ $loop->even }}         <!-- true em índices pares -->
-  {{ $loop->odd }}          <!-- true em índices ímpares -->
-@endforeach
+Os valores chegam à action **posicionalmente**, na ordem em que aparecem na URL:
+
+```php
+Router::get('/tenant/tenantId:number/posts/postId:number', 'PostController', 'show');
+
+public function show(string $tenantId, string $postId): void { /* ... */ }
 ```
 
-### Uso no Controller
+O caminho da requisição é decodificado por segmento antes do casamento, então
+`/produtos/caf%C3%A9` casa `/produtos/nome:alpha`. Separadores codificados
+(`%2F`, `%5C`) **não** são transformados em separadores reais: `/a%2Fb` nunca
+alcança a rota `/a/b`.
+
+### Grupos
+
+O callback não recebe argumentos — as rotas registradas dentro dele herdam o
+prefixo:
+
+```php
+Router::group('/api', function (): void {
+    Router::get('/posts', 'ApiPostController', 'index')->name('posts.index');
+    Router::post('/posts', 'ApiPostController', 'store')->name('posts.store');
+}, 'api.');
+```
+
+O terceiro argumento é o prefixo de **nome**. As rotas acima ficam
+`api.posts.index` e `api.posts.store`. Grupos aninham.
+
+### Rotas nomeadas e geração de URL
+
+```php
+Router::url('posts.show', ['id' => 42]);                   // /posts/42
+Router::url('posts.index', [], ['page' => 2]);             // /posts?page=2
+Router::url('users.profile', ['username' => 'café']);      // /users/caf%C3%A9
+```
+
+`url()` valida os valores contra o tipo do parâmetro e lança
+`InvalidArgumentException` para valor ausente, inválido ou desconhecido. Nomes
+duplicados são rejeitados no registro.
+
+---
+
+## Controllers
+
+Controllers para HTML estendem `BaseController`; para JSON, `BaseAPIController`.
+Actions **escrevem a resposta** (via `View::render()` ou `echo`) e retornam
+`void` — não há objeto Response.
 
 ```php
 <?php
 
 namespace SfphpProject\app\controllers;
 
-use SfphpProject\src\View\SfhtEngine;
+use SfphpProject\src\View;
 
-final class HomeController extends BaseController
+final class PostController extends BaseController
 {
-    public function index(): string
+    public function show(string $id): void
     {
-        $engine = new SfhtEngine([__DIR__ . '/../resources/views']);
-        
-        return $engine->render('home', [
-            'title' => 'Welcome',
-            'posts' => Post::all(),
-            'user' => auth()->user(),
-        ]);
+        View::render('posts/show', ['id' => (int) $id]);
     }
 }
 ```
 
-### Estrutura de Diretórios Recomendada
-
-```
-resources/
-├── views/
-│   ├── layouts/
-│   │   ├── base.sfpt
-│   │   └── app.sfpt
-│   ├── pages/
-│   │   ├── home.sfpt
-│   │   ├── about.sfpt
-│   │   └── contact.sfpt
-│   ├── components/
-│   │   ├── button.sfpt
-│   │   ├── card.sfpt
-│   │   └── form-field.sfpt
-│   └── partials/
-│       ├── header.sfpt
-│       ├── footer.sfpt
-│       └── navigation.sfpt
-```
-
-### Performance e Caching
-
-O SFHT compila templates para PHP e cacheia o resultado automaticamente:
+### BaseController
 
 ```php
-$engine = new SfhtEngine(
-    [__DIR__ . '/views'],
-    '/tmp/sfht-cache'  // Cache directory
-);
+$this->query('page');            // $_GET['page'], sem modificação
+$this->input('title');           // $_POST['title'], sem modificação
+$this->input('title', 'padrão'); // com valor padrão
+$this->all();                    // todo o $_POST
+$this->filled('title');          // presente e não vazio
+$this->redirect('/posts', HTTP_FOUND);
+```
 
-// Cache é validado automaticamente por timestamp
-// Limpar cache quando necessário:
+Os valores voltam **inalterados**, por decisão de projeto. Escape é
+propriedade do destino, não do valor: escapar na entrada corrompe o dado
+(`O'Brien` virava `O&#39;Brien` no banco; uma senha `a<b` era hasheada como
+`a&lt;b`) e não protege nada, porque um valor escapado para HTML continua
+inseguro em SQL ou num shell.
+
+A regra do framework é: **validar na entrada, escapar na saída.**
+
+- Validar com `Validator`, que verifica sem modificar
+- Vincular, nunca concatenar, ao falar com o banco — `QueryBuilder` e
+  `RawQuery` fazem bind de tudo
+- Escapar no ponto de saída — `{{ }}` do SFHT escapa sozinho; `e()` existe
+  para templates PHP crus
+
+### Helpers globais
+
+Carregados em toda requisição por `src/utils.php`:
+
+```php
+e($valor);                    // escapa para HTML: <script> → &lt;script&gt;
+asset('css/app.css');         // → /assets/css/app.css
+asset('js/sfjs.js');          // → /assets/js/sfjs.js
+csrf_token();  csrf_field();  csrf_meta();  csrf_verify();
+```
+
+`asset()` prefixa `/assets/` e **valida o caminho**: travessia de diretório e
+caracteres fora de `[A-Za-z0-9._-]` lançam `InvalidArgumentException`.
+
+Arquivos estáticos ficam em `public/assets/{css,js,images}/`.
+
+E por `src/helpers.php`:
+
+```php
+cache();                      // CacheManager com driver de arquivo
+dispatch(new MeuJob());       // enfileira um job
+```
+
+### BaseAPIController
+
+```php
+$body   = $this->getRequest();      // corpo cru
+$data   = $this->getJsonRequest();  // decodifica JSON, valida Content-Type
+$header = $this->getHeader('Authorization');
+$this->responseJSON(['ok' => true], HTTP_CREATED);
+```
+
+`getJsonRequest()` responde 415 se o `Content-Type` não for
+`application/json` e 400 se o corpo não decodificar.
+
+---
+
+## Views e SFHT
+
+### Renderizando
+
+```php
+use SfphpProject\src\View;
+
+View::render('posts/index', ['posts' => $posts]);  // ecoa a saída
+View::partial('header', ['title' => 'Meu Site']);  // resolve em partials/header
+```
+
+Nomes de view são validados contra travessia de diretório. Templates vivem em
+`app/resources/views/` com extensão **`.sfht`**.
+
+Para controlar caminhos e cache diretamente:
+
+```php
+use SfphpProject\src\View\SfhtEngine;
+
+$engine = new SfhtEngine([__DIR__ . '/views'], '/tmp/sfht-cache');
+echo $engine->render('home', ['title' => 'Olá']);
+```
+
+### Saída
+
+```sfht
+{{ $name }}              escapa HTML — use este
+{!! $html !!}            saída crua — só para HTML que você produziu
+{{-- comentário --}}     removido na compilação, não vai para o HTML
+```
+
+**`{{ }}` escapa por padrão** (`ENT_QUOTES | ENT_SUBSTITUTE`, UTF-8). A forma
+segura é a curta; contorná-la exige escrever mais.
+
+A expressão é PHP real — chamadas de função, operadores e índices funcionam:
+
+```sfht
+{{ count($items) }}
+{{ $user['name'] }}
+{{ $total > 0 ? 'sim' : 'não' }}
+```
+
+### Condicionais
+
+```sfht
+@if($user->isAdmin())
+  <p>Admin</p>
+@elseif($user->isPremium())
+  <p>Premium</p>
+@else
+  <p>Visitante</p>
+@endif
+
+@unless($autorizado)
+  <p>Acesso negado</p>
+@endunless
+```
+
+### Laços
+
+```sfht
+@foreach($posts as $post)
+  <h2>{{ $post['title'] }}</h2>
+@endforeach
+
+@forelse($posts as $post)
+  <h2>{{ $post['title'] }}</h2>
+@empty
+  <p>Nenhum post ainda.</p>
+@endforelse
+
+@for($i = 0; $i < 10; $i++)
+  <p>{{ $i }}</p>
+@endfor
+
+@while($fila->temItens())
+  {{ $fila->proximo() }}
+@endwhile
+```
+
+### Herança de layout
+
+```sfht
+{{-- layouts/base.sfht --}}
+<!DOCTYPE html>
+<html>
+<head><title>@block('title')SFPHP@endblock</title></head>
+<body>@block('content')@endblock</body>
+</html>
+```
+
+```sfht
+{{-- pages/home.sfht --}}
+@extends('layouts/base')
+
+@block('title')Página inicial@endblock
+
+@block('content')
+  <h1>Bem-vindo</h1>
+@endblock
+```
+
+O filho renderiza primeiro e seus blocos vencem. Um bloco que o filho não
+define usa o conteúdo padrão do layout. O layout também renderiza sozinho.
+Ciclos de `@extends` são detectados (limite de 16 níveis).
+
+### Partials e componentes
+
+```sfht
+@include('partials/header')
+@include('partials/card', ['title' => 'Olá'])
+@includeWhen($mostrarForm, 'partials/form')
+@component('components/button', ['label' => 'Enviar'])
+```
+
+O partial herda as variáveis em escopo no ponto da inclusão; o array explícito
+tem precedência. `@component` é sinônimo de `@include`.
+
+### PHP embutido
+
+```sfht
+@php
+    $total = array_sum($valores);
+@endphp
+
+<p>Total: {{ $total }}</p>
+```
+
+### Filtros
+
+Encadeáveis com `|`:
+
+```sfht
+{{ $texto | upper }}
+{{ $texto | truncate(50) }}
+{{ $texto | upper | truncate(20, '…') }}
+{{ $preco | format('%.2f') }}
+{{ $nome | default('Anônimo') }}
+```
+
+| Filtro | Efeito |
+|---|---|
+| `upper` / `lower` | Caixa alta/baixa |
+| `capitalize` | Primeira letra maiúscula |
+| `truncate(n, sufixo)` | Encurta para `n` **caracteres**; o sufixo conta no limite |
+| `length` | Caracteres de uma string, ou itens de um array |
+| `reverse` | Inverte respeitando multibyte |
+| `escape` | Escapa HTML explicitamente |
+| `json` | JSON com `UNESCAPED_UNICODE` |
+| `format(fmt)` | `sprintf` |
+| `trim` | Remove espaços nas pontas |
+| `abs` / `round(n)` | Numéricos |
+| `default(v)` | Substitui `null` e string vazia |
+
+Os filtros de string contam **caracteres, não bytes**: `truncate(5)` sobre
+`日本語テキスト` devolve `日本...`, nunca um byte partido ao meio.
+
+`||` não é confundido com filtro — `{{ $a || $b ? 's' : 'n' }}` funciona.
+
+Registrar um filtro próprio:
+
+```php
+$engine->addFilter('slug', fn (string $v): string
+    => strtolower(preg_replace('/[^\p{L}\p{N}]+/u', '-', $v)));
+```
+
+### `@` que não é diretiva
+
+Só nomes de diretiva conhecidos viram sintaxe. Tudo mais é texto:
+
+```sfht
+<link href="...family=Inter:wght@300;400">   {{-- preservado --}}
+Escreva para suporte@exemplo.com             {{-- preservado --}}
+@media (min-width: 40rem) { ... }            {{-- preservado --}}
+```
+
+### Variáveis globais
+
+```php
+$engine->setGlobal('siteName', 'Meu Site');
+$engine->setGlobals(['versao' => '1.0.0', 'ano' => date('Y')]);
+```
+
+### Cache de compilação
+
+Templates compilam para PHP em disco e são executados com `include`, de modo
+que o **OPcache funciona** e erros de runtime apontam arquivo e linha reais. A
+gravação é atômica e invalida o OPcache no caminho exato. O cache revalida por
+timestamp.
+
+```php
 $engine->clearCache();
 ```
 
-### Variáveis Globais
+### Erros de template
+
+Diretivas desbalanceadas falham na compilação, com a linha:
+
+```
+Unclosed @if opened on line 12.
+@endforeach on line 20 closes @if opened on line 12.
+@empty on line 8 must appear inside @forelse.
+Unclosed "{{" expression on line 3.
+Filter not registered: naoexiste
+```
+
+---
+
+## Container e injeção de dependências
 
 ```php
-$engine->setGlobal('siteName', 'My Site');
-$engine->setGlobal('user', auth()->user());
+use SfphpProject\src\Container;
 
-// Ou múltiplas ao mesmo tempo
-$engine->setGlobals([
-    'siteName' => 'My Site',
-    'user' => auth()->user(),
-    'version' => '1.0.0',
-]);
+$container = new Container();
 
-// Agora acessíveis em todas as templates
-{{ $siteName }}
-{{ $user->name }}
->>>>>>> origin/master
+// Instância pronta
+$container->set(Mailer::class, new Mailer());
+
+// Fábrica preguiçosa — só executa quando alguém pedir
+$container->set(PDO::class, fn (): PDO => Database::connect());
+
+$mailer = $container->get(Mailer::class);
+$container->has(Mailer::class);
 ```
 
----
+Chaves são o **nome totalmente qualificado** da classe (`PDO::class`, não
+`'pdo'`), porque é assim que o resolvedor procura ao preencher um parâmetro de
+construtor.
 
-## SFCSS Framework
+Autowiring por reflexão resolve controllers e suas dependências:
 
-**SFCSS** (Simple Framework CSS) é um framework CSS minimalista e customizável, combinando a simplicidade do Pico CSS com a flexibilidade do Tailwind.
-
-> 📖 **[Documentação Completa do SFCSS →](SFCSS_DOCUMENTATION.md)** com todas as classes, componentes, utilitários e breakpoints responsivos.
-
-### Características
-
-- **Minimalista:** ~8KB gzipped, sem bloat
-- **Customizável:** Sistema de tema via CSS variables
-- **Responsivo:** Mobile-first com breakpoints sm/md/lg/xl
-- **Componentes:** Buttons, forms, cards, tables, alerts, badges
-- **Utilitários:** Spacing, text, display, color classes
-- **Sem lock-in:** Fácil customizar cores e valores
-
-### Instalação
-
-```html
-<!-- No seu HTML -->
-<link rel="stylesheet" href="/css/sfcss.css">
-```
-
-### Customização de Cores
-
-Edite `public/css/sfcss.config.json`:
-
-```json
+```php
+final class PostController extends BaseController
 {
-  "colors": {
-    "primary": "#0066cc",
-    "secondary": "#6c757d",
-    "success": "#28a745",
-    "danger": "#dc3545",
-    "warning": "#ffc107",
-    "info": "#17a2b8"
-  }
+    public function __construct(private PDO $pdo) {}
 }
 ```
 
-Depois regenere o CSS:
-
-```bash
-php public/css/sfcss-builder.php > public/css/sfcss.css
-```
-
-### Componentes
-
-#### Buttons com SFJS
-
-```sfpt
-<!-- Botões com interações AJAX -->
-<button class="btn">Default</button>
-<button class="btn btn-primary" @hxGet="/api/data" @hxTarget="#content">Load Data</button>
-<button class="btn btn-success" @hxPost="/posts" @hxTarget="#posts-list">Create Post</button>
-<button class="btn btn-danger" @hxDelete="/item/1">Delete</button>
-
-<!-- Botões com tamanhos -->
-<button class="btn btn-sm">Small</button>
-<button class="btn">Regular</button>
-<button class="btn btn-lg">Large</button>
-
-<!-- Botão desabilitado -->
-<button class="btn" disabled>Disabled</button>
-
-<!-- Botão com toggle -->
-<button class="btn btn-primary" @toggle="modal">Open Modal</button>
-```
-
-#### Forms com SFHT
-
-```sfpt
-<!-- Form com validação SFJS integrada -->
-<form @hxPost="/users" @hxTarget="#users-list" class="card p-4 mb-4">
-  <div class="form-group">
-    <label class="form-label">Name</label>
-    <input type="text" name="name" @validate="required" placeholder="John Doe">
-  </div>
-
-  <div class="form-group">
-    <label class="form-label">Email</label>
-    <input type="email" name="email" @validate="email" placeholder="user@example.com">
-  </div>
-
-  <div class="form-group">
-    <label class="form-label">Country</label>
-    <select name="country">
-      <option value="">Select...</option>
-      @foreach($countries as $code => $name)
-        <option value="{{ $code }}">{{ $name }}</option>
-      @endforeach
-    </select>
-  </div>
-
-  <button type="submit" class="btn btn-primary">Submit</button>
-</form>
-```
-
-#### Cards com SFHT
-
-```sfpt
-<!-- Cards dinâmicas com dados -->
-@foreach($posts as $post)
-  <div class="card mb-3">
-    <div class="card-header">
-      <h3>{{ $post->title | truncate(50) }}</h3>
-    </div>
-    <div class="card-body">
-      <p>{{ $post->excerpt }}</p>
-      <small class="text-muted">By {{ $post->author->name }}</small>
-    </div>
-    <div class="card-footer">
-      <a href="/posts/{{ $post->id }}" class="btn btn-primary btn-sm">Read More</a>
-      <button @hxDelete="/posts/{{ $post->id }}" class="btn btn-danger btn-sm">Delete</button>
-    </div>
-  </div>
-@endforeach
-```
-
-#### Grid com SFHT
-
-```sfpt
-<!-- Grid responsiva com dados dinâmicos -->
-<div class="grid grid-cols-3">
-  @foreach($products as $product)
-    <div class="card">
-      <img src="{{ $product->image }}" alt="{{ $product->name }}" style="width:100%; height:200px; object-fit:cover;">
-      <div class="card-body">
-        <h4>{{ $product->name }}</h4>
-        <p class="text-sm text-muted">{{ $product->description | truncate(80) }}</p>
-        <strong class="text-lg text-primary">${{ $product->price }}</strong>
-      </div>
-      <div class="card-footer">
-        <button @hxPost="/cart" @hxVals="{ product_id: {{ $product->id }} }" 
-                class="btn btn-primary w-100">Add to Cart</button>
-      </div>
-    </div>
-  @endforeach
-</div>
-```
-
-#### Tables com SFHT
-
-```sfpt
-<!-- Tabela dinâmica com dados do controller -->
-<table>
-  <thead>
-    <tr>
-      <th>Name</th>
-      <th>Email</th>
-      <th>Status</th>
-      <th>Actions</th>
-    </tr>
-  </thead>
-  <tbody>
-    @foreach($users as $user)
-      <tr>
-        <td>{{ $user->name }}</td>
-        <td>{{ $user->email }}</td>
-        <td>
-          @if($user->is_active)
-            <span class="badge badge-success">Active</span>
-          @else
-            <span class="badge">Inactive</span>
-          @endif
-        </td>
-        <td>
-          <button @hxDelete="/users/{{ $user->id }}" @hxConfirm="Delete user?" 
-                  class="btn btn-sm btn-danger">Delete</button>
-        </td>
-      </tr>
-    @endforeach
-  </tbody>
-</table>
-```
-
-#### Alerts
-
-```html
-<div class="alert alert-primary">Primary alert</div>
-<div class="alert alert-success">Success alert</div>
-<div class="alert alert-danger">Danger alert</div>
-<div class="alert alert-warning">Warning alert</div>
-```
-
-### Exemplo Completo — SFHT + SFCSS + SFJS
-
-```sfpt
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Users Dashboard</title>
-  <link rel="stylesheet" href="/css/sfcss.css">
-</head>
-<body>
-  <div class="container p-4">
-    <h1>Users Management</h1>
-
-    <!-- Form criar usuário com validação SFJS -->
-    <form @hxPost="/users" @hxTarget="#users-table" class="card p-4 mb-4">
-      <h2 class="mb-3">New User</h2>
-      <div class="form-group">
-        <label class="form-label">Name</label>
-        <input type="text" name="name" @validate="required" placeholder="Full Name">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Email</label>
-        <input type="email" name="email" @validate="email" placeholder="user@example.com">
-      </div>
-      <button type="submit" class="btn btn-primary">Create User</button>
-    </form>
-
-    <!-- Tabela com dados dinâmicos e AJAX actions -->
-    <div class="card">
-      <div class="card-header">
-        <h2>Users List</h2>
-      </div>
-      <div class="card-body">
-        <table id="users-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            @foreach($users as $user)
-              <tr>
-                <td>{{ $user->name }}</td>
-                <td>{{ $user->email }}</td>
-                <td>
-                  @if($user->is_active)
-                    <span class="badge badge-success">Active</span>
-                  @else
-                    <span class="badge badge-warning">Inactive</span>
-                  @endif
-                </td>
-                <td>
-                  <button @hxPut="/users/{{ $user->id }}" 
-                          @hxTarget="closest tr" @hxSwap="outerHTML"
-                          class="btn btn-sm">Edit</button>
-                  <button @hxDelete="/users/{{ $user->id }}" 
-                          @hxTarget="closest tr" @hxSwap="outerHTML"
-                          class="btn btn-sm btn-danger">Delete</button>
-                </td>
-              </tr>
-            @endforeach
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Grid de estatísticas -->
-    <div class="grid grid-cols-3 mt-4">
-      <div class="card">
-        <div class="card-body text-center">
-          <h3 class="text-2xl font-bold text-primary">{{ $total_users }}</h3>
-          <p class="text-sm text-muted">Total Users</p>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-body text-center">
-          <h3 class="text-2xl font-bold text-success">{{ $active_users }}</h3>
-          <p class="text-sm text-muted">Active</p>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-body text-center">
-          <h3 class="text-2xl font-bold text-warning">{{ $inactive_users }}</h3>
-          <p class="text-sm text-muted">Inactive</p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script src="/js/sfjs.js"></script>
-</body>
-</html>
-```
-
-**O que está acontecendo aqui:**
-- **SFHT:** `@foreach`, `@if/@else`, variáveis com `{{ }}`
-- **SFCSS:** Classes `.btn`, `.card`, `.grid`, `.badge`, `.form-group`
-- **SFJS:** `@hxPost`, `@hxDelete`, `@hxPut` com `@hxTarget` e `@hxSwap`, `@validate` no input
-
-Tudo integrado, sem JavaScript customizado!
-
-### Utilidades
-
-#### Spacing
-
-```html
-<!-- Margins -->
-<div class="mt-3 mb-4">Content</div>
-
-<!-- Padding -->
-<div class="p-3">Padded content</div>
-<div class="px-4 py-2">Custom padding</div>
-```
-
-#### Typography
-
-```html
-<h1 class="text-3xl font-bold text-primary">Title</h1>
-<p class="text-lg font-semibold">Subtitle</p>
-<small class="text-sm text-muted">Small text</small>
-```
-
-#### Colors
-
-```html
-<div class="text-primary">Primary color</div>
-<div class="text-success">Success color</div>
-<div class="bg-light p-3">Light background</div>
-```
-
-### Sistema de Tema
-
-Variáveis CSS padrão (customizáveis em sfcss.config.json):
-
-```
-Colors: --primary, --secondary, --success, --danger, --warning, --info
-Spacing: --xs, --sm, --md, --lg, --xl
-Typography: --font-family, --font-size-*, --font-weight-*
-Border: --border-radius, --border-color
-Shadows: --shadow-sm, --shadow, --shadow-lg
-```
-
-### Responsividade
-
-Breakpoints automáticos:
-- **sm:** 480px (mobile)
-- **md:** 768px (tablet)
-- **lg:** 1024px (desktop)
-- **xl:** 1280px (wide)
-
-```html
-<div class="grid grid-cols-3">
-  <!-- 3 columns on desktop, 1 on mobile -->
-</div>
-```
-
-### Configuração Completa
-
-Arquivo `sfcss.config.json`:
-
-```json
-{
-  "colors": { /* 10+ color variants */ },
-  "spacing": { /* xs, sm, md, lg, xl */ },
-  "typography": {
-    "fontFamily": "system fonts",
-    "sizes": { /* sm, base, lg, xl, 2xl, 3xl */ },
-    "lineHeight": "1.6",
-    "weights": { /* normal, semibold, bold */ }
-  },
-  "border": { /* radius, color, width */ },
-  "shadows": { /* sm, base, lg */ },
-  "breakpoints": { /* sm, md, lg, xl */ },
-  "transition": "all 0.3s ease"
-}
-```
+O container resolve tipos de união, usa valores padrão quando disponíveis,
+aceita `null` em parâmetros nuláveis, e detecta dependência circular com
+`RuntimeException`.
 
 ---
 
-## SFJS Library
+## Banco de dados
 
-**SFJS** (Simple Framework JavaScript) é uma biblioteca JavaScript minimalista tipo HTMX para AJAX, validação, e manipulação DOM sem dependências (~8KB).
+### Conexão
 
-### Instalação
+Configure no `.env`. Drivers suportados: `mysql`, `pgsql`, `sqlite`, `sqlsrv`,
+`oci`, `firebird`, `dblib`. Para qualquer outro, informe `DB_DSN` direto.
 
-```html
-<!-- No seu HTML -->
-<script src="/js/sfjs.js"></script>
+```ini
+DB_DRIVER=mysql
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=app
+DB_USER=root
+DB_PASS=secret
+DB_CHARSET=utf8mb4
 ```
 
-### AJAX Declarativo
+A conexão usa `ERRMODE_EXCEPTION`, `FETCH_ASSOC` e **prepares reais**
+(`EMULATE_PREPARES => false`). Falha de conexão registra o detalhe no log e
+lança uma exceção genérica — host, banco e usuário não chegam ao visitante.
 
-Sem JavaScript customizado — use atributos HTML:
+### Query Builder
 
-```html
-<!-- GET request -->
-<button @hxGet="/api/data" @hxTarget="#content">
-  Load Data
-</button>
+```php
+use SfphpProject\src\Database;
 
-<!-- POST request -->
-<form @hxPost="/submit" @hxTarget="#result" @hxSwap="outerHTML">
-  <input name="title" type="text">
-  <button type="submit">Save</button>
-</form>
-
-<!-- PUT/DELETE/PATCH -->
-<button @hxPut="/api/item/1" @hxTarget="#item">Update</button>
-<button @hxDelete="/api/item/1" @hxTarget="#item">Delete</button>
+Database::table('users')->get();
+Database::table('users')->where('age', '>', 18)->get();
+Database::table('users')->where('email', 'joao@exemplo.com')->first();
+Database::table('users')->count();
 ```
 
-### Swap Strategies
+Métodos disponíveis:
 
-```html
-<!-- innerHTML (padrão) - substitui conteúdo -->
-<div @hxGet="/new" @hxTarget="#container" @hxSwap="innerHTML"></div>
+```php
+->select('id', 'name')            // ou ->select(['id', 'name'])
+->select('name AS nome')
+->where('age', '>', 18)           // = ! = <> > >= < <= LIKE "NOT LIKE"
+->where('status', 'ativo')        // dois argumentos: igualdade
+->orWhere('role', 'admin')
+->whereNull('deleted_at')
+->whereNotNull('verified_at')
+->whereIn('id', [1, 2, 3])        // array vazio → nenhuma linha
+->join('posts', 'users.id', '=', 'posts.user_id')
+->join('posts', 'users.id', '=', 'posts.user_id', 'LEFT')
+->orderBy('created_at', 'desc')
+->limit(10)->offset(20)
 
-<!-- outerHTML - substitui elemento inteiro -->
-<div @hxGet="/new" @hxTarget="#container" @hxSwap="outerHTML"></div>
-
-<!-- beforebegin/afterbegin/beforeend/afterend -->
-<div @hxGet="/item" @hxSwap="beforeend"></div>
+->get()        // array de linhas
+->first()      // primeira linha ou null
+->count()      // int
+->insert(['name' => 'João'])      // devolve o id gerado (string)
+->update(['name' => 'Silva'])     // devolve linhas afetadas
+->delete()                        // devolve linhas afetadas
+->toSql()      // inspeciona o SQL sem executar
+->bindings()   // valores vinculados
 ```
 
-### Form Handling
+**Segurança.** Todo valor é vinculado com tipo PDO correto. Todo identificador
+(tabela, coluna, alias) é validado contra `^[A-Za-z_][A-Za-z0-9_]*$` e citado
+conforme o driver — um identificador inválido lança
+`InvalidArgumentException` em vez de ir para o SQL.
 
-```html
-<!-- Form submit com AJAX -->
-<form @hxPost="/users" @hxTarget="#users-list">
-  <input name="name" type="text" @validate="required">
-  <input name="email" type="email" @validate="email">
-  <button type="submit">Create</button>
-</form>
+Paginação é traduzida por dialeto: `LIMIT/OFFSET` em MySQL, PostgreSQL e
+SQLite, `TOP` em SQL Server, `FIRST` em Firebird, `OFFSET … FETCH NEXT` em
+Oracle. Driver sem suporte falha explicitamente.
+
+### SQL cru
+
+```php
+use SfphpProject\src\Database;
+
+Database::query('SELECT * FROM users WHERE age > ?', [18])->get();
+Database::query('SELECT name FROM users WHERE id = :id', ['id' => 1])->first();
+Database::query('SELECT COUNT(*) FROM users')->scalar();
+Database::query('DELETE FROM users WHERE id = ?', [1])->rowCount();
+Database::query('INSERT INTO logs (msg) VALUES (?)', ['oi'])->lastInsertId();
 ```
 
-### Validação Client-Side
-
-```html
-<!-- Validação automática em blur -->
-<input name="email" @validate="email">
-<input name="age" @validate="number">
-<input name="url" @validate="url">
-<input name="text" @validate="minLength:5">
-```
-
-**Regras disponíveis:**
-- `required` — Campo obrigatório
-- `email` — Email válido
-- `number` — Apenas dígitos
-- `url` — URL válida
-- `minLength:N` — Comprimento mínimo
-- `maxLength:N` — Comprimento máximo
-- `pattern:regex` — Expressão regular customizada
-
-### JavaScript API
-
-```javascript
-// AJAX manual
-sf.ajax.get('/api/data', {
-  target: '#content',
-  swap: 'innerHTML'
-});
-
-sf.ajax.post('/submit', { name: 'John' }, {
-  onSuccess: (html) => console.log('Done'),
-  onError: (error) => console.error(error)
-});
-
-// Form utilities
-const data = sf.form.serialize(document.querySelector('form'));
-sf.form.submit(formElement);
-
-// DOM manipulation
-sf.dom.addClass('element', 'active');
-sf.dom.removeClass('element', 'disabled');
-sf.dom.toggleClass('element', 'hidden');
-sf.dom.show('modal');
-sf.dom.hide('modal');
-
-// Event binding
-sf.dom.on('button', 'click', (e) => {
-  console.log('Clicked!');
-});
-
-// Storage
-sf.storage.set('user-id', 123);
-const userId = sf.storage.get('user-id');
-sf.storage.remove('user-id');
-sf.storage.clear();
-
-// Utilities
-const debounced = sf.util.debounce((value) => {
-  console.log('Search:', value);
-}, 300);
-
-const throttled = sf.util.throttle(() => {
-  console.log('Resized!');
-}, 500);
-
-// Wait for async
-await sf.util.wait(1000);
-console.log('Done waiting');
-```
-
-### Toggle/Show/Hide
-
-```html
-<!-- @toggle attribute -->
-<button @toggle="modal-id">
-  Open Modal
-</button>
-
-<div id="modal-id" style="display:none;">
-  Modal content
-</div>
-```
-
-### Exemplo Completo
-
-```html
-<!-- SfPHP SFJS Example -->
-<!DOCTYPE html>
-<html>
-<head>
-  <link rel="stylesheet" href="/css/sfcss.css">
-</head>
-<body>
-  <div class="container p-4">
-    <h1>Users</h1>
-    
-    <!-- Form create com validação -->
-    <form @hxPost="/users" @hxTarget="#users-list" class="card p-3 mb-4">
-      <div class="form-group">
-        <input name="name" @validate="required" placeholder="Name">
-      </div>
-      <div class="form-group">
-        <input name="email" @validate="email" placeholder="Email">
-      </div>
-      <button type="submit" class="btn btn-primary">Create</button>
-    </form>
-
-    <!-- List with AJAX refresh -->
-    <div id="users-list">
-      <div class="grid grid-cols-3">
-        <!-- Loaded via AJAX -->
-      </div>
-    </div>
-
-    <!-- Refresh button -->
-    <button @hxGet="/users" @hxTarget="#users-list" class="btn mt-3">
-      Refresh
-    </button>
-  </div>
-
-  <script src="/js/sfjs.js"></script>
-</body>
-</html>
-```
-
-### Auto-Initialization
-
-SFJS **não requer inicialização manual**:
-- Event listeners instalados automaticamente no DOMContentLoaded
-- Validação funciona sem setup
-- AJAX declarativa pronta para usar
-
-Basta incluir o script e usar os atributos `@hx*`.
+Aceita placeholders posicionais e nomeados. Os métodos são `get()`, `first()`,
+`scalar()`, `execute()`, `rowCount()` e `lastInsertId()`.
 
 ---
 
 ## Migrations e Schema Builder
 
-O sistema de migrations permite versionamento do schema de banco de dados sem SQL cru.
+O subsistema mais completo do framework: `Blueprint` cobre MySQL 8+ e
+PostgreSQL 12+ com paridade real, e **falha explicitamente** quando um dialeto
+não consegue honrar a semântica pedida, em vez de mudá-la em silêncio.
 
-### Estrutura de uma Migration
+### Criar e executar
+
+```bash
+./sfphp make:migration create_users_table
+./sfphp make:migration:create users        # já preenchida com id + timestamps
+
+./sfphp migrate
+./sfphp migrate --step=2
+./sfphp rollback
+./sfphp rollback --step=3
+./sfphp status
+./sfphp db:fresh                           # derruba tudo e recria
+```
+
+Migrations são classes anônimas retornadas pelo arquivo:
 
 ```php
 <?php
@@ -935,6 +680,7 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('email')->unique();
+            $table->timestamp('email_verified_at')->nullable();
             $table->timestamps();
         });
     }
@@ -946,213 +692,190 @@ return new class extends Migration
 };
 ```
 
-### Tipos de Coluna
-
-**Numéricas:**
-- `id()`, `increments()`, `smallIncrements()`, `mediumIncrements()`, `bigIncrements()`
-- `tinyInteger()`, `smallInteger()`, `mediumInteger()`, `integer()`, `bigInteger()`
-- `unsignedTinyInteger()`, `unsignedSmallInteger()`, `unsignedMediumInteger()`, `unsignedInteger()`, `unsignedBigInteger()`
-- `decimal($precision, $scale)`, `unsignedDecimal($precision, $scale)`
-- `float()`, `double()`
-
-**Strings:**
-- `string($length = 255)`, `char($length = 255)`
-- `text()`, `mediumText()`, `longText()`
-- `binary()` (BLOB/BYTEA)
-
-**Booleanos e Data/Hora:**
-- `boolean()`
-- `date()`, `time($precision = null)`, `timeTz($precision = null)`
-- `dateTime($precision = null)`, `dateTimeTz($precision = null)`
-- `timestamp($precision = null)`, `timestampTz($precision = null)`
-
-**Especiais:**
-- `enum($values)` — ENUM em MySQL, VARCHAR com CHECK em PostgreSQL
-- `set($values)` — SET em MySQL (erro em PostgreSQL)
-- `json()`, `jsonb()` — JSON/JSONB (JSONB em PostgreSQL)
-- `uuid()` — UUID em PostgreSQL, CHAR(36) em MySQL
-- `ulid()` — CHAR(26)
-- `ipAddress()` — INET em PostgreSQL, VARCHAR(45) em MySQL
-- `macAddress()` — MACADDR em PostgreSQL, VARCHAR(17) em MySQL
-- `year()` — YEAR em MySQL, SMALLINT em PostgreSQL
-- `rawColumn($definition)` — Tipo customizado (POINT, INTEGER[], etc)
-
-**Helpers:**
-- `timestamps()` — created_at e updated_at com default CURRENT_TIMESTAMP
-- `timestampsTz()` — Idem com time zone
-- `softDeletes($column = 'deleted_at')` — deleted_at nullable timestamp
-- `softDeletesTz($column = 'deleted_at')` — Idem com time zone
-- `rememberToken()` — remember_token VARCHAR(100) nullable
-- `morphs($name)` — {name}_id e {name}_type com index
-- `nullableMorphs($name)` — Idem, mas nullable
-- `uuidMorphs($name)` — Morph com UUID em vez de BIGINT
-- `ulidMorphs($name)` — Morph com ULID
-
-### Modificadores de Coluna
+### Schema
 
 ```php
-$table->string('email')
-    ->nullable()           // NULL allowed
-    ->default('none')      // DEFAULT 'none'
-    ->unique()             // UNIQUE constraint
-    ->index()              // INDEX
-    ->comment('Email do usuário')
-    ->collation('utf8mb4_unicode_ci')  // MySQL only
-    ->charset('utf8mb4')   // MySQL only
-    ->after('name')        // MySQL only: posição
-    ->first()              // MySQL only: primeira coluna
-    ->unsigned()           // Numéricos apenas
-    ->autoIncrement()      // Auto-increment
-    ->useCurrent()         // DEFAULT CURRENT_TIMESTAMP
-    ->useCurrentOnUpdate() // ON UPDATE CURRENT_TIMESTAMP (MySQL) ou TRIGGER (PostgreSQL)
-    ->change();            // ALTER em vez de ADD
-```
-
-### Operações na Tabela
-
-```php
-$schema->create('posts', function (Blueprint $table): void {
-    // Criar tabelas e colunas...
-});
-
-$schema->table('posts', function (Blueprint $table): void {
-    // Adicionar coluna
-    $table->string('slug')->unique();
-    
-    // Alterar coluna
-    $table->string('title', 100)->change();
-    
-    // Renomear coluna
-    $table->renameColumn('author_id', 'user_id');
-    
-    // Dropar coluna(s)
-    $table->dropColumn(['obsolete_field', 'legacy_data']);
-    
-    // Indexes
-    $table->index(['first_name', 'last_name']);
-    $table->unique('email');
-    $table->primary(['tenant_id', 'id']);
-    $table->fullText('body');
-    $table->index('slug')->where('deleted_at IS NULL');  // PostgreSQL: partial index
-    
-    // Foreign keys
-    $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-    $table->foreign(['tenant_id', 'parent_id'])->references('users')->on('organizations');
-    
-    // Constraints
-    $table->check('age >= 18', 'min_age');
-    
-    // Drop constraints
-    $table->dropIndex(['first_name', 'last_name']);
-    $table->dropUnique('email');
-    $table->dropForeign('user_id');
-    $table->dropPrimary();
-    $table->dropCheck('min_age');
-    
-    // Table options (MySQL)
-    $table->engine('InnoDB');
-    $table->tableCharset('utf8mb4');
-    $table->tableCollation('utf8mb4_unicode_ci');
-    $table->tableComment('Posts table');
-});
-
-$schema->rename('old_table', 'new_table');
+$schema->create('posts', fn (Blueprint $t) => /* ... */);
+$schema->table('posts', fn (Blueprint $t) => /* altera */);
 $schema->drop('posts');
 $schema->dropIfExists('posts');
+$schema->rename('posts', 'articles');
+$schema->hasTable('posts');
+$schema->hasColumn('posts', 'title');
+$schema->hasIndex('posts', 'posts_title_index');
+$schema->statement('SET ...', $bindings);
+$schema->driver();
 ```
 
-### Introspection
+### Tipos de coluna
 
 ```php
-$schema->hasTable('users');
-$schema->hasColumn('users', 'email');
-$schema->hasIndex('users', 'users_email_unique');
+// Chaves
+$table->id();                    $table->increments('id');
+$table->bigIncrements('id');     $table->smallIncrements('id');
+$table->mediumIncrements('id');  $table->uuid('uuid');    $table->ulid('ulid');
+
+// Inteiros
+$table->integer('n');            $table->bigInteger('n');
+$table->mediumInteger('n');      $table->smallInteger('n');
+$table->tinyInteger('n');        $table->unsignedInteger('n');
+$table->unsignedBigInteger('n'); $table->unsignedDecimal('v', 8, 2);
+
+// Decimais
+$table->decimal('preco', 8, 2);  $table->float('f');      $table->double('d');
+
+// Texto
+$table->string('nome', 255);     $table->char('uf', 2);
+$table->text('corpo');           $table->mediumText('c');  $table->longText('c');
+
+// Data e hora
+$table->date('d');               $table->dateTime('dt');   $table->dateTimeTz('dt');
+$table->time('t');               $table->timeTz('t');      $table->year('y');
+$table->timestamp('ts');         $table->timestampTz('ts');
+$table->timestamps();            $table->timestampsTz();
+$table->softDeletes();           $table->softDeletesTz();
+
+// Outros
+$table->boolean('ativo');        $table->json('meta');     $table->jsonb('meta');
+$table->binary('blob');          $table->enum('st', ['a','b']);  $table->set('tags', [...]);
+$table->ipAddress('ip');         $table->macAddress('mac');
+$table->rememberToken();         $table->rawColumn('tags', 'TEXT[]');
 ```
 
-### Foreign Key Actions
+### Modificadores
 
 ```php
-$table->foreignId('user_id')
-    ->constrained('users')
-    ->cascadeOnDelete()      // DELETE children
-    ->cascadeOnUpdate()      // UPDATE children
-    ->nullOnDelete()         // SET NULL on delete
-    ->nullOnUpdate()         // SET NULL on update
-    ->restrictOnDelete()     // RESTRICT delete
-    ->restrictOnUpdate()     // RESTRICT update
-    ->noActionOnDelete()     // NO ACTION on delete
-    ->noActionOnUpdate()     // NO ACTION on update
-    ->deferrable(true);      // PostgreSQL: DEFERRABLE INITIALLY DEFERRED
+$table->string('slug')->nullable()->default('')->comment('URL amigável');
+$table->integer('views')->unsigned()->default(0);
+$table->string('email')->unique();
+$table->string('nome')->collation('pt_BR.utf8')->charset('utf8mb4');
+$table->timestamp('atualizado')->useCurrent()->useCurrentOnUpdate();
+$table->string('extra')->after('nome');     // MySQL
+$table->string('primeiro')->first();        // MySQL
+$table->integer('total')->storedAs('a + b');
+$table->integer('calc')->virtualAs('a * 2');
 ```
 
-### Generated Columns
+### Índices e chaves
 
 ```php
-$table->integer('a');
-$table->integer('b');
-$table->integer('sum')->storedAs('a + b');     // STORED (persistido)
-$table->integer('half')->virtualAs('a / 2');   // VIRTUAL (MySQL only)
+$table->primary('id');
+$table->unique(['email', 'tenant_id']);
+$table->index('created_at');
+$table->fullText('corpo');
+$table->index('nome')->algorithm('btree');
+$table->check('preco >= 0');
+
+$table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+$table->foreign('user_id')->references('id')->table('users')->nullOnDelete();
+
+$table->morphs('owner');            // owner_id + owner_type + índice
+$table->nullableMorphs('owner');
+$table->uuidMorphs('owner');        $table->ulidMorphs('owner');
 ```
 
-### Table Qualify
+`onDelete`/`onUpdate` aceitam `cascadeOnDelete()`, `restrictOnDelete()`,
+`nullOnDelete()`, `noActionOnDelete()` e equivalentes para update.
+
+### Alterações e remoções
 
 ```php
-// Schema.table com suporte a schema:
-$schema->create('public.users', function (Blueprint $table): void {
-    // ...
+$schema->table('posts', function (Blueprint $table): void {
+    $table->string('titulo', 500)->change();
+    $table->renameColumn('corpo', 'conteudo');
+    $table->renameIndex('idx_velho', 'idx_novo');
+    $table->dropColumn('obsoleto');
+    $table->dropIndex('posts_slug_index');
+    $table->dropUnique('posts_email_unique');
+    $table->dropForeign('posts_user_id_foreign');
+    $table->dropPrimary();
+    $table->dropCheck('posts_preco_check');
+    $table->dropTimestamps();
+    $table->dropSoftDeletes();
+    $table->dropRememberToken();
+    $table->dropMorphs('owner');
 });
-
-$schema->hasTable('my_schema.users');
 ```
+
+Nomes gerados respeitam o limite de identificador do driver (63 em PostgreSQL,
+64 em MySQL) e são **determinísticos**: o nome que `create` gera é o mesmo que
+`drop` procura.
+
+### Paridade entre dialetos
+
+| Recurso | MySQL 8+ | PostgreSQL 12+ |
+|---|:--:|:--:|
+| Tipos de coluna | ✓ | ✓ |
+| Constraints (FK, unique, check, primary) | ✓ | ✓ |
+| Índices (normal, unique, full-text) | ✓ | ✓ |
+| Colunas geradas | ✓ (STORED/VIRTUAL) | ✓ (STORED) |
+| `ON UPDATE CURRENT_TIMESTAMP` | ✓ nativo | ✓ via trigger |
+| `ENUM` | ✓ nativo | ✓ emulado com CHECK |
+| `SET` | ✓ | ✗ falha explicitamente |
+| `COMMENT` | ✓ inline | ✓ via `COMMENT ON` |
+| Qualificação `schema.tabela` | ✓ | ✓ |
+| FK deferrable | ✗ | ✓ |
 
 ---
 
 ## Seeders e Factories
 
-**Seeders** populam o banco com dados de teste. **Factories** definem padrões de dados para criar registros.
-
-### Criar Seeder
+### Seeders
 
 ```bash
 ./sfphp make:seeder UserSeeder
-./sfphp make:seeder PostSeeder
 ```
-
-Arquivo gerado em `database/seeders/UserSeeder.php`:
 
 ```php
 <?php
 
 namespace Database\Seeders;
 
-use SfPhp\Database\Seeder;
+use SfphpProject\src\Database\Seeder;
 
 class UserSeeder extends Seeder
 {
     public function run(): void
     {
-        // User::factory()->count(50)->create();
-        // Or insert directly:
-        // User::create(['name' => 'John', 'email' => 'john@example.com']);
+        Database::table('users')->insert([
+            'name' => 'João',
+            'email' => 'joao@exemplo.com',
+        ]);
     }
 }
 ```
 
-### Criar Factory
+Encadeie a partir do `DatabaseSeeder`:
+
+```php
+class DatabaseSeeder extends Seeder
+{
+    public function run(): void
+    {
+        $this->call([UserSeeder::class, PostSeeder::class]);
+    }
+}
+```
+
+```bash
+./sfphp db:seed                       # roda DatabaseSeeder
+./sfphp db:seed --class=UserSeeder    # roda um específico
+```
+
+Um nome inexistente lista os seeders disponíveis e sai com código 1.
+
+### Factories
 
 ```bash
 ./sfphp make:factory User
-./sfphp make:factory Post
 ```
-
-Arquivo gerado em `database/factories/UserFactory.php`:
 
 ```php
 <?php
 
 namespace Database\Factories;
 
-use SfPhp\Database\Factory;
+use SfphpProject\src\Database\Factory;
 
 class UserFactory extends Factory
 {
@@ -1160,625 +883,92 @@ class UserFactory extends Factory
     {
         return [
             'name' => 'User ' . mt_rand(1000, 9999),
-            'email' => 'user' . mt_rand(1000, 9999) . '@example.com',
+            'email' => 'user' . mt_rand(1000, 9999) . '@exemplo.com',
             'password' => password_hash('password', PASSWORD_BCRYPT),
-            'created_at' => date('Y-m-d H:i:s'),
         ];
     }
-
-    protected function model(): string
-    {
-        return \SfphpProject\app\Models\User::class;
-    }
 }
 ```
 
-### Usando Factories
-
 ```php
-use Database\Factories\UserFactory;
-
-// Criar 1 registro
-$user = (new UserFactory())->create();
-
-// Criar 50 registros
-$users = (new UserFactory())->count(50)->create();
-
-// Criar dados sem salvar (fazer em memória)
-$data = (new UserFactory())->make();
-
-// Sobrescrever atributos
-$admin = (new UserFactory())->create([
-    'role' => 'admin',
-    'is_active' => true,
-]);
+$dados  = (new UserFactory())->make();                      // array, sem salvar
+$user   = (new UserFactory())->create();                    // salva
+$muitos = (new UserFactory())->count(50)->create();
+$admin  = (new UserFactory())->create(['role' => 'admin']);  // sobrescreve
 ```
 
-### Rodando Seeders
-
-Primeiro, registre no `database/seeders/DatabaseSeeder.php`:
-
-```php
-<?php
-
-namespace Database\Seeders;
-
-use SfPhp\Database\Seeder;
-
-class DatabaseSeeder extends Seeder
-{
-    public function run(): void
-    {
-        $this->call([
-            UserSeeder::class,
-            PostSeeder::class,
-            CommentSeeder::class,
-        ]);
-    }
-}
-```
-
-Depois execute:
-
-```bash
-./sfphp db:seed
-```
-
-Ou em uma migration/setup:
-
-```php
-use Database\Seeders\UserSeeder;
-
-(new UserSeeder())->run();
-```
-
-### Factory com Relacionamentos
-
-```php
-class PostFactory extends Factory
-{
-    public function definition(): array
-    {
-        return [
-            'user_id' => fn () => (new UserFactory())->create()->id,
-            'title' => 'Post Title ' . mt_rand(1, 1000),
-            'content' => 'Lorem ipsum...',
-            'created_at' => date('Y-m-d H:i:s'),
-        ];
-    }
-
-    protected function model(): string
-    {
-        return \SfphpProject\app\Models\Post::class;
-    }
-}
-```
-
-### Exemplo Completo
-
-```php
-// database/seeders/DatabaseSeeder.php
-public function run(): void
-{
-    // Criar 100 usuários
-    (new UserFactory())->count(100)->create();
-
-    // Criar posts para cada usuário
-    foreach (User::all() as $user) {
-        (new PostFactory())->count(5)->create([
-            'user_id' => $user->id,
-        ]);
-    }
-}
-```
-
-Execute com `./sfphp db:seed`.
+`make()` e `create()` devolvem **arrays**, não objetos — não há ORM.
 
 ---
 
-## Cache System
-
-Sistema de cache multi-driver para armazenar dados em memória, arquivos ou Redis.
-
-### Drivers Disponíveis
-
-**FileDriver** (padrão)
-```php
-use SfPhp\Cache\FileDriver;
-
-$cache = new FileDriver('/tmp/sfphp-cache');
-```
-
-**MemoryDriver** (em memória, apenas durante request)
-```php
-use SfPhp\Cache\MemoryDriver;
-
-$cache = new MemoryDriver();
-```
-
-**RedisDriver** (persistente, distribuído)
-```php
-use SfPhp\Cache\RedisDriver;
-
-$redis = new \Redis();
-$redis->connect('127.0.0.1', 6379);
-
-$cache = new RedisDriver($redis);
-```
-
-### Uso via Helper
+## Cache
 
 ```php
-// Get
-$user = cache()->get('user.1');
-$user = cache()->get('user.1', 'default_value');
+$cache = cache();                    // helper global, driver de arquivo
 
-// Put (sem expiração)
-cache()->put('user.1', $user);
-
-// Put com expiração (segundos)
-cache()->put('user.1', $user, 3600);  // 1 hora
-
-// Forget
-cache()->forget('user.1');
-
-// Flush tudo
-cache()->flush();
-
-// Has
-if (cache()->has('user.1')) {
-    // ...
-}
+$cache->put('chave', $valor, 300);   // TTL em segundos; null = sem expirar
+$cache->get('chave');
+$cache->get('chave', 'padrão');
+$cache->has('chave');
+$cache->forget('chave');
+$cache->flush();
+$cache->pull('chave');                          // lê e remove
+$cache->remember('users', 600, fn () => /* ... */);   // calcula se faltar
 ```
 
-### Remember + Pull
+Trocar o driver:
 
 ```php
-// Remember: retorna do cache ou executa callback
-$user = cache()->remember('user.1', 3600, function() {
-    return User::find(1);
-});
+use SfphpProject\src\Cache\CacheManager;
+use SfphpProject\src\Cache\MemoryDriver;
+use SfphpProject\src\Cache\RedisDriver;
 
-// Pull: get + forget
-$user = cache()->pull('user.1');
+$cache = new CacheManager(new MemoryDriver());   // só durante a requisição
+$cache = new CacheManager(new RedisDriver());    // exige ext-redis
 ```
-
-### Mudar Driver em Runtime
-
-```php
-use SfPhp\Cache\CacheManager;
-use SfPhp\Cache\RedisDriver;
-
-$manager = new CacheManager();
-
-// Usar Redis
-$redis = new \Redis();
-$redis->connect('127.0.0.1', 6379);
-$manager->driver(new RedisDriver($redis));
-
-cache()->put('key', 'value', 3600);
-```
-
-### CLI Commands
 
 ```bash
-# Clear (mesma coisa que flush)
 ./sfphp cache:clear
-
-# Flush tudo
 ./sfphp cache:flush
 ```
 
-### Exemplo Prático
-
-```php
-use SfPhp\Cache\CacheManager;
-use SfPhp\Cache\RedisDriver;
-
-// Em um controller
-class UserController
-{
-    public function show($id)
-    {
-        // Cache por 1 hora
-        $user = cache()->remember("user.{$id}", 3600, function() use ($id) {
-            return User::find($id);
-        });
-
-        return $this->view('user.show', compact('user'));
-    }
-
-    public function update($id)
-    {
-        $user = User::find($id);
-        $user->update(request()->all());
-
-        // Invalidar cache
-        cache()->forget("user.{$id}");
-
-        return redirect("/users/{$id}");
-    }
-}
-```
-
-### Estrutura de Drivers
-
-Criar driver customizado:
-
-```php
-use SfPhp\Cache\Cache;
-
-class CustomDriver implements Cache
-{
-    public function get(string $key, mixed $default = null): mixed { }
-    public function put(string $key, mixed $value, ?int $seconds = null): void { }
-    public function forget(string $key): void { }
-    public function flush(): void { }
-    public function has(string $key): bool { }
-}
-```
-
 ---
 
-## Queue System
-
-Sistema de fila para executar jobs em background via workers.
-
-### Drivers Disponíveis
-
-**DatabaseDriver** (padrão)
-```php
-use SfPhp\Queue\DatabaseDriver;
-
-$queue = new QueueManager(new DatabaseDriver());
-```
-
-**RedisDriver** (distribuído, recomendado para produção)
-```php
-use SfPhp\Queue\RedisDriver;
-
-$redis = new \Redis();
-$redis->connect('127.0.0.1', 6379);
-
-$queue = new QueueManager(new RedisDriver($redis));
-```
-
-### Criar Job
-
-```bash
-./sfphp make:job SendEmail
-./sfphp make:job ProcessImage
-```
-
-Arquivo gerado em `app/Jobs/SendEmailJob.php`:
+## Queue
 
 ```php
-<?php
+use SfphpProject\src\Queue\Job;
 
-namespace SfphpProject\app\Jobs;
-
-use SfPhp\Queue\Job;
-
-class SendEmailJob extends Job
+final class SendEmailJob extends Job
 {
-    protected string $email;
-    protected string $subject;
-    protected string $message;
-
-    public function __construct(string $email = '', string $subject = '', string $message = '')
-    {
-        $this->email = $email;
-        $this->subject = $subject;
-        $this->message = $message;
-    }
+    public function __construct(private string $para) {}
 
     public function handle(): void
     {
-        // Envia email
-        mail($this->email, $this->subject, $this->message);
+        mail($this->para, 'Olá', 'Corpo');
     }
 }
 ```
 
-### Dispatch Job
-
 ```php
-use SfphpProject\app\Jobs\SendEmailJob;
+dispatch(new SendEmailJob('a@b.com'));         // helper global
+dispatch(new SendEmailJob('a@b.com'), 300);    // com atraso em segundos
 
-// Dispatch imediatamente
-dispatch(new SendEmailJob('user@example.com', 'Welcome!', 'Hi there!'));
-
-// Dispatch com delay (segundos)
-dispatch(
-    new SendEmailJob('user@example.com', 'Reminder', 'Don\'t forget!'),
-    delay: 3600  // 1 hora depois
-);
+(new SendEmailJob('a@b.com'))->tries(5)->timeout(120);
 ```
-
-### Job Configuration
-
-```php
-class SendEmailJob extends Job
-{
-    protected int $tries = 3;       // Tentar 3 vezes antes de falhar
-    protected int $timeout = 60;    // Timeout de 60 segundos
-
-    public function handle(): void
-    {
-        // ...
-    }
-}
-```
-
-### Métodos do Job
-
-```php
-$job->tries(5);              // Tentar 5 vezes
-$job->timeout(120);          // Timeout 120 segundos
-$job->delay(3600);           // Delay 1 hora
-$job->getAttempts();         // Número de tentativas
-$job->getTries();            // Max tentativas
-```
-
-### Worker
-
-Iniciar worker para processar jobs:
 
 ```bash
-./sfphp queue:work
-./sfphp queue:work --timeout=7200  # 2 horas
-```
-
-Worker vai:
-1. Buscar job disponível da fila
-2. Executar `handle()`
-3. Deletar job se sucesso
-4. Retentar se falhar (até max `tries`)
-5. Marcar como falho se max retentativas atingido
-
-Pressione CTRL+C para parar o worker.
-
-### Failed Jobs
-
-Ver jobs que falharam:
-
-```bash
+./sfphp queue:work                 # padrão: 3600s
+./sfphp queue:work --timeout=7200
 ./sfphp queue:failed
 ```
 
-### Exemplo Completo
+O worker processa até o timeout, incrementa tentativas em caso de erro e move
+para `failed_jobs` quando as tentativas se esgotam. Com `ext-pcntl`, `SIGTERM`
+e `SIGINT` encerram graciosamente.
 
-```php
-// Em um controller
-class UserController
-{
-    public function store()
-    {
-        $user = User::create(request()->all());
-
-        // Dispatch email em background
-        dispatch(new SendEmailJob(
-            $user->email,
-            'Welcome to SFPHP',
-            'Thanks for signing up!'
-        ));
-
-        return redirect('/')->with('success', 'User created');
-    }
-}
-```
-
-### Job com Relacionamentos
-
-```php
-class ProcessImageJob extends Job
-{
-    protected int $userId;
-
-    public function __construct(int $userId)
-    {
-        $this->userId = $userId;
-    }
-
-    public function handle(): void
-    {
-        $user = User::find($this->userId);
-        // Process image...
-    }
-}
-```
-
-### Retry e Release
-
-```php
-public function handle(): void
-{
-    try {
-        // Risca...
-    } catch (\Exception $e) {
-        // Release job volta para fila em 60 segundos
-        throw $e;
-    }
-}
-```
-
----
-
-## Roteamento
-
-### Registrar Rotas
-
-No arquivo `src/routes.php`:
-
-```php
-use SfphpProject\src\Router;
-
-$router = new Router();
-
-// Rotas simples
-$router->get('/', 'Home@index')->name('home');
-$router->post('/users', 'User@store')->name('users.store');
-
-// Parâmetros
-$router->get('/posts/{id:number}', 'Post@show')->name('posts.show');
-$router->get('/users/{username:alpha}', 'User@profile')->name('users.profile');
-
-// Grupos com prefixo
-$router->group('/api', function (Router $api): void {
-    $api->get('/posts', 'Api/Post@index')->name('api.posts.index');
-    $api->post('/posts', 'Api/Post@store')->name('api.posts.store');
-});
-
-// Múltiplos parâmetros
-$router->get('/tenant/{tenantId:number}/posts/{postId:number}', 'Post@show');
-
-// Gerar URLs
-echo Router::url('posts.show', ['id' => 1]);  // /posts/1
-echo Router::url('home');  // /
-
-return $router;
-```
-
-### Métodos HTTP
-
-```php
-$router->get($path, $action);
-$router->post($path, $action);
-$router->put($path, $action);
-$router->patch($path, $action);
-$router->delete($path, $action);
-$router->head($path, $action);
-$router->options($path, $action);
-```
-
-### Padrões de Parâmetro
-
-```php
-{id:number}     // Apenas dígitos
-{slug:alpha}    // Apenas letras
-{code:alphanum} // Letras e dígitos
-{id}            // Qualquer coisa (greedy)
-```
-
----
-
-## Controllers e Views
-
-### Structure
-
-Controllers herdam de `BaseController` (web) ou `BaseAPIController` (API).
-
-```php
-<?php
-
-namespace SfphpProject\app\Controllers;
-
-use SfphpProject\app\controllers\BaseController;
-
-final class PostController extends BaseController
-{
-    public function index(): string
-    {
-        $posts = User::all();
-        return $this->view('posts/index', compact('posts'));
-    }
-
-    public function show(int $id): string
-    {
-        $post = Post::find($id);
-        return $this->view('posts/show', compact('post'));
-    }
-}
-```
-
-### Views e Partials
-
-```php
-// Renderizar view
-return $this->view('posts/show', ['post' => $post]);
-
-// Renderizar partial (reutilizável)
-echo View::partial('header', ['title' => 'Meu Site']);
-
-// Escapar output (previne XSS)
-echo e($user->name);
-
-// Asset URLs
-echo asset('css/style.css');  // /css/style.css
-echo asset('js/app.js');      // /js/app.js
-```
-
----
-
-## Modelos e Repositórios
-
-### Models (Static)
-
-Gerado por `./sfphp make:model User`:
-
-```php
-final class User
-{
-    public static function all(): array { ... }
-    public static function find(int $id): ?array { ... }
-    public static function create(array $data): int { ... }
-    public static function update(int $id, array $data): int { ... }
-    public static function delete(int $id): int { ... }
-}
-```
-
-### Repositories (Instância)
-
-Gerado por `./sfphp make:repository Post`:
-
-```php
-$repo = new PostRepository();
-$repo->all();
-$repo->find(1);
-$repo->create(['title' => 'Olá']);
-$repo->update(1, ['title' => 'Modificado']);
-$repo->delete(1);
-```
-
----
-
-## Query Builder
-
-```php
-use SfphpProject\src\Database;
-
-// SELECT
-Database::table('users')->get();
-Database::table('users')->where('age', '>', 18)->get();
-Database::table('users')->whereIn('role', ['admin', 'moderator'])->get();
-Database::table('users')->first();
-Database::table('users')->count();
-
-// WHERE
-->where('age', '>', 18)
-->where('email', 'like', '%@example.com')
-->whereIn('id', [1, 2, 3])
-->whereNull('deleted_at')
-->whereNotNull('verified_at')
-
-// ORDER BY, LIMIT
-->orderBy('created_at', 'desc')
-->limit(10)
-->offset(5)
-
-// INSERT
-Database::table('users')->insert(['name' => 'João', 'email' => 'joao@example.com']);
-
-// UPDATE
-Database::table('users')->where('id', 1)->update(['name' => 'João Silva']);
-
-// DELETE
-Database::table('users')->where('id', 1)->delete();
-
-// Raw SQL
-Database::query('SELECT * FROM users WHERE age > ?', [18])->fetch();
-Database::query('DELETE FROM users WHERE id = ?', [1]);
-```
+As tabelas `jobs` e `failed_jobs` são criadas sob demanda, na primeira
+operação que precisa delas — instanciar o driver não abre conexão.
 
 ---
 
@@ -1787,122 +977,362 @@ Database::query('DELETE FROM users WHERE id = ?', [1]);
 ```php
 use SfphpProject\src\Validator;
 
-$result = Validator::validate($data, [
-    'name' => ['required', 'string', 'min:3', 'max:255'],
-    'email' => ['required', 'email'],
-    'age' => ['required', 'integer', 'min:18'],
+$resultado = Validator::validate($_POST, [
+    'name'  => 'required|min:3|max:255',
+    'email' => 'required|email',
+    'idade' => 'required|number',
 ]);
 
-if (!$result->isValid()) {
-    foreach ($result->errors as $field => $messages) {
-        echo "$field: " . implode(', ', $messages);
+if ($resultado->fails()) {
+    foreach ($resultado->errors() as $campo => $mensagens) {
+        echo $campo . ': ' . implode(', ', $mensagens);
     }
 }
+
+$limpos = $resultado->validated();
 ```
 
-### Regras
+As regras são uma **string separada por `|`**, não um array. Argumentos vêm
+depois de `:`.
 
-- `required` — Campo obrigatório
-- `string` — Deve ser string
-- `integer` — Deve ser inteiro
-- `email` — Email válido
-- `min:N` — Comprimento mínimo
-- `max:N` — Comprimento máximo
-- `url` — URL válida
-- `regex:pattern` — Expressão regular
+| Regra | Verifica |
+|---|---|
+| `required` | Não nulo e não vazio |
+| `email` | `FILTER_VALIDATE_EMAIL` |
+| `min:N` | Pelo menos N **caracteres** |
+| `max:N` | No máximo N **caracteres** |
+| `alpha` | Só letras, **qualquer alfabeto** (`\p{L}`) |
+| `alphanum` | Letras e dígitos de qualquer escrita |
+| `number` | Só dígitos ASCII (seguro para `(int)`) |
+
+Uma regra desconhecida lança `InvalidArgumentException` — erro de digitação
+falha cedo, em vez de passar validação em silêncio.
+
+`ValidationResult`: `passes()`, `fails()`, `errors()`, `validated()`.
+
+Mensagens customizadas:
+
+```php
+Validator::validate($dados, ['name' => 'required|min:3'], [
+    'name' => [
+        'required' => 'Informe seu nome.',
+        'min' => 'O nome precisa de ao menos 3 letras.',
+    ],
+]);
+```
+
+---
+
+## Strings UTF-8
+
+`Str` dá as operações de string que o PHP padrão só faz por byte.
+
+```php
+use SfphpProject\src\Str;
+
+Str::length('日本語');                  // 3, não 9
+Str::substr('日本語', 1, 1);            // 本
+Str::truncate('日本語テキスト', 5);      // 日本...
+Str::reverse('日本語');                 // 語本日
+Str::isAlpha('José');                   // true
+Str::isAlpha('Владимир');               // true
+Str::isAlphanumeric('José99');          // true
+Str::isNumeric('123');                  // true
+Str::isNumeric('١٢٣');                  // false — não sobrevive a (int)
+Str::isUtf8($valor);
+Str::upper('ação');  Str::lower('AÇÃO');  Str::ucfirst('ação');
+```
+
+Construído sobre **PCRE com `/u`**, não sobre `mbstring`. PCRE está sempre
+compilado no PHP; `mbstring` é opcional e exigi-la colocaria uma dependência
+rígida na frente de cada instalação. A exceção é a conversão de caixa, que
+precisa de tabelas por locale que o PCRE não expõe: ali `mbstring` é usada
+quando existe e há queda para ASCII quando não existe — degrada um detalhe de
+exibição em vez de corromper dado.
 
 ---
 
 ## CSRF
 
-Proteção contra CSRF em formulários:
+```php
+csrf_token();     // token da sessão
+csrf_field();     // <input type="hidden" name="_token" value="...">
+csrf_meta();      // <meta name="csrf-token" content="...">
+csrf_verify();    // valida o token da requisição atual
+```
+
+```sfht
+<form method="post" action="/posts">
+    {!! csrf_field() !!}
+    <input name="title">
+</form>
+```
 
 ```php
-// Gerar token (automático em cada sessão)
-$token = csrf_token();
-
-// Campo em formulários HTML
-<?php echo csrf_field(); ?>
-// <input type="hidden" name="_token" value="...">
-
-// Meta tag para AJAX
-<?php echo csrf_meta(); ?>
-// <meta name="csrf-token" content="...">
-
-// Validar em controller
-if (!Csrf::validateRequest()) {
-    // Token inválido
+if (!csrf_verify()) {
+    http_response_code(HTTP_FORBIDDEN);
+    return;
 }
 ```
+
+O token tem 32 bytes de `random_bytes`, é comparado com `hash_equals` (tempo
+constante), e a sessão usa `httponly`, `samesite=Lax` e `secure` sob HTTPS. O
+token é aceito por campo `_token` ou pelos headers `X-CSRF-Token` /
+`X-XSRF-Token`.
 
 ---
 
 ## JWT
 
-Autenticação com tokens HS256:
-
 ```php
 use SfphpProject\src\JWT;
 
-// Gerar token (válido por 1 hora)
-$token = JWT::generate(['user_id' => 1, 'role' => 'admin']);
+$token = JWT::generate(['id' => 1, 'email' => 'joao@exemplo.com']);
 
-// Validar token
-try {
-    $claims = JWT::validate($token);
-    echo $claims['user_id'];  // 1
-} catch (Exception $e) {
-    echo "Token inválido";
+if (JWT::validate($token)) {
+    // token íntegro e não expirado
 }
+```
+
+Pontos que a assinatura impõe:
+
+- `generate()` **exige** as claims `id` e `email`; sem elas lança
+  `InvalidArgumentException`
+- `validate()` devolve **`bool`**, não as claims, e não lança para token
+  inválido
+- Valida assinatura, `alg` (só `HS256`), `typ` e `exp`. `alg: none` é rejeitado
+- Expiração fixa em 1 hora
+- `JWT_KEY` precisa ter ao menos 32 bytes; o placeholder do `.env-example` é
+  recusado de propósito
+
+```bash
+php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 ```
 
 ---
 
-## Container e DI
+## Tratamento de erros
 
-O container resolve automaticamente as dependências via reflection:
+`ErrorHandler::register()` converte erros do PHP em `ErrorException`, captura
+exceções não tratadas e erros fatais no shutdown, e responde:
 
-```php
-use SfphpProject\src\Container;
+- **500** com `Content-Type` negociado — JSON se a requisição pediu ou enviou
+  JSON, HTML caso contrário
+- Mensagem real **apenas** com `APP_ENV=development`; em produção, só
+  `Internal Server Error`
+- O detalhe sempre vai para o `error_log`
 
-$container = new Container();
+As páginas 404, 405 e 500 usam CSS inline, sem nenhuma requisição externa, e
+respeitam `prefers-color-scheme`.
 
-// Registrar serviço
-$container->bind(UserRepository::class, fn () => new UserRepository());
+---
 
-// Resolver
-$repo = $container->resolve(UserRepository::class);
+## CLI
 
-// Auto-wiring de controllers
-class PostController
-{
-    public function __construct(private PostRepository $posts) {}
-    
-    public function index(): string
-    {
-        $posts = $this->posts->all();
-        return $this->view('posts/index', compact('posts'));
-    }
-}
-// O container injeta PostRepository automaticamente
+`./sfphp` expõe **32 comandos**.
+
+### Geração (12 geradores)
+
+```bash
+./sfphp make:controller Post
+./sfphp make:model Post
+./sfphp make:repository Post
+./sfphp make:service Post
+./sfphp make:request StorePost
+./sfphp make:test PostTest
+./sfphp make:middleware CheckAdmin
+./sfphp make:event UserCreated
+./sfphp make:listener SendWelcome
+./sfphp make:policy PostPolicy
+./sfphp make:seeder UserSeeder
+./sfphp make:factory User
+
+./sfphp make:scaffold Post     # controller + model + repository + service
 ```
 
+> Alguns geradores produzem código para infraestrutura que **ainda não
+> existe**: middleware não tem pipeline que o execute, events/listeners não
+> têm dispatcher, policies não têm camada de autorização. Veja
+> [Limitações conhecidas](#limitações-conhecidas).
+
+### Banco
+
+```bash
+./sfphp make:migration create_users_table
+./sfphp make:migration:create users
+./sfphp migrate [--step=N] [--path=dir]
+./sfphp rollback [--step=N]
+./sfphp status
+./sfphp db:fresh
+./sfphp db:seed [--class=UserSeeder]
+```
+
+### Cache e fila
+
+```bash
+./sfphp cache:clear
+./sfphp cache:flush
+./sfphp queue:work [--timeout=3600]
+./sfphp queue:failed
+```
+
+### Servidor e utilitários
+
+```bash
+./sfphp serve          # http://localhost:8000
+./sfphp routes         # tabela de rotas registradas
+./sfphp env:example    # cria .env a partir de .env-example
+./sfphp css:build      # gera o SFCSS a partir do config
+./sfphp tinker         # REPL — só para desenvolvimento local
+./sfphp list
+./sfphp version
+./sfphp help [comando]
+```
+
+`tinker` avalia entrada com `eval()`. É uma ferramenta de desenvolvimento
+local; nunca exponha o CLI a entrada não confiável.
+
 ---
 
-## Cobertura de Features
+## SFCSS
 
-| Recurso | MySQL 8.0+ | PostgreSQL 12+ |
-|---------|:----------:|:--------------:|
-| Tipos de coluna (30+) | ✓ | ✓ |
-| Constraints (FK, unique, check, primary) | ✓ | ✓ |
-| Indexes (normal, unique, full-text, partial) | ✓ | ✓ |
-| Generated columns (STORED/VIRTUAL) | ✓ | ✓ (STORED apenas) |
-| ON UPDATE CURRENT_TIMESTAMP | ✓ | ✓ (via trigger) |
-| ENUM/SET | ✓ | ENUM emulado |
-| Schema.table qualify | ✓ | ✓ |
-| Transações em migrations | ✓ (implícitas) | ✓ |
-| Deferrable FK | ✗ | ✓ |
+Framework CSS utilitário gerado a partir de
+`tools/css-builder/sfcss.config.json`. Variantes `hover:` e os breakpoints
+`sm`/`md`/`lg`/`xl` são gerados a partir do próprio config.
+
+| | |
+|---|---|
+| Classes no total | **2.337** |
+| — utilitárias base | 1.209 |
+| — variantes `hover:` | 600 |
+| — variantes responsivas (`sm` `md` `lg` `xl`) | 528 |
+| Classes de cor | 620 (20 famílias × 10 tons × `bg`/`text`/`border`) |
+| Tamanho | 112KB cru · 96KB minificado · **16,1KB gzipped** |
+| Dependências | nenhuma |
+
+```bash
+./sfphp css:build     # gera public/assets/css/sfcss.css e .min.css
+```
+
+```html
+<link rel="stylesheet" href="/assets/css/sfcss.css">
+```
+
+Referência completa: [SFCSS_DOCUMENTATION.md](SFCSS_DOCUMENTATION.md) e
+[SFCSS_UTILITIES_REFERENCE.md](SFCSS_UTILITIES_REFERENCE.md).
 
 ---
 
-**Documentação Gerada:** 2026-09-20
+## SFJS
+
+Biblioteca JavaScript sem dependências — 12KB crus, **3,0KB gzipped**.
+Exposta como `window.sf`.
+
+```html
+<script src="/assets/js/sfjs.js"></script>
+```
+
+### API programática
+
+```js
+sf.ajax.get('/api/posts');
+sf.ajax.post('/api/posts', { title: 'Olá' });
+sf.ajax.put('/api/posts/1', { title: 'Editado' });
+sf.ajax.delete('/api/posts/1');
+sf.ajax.patch('/api/posts/1', { title: 'X' });
+
+sf.form.serialize(formEl);
+sf.form.submit(formEl);
+sf.form.validate(inputEl);
+
+sf.dom.addClass(el, 'ativo');   sf.dom.removeClass(el, 'ativo');
+sf.dom.toggleClass(el, 'ativo'); sf.dom.hasClass(el, 'ativo');
+sf.dom.show(el); sf.dom.hide(el); sf.dom.toggle(el);
+sf.dom.on(el, 'click', fn);     sf.dom.off(el, 'click', fn);
+sf.dom.ready(fn);
+
+sf.validate.email(v);  sf.validate.required(v);  sf.validate.number(v);
+sf.validate.url(v);    sf.validate.minLength(v, 5);  sf.validate.maxLength(v, 50);
+sf.validate.pattern(v, '^[a-z]+$');
+
+sf.storage.set('k', {a: 1});  sf.storage.get('k');
+sf.storage.remove('k');       sf.storage.clear();
+
+sf.util.debounce(fn, 300);  sf.util.throttle(fn, 300);  sf.util.wait(500);
+```
+
+### Atributos declarativos
+
+```html
+<button @hxGet="/api/data" @hxTarget="#conteudo">Carregar</button>
+<button @hxDelete="/api/item/1" @hxTarget="#item" @hxSwap="outerHTML">Excluir</button>
+
+<form @hxPost="/users" @hxTarget="#lista">
+  <input name="email" @validate="email">
+  <button type="submit">Criar</button>
+</form>
+
+<button @toggle="menu">Menu</button>
+<div id="menu">...</div>
+```
+
+`@hxSwap` aceita `innerHTML` (padrão), `outerHTML`, `beforebegin`,
+`afterbegin`, `beforeend` e `afterend`.
+
+`@validate` roda no `blur` e aceita `required`, `email`, `number`, `url`,
+`minLength:N`, `maxLength:N` e `pattern:regex`.
+
+---
+
+## Testes
+
+Runner próprio, sem PHPUnit — coerente com zero dependências.
+
+```bash
+composer run lint        # php -l em todo o projeto
+composer run test        # 37 casos unitários
+composer run test:db     # integração contra MySQL/PostgreSQL reais
+composer run test:all
+```
+
+`tests/db.php` precisa de DSN nas variáveis de ambiente e pula com aviso
+quando não há:
+
+```bash
+SFPHP_TEST_MYSQL_DSN='mysql:host=127.0.0.1;port=3306;dbname=sf' \
+SFPHP_TEST_MYSQL_USER=root SFPHP_TEST_MYSQL_PASS=secret \
+  composer run test:db
+```
+
+O CI roda dois jobs: `unit` numa matriz PHP 8.1–8.4 **sem `mbstring`**, o que
+garante que o tratamento UTF-8 não depende da extensão; e `integration` com
+MySQL 8 e PostgreSQL 16 como serviços.
+
+---
+
+## Limitações conhecidas
+
+Aqui estão as ausências reais. Elas não são bugs — são coisas que o framework
+não faz, e que você deve saber antes de escolhê-lo.
+
+| Ausência | Impacto |
+|---|---|
+| **Objetos Request/Response** | Controllers leem superglobais e escrevem com `echo`. Não dá para testá-los unitariamente nem rodar em runtime persistente (Swoole, FrankenPHP) |
+| **Pipeline de middleware** | `make:middleware` gera a classe, mas nada a executa. CORS, rate limiting e autenticação não têm onde morar |
+| **Rate limiting** | Não existe |
+| **Autenticação / autorização** | Não existe. `make:policy` gera um esqueleto sem camada que o use |
+| **Sistema de eventos** | `make:event` e `make:listener` geram classes sem dispatcher |
+| **ORM** | Models e repositories geram métodos estáticos sobre o Query Builder; retornam arrays, não objetos. Sem relacionamentos, sem lazy loading |
+| **i18n / l10n** | Não existe. Mensagens de erro são fixas |
+| **Fusos horários** | Sem tratamento dedicado |
+| **Log estruturado** | Só `error_log()` — texto plano |
+| **Cache de rotas** | O despacho é O(n), com uma `preg_match` por rota. Adequado a dezenas, não a centenas |
+| **Sessão plugável** | `$_SESSION` nativa. Múltiplas instâncias exigem sticky sessions |
+| **Framework separado da aplicação** | O Router codifica `SfphpProject\app\controllers\`. Ainda não distribuível como pacote |
+
+O SFHT também não tem variáveis automáticas de laço (`$loop`) nem herança
+parcial de bloco (`@parent`).
+
+---
+
+*Documentação revisada em 2026-09-21 contra o código em execução.*

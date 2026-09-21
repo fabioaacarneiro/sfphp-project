@@ -1,6 +1,8 @@
 # SFCSS - Referência Completa de Utilidades
 
-> **Versão:** 49KB | **Classes:** 1490+ | **Cores:** 620+ | **Todos os testes:** ✅
+> **Tamanho:** 112KB cru · 96KB minificado · 16,1KB gzipped
+> **Classes:** 2.337 no total — 1.209 base, 600 `hover:`, 528 responsivas
+> **Classes de cor:** 620 (20 famílias × 10 tons × `bg`/`text`/`border`)
 
 ## Índice Rápido
 
@@ -376,11 +378,12 @@ Exemplo com `blue`:
 <div class="border-blue-50 border-blue-100 border-blue-200 border-blue-300">
 ```
 
-### Total: 620+ Classes de Cor
+### Total: 620 Classes de Cor
 
 - 20 families × 3 tipos (text, bg, border) × 10 shades = **600 classes**
 - + Cores do tema (primary, secondary, success, danger, warning, info)
-- **Total: 620+**
+- **Total: 620** — 20 famílias × 10 tons, nos prefixos `bg-`, `text-` e `border-`
+- Cada uma tem variante `hover:` correspondente
 
 ---
 
@@ -559,11 +562,11 @@ Todos os componentes base estão documentados em [SFCSS_DOCUMENTATION.md](./SFCS
 
 ## Stats
 
-- **Total de Classes:** 1490+
-- **Linhas de CSS:** 1490
+- **Total de Classes:** 2.337 seletores únicos
+- **Base:** 1.209 · **hover:** 600 · **responsivas:** 528
 - **Tamanho Completo:** 49KB
 - **Tamanho Minificado:** 39KB (17% redução)
 - **Famílias de Cores:** 20
 - **Shades por Cor:** 10
-- **Classes de Cor:** 620+
+- **Classes de Cor:** 600
 - **Breakpoints Responsivos:** 5

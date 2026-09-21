@@ -2,7 +2,7 @@
 
 ## Visão Geral
 
-**SFCSS** é um framework CSS minimalista (~8KB) que combina a simplicidade do Pico CSS com a flexibilidade de utilitários tipo Tailwind. Nenhuma dependência, funciona com HTML semântico puro.
+**SFCSS** é um framework CSS utilitário (16,1KB gzipped) que combina a simplicidade do Pico CSS com a flexibilidade de utilitários tipo Tailwind. Nenhuma dependência, funciona com HTML semântico puro.
 
 ## Instalação
 
@@ -37,7 +37,8 @@ Isso gera **automaticamente**:
 
 1. **Lê configuração** → `sfcss.config.json`
 2. **Gera CSS base** → `sfcss-base.css`
-3. **Gera utilidades de cor** → 620+ classes (20 cores × 10 shades)
+3. **Gera utilidades de cor** → 620 classes (20 famílias × 10 tons × bg/text/border), mais 600 variantes `hover:`
+4. **Gera variantes responsivas** → 528 classes a partir dos breakpoints do config
 4. **Gera CSS completo** → `sfcss.css`
 5. **Minifica** → Remove comentários, espaços, caracteres desnecessários
 6. **Salva versão otimizada** → `sfcss.min.css`
@@ -226,7 +227,54 @@ Isso gera **automaticamente**:
 ## Utilitários
 
 > 📖 **VER REFERÊNCIA COMPLETA:** [SFCSS_UTILITIES_REFERENCE.md](./SFCSS_UTILITIES_REFERENCE.md)  
-> Documentação detalhada de TODOS os 1490+ classes CSS disponíveis
+## Variantes de estado e responsivas
+
+### `hover:`
+
+Toda classe de cor tem variante `hover:` correspondente:
+
+```html
+<a class="text-blue-500 hover:text-blue-700">Link</a>
+<button class="bg-blue-600 hover:bg-blue-700 text-white">Enviar</button>
+<div class="border-slate-200 hover:border-slate-400">Card</div>
+```
+
+### Breakpoints
+
+Os prefixos vêm de `breakpoints` em `sfcss.config.json` e são `min-width`:
+
+| Prefixo | A partir de |
+|---|---|
+| `sm:` | 480px |
+| `md:` | 768px |
+| `lg:` | 1024px |
+| `xl:` | 1280px |
+
+```html
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+<div class="p-4 md:p-6 lg:p-8">
+<h1 class="text-2xl md:text-4xl lg:text-5xl">
+<div class="w-full md:w-1/2">
+<nav class="hidden md:flex">
+```
+
+Nem toda utilidade tem variante responsiva — só as de layout: `grid-cols-*`,
+display, direção e wrap de flex, espaçamento (`p`/`px`/`py`/`m`/`mx`/`my`/`gap`),
+tamanhos de fonte e larguras fracionárias. Gerar todas as utilidades em todos os
+breakpoints multiplicaria a folha várias vezes por classes que ninguém escreve
+de forma responsiva.
+
+### Regenerando
+
+```bash
+./sfphp css:build
+```
+
+Edite `tools/css-builder/sfcss.config.json` e rode de novo. Cores, breakpoints
+e variantes `hover:` saem todos do config.
+
+
+> Documentação detalhada de todas as 2.337 classes CSS disponíveis
 
 ### Resumo Rápido
 
@@ -236,7 +284,7 @@ SFCSS fornece utilitários completos para todos os aspectos do design:
 **Sizing:** `h-0` a `h-64`, `w-0` a `w-64`, valores em pixels arbitrários  
 **Layout:** flexbox, grid, display  
 **Typography:** 8 tamanhos, 4 pesos, transformações  
-**Cores:** 20 famílias × 10 shades = 620+ classes  
+**Cores:** 20 famílias × 10 tons = 620 classes, com variantes `hover:`  
 **Efeitos:** borders, radius, shadows, opacity  
 **Responsivo:** sm, md, lg, xl breakpoints  
 
@@ -404,7 +452,7 @@ Todas as cores, espaçamentos e fontes podem ser customizadas através de CSS va
 
 ## Performance
 
-- **Tamanho:** ~8KB gzipped (sem dependências)
+- **Tamanho:** 112KB cru · 96KB minificado · 16,1KB gzipped (sem dependências)
 - **Compatibilidade:** Todos os navegadores modernos (IE 11+)
 - **Cache:** Serve como arquivo estático, cache do navegador automático
 - **Sem JavaScript:** 100% CSS puro, nenhuma dependência
