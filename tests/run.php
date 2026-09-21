@@ -17,6 +17,8 @@ use SfphpProject\src\Cache\FileDriver;
 use SfphpProject\src\Cache\MemoryDriver;
 use SfphpProject\src\Database\Factory;
 use SfphpProject\src\Database\Seeder;
+use SfphpProject\src\Http\Request;
+use SfphpProject\src\Http\Response;
 use SfphpProject\src\QueryBuilder;
 use SfphpProject\src\Queue\DatabaseDriver;
 use SfphpProject\src\Queue\QueueManager;
@@ -1172,6 +1174,123 @@ $tests->run('the built stylesheet is css, not the builder log', function () use 
 
     $source = file_get_contents(dirname(__DIR__) . '/src/Console/Application.php');
     $tests->assertSame(false, str_contains($source, "file_put_contents(\$outputPath, \$css)"));
+});
+
+$tests->run('request is built from injected arrays, never from globals', function () use ($tests): void {
+    /*
+     * The constructor taking arrays rather than reading superglobals is what
+     * makes a persistent runtime possible later, and what makes the router
+     * testable at all.
+     */
+    $request = Request::create('POST', '/produtos/caf%C3%A9?page=2&sort=name', [
+        'body' => ['nome' => 'Ana'],
+        'headers' => ['Content-Type' => 'application/json', 'Authorization' => 'Bearer abc123'],
+        'rawBody' => '{"extra":"日本語"}',
+    ]);
+
+    $tests->assertSame('POST', $request->method);
+    $tests->assertSame('/produtos/café', $request->path);
+    $tests->assertSame('2', $request->query('page'));
+    $tests->assertSame('Ana', $request->body('nome'));
+    $tests->assertSame('abc123', $request->bearerToken());
+    $tests->assertTrue($request->expectsJson());
+    $tests->assertTrue($request->isMethod('post'));
+
+    // Header lookup is case insensitive in both directions.
+    $tests->assertSame('application/json', $request->header('CONTENT-TYPE'));
+
+    // input() falls back from body to the JSON payload to the query string.
+    $tests->assertSame('日本語', $request->input('extra'));
+    $tests->assertSame('name', $request->input('sort'));
+    $tests->assertSame('fallback', $request->input('missing', 'fallback'));
+
+    $tests->assertSame(['extra' => '日本語'], $request->json());
+
+    // An encoded separator must not become a real one.
+    $tests->assertSame('/a%2Fb', Request::create('GET', '/a%2Fb')->path);
+});
+
+$tests->run('request attributes copy on write', function () use ($tests): void {
+    $request = Request::create('GET', '/posts/7');
+
+    $withId = $request->withAttribute('id', '7');
+    $withMore = $withId->withAttributes(['user' => 'ana']);
+
+    $tests->assertSame(null, $request->attribute('id'));
+    $tests->assertSame('7', $withId->route('id'));
+    $tests->assertSame(null, $withId->attribute('user'));
+    $tests->assertSame(['id' => '7', 'user' => 'ana'], $withMore->attributes());
+
+    // The HTTP fields survive the clone untouched.
+    $tests->assertSame($request->method, $withMore->method);
+    $tests->assertSame($request->path, $withMore->path);
+});
+
+$tests->run('response is a value object that never emits', function () use ($tests): void {
+    $json = Response::json(['cidade' => 'São Paulo'], HTTP_CREATED);
+
+    $tests->assertSame(HTTP_CREATED, $json->status());
+    $tests->assertSame('application/json; charset=utf-8', $json->header('Content-Type'));
+
+    // UNESCAPED_UNICODE: "São Paulo" must not ship as "São Paulo".
+    $tests->assertSame('{"cidade":"São Paulo"}', $json->body());
+
+    $tests->assertSame(HTTP_NO_CONTENT, Response::noContent()->status());
+    $tests->assertSame('/login', Response::redirect('/login')->header('Location'));
+    $tests->assertSame(HTTP_FOUND, Response::redirect('/login')->status());
+
+    /*
+     * Header names are case insensitive, so withHeader() must replace an
+     * existing one whatever its casing, or the response would carry
+     * Content-Type twice. The stored key is the one the caller wrote.
+     */
+    $replaced = Response::html('<p>oi</p>')->withHeader('content-type', 'text/plain');
+    $tests->assertSame(1, count($replaced->headers()));
+    $tests->assertSame('text/plain', $replaced->header('Content-Type'));
+
+    // Every with* method copies rather than mutating.
+    $original = Response::html('a');
+    $tests->assertSame('b', $original->withBody('b')->body());
+    $tests->assertSame('a', $original->body());
+    $tests->assertSame(HTTP_NOT_FOUND, $original->withStatus(HTTP_NOT_FOUND)->status());
+    $tests->assertSame(HTTP_OK, $original->status());
+});
+
+$tests->run('response coerces action return values and refuses null', function () use ($tests): void {
+    $response = Response::html('x');
+    $tests->assertTrue(Response::from($response) === $response);
+
+    $tests->assertSame('text/html; charset=utf-8', Response::from('<p>oi</p>')->header('Content-Type'));
+    $tests->assertSame('{"a":1}', Response::from(['a' => 1])->body());
+
+    /*
+     * Returning nothing has to be an error, not an empty 200: it is how an
+     * action that forgot its return statement announces itself, and naming
+     * the action turns a blank page into a one-line fix.
+     */
+    $tests->assertThrows(
+        fn () => Response::from(null, 'MainController::index()'),
+        LogicException::class
+    );
+
+    try {
+        Response::from(null, 'MainController::index()');
+    } catch (LogicException $exception) {
+        $tests->assertTrue(str_contains($exception->getMessage(), 'MainController::index()'));
+    }
+});
+
+$tests->run('views can be rendered to a string without echoing', function () use ($tests): void {
+    // Response needs a body it can carry; output that already escaped is no use.
+    $rendered = View::makePartial('header', ['title' => '<script>']);
+
+    $tests->assertTrue(str_contains($rendered, '&lt;script&gt;'));
+    $tests->assertSame(false, str_contains($rendered, '<script>'));
+
+    $tests->assertThrows(
+        fn () => View::make('../../../etc/passwd'),
+        InvalidArgumentException::class
+    );
 });
 
 $tests->finish();
