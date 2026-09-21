@@ -25,6 +25,13 @@ use JsonException;
 final class Request
 {
     /**
+     * Proxies whose forwarding headers are believed.
+     *
+     * @var array<int, string>
+     */
+    private static array $trustedProxies = [];
+
+    /**
      * Values attached to the request while it travels through the pipeline.
      *
      * @var array<string, mixed>
@@ -358,20 +365,71 @@ final class Request
     }
 
     /**
-     * Get the client IP address as reported by the server.
+     * Declare which proxies may be believed.
      *
-     * Proxy headers are deliberately ignored. X-Forwarded-For is client
-     * controlled unless a trusted proxy list is configured, and the framework
-     * has no such configuration yet, so honouring it here would let any
-     * visitor claim any address.
+     * Forwarding headers are client-controlled: anyone can send
+     * X-Forwarded-For or X-Forwarded-Proto. They are only meaningful when the
+     * connection itself comes from a machine known to rewrite them, which is
+     * why nothing is trusted until the deployment says what to trust.
+     *
+     *     Request::setTrustedProxies(['10.0.0.0/8', '172.16.0.5']);
+     *
+     * This is not optional detail behind a TLS-terminating load balancer. The
+     * PHP process there sees plain HTTP, so isSecure() answers false, and the
+     * session cookie loses its "secure" flag — it then travels in the clear if
+     * the visitor ever reaches the site over HTTP.
+     *
+     * @param array<int, string> $proxies Addresses or CIDR ranges
+     * @return void
+     */
+    public static function setTrustedProxies(array $proxies): void
+    {
+        self::$trustedProxies = $proxies;
+    }
+
+    /**
+     * Get the proxies whose forwarding headers are believed.
+     *
+     * @return array<int, string> The addresses or CIDR ranges
+     */
+    public static function trustedProxies(): array
+    {
+        return self::$trustedProxies;
+    }
+
+    /**
+     * Get the client IP address.
+     *
+     * X-Forwarded-For is read only when the connection itself comes from a
+     * trusted proxy; otherwise any visitor could claim any address, which
+     * matters as soon as anything rate limits or logs by IP.
      *
      * @return string|null The address, or null when unknown
      */
     public function ip(): ?string
     {
         $address = $this->server['REMOTE_ADDR'] ?? null;
+        $address = is_string($address) ? $address : null;
 
-        return is_string($address) ? $address : null;
+        if (!$this->fromTrustedProxy()) {
+            return $address;
+        }
+
+        $forwarded = $this->header('X-Forwarded-For');
+
+        if ($forwarded === null) {
+            return $address;
+        }
+
+        /*
+         * The header is a chain, oldest first: "client, proxy1, proxy2". The
+         * left-most entry is the original client — and also the only one the
+         * client itself could have written, which is why it is read only after
+         * establishing that a trusted proxy appended to it.
+         */
+        $first = trim(explode(',', $forwarded)[0]);
+
+        return $first === '' ? $address : $first;
     }
 
     /**
@@ -386,7 +444,81 @@ final class Request
             return true;
         }
 
-        return (string) ($this->server['SERVER_PORT'] ?? '') === '443';
+        if ((string) ($this->server['SERVER_PORT'] ?? '') === '443') {
+            return true;
+        }
+
+        if (!$this->fromTrustedProxy()) {
+            return false;
+        }
+
+        return strtolower(trim(explode(',', $this->header('X-Forwarded-Proto') ?? '')[0])) === 'https';
+    }
+
+    /**
+     * Check whether the connection came from a proxy that may be believed.
+     *
+     * @return bool True when REMOTE_ADDR is trusted
+     */
+    private function fromTrustedProxy(): bool
+    {
+        if (self::$trustedProxies === []) {
+            return false;
+        }
+
+        $remote = $this->server['REMOTE_ADDR'] ?? null;
+
+        if (!is_string($remote)) {
+            return false;
+        }
+
+        foreach (self::$trustedProxies as $proxy) {
+            if (self::addressMatches($remote, $proxy)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check an address against a literal or a CIDR range.
+     *
+     * @param string $address The address to check
+     * @param string $range The literal address or CIDR range
+     * @return bool True when the address falls inside
+     */
+    private static function addressMatches(string $address, string $range): bool
+    {
+        if (!str_contains($range, '/')) {
+            return $address === $range;
+        }
+
+        [$subnet, $bits] = explode('/', $range, 2);
+
+        $addressBinary = inet_pton($address);
+        $subnetBinary = inet_pton($subnet);
+
+        if ($addressBinary === false || $subnetBinary === false
+            || strlen($addressBinary) !== strlen($subnetBinary)) {
+            return false;
+        }
+
+        $bits = (int) $bits;
+        $bytes = intdiv($bits, 8);
+        $remainder = $bits % 8;
+
+        if ($bytes > 0 && strncmp($addressBinary, $subnetBinary, $bytes) !== 0) {
+            return false;
+        }
+
+        if ($remainder === 0) {
+            return true;
+        }
+
+        $mask = ~((1 << (8 - $remainder)) - 1) & 0xFF;
+
+        return (ord($addressBinary[$bytes]) & $mask) === (ord($subnetBinary[$bytes]) & $mask);
     }
 
     /**
