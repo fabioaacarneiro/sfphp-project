@@ -14,7 +14,7 @@ final class SeederGenerator extends GeneratorBase
 
 namespace Database\Seeders;
 
-use SfPhp\Database\Seeder;
+use SfphpProject\src\Database\Seeder;
 
 class {CLASS} extends Seeder
 {

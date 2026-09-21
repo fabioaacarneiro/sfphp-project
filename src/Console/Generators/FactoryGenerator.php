@@ -15,7 +15,7 @@ final class FactoryGenerator extends GeneratorBase
 
 namespace Database\Factories;
 
-use SfPhp\Database\Factory;
+use SfphpProject\src\Database\Factory;
 
 class {CLASS}Factory extends Factory
 {
