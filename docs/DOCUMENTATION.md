@@ -1713,11 +1713,32 @@ descarta o que vier com `q=0`, e escolhe o melhor par entre o que o cliente
 pediu e o que a aplicação oferece. Pedir `pt` e receber `pt_BR` é melhor do que
 receber inglês, então isso acontece.
 
-Também acrescenta o header `Content-Language` à resposta.
+Também acrescenta o header `Content-Language` à resposta, e as páginas de erro
+do framework passam a declarar o `lang` correto no documento — antes elas
+diziam `lang="en"` independentemente do conteúdo:
 
-Registrá-lo **globalmente** importa: uma requisição que não casa com rota
-nenhuma jamais chega a um controller, e é só por isso que um 404 consegue sair
-no idioma do visitante.
+```html
+<html lang="pt-BR">   <!-- segue o idioma negociado -->
+```
+
+Isso não é cosmético: leitores de tela escolhem a pronúncia pelo `lang`, e o
+navegador usa o atributo para decidir se oferece tradução da página.
+
+Registrá-lo **globalmente** importa por dois motivos.
+
+O primeiro: uma requisição que não casa com rota nenhuma jamais chega a um
+controller, e é só por isso que um 404 consegue sair no idioma do visitante.
+
+O segundo aparece sob runtime persistente (Swoole, FrankenPHP). O tradutor
+guarda o idioma ativo num `static`, então um worker que atendeu uma requisição
+em português **responderia a próxima em português** se nada redefinisse o
+idioma. Esse middleware é o que redefine. Se você montar a pipeline sem ele e
+chamar `Translator::setLocale()` de dentro de um controller, o idioma vaza da
+requisição de um visitante para a do seguinte.
+
+É a mesma classe de cuidado que manteve o *identity map* fora da camada de
+Models: estado estático num processo que atende várias requisições precisa de
+um dono explícito que o reinicie.
 
 Direto da requisição, quando você precisa:
 
