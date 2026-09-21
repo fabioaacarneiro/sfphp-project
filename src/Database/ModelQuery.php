@@ -53,6 +53,19 @@ final class ModelQuery
     }
 
     /**
+     * Choose the columns to return.
+     *
+     * @param string|array<int, string> ...$columns The column names
+     * @return self The query
+     */
+    public function select(string|array ...$columns): self
+    {
+        $this->builder->select(...$columns);
+
+        return $this;
+    }
+
+    /**
      * Add an AND condition.
      *
      * @param string $column The column name
@@ -299,7 +312,7 @@ final class ModelQuery
 
                 $model->setRelation(
                     $name,
-                    $relation->type === Relation::HAS_MANY ? $matches : ($matches[0] ?? null)
+                    $relation->returnsMany() ? $matches : ($matches[0] ?? null)
                 );
             }
         }
@@ -314,10 +327,25 @@ final class ModelQuery
      */
     private function fetchRelated(Relation $relation, array $keys): array
     {
+        $grouped = [];
+
+        /*
+         * A many-to-many relation cannot be grouped by a column on the related
+         * table, because the link lives in the pivot. throughPivot() selects
+         * that pivot column under an alias, and the rows are grouped by it —
+         * which is what keeps this to one query instead of one per parent.
+         */
+        if ($relation->isThroughPivot()) {
+            foreach ($relation->throughPivot($keys) as $child) {
+                $grouped[(string) $child->getAttribute(Model::PIVOT_KEY)][] = $child;
+            }
+
+            return $grouped;
+        }
+
         /** @var class-string<Model> $related */
         $related = $relation->related;
 
-        $grouped = [];
         foreach ($related::query()->whereIn($relation->relatedKey(), $keys)->get() as $child) {
             $grouped[(string) $child->getAttribute($relation->relatedKey())][] = $child;
         }
