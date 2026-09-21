@@ -12,7 +12,7 @@
 </nav>
 
 <!-- Hero Section -->
-<section class="bg-blue-600  px-4 text-white text-center">
+<section class="bg-blue-600 py-20 px-4 text-white text-center">
     <div class="container mx-auto max-w-3xl">
         <h1 class="text-4xl font-bold mb-4">Build Fast, Modern PHP Apps</h1>
         <p class="text-xl mb-8 opacity-95">Zero dependencies. Production-ready.</p>
