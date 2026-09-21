@@ -9,5 +9,6 @@ return [
     'csrf_message' => 'O formulário expirou. Recarregue a página e tente novamente.',
     'server_error_title' => 'Erro interno',
     'server_error_message' => 'Erro Interno do Servidor',
+    'too_many_requests_message' => 'Muitas requisições. Aguarde e tente novamente.',
     'back_home' => 'Voltar para a página inicial',
 ];

@@ -61,6 +61,33 @@ abstract class Model implements JsonSerializable
     protected static string $primaryKey = 'id';
 
     /**
+     * Columns that may be set from an array.
+     *
+     * A model must declare this before fill() — and therefore before the
+     * constructor and create() — will assign anything. Leaving it empty is not
+     * "no restriction", it is "this model cannot be mass assigned", and the
+     * attempt raises instead of silently succeeding.
+     *
+     * The reason is the most natural line anyone writes:
+     *
+     *     User::create($request->all());
+     *
+     * Without a list, that stores every column the attacker chose to submit.
+     * A registration form that never showed an "is_admin" field still writes
+     * one if the request carries it. Defaulting to permissive would protect
+     * only the developers who already knew to declare the list, which is
+     * exactly the wrong set of people.
+     *
+     * Keys outside the list are dropped rather than raising, so a form that
+     * submits an extra field a browser added still works.
+     *
+     * Use forceFill() for values the application itself chose.
+     *
+     * @var array<int, string>
+     */
+    protected static array $fillable = [];
+
+    /**
      * Attribute types, as column name => cast.
      *
      * PDO hands back what the driver gives it, which for a DATETIME column is
@@ -269,11 +296,53 @@ abstract class Model implements JsonSerializable
      */
     public function fill(array $attributes): static
     {
+        if ($attributes === []) {
+            return $this;
+        }
+
+        if (static::$fillable === []) {
+            throw new MassAssignmentException(sprintf(
+                '%s must declare $fillable before it can be filled from an array. '
+                . 'Use forceFill() for values the application itself chose.',
+                static::class
+            ));
+        }
+
+        foreach ($attributes as $key => $value) {
+            if (in_array((string) $key, static::$fillable, true)) {
+                $this->setAttribute((string) $key, $value);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Set attributes without consulting $fillable.
+     *
+     * For values the application produced itself — a generated token, a
+     * timestamp, a foreign key it just resolved. Never for request data.
+     *
+     * @param array<string, mixed> $attributes The values to set
+     * @return static The model
+     */
+    public function forceFill(array $attributes): static
+    {
         foreach ($attributes as $key => $value) {
             $this->setAttribute((string) $key, $value);
         }
 
         return $this;
+    }
+
+    /**
+     * Get the columns that may be set from an array.
+     *
+     * @return array<int, string> The column names
+     */
+    public static function fillable(): array
+    {
+        return static::$fillable;
     }
 
     /**

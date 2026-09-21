@@ -9,5 +9,6 @@ return [
     'csrf_message' => 'El formulario ha expirado. Recarga la página e inténtalo de nuevo.',
     'server_error_title' => 'Error interno',
     'server_error_message' => 'Error Interno del Servidor',
+    'too_many_requests_message' => 'Demasiadas solicitudes. Espera e inténtalo de nuevo.',
     'back_home' => 'Volver a la página de inicio',
 ];

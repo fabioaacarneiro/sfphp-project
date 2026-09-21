@@ -32,6 +32,21 @@ final class {CLASS} extends Model
      */
     protected static string $table = '{TABLE}';
 
+    /**
+     * Columns that may be set from an array.
+     *
+     * Required before this model can be filled. List only what a form is
+     * allowed to submit — never a column the application decides for itself,
+     * such as a role, a balance or a verification flag. Use forceFill() for
+     * those.
+     *
+     * @var array<int, string>
+     */
+    protected static array $fillable = [
+        // 'title',
+        // 'body',
+    ];
+
     /*
      * Declare relations as methods returning a Relation. Reading the property
      * of the same name resolves it:

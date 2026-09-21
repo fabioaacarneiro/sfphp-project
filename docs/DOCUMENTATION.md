@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 74 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 78 testes, 0 falhas
 
 ---
 
@@ -31,6 +31,7 @@ hoje. Onde algo não existe, está dito que não existe — veja
 - [Internacionalização](#internacionalização)
 - [Strings UTF-8](#strings-utf-8)
 - [Autenticação](#autenticação)
+- [Segurança](#segurança)
 - [CSRF](#csrf)
 - [JWT](#jwt)
 - [Tratamento de erros](#tratamento-de-erros)
@@ -922,7 +923,7 @@ return Response::json(Post::findOrFail($id));
 ### Escrevendo
 
 ```php
-$post = new Post(['titulo' => 'Olá']);
+$post = new Post(['titulo' => 'Olá']);   // só colunas em $fillable
 $post->save();                     // INSERT, e a chave volta preenchida
 
 $post = Post::find(1);
@@ -930,8 +931,12 @@ $post->titulo = 'Outro título';
 $post->save();                     // UPDATE só do que mudou
 
 Post::create(['titulo' => 'Direto']);
+$post->forceFill(['publicado_em' => now()]);   // ignora $fillable
 $post->delete();
 ```
+
+`$fillable` é **obrigatório**: um modelo que não o declara lança ao ser
+preenchido. Ver [Segurança](#segurança) para o porquê.
 
 Um `save()` sobre modelo existente escreve **apenas os atributos alterados** —
 tocar um campo não reescreve a linha inteira. Um `save()` sem alteração não
@@ -2066,6 +2071,196 @@ vêm nos três idiomas que o framework acompanha. Veja
 
 ---
 
+## Segurança
+
+O que o framework faz por padrão, o que exige configuração, e o que
+deliberadamente não faz.
+
+### Atribuição em massa
+
+Um modelo só pode ser preenchido a partir de um array depois de declarar
+**quais colunas** aceita:
+
+```php
+final class User extends Model
+{
+    protected static array $fillable = ['name', 'email'];
+}
+```
+
+Sem a lista, preencher lança `MassAssignmentException`. Isso é deliberado, e o
+motivo é a linha mais natural que alguém escreve:
+
+```php
+User::create($request->all());
+```
+
+Sem lista, isso grava **toda coluna que o atacante resolveu enviar**. Um
+formulário de cadastro que nunca mostrou um campo `is_admin` grava um assim
+mesmo, se a requisição trouxer:
+
+```php
+// enviado: name, email, is_admin=1, balance=999999
+$user = new User($request->all());
+$user->is_admin;   // null — descartado
+```
+
+Chaves fora da lista são **descartadas**, não geram erro, para que um
+formulário com um campo extra que o navegador acrescentou continue
+funcionando. Já um modelo que não declara nada **falha alto**, na primeira vez
+que é usado — bem antes de chegar a produção.
+
+Permitir por padrão protegeria apenas quem já sabia que precisava declarar, que
+é exatamente o conjunto errado de pessoas.
+
+Para valores que a própria aplicação escolheu:
+
+```php
+$user->forceFill(['email_verified_at' => now()]);
+```
+
+### Proxies confiáveis
+
+Headers `X-Forwarded-*` são controlados pelo cliente: qualquer um pode
+enviá-los. Só fazem sentido quando a conexão vem de uma máquina que se sabe
+reescrevê-los, então **nada é confiado** até a implantação dizer o quê:
+
+```php
+Request::setTrustedProxies(['10.0.0.0/8', '172.16.0.5']);
+```
+
+```ini
+TRUSTED_PROXIES=10.0.0.0/8,172.16.0.5
+```
+
+> **Atrás de um balanceador que termina TLS isto não é detalhe.** O processo
+> PHP vê HTTP puro, então `isSecure()` responde falso e **o cookie de sessão
+> perde o flag `secure`** — ele passa a trafegar em texto claro assim que o
+> visitante alcançar o site por HTTP. Configurar os proxies é o que corrige.
+
+Com proxies declarados:
+
+```php
+$request->ip();         // o IP real do cliente, não o do balanceador
+$request->isSecure();   // true, lendo X-Forwarded-Proto
+```
+
+Sem eles, ou vindo de fora da faixa confiável, os headers são ignorados — um
+visitante não consegue forjar o próprio endereço. Isso importa no momento em
+que qualquer coisa limita taxa ou registra log por IP.
+
+### Limite de requisições
+
+```php
+Router::post('/login', 'AuthController', 'login')
+    ->middleware(new RateLimit(maxAttempts: 5, decaySeconds: 60));
+```
+
+Responde **429** com `Retry-After` quando o limite estoura, e acrescenta
+`X-RateLimit-Limit` e `X-RateLimit-Remaining` às respostas normais.
+
+Isto é o que dá sentido às outras defesas do login. Equalizar o tempo de uma
+tentativa falha impede **descobrir quais contas existem**; não impede em nada
+simplesmente testar senhas. Sem limite, o atacante não precisa enumerar nada.
+
+Os contadores ficam no cache, então o limite vale entre processos quando há um
+driver compartilhado. Uma requisição autenticada conta **por usuário**, para
+que várias pessoas atrás do mesmo endereço de escritório não consumam a cota
+umas das outras.
+
+A janela **não** é renovada a cada tentativa: renovar deixaria quem continua
+batendo manter a própria janela aberta indefinidamente, e o contador nunca
+perdoaria.
+
+> O endereço do cliente é tão confiável quanto a configuração de proxies. Atrás
+> de um balanceador sem proxies declarados, **todo o site divide um único
+> balde**.
+
+### Headers de resposta
+
+```php
+$router->middleware(new SecurityHeaders());
+```
+
+Enviados por padrão:
+
+| Header | Fecha |
+|---|---|
+| `X-Content-Type-Options: nosniff` | Um arquivo enviado e servido como `text/plain` ser executado como JavaScript porque os primeiros bytes parecem um script |
+| `X-Frame-Options: DENY` | *Clickjacking* — o site ser enquadrado invisivelmente sobre algo que o visitante pretende clicar |
+| `Referrer-Policy: strict-origin-when-cross-origin` | A URL completa, inclusive o que estiver na query string, vazar para todo site que o visitante alcançar por um link |
+
+Dois ficam **desligados** até serem pedidos:
+
+```php
+new SecurityHeaders(
+    contentSecurityPolicy: "default-src 'self'; style-src 'self' 'unsafe-inline'",
+    hstsMaxAge: 31536000,
+    hstsIncludeSubdomains: true,
+);
+```
+
+**Content-Security-Policy** é o mais forte e o mais fácil de errar: uma
+política que não bate com os próprios assets quebra a página **sem erro que o
+desenvolvedor veja**, e o framework não tem como saber quais são esses assets.
+
+> Note o `'unsafe-inline'` em `style-src` no exemplo: as páginas de erro do
+> próprio framework usam CSS embutido, justamente para não depender de rede.
+> Uma política sem ele deixa a página 404 sem estilo.
+
+**Strict-Transport-Security** fica desligado porque ligá-lo é difícil de
+desfazer — um navegador que o viu recusa HTTP puro durante todo o `max-age`,
+inclusive para um site que depois precise servir HTTP por algum motivo. E só é
+enviado sobre HTTPS: um navegador ignora HSTS em conexão insegura, então
+enviá-lo ali pareceria proteção sem ser.
+
+### Sessão e CSRF
+
+- Cookie com `httponly`, `samesite=Lax` e `secure` quando a conexão é HTTPS —
+  determinado pela requisição, respeitando os proxies confiáveis
+- Id da sessão **regenerado no login e no logout**, contra *session fixation*
+- Token CSRF de 32 bytes, comparado com `hash_equals`
+- `VerifyCsrfToken` aplica a verificação **por padrão** a toda requisição que
+  altera estado; métodos seguros e requisições com Bearer passam
+
+### Senhas e login
+
+- `password_hash` com `PASSWORD_DEFAULT`, e `Hash::needsRehash()` para
+  atualizar sem pedir a senha de novo
+- `Auth::attempt()` verifica uma senha **mesmo sem usuário correspondente**,
+  contra um hash descartável, para que uma conta inexistente não responda mais
+  rápido que uma senha errada
+- A sessão guarda **apenas o identificador**, nunca o usuário serializado
+
+### Banco de dados
+
+- Todo valor é vinculado; nenhum é concatenado
+- Todo identificador (tabela, coluna, alias) é validado contra uma whitelist e
+  citado conforme o driver — um identificador inválido lança em vez de ir para
+  o SQL
+- `EMULATE_PREPARES => false`, então o driver prepara de verdade
+- Falha de conexão registra o detalhe no log e lança exceção genérica: host,
+  banco e usuário não chegam ao visitante
+
+### Saída
+
+- `{{ }}` do SFHT escapa por padrão; a saída crua exige `{!! !!}`
+- `e()` para templates PHP crus
+- Detalhe de exceção só aparece com `APP_ENV=development`
+
+### O que não tem
+
+| Ausente | Situação |
+|---|---|
+| Revogação de token | Um JWT vale até expirar; não há lista de revogados |
+| Recuperação de senha, verificação de e-mail, 2FA | Fora de escopo |
+| "Lembrar de mim" | A coluna `remember_token` existe; nada a usa |
+| Timeout de sessão ocioso ou absoluto | O que o `php.ini` disser |
+| Proteção contra upload malicioso | `$_FILES` é exposto cru; validar tipo e destino é da aplicação |
+| Auditoria / log de segurança | Só `error_log()` |
+
+---
+
 ## CSRF
 
 ```php
@@ -2339,7 +2534,7 @@ não faz, e que você deve saber antes de escolhê-lo.
 
 | Ausência | Impacto |
 |---|---|
-| **Rate limiting** | Não existe. Pode ser escrito como middleware agora, mas o framework não traz um — inclusive no login |
+| **Timeout de sessão** | Ocioso ou absoluto: o que o `php.ini` disser. Ver [Segurança](#segurança) |
 | **Recuperação de senha e dois fatores** | O login existe; esses fluxos não. Ver [Autenticação](#autenticação) |
 | **Sistema de eventos** | `make:event` e `make:listener` geram classes sem dispatcher |
 | **ORM completo** | Existe uma camada de [Models](#models) com hidratação, tipos de atributo, relacionamentos (incluindo muitos-para-muitos) e `with()`. Não existe identity map, unit of work, proxy de lazy loading, relação polimórfica nem schema derivado da classe — e [ORM ou Query Builder?](#orm-ou-query-builder) explica o motivo de cada um |

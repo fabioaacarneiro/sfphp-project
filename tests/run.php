@@ -25,11 +25,14 @@ use SfphpProject\src\Auth\ModelUserProvider;
 use SfphpProject\src\Auth\SessionGuard;
 use SfphpProject\src\Auth\TokenGuard;
 use SfphpProject\src\Database\Factory;
+use SfphpProject\src\Database\MassAssignmentException;
 use SfphpProject\src\Database\Model;
 use SfphpProject\src\Database\Relation;
 use SfphpProject\src\Database\Seeder;
 use SfphpProject\src\Http\Middleware;
 use SfphpProject\src\Http\Middleware\Authenticate;
+use SfphpProject\src\Http\Middleware\RateLimit;
+use SfphpProject\src\Http\Middleware\SecurityHeaders;
 use SfphpProject\src\Http\Middleware\SetLocale;
 use SfphpProject\src\Http\Middleware\VerifyCsrfToken;
 use SfphpProject\src\I18n\Translator;
@@ -176,6 +179,8 @@ final class UserModelTest extends Model
 {
     protected static string $table = 'users';
 
+    protected static array $fillable = ['name', 'email'];
+
     public function posts(): Relation
     {
         return $this->hasMany(PostModelTest::class, 'user_id');
@@ -199,6 +204,8 @@ final class AuthUserTest extends Model implements Authenticatable
 {
     protected static string $table = 'users';
 
+    protected static array $fillable = ['name', 'email', 'password'];
+
     public function getAuthIdentifierName(): string
     {
         return static::primaryKey();
@@ -213,6 +220,12 @@ final class AuthUserTest extends Model implements Authenticatable
     {
         return (string) $this->getAttribute('password');
     }
+}
+
+/** Declares no $fillable, so it cannot be mass assigned at all. */
+final class UnguardedModelTest extends Model
+{
+    protected static string $table = 'unguarded';
 }
 
 /** A subject for the authorization tests. */
@@ -2672,6 +2685,155 @@ $tests->run('auth messages exist in every shipped locale', function () use ($tes
     } finally {
         Translator::setLocale($previous);
     }
+});
+
+$tests->run('mass assignment needs an explicit list', function () use ($tests): void {
+    /*
+     * The natural line — Model::create($request->all()) — used to store every
+     * column the attacker chose to submit. A registration form that never
+     * showed an "is_admin" field still wrote one if the request carried it.
+     */
+    $submitted = [
+        'name' => 'Ana',
+        'email' => 'ana@exemplo.com',
+        'is_admin' => 1,
+        'balance' => 999999,
+    ];
+
+    $user = new AuthUserTest(Request::create('POST', '/cadastro', ['body' => $submitted])->all());
+
+    $tests->assertSame('Ana', $user->getAttribute('name'));
+    $tests->assertSame(null, $user->getAttribute('is_admin'));
+    $tests->assertSame(null, $user->getAttribute('balance'));
+
+    /*
+     * A model that declares nothing cannot be filled at all. Defaulting to
+     * permissive would protect only the developers who already knew to declare
+     * the list, which is the wrong set of people.
+     */
+    $tests->assertThrows(
+        fn () => new UnguardedModelTest(['qualquer' => 1]),
+        MassAssignmentException::class
+    );
+
+    // An empty array is not an attempt to mass assign, so it does not raise.
+    $tests->assertTrue((new UnguardedModelTest()) instanceof UnguardedModelTest);
+
+    // forceFill is the way in for values the application itself chose.
+    $forced = (new AuthUserTest())->forceFill(['is_admin' => 1]);
+    $tests->assertSame(1, $forced->getAttribute('is_admin'));
+
+    $tests->assertSame(['name', 'email', 'password'], AuthUserTest::fillable());
+});
+
+$tests->run('forwarding headers are believed only from a trusted proxy', function () use ($tests): void {
+    $behindProxy = static fn (): Request => Request::create('GET', '/', [
+        'server' => ['REMOTE_ADDR' => '10.0.0.7'],
+        'headers' => [
+            'X-Forwarded-For' => '203.0.113.9, 10.0.0.7',
+            'X-Forwarded-Proto' => 'https',
+        ],
+    ]);
+
+    $previous = Request::trustedProxies();
+
+    try {
+        // Nothing is trusted by default, so the headers are ignored.
+        Request::setTrustedProxies([]);
+        $tests->assertSame('10.0.0.7', $behindProxy()->ip());
+        $tests->assertSame(false, $behindProxy()->isSecure());
+
+        Request::setTrustedProxies(['10.0.0.0/8']);
+        $tests->assertSame('203.0.113.9', $behindProxy()->ip());
+        $tests->assertTrue($behindProxy()->isSecure());
+
+        /*
+         * A visitor outside the trusted range cannot claim an address, which
+         * matters the moment anything rate limits or logs by IP.
+         */
+        $forged = Request::create('GET', '/', [
+            'server' => ['REMOTE_ADDR' => '198.51.100.4'],
+            'headers' => ['X-Forwarded-For' => '1.2.3.4', 'X-Forwarded-Proto' => 'https'],
+        ]);
+
+        $tests->assertSame('198.51.100.4', $forged->ip());
+        $tests->assertSame(false, $forged->isSecure());
+
+        // A literal address works alongside a range.
+        Request::setTrustedProxies(['10.0.0.7']);
+        $tests->assertSame('203.0.113.9', $behindProxy()->ip());
+    } finally {
+        Request::setTrustedProxies($previous);
+    }
+});
+
+$tests->run('rate limiting counts a client and refuses past the limit', function () use ($tests): void {
+    $cache = new CacheManager(new MemoryDriver());
+    $limit = new RateLimit(maxAttempts: 3, decaySeconds: 60, name: 'teste', cache: $cache);
+
+    $request = Request::create('POST', '/login', [
+        'server' => ['REMOTE_ADDR' => '203.0.113.1'],
+        'headers' => ['Accept' => 'application/json'],
+    ]);
+
+    $destination = static fn (Request $passed): Response => Response::text('ok');
+
+    $first = $limit->handle($request, $destination);
+    $tests->assertSame(HTTP_OK, $first->status());
+    $tests->assertSame('3', $first->header('X-RateLimit-Limit'));
+    $tests->assertSame('2', $first->header('X-RateLimit-Remaining'));
+
+    $limit->handle($request, $destination);
+    $third = $limit->handle($request, $destination);
+    $tests->assertSame(HTTP_OK, $third->status());
+    $tests->assertSame('0', $third->header('X-RateLimit-Remaining'));
+
+    $refused = $limit->handle($request, $destination);
+    $tests->assertSame(HTTP_TOO_MANY_REQUESTS, $refused->status());
+    $tests->assertTrue((int) $refused->header('Retry-After') > 0);
+
+    // A different client has its own allowance.
+    $other = Request::create('POST', '/login', [
+        'server' => ['REMOTE_ADDR' => '203.0.113.2'],
+    ]);
+    $tests->assertSame(HTTP_OK, $limit->handle($other, $destination)->status());
+});
+
+$tests->run('security headers are added, and the risky ones only on request', function () use ($tests): void {
+    $destination = static fn (Request $request): Response => Response::text('ok');
+
+    $plain = (new SecurityHeaders())->handle(Request::create('GET', '/'), $destination);
+
+    $tests->assertSame('nosniff', $plain->header('X-Content-Type-Options'));
+    $tests->assertSame('DENY', $plain->header('X-Frame-Options'));
+    $tests->assertSame('strict-origin-when-cross-origin', $plain->header('Referrer-Policy'));
+
+    /*
+     * CSP is off unless asked for: a policy that does not match the
+     * application's assets breaks the page with no error the developer sees,
+     * and the framework cannot know what those assets are.
+     */
+    $tests->assertSame(null, $plain->header('Content-Security-Policy'));
+
+    $configured = new SecurityHeaders(
+        contentSecurityPolicy: "default-src 'self'",
+        frameOptions: 'SAMEORIGIN',
+        hstsMaxAge: 31536000
+    );
+
+    $overHttp = $configured->handle(Request::create('GET', '/'), $destination);
+    $tests->assertSame("default-src 'self'", $overHttp->header('Content-Security-Policy'));
+    $tests->assertSame('SAMEORIGIN', $overHttp->header('X-Frame-Options'));
+
+    // HSTS only over HTTPS: a browser ignores it otherwise, so sending it on a
+    // plain connection would look like protection without being any.
+    $tests->assertSame(null, $overHttp->header('Strict-Transport-Security'));
+
+    $overHttps = $configured->handle(
+        Request::create('GET', '/', ['server' => ['HTTPS' => 'on']]),
+        $destination
+    );
+    $tests->assertSame('max-age=31536000', $overHttps->header('Strict-Transport-Security'));
 });
 
 $tests->finish();
