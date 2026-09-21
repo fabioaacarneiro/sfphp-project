@@ -885,6 +885,7 @@ tr:hover {
 .m-12 { margin: 4.5rem; }
 .m-16 { margin: 6rem; }
 .m-20 { margin: 7.5rem; }
+.m-24 { margin: 9rem; }
 
 /* Margin Top */
 .mt-0 { margin-top: 0; }
@@ -926,6 +927,7 @@ tr:hover {
 .ml-12 { margin-left: 4.5rem; }
 .ml-16 { margin-left: 6rem; }
 .ml-20 { margin-left: 7.5rem; }
+.ml-24 { margin-left: 9rem; }
 .ml-auto { margin-left: auto; }
 
 /* Margin Right */
@@ -940,6 +942,7 @@ tr:hover {
 .mr-12 { margin-right: 4.5rem; }
 .mr-16 { margin-right: 6rem; }
 .mr-20 { margin-right: 7.5rem; }
+.mr-24 { margin-right: 9rem; }
 .mr-auto { margin-right: auto; }
 
 /* Margin X (horizontal) */
@@ -951,6 +954,10 @@ tr:hover {
 .mx-5 { margin-left: 2rem; margin-right: 2rem; }
 .mx-6 { margin-left: 2.5rem; margin-right: 2.5rem; }
 .mx-8 { margin-left: 3rem; margin-right: 3rem; }
+.mx-12 { margin-left: 4.5rem; margin-right: 4.5rem; }
+.mx-16 { margin-left: 6rem; margin-right: 6rem; }
+.mx-20 { margin-left: 7.5rem; margin-right: 7.5rem; }
+.mx-24 { margin-left: 9rem; margin-right: 9rem; }
 .mx-auto { margin-left: auto; margin-right: auto; }
 
 /* Margin Y (vertical) */
@@ -978,6 +985,7 @@ tr:hover {
 .p-12 { padding: 4.5rem; }
 .p-16 { padding: 6rem; }
 .p-20 { padding: 7.5rem; }
+.p-24 { padding: 9rem; }
 
 /* Padding Top */
 .pt-0 { padding-top: 0; }
@@ -1019,6 +1027,7 @@ tr:hover {
 .pl-12 { padding-left: 4.5rem; }
 .pl-16 { padding-left: 6rem; }
 .pl-20 { padding-left: 7.5rem; }
+.pl-24 { padding-left: 9rem; }
 
 /* Padding Right */
 .pr-0 { padding-right: 0; }
@@ -1032,6 +1041,7 @@ tr:hover {
 .pr-12 { padding-right: 4.5rem; }
 .pr-16 { padding-right: 6rem; }
 .pr-20 { padding-right: 7.5rem; }
+.pr-24 { padding-right: 9rem; }
 
 /* Padding X (horizontal) */
 .px-0 { padding-left: 0; padding-right: 0; }
@@ -1043,6 +1053,9 @@ tr:hover {
 .px-6 { padding-left: 2.5rem; padding-right: 2.5rem; }
 .px-8 { padding-left: 3rem; padding-right: 3rem; }
 .px-12 { padding-left: 4.5rem; padding-right: 4.5rem; }
+.px-16 { padding-left: 6rem; padding-right: 6rem; }
+.px-20 { padding-left: 7.5rem; padding-right: 7.5rem; }
+.px-24 { padding-left: 9rem; padding-right: 9rem; }
 
 /* Padding Y (vertical) */
 .py-0 { padding-top: 0; padding-bottom: 0; }
