@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 90 tests, 0 failures
+> Verified against PHP 8.4 · suite: 95 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -32,6 +32,7 @@ code does today. Where something does not exist, it says so — see
 - [Queue](#queue)
 - [Validation](#validation)
 - [Internationalisation](#internationalisation)
+- [Time and time zones](#time-and-time-zones)
 - [UTF-8 strings](#utf-8-strings)
 - [Authentication](#authentication)
 - [Security](#security)
@@ -139,7 +140,7 @@ public/index.php
  │   └─ config.php → loads .env (optional), defines APP_NAME/VERSION/ENV/LOCALE
  │      utils.php  → global helpers: e(), asset(), csrf_*()
  │      http.php   → HTTP_OK, GET, POST, ... constants
- │      helpers.php→ cache(), logger(), dispatch(), __(), trans_choice(), locale()
+ │      helpers.php→ cache(), logger(), now(), dispatch(), __(), trans_choice(), locale()
  ├─ ErrorHandler::register()  safety net for fatals and bootstrap failures
  ├─ require src/routes.php    fills the static route registry
  ├─ new Container()
@@ -414,6 +415,7 @@ And by `src/helpers.php`:
 ```php
 cache();                      // a CacheManager with the file driver
 logger();                     // a LogManager, configured from LOG_*
+now();                        // the current instant, in UTC
 dispatch(new MyJob());        // queues a job
 __('app.welcome', ['name' => 'Ana']);
 trans_choice('app.items', 3);
@@ -1005,6 +1007,9 @@ value.
 
 The conversion works both ways: `$article->meta = ['colour' => 'green']` is
 stored as JSON, and a `DateTimeImmutable` is stored in the database's format.
+
+A date attribute is **always UTC**, in both directions — see
+[Time and time zones](#time-and-time-zones) for why that is strict.
 
 In `toArray()` and in JSON, a date comes out as **ISO 8601** rather than the
 `DateTimeImmutable` object — which `json_encode` would render as a structure of
@@ -1877,6 +1882,129 @@ would make searching for one harder rather than easier.
 
 ---
 
+## Time and time zones
+
+Everything the framework stores, computes and logs is **UTC**.
+
+```php
+now();                                   // the current instant, in UTC
+Time::now();                             // the same thing
+Time::parse('2026-09-21 23:00:00');      // a stored value, read as UTC
+Time::in($order->created_at, 'Asia/Tokyo');   // the same instant, seen there
+Time::display($order->created_at);       // rendered in APP_TIMEZONE
+Time::toDatabase($instant);              // the UTC value a column holds
+```
+
+### Why this one is strict
+
+A naive `2026-09-21 23:00:00` in a database column is only an instant if
+something says which zone wrote it. When that answer is "whatever the server
+was set to", moving the server — or adding a second one — silently changes what
+every existing row means.
+
+The damage is **retroactive**, and that is what makes this different from a
+missing feature. A feature can be added later. A year of timestamps written in
+an unknown zone cannot be repaired later, because the information needed to
+repair them was never written down.
+
+So the runtime zone is UTC and **is not configurable**. A setting that changes
+how stored timestamps are interpreted is a setting that can rewrite the meaning
+of existing data, which is not a knob worth offering.
+
+### Showing a time to a person
+
+That is a separate decision, made where the value is rendered rather than where
+it is stored:
+
+```php
+Time::display($order->created_at);                 // APP_TIMEZONE
+Time::display($order->created_at, 'd/m/Y H:i');
+Time::in($order->created_at, $user->timezone);     // per user
+```
+
+```ini
+APP_TIMEZONE=America/Sao_Paulo
+```
+
+`APP_TIMEZONE` decides how times are **shown**. It does not decide how they are
+stored, and changing it does not change a single row.
+
+### Reading values in
+
+`Time::parse()` takes what a database, a form or an API gives it:
+
+| Given | Read as |
+|---|---|
+| A string with an offset or zone (`2026-09-21T10:00:00+02:00`) | That instant, converted to UTC |
+| A naive string (`2026-09-21 23:00:00`) | UTC, because that is what the framework wrote |
+| A naive string with a zone named in the second argument | That zone, converted to UTC |
+| A Unix timestamp | Already an instant; no zone to guess |
+| A `DateTimeInterface` in any zone | Converted to UTC |
+| Anything unparsable | `null`, rather than an exception |
+
+### Model attributes
+
+The `datetime` and `date` casts go through the same rules, in both directions:
+
+```php
+$article->published_at;              // DateTimeImmutable, always UTC
+$article->toArray()['published_at']; // "2026-09-21T23:00:00+00:00"
+
+// 08:00 in Tokyo is stored as the instant it names, not as the wall clock
+$article->published_at = new DateTimeImmutable('2026-09-22 08:00', new DateTimeZone('Asia/Tokyo'));
+// stored: 2026-09-21 23:00:00
+```
+
+The JSON form carries the offset, so a consumer cannot guess the zone wrongly
+— which is the same reason the value is UTC in the first place.
+
+### The database has a clock too
+
+PHP being on UTC is only half of it. `CURRENT_TIMESTAMP` reads the database
+server's clock, so a `useCurrent()` default or an `ON UPDATE` trigger writes in
+whatever zone **that** machine is set to. Leave the two disagreeing and one
+column ends up holding two different meanings, with nothing in the data saying
+which row is which.
+
+The connection therefore puts its own session on UTC:
+
+| Driver | Statement |
+|---|---|
+| MySQL | `SET time_zone = '+00:00'` |
+| PostgreSQL | `SET TIME ZONE 'UTC'` |
+| Oracle | `ALTER SESSION SET TIME_ZONE = '+00:00'` |
+| Others | Left alone — set the session zone yourself, or keep the server on UTC |
+
+Only the session is changed, never the server: a connection stating what it
+expects is correct, and a library reconfiguring a shared database for every
+other client on it is not. A driver that refuses the statement is logged as a
+warning rather than refused, because a timestamp inconsistency should not become
+an outage.
+
+### Testing
+
+A test that asserts on "now" races the clock. The clock can be held still:
+
+```php
+Time::freeze('2026-01-01T12:00:00+00:00');
+// ... now() returns that instant
+Time::unfreeze();
+```
+
+**For tests only.** The frozen value is static, so under a persistent runtime it
+would outlive the request that set it and every later request would be told the
+wrong time.
+
+### What is missing
+
+| Missing | Situation |
+|---|---|
+| Per-locale date formatting | `Time::display()` takes a `date()` format; localised month and day names need `ext-intl`. See [Internationalisation](#internationalisation) |
+| Relative times ("3 hours ago") | Not provided; the phrasing is per language and belongs to the application |
+| A per-user zone column | `Time::in()` takes one; where the user's zone is stored is the application's decision |
+
+---
+
 ## UTF-8 strings
 
 `Str` provides the string operations plain PHP only does by byte.
@@ -2735,7 +2863,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 90 unit cases
+composer run test        # 95 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
@@ -2777,7 +2905,7 @@ does not do, and you should know before choosing it.
 | **Event system** | `make:event` and `make:listener` generate classes with no dispatcher |
 | **A full ORM** | There is a [Models](#models) layer with hydration, attribute types, relations (including many-to-many) and `with()`. There is no identity map, unit of work, lazy-loading proxy, polymorphic relation or schema derived from the class — and [ORM or query builder?](#orm-or-query-builder) explains the reason for each |
 | **Per-locale formatting** | Dates and numbers are not formatted per language; `ext-intl` does that well and the framework does not attempt it. See [Internationalisation](#internationalisation) |
-| **Time zones** | No dedicated handling |
+| **Relative and localised dates** | "3 hours ago" and localised month names are not provided; storage and conversion are. See [Time and time zones](#time-and-time-zones) |
 | **Metrics** | Records carry durations; counters and timings are not collected. See [Logging](#logging) |
 | **Route caching** | Dispatch is O(n), one `preg_match` per route. Fine for dozens, not hundreds |
 | **Pluggable session** | Native `$_SESSION`. Multiple instances need sticky sessions |
