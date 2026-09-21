@@ -16,11 +16,20 @@ use SfphpProject\src\Cache\CacheManager;
 use SfphpProject\src\Console\Application;
 use SfphpProject\src\Cache\FileDriver;
 use SfphpProject\src\Cache\MemoryDriver;
+use SfphpProject\src\Auth\Auth;
+use SfphpProject\src\Auth\Authenticatable;
+use SfphpProject\src\Auth\AuthorizationException;
+use SfphpProject\src\Auth\Gate;
+use SfphpProject\src\Auth\Hash;
+use SfphpProject\src\Auth\ModelUserProvider;
+use SfphpProject\src\Auth\SessionGuard;
+use SfphpProject\src\Auth\TokenGuard;
 use SfphpProject\src\Database\Factory;
 use SfphpProject\src\Database\Model;
 use SfphpProject\src\Database\Relation;
 use SfphpProject\src\Database\Seeder;
 use SfphpProject\src\Http\Middleware;
+use SfphpProject\src\Http\Middleware\Authenticate;
 use SfphpProject\src\Http\Middleware\SetLocale;
 use SfphpProject\src\Http\Middleware\VerifyCsrfToken;
 use SfphpProject\src\I18n\Translator;
@@ -180,6 +189,62 @@ final class PostModelTest extends Model
     public function author(): Relation
     {
         return $this->belongsTo(UserModelTest::class, 'user_id');
+    }
+}
+
+/**
+ * A user for the authentication tests, backed by the fake PDO.
+ */
+final class AuthUserTest extends Model implements Authenticatable
+{
+    protected static string $table = 'users';
+
+    public function getAuthIdentifierName(): string
+    {
+        return static::primaryKey();
+    }
+
+    public function getAuthIdentifier(): mixed
+    {
+        return $this->getAttribute(static::primaryKey());
+    }
+
+    public function getAuthPassword(): string
+    {
+        return (string) $this->getAttribute('password');
+    }
+}
+
+/** A subject for the authorization tests. */
+final class AuthPostTest
+{
+    public function __construct(public int $user_id) {}
+}
+
+final class AuthPostPolicyTest
+{
+    public function update(?object $user, AuthPostTest $post): bool
+    {
+        return $user !== null && $user->getAuthIdentifier() === $post->user_id;
+    }
+
+    /** Anonymous reads are allowed, which is why a policy receives null. */
+    public function view(?object $user, AuthPostTest $post): bool
+    {
+        return true;
+    }
+}
+
+final class AuthControllerTest
+{
+    public function open(Request $request): Response
+    {
+        return Response::text($request->user() === null ? 'anonimo' : 'logado');
+    }
+
+    public function secret(Request $request): Response
+    {
+        return Response::text('secreto:' . $request->user()->getAuthIdentifier());
     }
 }
 
@@ -2388,6 +2453,225 @@ $tests->run('a 404 is rendered in the visitor language', function () use ($tests
     $tests->assertTrue(str_contains($portugues->body(), '<html lang="pt-BR">'));
 
     Translator::setLocale(APP_LOCALE);
+});
+
+$tests->run('password hashing delegates to PHP and stays current', function () use ($tests): void {
+    $hash = Hash::make('segredo');
+
+    $tests->assertTrue(Hash::check('segredo', $hash));
+    $tests->assertSame(false, Hash::check('errado', $hash));
+    $tests->assertSame(false, Hash::check('', $hash));
+    $tests->assertSame(false, Hash::needsRehash($hash));
+
+    /*
+     * The throwaway hash used to equalise timing on a failed lookup must have
+     * been produced with the parameters password_hash() uses today. PHP 8.4
+     * raised bcrypt's default cost from 10 to 12, and a hash left at 10
+     * verifies about four times faster than a real one — which would reopen
+     * the very difference it exists to hide. This fails when PHP moves again.
+     */
+    $timing = (new ReflectionClass(Auth::class))->getConstant('TIMING_HASH');
+    $tests->assertSame(false, password_needs_rehash($timing, PASSWORD_DEFAULT));
+});
+
+$tests->run('credentials are checked and a session login is kept', function () use ($tests): void {
+    $hash = Hash::make('segredo');
+    $pdo = new ModelPdoTest(['users' => [
+        ['id' => 1, 'name' => 'Ana', 'email' => 'ana@exemplo.com', 'password' => $hash],
+    ]]);
+
+    Model::useConnection($pdo);
+    Auth::reset();
+    Auth::provider(new ModelUserProvider(AuthUserTest::class));
+    Auth::guard('web', new SessionGuard(Auth::provider()));
+
+    try {
+        $tests->assertTrue(Auth::attempt(['email' => 'ana@exemplo.com', 'password' => 'segredo']));
+        $tests->assertTrue(Auth::check());
+        $tests->assertSame(1, Auth::id());
+        $tests->assertSame('Ana', Auth::user()->name);
+
+        Auth::logout();
+        $tests->assertSame(false, Auth::check());
+        $tests->assertSame(null, Auth::user());
+        $tests->assertTrue(Auth::guest());
+
+        $tests->assertSame(
+            false,
+            Auth::attempt(['email' => 'ana@exemplo.com', 'password' => 'errada'])
+        );
+
+        /*
+         * The password is never part of the lookup. Matching on a hash could
+         * only work by comparing hashes as strings, which defeats the salt.
+         */
+        $pdo->queries = [];
+        Auth::attempt(['email' => 'ana@exemplo.com', 'password' => 'errada']);
+        $tests->assertSame(false, str_contains($pdo->queries[0] ?? '', '`password`'));
+    } finally {
+        Model::useConnection(null);
+        Auth::reset();
+    }
+});
+
+$tests->run('a bearer token identifies a request without a session', function () use ($tests): void {
+    $pdo = new ModelPdoTest(['users' => [
+        ['id' => 1, 'name' => 'Ana', 'email' => 'ana@exemplo.com', 'password' => 'x'],
+    ]]);
+
+    $key = $_ENV['JWT_KEY'] ?? null;
+    $_ENV['JWT_KEY'] = bin2hex(random_bytes(32));
+
+    Model::useConnection($pdo);
+    Auth::reset();
+    Auth::provider(new ModelUserProvider(AuthUserTest::class));
+    Auth::guard('api', new TokenGuard(Auth::provider()));
+
+    try {
+        $token = JWT::generate(['id' => 1, 'email' => 'ana@exemplo.com']);
+
+        // claims() answers who the token is about; validate() only whether to trust it.
+        $tests->assertSame('ana@exemplo.com', JWT::claims($token)['email']);
+        $tests->assertSame(null, JWT::claims($token . 'x'));
+
+        $authenticated = Request::create('GET', '/api', [
+            'headers' => ['Authorization' => 'Bearer ' . $token],
+        ]);
+
+        $tests->assertSame(1, Auth::resolve($authenticated, 'api')?->getAuthIdentifier());
+        $tests->assertSame(null, Auth::resolve(Request::create('GET', '/api'), 'api'));
+        $tests->assertSame(null, Auth::resolve(Request::create('GET', '/api', [
+            'headers' => ['Authorization' => 'Bearer nao.e.um.token'],
+        ]), 'api'));
+    } finally {
+        Model::useConnection(null);
+        Auth::reset();
+
+        if ($key === null) {
+            unset($_ENV['JWT_KEY']);
+        } else {
+            $_ENV['JWT_KEY'] = $key;
+        }
+    }
+});
+
+$tests->run('the authenticate middleware resolves, and refuses when required', function () use ($tests): void {
+    $pdo = new ModelPdoTest(['users' => [['id' => 1, 'name' => 'Ana', 'password' => 'x']]]);
+
+    $key = $_ENV['JWT_KEY'] ?? null;
+    $_ENV['JWT_KEY'] = bin2hex(random_bytes(32));
+
+    Model::useConnection($pdo);
+    Auth::reset();
+    Auth::provider(new ModelUserProvider(AuthUserTest::class));
+    Auth::guard('api', new TokenGuard(Auth::provider()));
+
+    Router::reset();
+    Router::get('/aberta', 'AuthControllerTest', 'open');
+    Router::get('/secreta', 'AuthControllerTest', 'secret')
+        ->middleware(new Authenticate('api', required: true));
+
+    try {
+        $token = JWT::generate(['id' => 1, 'email' => 'ana@exemplo.com']);
+        $router = (new Router(new Container(), ''))->middleware(new Authenticate('api'));
+
+        $withToken = ['headers' => ['Authorization' => 'Bearer ' . $token]];
+
+        // Registered globally it only resolves: an anonymous request carries on.
+        $tests->assertSame('anonimo', $router->dispatch(Request::create('GET', '/aberta'))->body());
+        $tests->assertSame('logado', $router->dispatch(Request::create('GET', '/aberta', $withToken))->body());
+
+        // Attached to a route with required: true it refuses instead.
+        $refused = $router->dispatch(Request::create('GET', '/secreta', [
+            'headers' => ['Accept' => 'application/json'],
+        ]));
+        $tests->assertSame(HTTP_UNAUTHORIZED, $refused->status());
+
+        $tests->assertSame(
+            'secreto:1',
+            $router->dispatch(Request::create('GET', '/secreta', $withToken))->body()
+        );
+
+        // A browser is redirected rather than shown a bare 401.
+        $browser = $router->dispatch(Request::create('GET', '/secreta'));
+        $tests->assertSame(HTTP_FOUND, $browser->status());
+        $tests->assertSame('/login', $browser->header('Location'));
+    } finally {
+        Model::useConnection(null);
+        Auth::reset();
+        Router::reset();
+
+        if ($key === null) {
+            unset($_ENV['JWT_KEY']);
+        } else {
+            $_ENV['JWT_KEY'] = $key;
+        }
+    }
+});
+
+$tests->run('policies and abilities finally have something that calls them', function () use ($tests): void {
+    /*
+     * make:policy has generated classes since long before this; nothing ever
+     * invoked one. Gate is what invokes them.
+     */
+    $pdo = new ModelPdoTest(['users' => [['id' => 1, 'password' => 'x']]]);
+
+    Model::useConnection($pdo);
+    Auth::reset();
+    Gate::reset();
+    Auth::provider(new ModelUserProvider(AuthUserTest::class));
+    Auth::guard('web', new SessionGuard(Auth::provider()));
+
+    try {
+        Auth::login(AuthUserTest::find(1));
+
+        Gate::policy(AuthPostTest::class, AuthPostPolicyTest::class);
+        Gate::define('admin', static fn (?object $user): bool
+            => $user !== null && $user->getAuthIdentifier() === 99);
+
+        $tests->assertTrue(Gate::allows('update', new AuthPostTest(1)));
+        $tests->assertSame(false, Gate::allows('update', new AuthPostTest(2)));
+        $tests->assertTrue(Gate::denies('update', new AuthPostTest(2)));
+        $tests->assertTrue(Gate::allows('view', new AuthPostTest(2)));
+        $tests->assertSame(false, Gate::allows('admin'));
+
+        // An ability nobody declared is denied; allowing by default would mean
+        // a typo in an ability name silently opens a door.
+        $tests->assertSame(false, Gate::allows('inventada', new AuthPostTest(1)));
+
+        $tests->assertThrows(
+            fn () => Gate::authorize('update', new AuthPostTest(2)),
+            AuthorizationException::class
+        );
+
+        Gate::authorize('update', new AuthPostTest(1));   // não lança
+
+        $tests->assertSame(false, Gate::forUser(null, 'update', new AuthPostTest(1)));
+    } finally {
+        Model::useConnection(null);
+        Auth::reset();
+        Gate::reset();
+    }
+});
+
+$tests->run('auth messages exist in every shipped locale', function () use ($tests): void {
+    $previous = Translator::locale();
+
+    try {
+        foreach (['en', 'pt_BR', 'es'] as $locale) {
+            Translator::setLocale($locale);
+
+            foreach (['auth.failed', 'auth.unauthenticated', 'auth.unauthorized'] as $key) {
+                // A key with no translation comes back as the key itself.
+                $tests->assertSame(false, __($key) === $key);
+            }
+
+            $tests->assertSame(false, __('http.not_found_title') === 'http.not_found_title');
+            $tests->assertSame(false, __('validation.required') === 'validation.required');
+        }
+    } finally {
+        Translator::setLocale($previous);
+    }
 });
 
 $tests->finish();
