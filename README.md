@@ -88,6 +88,12 @@ trans_choice('app.items', 5);   // formas de plural por faixa ou regra do idioma
   e exige chave de 32 bytes
 - **SQL** — todo valor é vinculado, todo identificador validado contra whitelist
 - **XSS** — `{{ }}` do SFHT escapa por padrão; a saída crua exige `{!! !!}`
+- **Atribuição em massa** — um modelo precisa declarar `$fillable`; sem isso,
+  preencher a partir de um array lança
+- **Headers** — `nosniff`, `X-Frame-Options` e `Referrer-Policy` por padrão;
+  CSP e HSTS disponíveis e desligados por serem fáceis de errar
+- **Limite de requisições** — middleware `RateLimit`, com contadores no cache
+- **Proxies** — `X-Forwarded-*` só é lido de proxies declarados
 - **Senhas** — `password_hash` com `PASSWORD_DEFAULT`, e `Auth::attempt()`
   equaliza o tempo de resposta para que uma conta inexistente não se distinga
   de uma senha errada
@@ -103,7 +109,7 @@ dado no banco sem proteger o destino real.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 74 casos unitários
+composer run test        # 78 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 ```
 
@@ -113,9 +119,12 @@ e PostgreSQL 16 reais.
 
 ## O que não tem
 
-Dito de frente, para você decidir com informação: não há sistema de eventos nem
-rate limiting, e a autenticação cobre login, guards e autorização, mas não
-recuperação de senha, dois fatores nem revogação de token. A camada de Models **não é um ORM
+Dito de frente, para você decidir com informação: não há sistema de eventos, e
+a autenticação cobre login, guards e autorização, mas não recuperação de senha,
+dois fatores nem revogação de token. A lista completa, com o motivo de cada
+ausência, está em
+[docs/DOCUMENTATION.md § Segurança](docs/DOCUMENTATION.md#segurança) e
+[§ Limitações conhecidas](docs/DOCUMENTATION.md#limitações-conhecidas). A camada de Models **não é um ORM
 completo** — sem identity map, unit of work, proxy de lazy loading, relação
 polimórfica ou schema derivado da classe. O motivo de cada ausência está em
 [ORM ou Query Builder?](docs/DOCUMENTATION.md#orm-ou-query-builder), incluindo

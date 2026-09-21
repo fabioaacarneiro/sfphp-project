@@ -26,7 +26,14 @@ final class StartSession implements Middleware
      */
     public function handle(Request $request, callable $next): Response
     {
-        Csrf::startSession();
+        /*
+         * The request decides, not the session layer. Behind a TLS-terminating
+         * proxy the PHP process sees plain HTTP, and a session cookie without
+         * the "secure" flag travels in the clear the moment a visitor reaches
+         * the site over HTTP. Request::isSecure() consults the trusted-proxy
+         * configuration to get this right.
+         */
+        Csrf::startSession($request->isSecure());
 
         return $next($request);
     }
