@@ -3,6 +3,7 @@
 require __DIR__ . '/../vendor/autoload.php';
 
 use SfphpProject\src\Csrf;
+use SfphpProject\src\Database;
 use SfphpProject\src\ErrorHandler;
 use SfphpProject\src\Container;
 use SfphpProject\src\JWT;
@@ -177,6 +178,83 @@ final class PostModelTest extends Model
     public function author(): Relation
     {
         return $this->belongsTo(UserModelTest::class, 'user_id');
+    }
+}
+
+final class TagModelTest extends Model
+{
+    protected static string $table = 'tags';
+}
+
+final class ArtigoModelTest extends Model
+{
+    protected static string $table = 'artigos';
+
+    protected static array $casts = [
+        'publicado' => 'bool',
+        'meta' => 'json',
+        'publicado_em' => 'datetime',
+        'preco' => 'decimal:2',
+        'views' => 'int',
+    ];
+
+    public function tags(): Relation
+    {
+        return $this->belongsToMany(TagModelTest::class, 'artigo_tag', 'artigo_id', 'tag_id');
+    }
+}
+
+/**
+ * A PDO that records the transaction calls it receives, and can pretend the
+ * driver closed the transaction on its own.
+ */
+final class TransactionPdoTest extends PDO
+{
+    public array $calls = [];
+    public bool $rollBackThrows = false;
+
+    private bool $active = false;
+
+    public function __construct() {}
+
+    public function beginTransaction(): bool
+    {
+        $this->calls[] = 'begin';
+        $this->active = true;
+
+        return true;
+    }
+
+    public function commit(): bool
+    {
+        $this->calls[] = 'commit';
+        $this->active = false;
+
+        return true;
+    }
+
+    public function rollBack(): bool
+    {
+        $this->calls[] = 'rollback';
+
+        if ($this->rollBackThrows) {
+            throw new PDOException('There is no active transaction');
+        }
+
+        $this->active = false;
+
+        return true;
+    }
+
+    public function inTransaction(): bool
+    {
+        return $this->active;
+    }
+
+    /** Simulate a failed statement leaving the driver with no transaction. */
+    public function closedByDriver(): void
+    {
+        $this->active = false;
     }
 }
 
@@ -1970,6 +2048,177 @@ $tests->run('every generator produces a class that actually loads', function () 
                 @rmdir($directory);
             }
         }
+    }
+});
+
+$tests->run('casts convert attributes on the way in and out', function () use ($tests): void {
+    /*
+     * PDO hands back whatever the driver gives it: a DATETIME column arrives
+     * as a string and so does a JSON column. Declaring the type means the
+     * conversion happens once instead of at every call site.
+     */
+    $pdo = new ModelPdoTest(['artigos' => [
+        [
+            'id' => 1,
+            'publicado' => '1',
+            'meta' => '{"cor":"azul"}',
+            'publicado_em' => '2026-09-21 10:30:00',
+            'preco' => '19.9',
+            'views' => '42',
+        ],
+        ['id' => 2, 'publicado' => '0', 'meta' => null, 'publicado_em' => null, 'preco' => '5', 'views' => '7'],
+    ]]);
+    Model::useConnection($pdo);
+
+    try {
+        $artigo = ArtigoModelTest::all()[0];
+
+        $tests->assertSame(true, $artigo->publicado);
+        $tests->assertSame(false, ArtigoModelTest::all()[1]->publicado);
+        $tests->assertSame(['cor' => 'azul'], $artigo->meta);
+        $tests->assertSame(42, $artigo->views);
+        $tests->assertSame(19.9, $artigo->preco);
+        $tests->assertTrue($artigo->publicado_em instanceof DateTimeImmutable);
+        $tests->assertSame('2026-09-21 10:30', $artigo->publicado_em->format('Y-m-d H:i'));
+
+        // A null column stays null rather than becoming a zero value.
+        $tests->assertSame(null, ArtigoModelTest::all()[1]->publicado_em);
+
+        /*
+         * toArray() has to stay JSON-friendly: a DateTimeImmutable encodes as
+         * an object full of internal fields, which is not what an API consumer
+         * wants, so dates become ISO 8601.
+         */
+        $array = $artigo->toArray();
+        $tests->assertSame(['cor' => 'azul'], $array['meta']);
+        $tests->assertSame('2026-09-21T10:30:00+00:00', $array['publicado_em']);
+        $tests->assertSame(true, $array['publicado']);
+
+        // getAttribute() stays raw on purpose: relations join on these values.
+        $tests->assertSame('1', $artigo->getAttribute('publicado'));
+        $tests->assertSame(true, $artigo->cast('publicado'));
+    } finally {
+        Model::useConnection(null);
+    }
+});
+
+$tests->run('belongsToMany loads through the pivot in one query', function () use ($tests): void {
+    $pdo = new ModelPdoTest([
+        'artigos' => [['id' => 1], ['id' => 2]],
+        'tags' => [
+            ['id' => 7, 'nome' => 'php', '__pivot_key' => 1],
+            ['id' => 8, 'nome' => 'web', '__pivot_key' => 1],
+            ['id' => 9, 'nome' => 'css', '__pivot_key' => 2],
+        ],
+    ]);
+    Model::useConnection($pdo);
+
+    try {
+        $pdo->queries = [];
+        $tags = ArtigoModelTest::all()[0]->tags;
+
+        $tests->assertTrue(is_array($tags));
+        $tests->assertTrue($tags[0] instanceof TagModelTest);
+        $tests->assertTrue(str_contains($pdo->queries[1], 'JOIN `artigo_tag`'));
+
+        /*
+         * The pivot column is selected under an alias. Without it there is no
+         * way to tell which parent a joined row belongs to, and eager loading
+         * through a pivot would have to fall back to one query per parent.
+         */
+        $tests->assertTrue(str_contains($pdo->queries[1], 'AS `__pivot_key`'));
+
+        $pdo->queries = [];
+        $artigos = ArtigoModelTest::query()->with('tags')->get();
+
+        $tests->assertSame(2, count($pdo->queries));
+        $tests->assertSame(2, count($artigos[0]->tags));
+        $tests->assertSame(1, count($artigos[1]->tags));
+
+        // Grouped by the pivot key, not by the related table's primary key.
+        $tests->assertSame('css', $artigos[1]->tags[0]->nome);
+
+        $before = count($pdo->queries);
+        foreach ($artigos as $artigo) {
+            $artigo->tags;
+        }
+        $tests->assertSame($before, count($pdo->queries));
+    } finally {
+        Model::useConnection(null);
+    }
+});
+
+$tests->run('transactions commit, roll back and preserve the original error', function () use ($tests): void {
+    $pdo = new TransactionPdoTest();
+
+    $instance = new ReflectionProperty(Database::class, 'instance');
+    $instance->setAccessible(true);
+    $previous = $instance->getValue();
+    $instance->setValue(null, $pdo);
+
+    try {
+        $pdo->calls = [];
+        $tests->assertSame('valor', Database::transaction(fn (): string => 'valor'));
+        $tests->assertSame(['begin', 'commit'], $pdo->calls);
+        $tests->assertSame(false, Database::inTransaction());
+
+        $pdo->calls = [];
+        $tests->assertThrows(
+            fn () => Database::transaction(function (): void {
+                throw new RuntimeException('falhou');
+            }),
+            RuntimeException::class
+        );
+        $tests->assertSame(['begin', 'rollback'], $pdo->calls);
+
+        /*
+         * The reason this helper is worth having. A failed statement can leave
+         * the driver with no active transaction, and PDO::rollBack() then
+         * throws "There is no active transaction" — from inside the catch
+         * block, replacing the error that actually caused the failure.
+         */
+        $pdo->calls = [];
+        $pdo->rollBackThrows = true;
+        $mensagem = null;
+
+        try {
+            Database::transaction(function () use ($pdo): void {
+                $pdo->closedByDriver();
+
+                throw new RuntimeException('erro real');
+            });
+        } catch (Throwable $throwable) {
+            $mensagem = $throwable->getMessage();
+        }
+
+        $tests->assertSame(['begin'], $pdo->calls);
+        $tests->assertSame('erro real', $mensagem);
+        $pdo->rollBackThrows = false;
+
+        // A nested call joins the transaction already open.
+        $pdo->calls = [];
+        Database::transaction(function (): void {
+            Database::transaction(fn (): null => null);
+        });
+        $tests->assertSame(['begin', 'commit'], $pdo->calls);
+
+        // And a failure inside the inner callback rolls the whole thing back.
+        $pdo->calls = [];
+
+        try {
+            Database::transaction(function (): void {
+                Database::transaction(function (): void {
+                    throw new RuntimeException('interno');
+                });
+            });
+        } catch (Throwable) {
+            // expected
+        }
+
+        $tests->assertSame(['begin', 'rollback'], $pdo->calls);
+        $tests->assertSame(false, Database::inTransaction());
+    } finally {
+        $instance->setValue(null, $previous);
     }
 });
 
