@@ -2,7 +2,6 @@
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use SfphpProject\app\controllers\BaseAPIController;
 use SfphpProject\src\Csrf;
 use SfphpProject\src\ErrorHandler;
 use SfphpProject\src\Container;
@@ -35,6 +34,53 @@ use SfphpProject\src\View;
 use SfphpProject\src\View\SfhtEngine;
 
 require __DIR__ . '/TestRunner.php';
+
+/**
+ * Controller used by the end-to-end dispatch tests.
+ *
+ * It lives in the global namespace and the router is pointed at it with an
+ * empty controller namespace — the same seam an application uses to put its
+ * controllers wherever it likes.
+ */
+final class DispatchTestController
+{
+    public function home(Request $request): Response
+    {
+        return Response::text('home');
+    }
+
+    public function show(Request $request, string $id): Response
+    {
+        // Proves the parameter arrives positionally and on the request.
+        return Response::text(
+            $request->query('from') === 'route'
+                ? 'route:' . $request->route('id')
+                : 'post:' . $id
+        );
+    }
+
+    public function store(Request $request): Response
+    {
+        return Response::json(['title' => $request->body('title')], HTTP_CREATED);
+    }
+
+    public function trail(Request $request): Response
+    {
+        return Response::text((string) $request->attribute('trail'));
+    }
+
+    public function boom(Request $request): Response
+    {
+        throw new RuntimeException('a acao falhou');
+    }
+
+    /**
+     * Deliberately returns nothing, to prove the dispatcher refuses it.
+     */
+    public function returnsNothing(Request $request)
+    {
+    }
+}
 
 /**
  * Middleware resolved by class name, to prove container resolution works.
@@ -468,9 +514,20 @@ $tests->run('query builder binds filtered deletes', function () use ($tests): vo
     $tests->assertSame([':binding_0' => 1], $pdo->statements[0]->bindings);
 });
 
-$tests->run('API headers accept redirected bearer tokens', function () use ($tests): void {
-    $_SERVER = ['REDIRECT_HTTP_AUTHORIZATION' => 'Bearer test-token'];
-    $tests->assertSame('test-token', (new BaseAPIController())->getBearerToken());
+$tests->run('requests accept redirected bearer tokens', function () use ($tests): void {
+    /*
+     * Apache hands the Authorization header over as REDIRECT_HTTP_* once a
+     * rewrite has run, so a token would be invisible without this. Header
+     * normalisation moved from BaseAPIController to Request.
+     */
+    $server = $_SERVER;
+    $_SERVER = ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/', 'REDIRECT_HTTP_AUTHORIZATION' => 'Bearer test-token'];
+
+    try {
+        $tests->assertSame('test-token', Request::fromGlobals()->bearerToken());
+    } finally {
+        $_SERVER = $server;
+    }
 });
 
 $tests->run('JWT rejects tampered tokens', function () use ($tests): void {
@@ -963,27 +1020,22 @@ $tests->run('routes match non-ascii paths and refuse synthesized separators', fu
     $tests->assertSame(null, $route->match('/produtos/abc123'));
     $tests->assertSame('/produtos/caf%C3%A9', $route->generateUrl(['nome' => 'café']));
 
-    $decode = new ReflectionMethod(Router::class, 'decodePath');
-    $decode->setAccessible(true);
-
-    $tests->assertSame('/produtos/café', $decode->invoke(null, '/produtos/caf%C3%A9'));
+    // Path decoding belongs to the request now, not to the router.
+    $tests->assertSame('/produtos/café', Request::create('GET', '/produtos/caf%C3%A9')->path);
 
     // An encoded separator must not become a real one, or "/a%2Fb" would
     // reach a route registered as "/a/b".
-    $tests->assertSame('/a%2Fb', $decode->invoke(null, '/a%2Fb'));
-    $tests->assertSame('/a%5Cb', $decode->invoke(null, '/a%5Cb'));
+    $tests->assertSame('/a%2Fb', Request::create('GET', '/a%2Fb')->path);
+    $tests->assertSame('/a%5Cb', Request::create('GET', '/a%5Cb')->path);
 });
 
 $tests->run('the framework error page makes no external requests', function () use ($tests): void {
-    $render = new ReflectionMethod(Router::class, 'renderErrorPage');
-    $render->setAccessible(true);
+    // No reflection and no output buffer: the error page is a Response now.
+    $response = (new Router(new Container()))->dispatch(Request::create('GET', '/rota-que-nao-existe'));
 
-    ob_start();
-    $render->invoke(null, HTTP_NOT_FOUND, '404', 'Nao encontrada');
-    $html = ob_get_clean();
-
-    $tests->assertSame(0, preg_match_all('#https?://#', $html));
-    $tests->assertTrue(str_contains($html, '<style>'));
+    $tests->assertSame(HTTP_NOT_FOUND, $response->status());
+    $tests->assertSame(0, preg_match_all('#https?://#', $response->body()));
+    $tests->assertTrue(str_contains($response->body(), '<style>'));
 });
 
 $tests->run('sfht keeps literal text that is not syntax', function () use ($tests, $sfht): void {
@@ -1438,6 +1490,144 @@ $tests->run('error responses are rendered, negotiated and redacted', function ()
         $tests->assertSame('{"message":"Internal Server Error"}', $json->body());
         $tests->assertSame(false, str_contains($html->body(), '10.0.0.5'));
     }
+});
+
+/*
+ * End-to-end dispatch. These tests come last because Router::reset() throws
+ * away the routes the earlier named-route tests registered.
+ *
+ * The controllers live in the global namespace and the router is pointed at it
+ * with an empty prefix, which is the same seam that lets an application choose
+ * its own namespace.
+ */
+Router::reset();
+
+$tests->run('dispatch turns a request into a response through a controller', function () use ($tests): void {
+    Router::reset();
+    Router::get('/', 'DispatchTestController', 'home');
+    Router::get('/posts/id:number', 'DispatchTestController', 'show');
+    Router::post('/posts', 'DispatchTestController', 'store');
+
+    $router = new Router(new Container(), '');
+
+    $home = $router->dispatch(Request::create('GET', '/'));
+    $tests->assertSame(HTTP_OK, $home->status());
+    $tests->assertSame('home', $home->body());
+
+    // Route parameters arrive positionally, after the request.
+    $show = $router->dispatch(Request::create('GET', '/posts/42'));
+    $tests->assertSame('post:42', $show->body());
+
+    // And they are also readable from the request.
+    $tests->assertSame('route:42', $router->dispatch(
+        Request::create('GET', '/posts/42', ['query' => ['from' => 'route']])
+    )->body());
+
+    $store = $router->dispatch(Request::create('POST', '/posts', ['body' => ['title' => 'Olá']]));
+    $tests->assertSame(HTTP_CREATED, $store->status());
+    $tests->assertSame('{"title":"Olá"}', $store->body());
+});
+
+$tests->run('dispatch answers 404, 405 and OPTIONS with the right headers', function () use ($tests): void {
+    Router::reset();
+    Router::get('/posts', 'DispatchTestController', 'home');
+    Router::delete('/posts', 'DispatchTestController', 'home');
+
+    $router = new Router(new Container(), '');
+
+    $tests->assertSame(HTTP_NOT_FOUND, $router->dispatch(Request::create('GET', '/nada'))->status());
+
+    /*
+     * Allow used to be emitted once with header() before the 405 and OPTIONS
+     * branches split, so both inherited it. A returned response carries only
+     * what it was handed, so both must set it explicitly.
+     */
+    $notAllowed = $router->dispatch(Request::create('PUT', '/posts'));
+    $tests->assertSame(HTTP_METHOD_NOT_ALLOWED, $notAllowed->status());
+    $tests->assertSame('GET, DELETE', $notAllowed->header('Allow'));
+
+    $options = $router->dispatch(Request::create('OPTIONS', '/posts'));
+    $tests->assertSame(HTTP_NO_CONTENT, $options->status());
+    $tests->assertSame('GET, DELETE', $options->header('Allow'));
+    $tests->assertSame('', $options->body());
+});
+
+$tests->run('middleware runs global first, then group, then route', function () use ($tests): void {
+    Router::reset();
+
+    $stamp = static fn (string $label): callable
+        => static fn (Request $request, callable $next): Response
+            => $next($request->withAttribute(
+                'trail',
+                trim(((string) $request->attribute('trail', '')) . ' ' . $label)
+            ));
+
+    Router::group('/admin', function () use ($stamp): void {
+        Router::get('/panel', 'DispatchTestController', 'trail')
+            ->middleware($stamp('route'));
+    }, 'admin.', [$stamp('group')]);
+
+    $router = (new Router(new Container(), ''))->middleware($stamp('global'));
+
+    $tests->assertSame(
+        'global group route',
+        $router->dispatch(Request::create('GET', '/admin/panel'))->body()
+    );
+});
+
+$tests->run('middleware can refuse a request before the controller runs', function () use ($tests): void {
+    Router::reset();
+    Router::get('/private', 'DispatchTestController', 'home');
+
+    $deny = static fn (Request $request, callable $next): Response
+        => $request->bearerToken() === null
+            ? Response::json(['message' => 'Unauthorized'], HTTP_UNAUTHORIZED)
+            : $next($request);
+
+    $router = (new Router(new Container(), ''))->middleware($deny);
+
+    $refused = $router->dispatch(Request::create('GET', '/private'));
+    $tests->assertSame(HTTP_UNAUTHORIZED, $refused->status());
+    $tests->assertSame('{"message":"Unauthorized"}', $refused->body());
+
+    $allowed = $router->dispatch(Request::create('GET', '/private', [
+        'headers' => ['Authorization' => 'Bearer token'],
+    ]));
+    $tests->assertSame(HTTP_OK, $allowed->status());
+});
+
+$tests->run('global middleware also wraps requests that match no route', function () use ($tests): void {
+    // CORS headers and request logging that skip 404s are a bug.
+    Router::reset();
+
+    $router = (new Router(new Container(), ''))->middleware(
+        static fn (Request $request, callable $next): Response
+            => $next($request)->withHeader('X-Served-By', 'sfphp')
+    );
+
+    $response = $router->dispatch(Request::create('GET', '/nada'));
+
+    $tests->assertSame(HTTP_NOT_FOUND, $response->status());
+    $tests->assertSame('sfphp', $response->header('X-Served-By'));
+});
+
+$tests->run('a failing action becomes a 500 instead of a blank page', function () use ($tests): void {
+    Router::reset();
+    Router::get('/boom', 'DispatchTestController', 'boom');
+    Router::get('/silent', 'DispatchTestController', 'returnsNothing');
+    Router::get('/missing', 'DispatchTestController', 'naoExiste');
+
+    $router = new Router(new Container(), '');
+
+    $tests->assertSame(HTTP_INTERNAL_SERVER_ERROR, $router->dispatch(Request::create('GET', '/boom'))->status());
+
+    /*
+     * An action that returns nothing is the "forgot the return statement"
+     * bug. It has to fail loudly rather than serve an empty 200.
+     */
+    $tests->assertSame(HTTP_INTERNAL_SERVER_ERROR, $router->dispatch(Request::create('GET', '/silent'))->status());
+
+    $tests->assertSame(HTTP_INTERNAL_SERVER_ERROR, $router->dispatch(Request::create('GET', '/missing'))->status());
 });
 
 $tests->finish();
