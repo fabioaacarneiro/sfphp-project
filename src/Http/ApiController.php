@@ -1,19 +1,22 @@
 <?php
 
-namespace SfphpProject\app\controllers;
+namespace SfphpProject\src\Http;
 
 use JsonException;
-use SfphpProject\src\Http\Request;
-use SfphpProject\src\Http\Response;
 
 /**
- * Base controller for JSON API endpoints.
+ * An optional base class for controllers that answer JSON.
+ *
+ * Optional, like Controller: the framework asks for an action returning a
+ * Response and nothing more. This is here because refusing a body that is not
+ * JSON, and refusing one that does not decode, is the same fifteen lines in
+ * every API and getting either wrong is a 500 where a 415 or a 400 belongs.
  *
  * Reading the request — the raw body, the decoded JSON, headers, the bearer
- * token — moved to Request, where it belongs and where it can be tested. What
- * is left here are the two helpers for producing a response.
+ * token — lives on Request, where it can be tested. What is here are the two
+ * helpers for producing a response.
  */
-class BaseAPIController
+abstract class ApiController
 {
     /**
      * Build a JSON response.

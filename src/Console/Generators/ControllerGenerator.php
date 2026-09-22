@@ -14,24 +14,25 @@ final class ControllerGenerator extends GeneratorBase
         $filePath = $this->getFilePath('app/controllers', $name, 'Controller');
 
         /*
-         * No base class. This extended SfphpProject\app\controllers\
-         * BaseController, which belongs to this repository's example
-         * application and is not in the package — so every controller this
-         * generated in somebody else's project referenced a class that does not
-         * exist there.
+         * Extends the framework's Controller, which is in the package. It used
+         * to extend a BaseController that belonged to the example application
+         * and was not shipped, so every controller generated in somebody else's
+         * project referenced a class that did not exist there.
          *
-         * Nothing is lost: that base class was two methods that forwarded to
-         * Response::view() and Response::redirect(), which any class can call.
+         * Extending is optional — an action returning a Response is the whole
+         * contract — but generating it is the friendlier default: $this->view()
+         * works in the file the moment it is written.
          */
         $content = <<<'PHP'
 <?php
 
 namespace {NAMESPACE};
 
+use SfphpProject\src\Http\Controller;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
 
-final class {CLASS}Controller
+final class {CLASS}Controller extends Controller
 {
     /**
      * Handle the request.
@@ -48,10 +49,10 @@ final class {CLASS}Controller
      */
     public function index(Request $request): Response
     {
-        return Response::json(['message' => 'It works.']);
+        return $this->view('{ROUTE}/index', ['title' => '{CLASS}']);
 
-        // A page instead:
-        // return Response::view('{ROUTE}/index', ['title' => '{CLASS}']);
+        // JSON instead — or extend ApiController, which adds payload():
+        // return Response::json(['message' => 'It works.']);
     }
 }
 PHP;

@@ -4943,9 +4943,14 @@ $tests->run('generators write into the project that ran them', function () use (
         $source = (string) file_get_contents($path);
         $tests->assertSame(true, str_contains($source, 'namespace Acme\\Shop\\Controllers;'));
 
-        // Nothing from the example application, which a consumer never receives.
+        /*
+         * Nothing from the example application, which a consumer never
+         * receives. Extending is fine now that the base class is in the
+         * package, and that is the whole point of where it lives.
+         */
         $tests->assertSame(false, str_contains($source, 'SfphpProject\\app'));
-        $tests->assertSame(false, str_contains($source, 'extends'));
+        $tests->assertSame(true, str_contains($source, 'extends Controller'));
+        $tests->assertSame(true, str_contains($source, 'use SfphpProject\\src\\Http\\Controller;'));
 
         // And it is a real action: a Response, not a string.
         $tests->assertSame(true, str_contains($source, 'public function index(Request $request): Response'));
@@ -4968,6 +4973,53 @@ $tests->run('generators write into the project that ran them', function () use (
         @rmdir($project . '/app/Controllers');
         @rmdir($project . '/app');
         @rmdir($project);
+    }
+});
+
+$tests->run('the optional controller base classes are in the package', function () use ($tests): void {
+    /*
+     * They lived in app/, which a composer require does not deliver, so
+     * $this->view() was a line the documentation taught and an installed
+     * project could not run. Where they live is the entire fix, so it is what
+     * this asserts.
+     */
+    $tests->assertSame(true, class_exists(SfphpProject\src\Http\Controller::class));
+    $tests->assertSame(true, class_exists(SfphpProject\src\Http\ApiController::class));
+
+    $controller = new class extends SfphpProject\src\Http\Controller {
+        public function page(): Response
+        {
+            return $this->view('nonexistent-view-for-the-test', []);
+        }
+
+        public function away(Request $request): Response
+        {
+            return $this->back($request, '/fallback');
+        }
+    };
+
+    // back() follows the referer when it is this site.
+    $local = $controller->away(Request::create('GET', '/x', [
+        'headers' => ['Referer' => 'https://example.test/posts?page=2', 'Host' => 'example.test'],
+    ]));
+    $tests->assertSame('/posts?page=2', $local->header('Location'));
+
+    // A relative referer has no host to disagree with.
+    $relative = $controller->away(Request::create('GET', '/x', [
+        'headers' => ['Referer' => '/posts', 'Host' => 'example.test'],
+    ]));
+    $tests->assertSame('/posts', $relative->header('Location'));
+
+    /*
+     * The referer is a header, so the visitor chooses it. Following it to
+     * another origin is an open redirect — the classic way a phishing link
+     * borrows a domain's good name.
+     */
+    foreach (['https://evil.test/steal', '//evil.test/steal', 'javascript:alert(1)', ''] as $hostile) {
+        $refused = $controller->away(Request::create('GET', '/x', [
+            'headers' => ['Referer' => $hostile, 'Host' => 'example.test'],
+        ]));
+        $tests->assertSame('/fallback', $refused->header('Location'));
     }
 });
 
