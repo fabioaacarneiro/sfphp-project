@@ -125,7 +125,17 @@ function dbColumns(PDO $pdo, string $driver, string $table): array
             . 'a.attnum AS position '
             . 'FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum '
             . 'WHERE a.attrelid = to_regclass(?) AND a.attnum > 0 AND NOT a.attisdropped',
-            [$table]
+            /*
+             * Quoted, because to_regclass() folds an unquoted name to lower
+             * case and the builder quotes identifiers when it creates a table —
+             * so "sft_inc_smallIncrements" really is mixed case in the catalog.
+             * Without the quotes this found nothing and reported the column
+             * type as null, for the three tables whose names have a capital.
+             */
+            [implode('.', array_map(
+                static fn (string $part): string => '"' . $part . '"',
+                explode('.', $table)
+            ))]
         );
     }
 
@@ -164,9 +174,26 @@ function dbConstraintTypes(PDO $pdo, string $driver, string $table): array
 {
     $current = $driver === 'mysql' ? 'DATABASE()' : 'current_schema()';
 
+    /*
+     * PostgreSQL represents every NOT NULL column as a CHECK constraint, named
+     * "<oid>_<relation>_<attribute>_not_null", and information_schema reports
+     * it alongside the ones a migration actually declared. Asking for the
+     * constraints of a table therefore answers "PRIMARY KEY, CHECK" for a table
+     * whose only constraint is its key.
+     *
+     * Those rows are excluded here rather than expected, because they describe
+     * a column's nullability and this helper is asked about constraints. The
+     * name pattern is PostgreSQL's own and starts with a digit, which a
+     * declared constraint in this suite never does.
+     */
+    $exclude = $driver === 'mysql'
+        ? ''
+        : " AND constraint_name !~ '^[0-9]+_[0-9]+_[0-9]+_not_null$'";
+
     return array_column(q(
         $pdo,
-        "SELECT constraint_type AS type FROM information_schema.table_constraints WHERE table_schema = $current AND table_name = ?",
+        "SELECT constraint_type AS type FROM information_schema.table_constraints"
+        . " WHERE table_schema = $current AND table_name = ?" . $exclude,
         [$table]
     ), 'type');
 }
@@ -358,7 +385,14 @@ function registerSchemaTests(TestRunner $tests, PDO $pdo, string $driver): void
             $table->string('status', 20)->change()->default('a');
         });
         $insert('anything');
-        $tests->assertSame(4, dbCount($pdo, $driver, 'sft_enums'));
+
+        /*
+         * Three rows: 'b' under the original list, 'c' once the list was
+         * widened, and 'anything' once the column stopped being an enum. The
+         * two inserts in between were refused, which is what the assertions
+         * above check. This asserted four, and had never been green to say so.
+         */
+        $tests->assertSame(3, dbCount($pdo, $driver, 'sft_enums'));
     });
 
     $test('indexes, unique keys, algorithms and full-text', function () use ($tests, $pdo, $driver, $schema, $mysql): void {

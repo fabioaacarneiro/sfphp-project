@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 106 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 108 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -1466,9 +1466,27 @@ $schema->table('posts', function (Blueprint $table): void {
 });
 ```
 
-Nomes gerados respeitam o limite de identificador do driver (63 em PostgreSQL,
-64 em MySQL) e são **determinísticos**: o nome que `create` gera é o mesmo que
-`drop` procura.
+Os nomes gerados respeitam o limite de identificador do driver (63 no
+PostgreSQL, 64 no MySQL) e são **determinísticos**: o nome que o `create` gera é
+o que o `drop` procura.
+
+#### As instruções rodam na ordem em que você escreveu
+
+Isso importa assim que há um rename, porque um rename muda como toda instrução
+seguinte precisa chamar a coluna:
+
+```php
+$schema->table('posts', function (Blueprint $table): void {
+    $table->renameColumn('code', 'sku');
+    $table->string('sku', 10)->change();     // o nome novo, e funciona
+});
+```
+
+O builder emitia todas as instruções de coluna antes de todas as operações, o
+que punha essa modificação antes do rename que criou o nome usado por ela.
+Nenhum agrupamento fixo pode estar certo — pôr renames primeiro quebra a ordem
+oposta do mesmo jeito — então as instruções saem na ordem em que o blueprint as
+declara.
 
 ### Paridade entre dialetos
 
@@ -3048,7 +3066,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 106 casos unitários
+composer run test        # 108 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve
