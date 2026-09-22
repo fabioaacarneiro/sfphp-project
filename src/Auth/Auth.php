@@ -29,14 +29,19 @@ final class Auth
     /**
      * A throwaway hash, used only to equalise timing on a failed lookup.
      *
-     * It must have been produced with the same parameters password_hash()
-     * uses today, or the equalising fails in the direction it was meant to
-     * prevent: PHP 8.4 raised bcrypt's default cost from 10 to 12, and a hash
-     * left at 10 verifies roughly four times faster than a real one. A test
-     * asserts this constant does not need rehashing, so a future change to
-     * PHP's default is caught by CI rather than silently reopening the leak.
+     * Produced under PHP 8.4, whose PASSWORD_DEFAULT is bcrypt at cost 12. It
+     * is a starting point rather than the answer: PHP 8.1 to 8.3 default to
+     * cost 10, and verifying a cost-12 hash there takes roughly four times as
+     * long as verifying a real password — the same leak this exists to close,
+     * pointing the other way. timingHash() checks before using it.
      */
     private const TIMING_HASH = '$2y$12$GZ2ly5LRlJT3kVnAlCoAC.mQHH/5x9AsFwWq2VmJtRC0vDNinSq36';
+
+    /** The hash actually used to equalise timing on this PHP. */
+    private static ?string $timingHash = null;
+
+    /** What the throwaway hash is a hash of. Not a secret; it is a stopwatch. */
+    private const TIMING_SUBJECT = 'sfphp timing equalisation';
 
     /** @var array<string, Guard> */
     private static array $guards = [];
@@ -194,6 +199,15 @@ final class Auth
     public static function attempt(array $credentials, ?string $guard = null): bool
     {
         $provider = self::provider();
+
+        /*
+         * Resolved before the user is looked up, so that the one-off cost of
+         * producing it lands on every attempt rather than only on the ones
+         * that find nobody. Paying it in one branch would be its own timing
+         * difference, which is the thing this whole path is about.
+         */
+        self::timingHash();
+
         $user = $provider->retrieveByCredentials($credentials);
 
         if ($user === null) {
@@ -300,6 +314,34 @@ final class Auth
 
         $plain = $credentials[$field] ?? '';
 
-        Hash::check(is_string($plain) ? $plain : '', self::TIMING_HASH);
+        Hash::check(is_string($plain) ? $plain : '', self::timingHash());
+    }
+
+    /**
+     * The throwaway hash, with the parameters this PHP actually uses.
+     *
+     * A constant frozen at authoring time cannot be right on every version:
+     * PASSWORD_DEFAULT is bcrypt cost 10 on PHP 8.1 to 8.3 and cost 12 on 8.4,
+     * and a mismatch in either direction makes the no-such-user path take a
+     * measurably different time from the wrong-password path. That difference
+     * is exactly what an attacker uses to learn which accounts exist.
+     *
+     * So the constant is used when the running PHP agrees with it, which costs
+     * nothing, and one is produced when it does not, which costs a single hash
+     * per process.
+     *
+     * @return string A hash verifiable in the same time as a real one
+     */
+    private static function timingHash(): string
+    {
+        if (self::$timingHash !== null) {
+            return self::$timingHash;
+        }
+
+        if (!password_needs_rehash(self::TIMING_HASH, PASSWORD_DEFAULT)) {
+            return self::$timingHash = self::TIMING_HASH;
+        }
+
+        return self::$timingHash = password_hash(self::TIMING_SUBJECT, PASSWORD_DEFAULT);
     }
 }
