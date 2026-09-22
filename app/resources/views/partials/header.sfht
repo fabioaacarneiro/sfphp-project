@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="{{ lang_tag() }}">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -7,7 +7,7 @@
     <title>{{ $title | default(APP_NAME) }}</title>
 
     <!-- SFCSS Framework -->
-    <link rel="stylesheet" href="/assets/css/sfcss.css">
+    <link rel="stylesheet" href="{{ asset('css/sfcss.min.css') }}">
 
     <!--
         No web fonts and no icon font are loaded from a CDN. A page that

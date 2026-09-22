@@ -1,6 +1,6 @@
 # SFCSS — Simple Framework CSS
 
-> Verificado contra a folha de estilos gerada · 2.337 classes · 16,1KB gzipped
+> Verificado contra a folha de estilos gerada · 2.339 classes · 16,4KB gzipped
 >
 > 🌍 Disponível também em [English](../en/SFCSS.md) e
 > [Español](../es/SFCSS.md).
@@ -73,8 +73,8 @@ php tools/css-builder/sfcss-builder.php
 
 Isso escreve as duas saídas:
 
-- `public/assets/css/sfcss.css` — 110KB, legível
-- `public/assets/css/sfcss.min.css` — 92KB, minificado (16,1KB gzipped)
+- `resources/assets/css/sfcss.css` — 112KB, legível
+- `resources/assets/css/sfcss.min.css` — 94KB, minificado (16,4KB gzipped)
 
 ### O que o builder faz
 
@@ -321,7 +321,7 @@ A lista completa está na
 | Spacing | `m-*` e `p-*` em todos os lados, mais `gap-*` |
 | Sizing | `w-*` / `h-*` em rem, frações, porcentagens e pixels arbitrários |
 | Layout | display, flexbox, grid |
-| Tipografia | 8 tamanhos, 4 pesos, alinhamento, transformação, decoração |
+| Tipografia | 8 tamanhos, 4 pesos, 2 famílias, alinhamento, transformação, decoração |
 | Cores | 20 famílias × 10 tons × `bg`/`text`/`border` |
 | Efeitos | bordas, radius, sombras, opacidade |
 | Position | static, relative, absolute, fixed, sticky |
@@ -350,7 +350,37 @@ A lista completa está na
 <p class="text-base">Normal</p>
 <h1 class="text-3xl font-bold">Título grande</h1>
 <p class="text-center uppercase">Centralizado e em maiúsculas</p>
+<p class="font-mono">Monoespaçado</p>
 ```
+
+`code`, `pre` e `kbd` já têm estilo na folha base, então um trecho não precisa
+de classe nenhuma:
+
+```html
+<p>Rode <code>composer install</code> primeiro.</p>
+<pre><code>./sfphp migrate</code></pre>
+<p>Aperte <kbd>Ctrl</kbd> + <kbd>C</kbd> para parar.</p>
+```
+
+### Superfícies e o tema escuro
+
+Oito variáveis carregam os neutros, e um bloco `prefers-color-scheme: dark`
+redefine essas oito e nada mais — uma cor de paleta significa a mesma coisa nos
+dois temas; o que muda é o papel em que ela se apoia.
+
+| Variável | Serve para |
+|---|---|
+| `--surface` | A página, e o fundo do próprio card |
+| `--surface-raised` | Cabeçalho e rodapé de card |
+| `--surface-sunken` | Fundo de `code` e `pre` |
+| `--surface-border` | Bordas de card e divisores |
+| `--surface-border-strong` | O contorno de um `kbd` |
+| `--body-color` | Texto comum |
+| `--body-color-muted` | `.text-muted` |
+| `--code-color` | `code` inline |
+
+O que for construído sobre elas segue o tema sem uma segunda folha de estilo —
+é assim que a página de erro e a tela de dump do framework são escritas.
 
 ### Cores
 
@@ -465,14 +495,14 @@ geradas como valores literais, não como referências a variáveis.
 
 | | |
 |---|---|
-| Classes no total | **2.337** |
-| — utilitários base e componentes | 1.209 |
+| Classes no total | **2.339** |
+| — utilitários base e componentes | 1.211 |
 | — variantes `hover:` | 600 |
 | — variantes responsivas (`sm` `md` `lg` `xl`) | 528 |
 | Classes de cor | 620 |
-| Cru | 110KB |
-| Minificado | 92KB |
-| **Gzipped** | **16,1KB** |
+| Cru | 112KB |
+| Minificado | 94KB |
+| **Gzipped** | **16,4KB** |
 | Dependências | nenhuma |
 | JavaScript | nenhum |
 

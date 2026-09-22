@@ -1,6 +1,6 @@
 # SFCSS — Simple Framework CSS
 
-> Verificado contra la hoja de estilos construida · 2.337 clases · 16,1KB comprimidos
+> Verificado contra la hoja de estilos construida · 2.339 clases · 16,4KB comprimidos
 >
 > 🌍 Disponible también en [English](../en/SFCSS.md) y
 > [Português](../pt-BR/SFCSS.md).
@@ -73,8 +73,8 @@ php tools/css-builder/sfcss-builder.php
 
 Eso escribe las dos salidas:
 
-- `public/assets/css/sfcss.css` — 110KB, legible
-- `public/assets/css/sfcss.min.css` — 92KB, minificado (16,1KB comprimidos)
+- `resources/assets/css/sfcss.css` — 112KB, legible
+- `resources/assets/css/sfcss.min.css` — 94KB, minificado (16,4KB comprimidos)
 
 ### Qué hace el constructor
 
@@ -324,7 +324,7 @@ La lista completa está en la
 | Espaciado | `m-*` y `p-*` en cada lado, más `gap-*` |
 | Tamaño | `w-*` / `h-*` en rem, fracciones, porcentajes y píxeles arbitrarios |
 | Disposición | display, flexbox, rejilla |
-| Tipografía | 8 tamaños, 4 pesos, alineación, transformación, decoración |
+| Tipografía | 8 tamaños, 4 pesos, 2 familias, alineación, transformación, decoración |
 | Colores | 20 familias × 10 tonos × `bg`/`text`/`border` |
 | Efectos | bordes, redondeo, sombras, opacidad |
 | Posición | static, relative, absolute, fixed, sticky |
@@ -353,7 +353,38 @@ La lista completa está en la
 <p class="text-base">Normal</p>
 <h1 class="text-3xl font-bold">Título grande</h1>
 <p class="text-center uppercase">Centrado y en mayúsculas</p>
+<p class="font-mono">Monoespaciado</p>
 ```
+
+`code`, `pre` y `kbd` ya tienen estilo en la hoja base, así que un fragmento no
+necesita ninguna clase:
+
+```html
+<p>Ejecuta <code>composer install</code> primero.</p>
+<pre><code>./sfphp migrate</code></pre>
+<p>Pulsa <kbd>Ctrl</kbd> + <kbd>C</kbd> para parar.</p>
+```
+
+### Superficies y el tema oscuro
+
+Ocho variables llevan los neutros, y un bloque `prefers-color-scheme: dark`
+redefine esas ocho y nada más — un color de paleta significa lo mismo en ambos
+temas; lo que cambia es el papel sobre el que se apoya.
+
+| Variable | Sirve para |
+|---|---|
+| `--surface` | La página, y el fondo de la propia tarjeta |
+| `--surface-raised` | Cabecera y pie de tarjeta |
+| `--surface-sunken` | Fondo de `code` y `pre` |
+| `--surface-border` | Bordes de tarjeta y separadores |
+| `--surface-border-strong` | El contorno de un `kbd` |
+| `--body-color` | Texto normal |
+| `--body-color-muted` | `.text-muted` |
+| `--code-color` | `code` en línea |
+
+Lo que se construya sobre ellas sigue el tema sin una segunda hoja de estilos —
+así es como están escritas la página de error y la pantalla de volcado del
+framework.
 
 ### Colores
 
@@ -472,14 +503,14 @@ referencias a variables.
 
 | | |
 |---|---|
-| Clases en total | **2.337** |
-| — utilidades base y componentes | 1.209 |
+| Clases en total | **2.339** |
+| — utilidades base y componentes | 1.211 |
 | — variantes `hover:` | 600 |
 | — variantes responsivas (`sm` `md` `lg` `xl`) | 528 |
 | Clases de color | 620 |
-| En crudo | 110KB |
-| Minificado | 92KB |
-| **Comprimido** | **16,1KB** |
+| En crudo | 112KB |
+| Minificado | 94KB |
+| **Comprimido** | **16,4KB** |
 | Dependencias | ninguna |
 | JavaScript | ninguno |
 

@@ -24,6 +24,9 @@ use SfphpProject\src\Config;
  */
 final class HtmlDump
 {
+    /** Whether a fragment has already carried the stylesheet in this response. */
+    private static bool $stylesheetSent = false;
+
     /**
      * Render one or more values as a full page.
      *
@@ -41,6 +44,57 @@ final class HtmlDump
         }
 
         return self::page($title, $body, $caller);
+    }
+
+    /**
+     * Render values to drop into a page that is already being written.
+     *
+     * dump() appends to whatever the response had printed so far, so it cannot
+     * send a second `<!DOCTYPE html>` and a second `<head>` into the middle of
+     * a document. It sends the cards, and the stylesheet **once** — repeating
+     * ninety kilobytes of CSS for every dump in a loop would be its own
+     * problem.
+     *
+     * @param list<mixed> $values The values dumped
+     * @param array{file: string, line: int}|null $caller Where the dump was called
+     * @return string The markup
+     */
+    public static function fragment(array $values, ?array $caller = null): string
+    {
+        $out = '';
+
+        if (!self::$stylesheetSent) {
+            self::$stylesheetSent = true;
+            $out .= '<style>' . Assets::css() . '</style>'
+                . '<style>' . self::styles() . '</style>';
+        }
+
+        $where = $caller === null
+            ? ''
+            : '<div class="text-xs text-muted mb-2"><code>'
+                . self::e(self::shorten($caller['file'])) . ':' . $caller['line'] . '</code></div>';
+
+        $cards = '';
+
+        foreach ($values as $index => $value) {
+            $cards .= self::card(Dumper::describe($value), $index, count($values));
+        }
+
+        return $out . '<div class="sf-dump-fragment my-4">' . $where . $cards . '</div>';
+    }
+
+    /**
+     * Forget that the stylesheet was sent.
+     *
+     * For tests, and for a persistent runtime, where the flag would otherwise
+     * carry from one request into the next and the second visitor would get a
+     * dump with no styling at all.
+     *
+     * @return void
+     */
+    public static function forgetStylesheet(): void
+    {
+        self::$stylesheetSent = false;
     }
 
     /**

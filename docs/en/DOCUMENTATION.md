@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 134 tests, 0 failures
+> Verified against PHP 8.4 · suite: 138 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -59,7 +59,7 @@ code does today. Where something does not exist, it says so — see
 **It is** a lean framework for web applications and APIs, with routing,
 Request/Response objects, a middleware pipeline, a DI container, a query
 builder, a schema builder with MySQL/PostgreSQL parity, a template engine,
-cache, queues, and a CLI with 33 commands.
+cache, queues, and a CLI with 35 commands.
 
 **It is not** a replacement for Laravel or Symfony. There is no full ORM and no
 event system, and authentication covers login, guards and authorization but not
@@ -94,13 +94,38 @@ Optional extensions, declared under `suggest`:
 ### As a dependency
 
 ```bash
-composer require fabio/sfphp
+composer require fabioaacarneiro/sfphp
 ```
 
 The package carries the framework and nothing else: no example application, no
-test suite, no `app/` directory appearing inside your `vendor/`. One call wires
-your project to it, at the top of your front controller and of any console entry
-point:
+test suite, no `app/` directory appearing inside your `vendor/`. What arrives is
+`src/`, the console, the licence, the readme and `resources/assets/` — SFCSS and
+SFJS, which travel with the framework rather than being left behind in a public
+directory you never receive. A test asserts that list, because what a consumer
+gets is the archive rather than the repository and the two drift silently.
+
+```bash
+./vendor/bin/sfphp init
+```
+
+`init` writes what a project needs before it can answer anything: a front
+controller, a route file, a controller, a view, the router script the built-in
+server uses, and SFCSS and SFJS copied into `public/assets`. It prints the
+`autoload` line to paste into your `composer.json`, and then `./vendor/bin/sfphp
+serve` answers on <http://localhost:8000> with a page saying where everything
+is.
+
+A file that is already there is kept: running `init` twice reports what it left
+alone rather than overwriting your front controller. `--force` overrides that,
+and `--namespace=Acme\Shop` changes the namespace the generated classes use.
+
+Everything it writes is **yours**. Nothing there is updated by a later
+`composer update`, and deleting the welcome controller and its view is the
+expected next step.
+
+Doing it by hand is fine too — the front controller is the only part the
+framework has an opinion about. One call wires your project to it, at the top of
+that file and of any console entry point:
 
 ```php
 require __DIR__ . '/../vendor/autoload.php';
@@ -3674,7 +3699,7 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` exposes **33 commands**.
+`./sfphp` exposes **35 commands**.
 
 ### Generation (12 generators)
 
@@ -3724,6 +3749,17 @@ report_build_ms_max 23.678
 All four follow `CACHE_DRIVER` and `QUEUE_DRIVER`. A `cache:clear` that emptied
 a file cache while the application used Redis would report success and change
 nothing.
+
+### Scaffolding a project
+
+```bash
+./vendor/bin/sfphp init
+./vendor/bin/sfphp init --namespace=Acme\Shop
+./vendor/bin/sfphp init --force            # overwrite what is there
+```
+
+For a project that installed the framework and has nothing to run yet. See
+[As a dependency](#as-a-dependency).
 
 ### Assets
 
@@ -3811,12 +3847,25 @@ Full reference: [SFCSS](SFCSS.md) and
 
 ## SFJS
 
-A dependency-free JavaScript library — 11KB raw, **3.0KB gzipped**. Exposed as
-`window.sf`.
+A dependency-free JavaScript library — 11KB raw, 8KB minified, **2.4KB
+gzipped**. Exposed as `window.sf`.
 
 ```html
-<script src="/assets/js/sfjs.js"></script>
+<script src="/assets/js/sfjs.min.js"></script>
+<script src="/assets/js/sfjs.js"></script>     <!-- readable, for debugging -->
 ```
+
+```bash
+./sfphp js:build         # rebuilds sfjs.min.js from sfjs.js
+./sfphp assets:publish   # copies both into public/assets
+```
+
+The minifier removes comments and collapses whitespace, and deliberately does
+not rewrite tokens — no shortened names, no dropped semicolons, no statements
+joined onto one line. Those are where a minifier changes what a program means,
+and the extra kilobyte is not worth owning a JavaScript parser in a framework
+that has no dependencies. A test checks that both builds expose the same API and
+that the minified one still parses.
 
 ### Programmatic API
 
@@ -3876,7 +3925,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 134 unit cases
+composer run test        # 138 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves

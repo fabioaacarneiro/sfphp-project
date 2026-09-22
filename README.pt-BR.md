@@ -21,7 +21,7 @@ framework — nem as de erro — carrega CSS, fontes ou JavaScript de um CDN.
 Como dependência:
 
 ```bash
-composer require fabio/sfphp
+composer require fabioaacarneiro/sfphp
 ```
 
 ```php

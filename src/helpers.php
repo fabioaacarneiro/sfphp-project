@@ -205,7 +205,13 @@ if (!function_exists('dump')) {
             return;
         }
 
-        echo HtmlDump::render($values, $caller);
+        /*
+         * A fragment, not a page. dump() appends to a response that is already
+         * being written, so sending a second <!DOCTYPE html> into the middle of
+         * a document would be malformed — and would repeat the stylesheet on
+         * every call. dd() sends the page, because dd() is the response.
+         */
+        echo HtmlDump::fragment($values, $caller);
     }
 }
 
@@ -328,6 +334,22 @@ if (!function_exists('trans_choice')) {
     function trans_choice(string $key, int $count, array $replace = [], ?string $locale = null): string
     {
         return Translator::choice($key, $count, $replace, $locale);
+    }
+}
+
+if (!function_exists('lang_tag')) {
+    /**
+     * The active locale as an HTML language attribute.
+     *
+     * A catalog is named pt_BR and a `lang` attribute wants pt-BR. The
+     * framework was converting between the two in four places, which is three
+     * chances to forget.
+     *
+     * @return string A BCP 47 tag
+     */
+    function lang_tag(): string
+    {
+        return str_replace('_', '-', locale());
     }
 }
 
