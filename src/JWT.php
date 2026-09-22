@@ -13,6 +13,15 @@ use RuntimeException;
 class JWT
 {
     /**
+     * How long a token is valid for, in seconds.
+     *
+     * Fixed at an hour. A token cannot be withdrawn once issued — that is what
+     * being stateless costs — so the lifetime is the only thing limiting how
+     * long a stolen one is useful. See TokenDenylist for the way out.
+     */
+    public const LIFETIME = 3600;
+
+    /**
      * @param string $data
      * @return string
      */
@@ -106,10 +115,20 @@ class JWT
             'typ' => 'JWT',
         ], JSON_THROW_ON_ERROR);
 
+        $issuedAt = time();
+
         $payload = json_encode([
             'id' => $user['id'],
             'email' => $user['email'],
-            'exp' => time() + 3600,
+            /*
+             * "iat" is what makes "log out everywhere" possible. Revoking a
+             * user's tokens records a moment rather than a list — the tokens
+             * were never stored anywhere to list — and a token is refused when
+             * it was issued before that moment. Without it, a fresh login could
+             * not be told apart from the tokens being revoked.
+             */
+            'iat' => $issuedAt,
+            'exp' => $issuedAt + self::LIFETIME,
         ], JSON_THROW_ON_ERROR);
 
         $headerBase64 = self::base64UrlEncode($header);
@@ -208,5 +227,15 @@ class JWT
         }
 
         return is_array($data) ? $data : null;
+    }
+
+    /**
+     * How long a token is valid for.
+     *
+     * @return int The lifetime in seconds
+     */
+    public static function lifetime(): int
+    {
+        return self::LIFETIME;
     }
 }
