@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 136 tests, 0 failures
+> Verified against PHP 8.4 · suite: 138 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -59,7 +59,7 @@ code does today. Where something does not exist, it says so — see
 **It is** a lean framework for web applications and APIs, with routing,
 Request/Response objects, a middleware pipeline, a DI container, a query
 builder, a schema builder with MySQL/PostgreSQL parity, a template engine,
-cache, queues, and a CLI with 33 commands.
+cache, queues, and a CLI with 35 commands.
 
 **It is not** a replacement for Laravel or Symfony. There is no full ORM and no
 event system, and authentication covers login, guards and authorization but not
@@ -104,8 +104,28 @@ SFJS, which travel with the framework rather than being left behind in a public
 directory you never receive. A test asserts that list, because what a consumer
 gets is the archive rather than the repository and the two drift silently.
 
-One call wires your project to it, at the top of your front controller and of
-any console entry point:
+```bash
+./vendor/bin/sfphp init
+```
+
+`init` writes what a project needs before it can answer anything: a front
+controller, a route file, a controller, a view, the router script the built-in
+server uses, and SFCSS and SFJS copied into `public/assets`. It prints the
+`autoload` line to paste into your `composer.json`, and then `./vendor/bin/sfphp
+serve` answers on <http://localhost:8000> with a page saying where everything
+is.
+
+A file that is already there is kept: running `init` twice reports what it left
+alone rather than overwriting your front controller. `--force` overrides that,
+and `--namespace=Acme\Shop` changes the namespace the generated classes use.
+
+Everything it writes is **yours**. Nothing there is updated by a later
+`composer update`, and deleting the welcome controller and its view is the
+expected next step.
+
+Doing it by hand is fine too — the front controller is the only part the
+framework has an opinion about. One call wires your project to it, at the top of
+that file and of any console entry point:
 
 ```php
 require __DIR__ . '/../vendor/autoload.php';
@@ -3679,7 +3699,7 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` exposes **33 commands**.
+`./sfphp` exposes **35 commands**.
 
 ### Generation (12 generators)
 
@@ -3729,6 +3749,17 @@ report_build_ms_max 23.678
 All four follow `CACHE_DRIVER` and `QUEUE_DRIVER`. A `cache:clear` that emptied
 a file cache while the application used Redis would report success and change
 nothing.
+
+### Scaffolding a project
+
+```bash
+./vendor/bin/sfphp init
+./vendor/bin/sfphp init --namespace=Acme\Shop
+./vendor/bin/sfphp init --force            # overwrite what is there
+```
+
+For a project that installed the framework and has nothing to run yet. See
+[As a dependency](#as-a-dependency).
 
 ### Assets
 
@@ -3894,7 +3925,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 136 unit cases
+composer run test        # 138 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves

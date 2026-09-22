@@ -25,14 +25,20 @@ As a dependency:
 composer require fabioaacarneiro/sfphp
 ```
 
+```bash
+./vendor/bin/sfphp init      # front controller, a route, a view, the assets
+./vendor/bin/sfphp serve     # http://localhost:8000
+```
+
+`init` leaves a project that answers a request: a welcome page saying where
+everything is, with links to the documentation. All of it is yours to delete.
+By hand instead, the front controller is the only part the framework has an
+opinion about:
+
 ```php
 require __DIR__ . '/../vendor/autoload.php';
 
 SfphpProject\src\Bootstrap::load(dirname(__DIR__));
-```
-
-```bash
-./vendor/bin/sfphp assets:publish    # SFCSS and SFJS into public/assets
 ```
 
 Or start from the example application, with routes, views and migrations
@@ -161,7 +167,7 @@ data in the database without protecting its real destination.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 136 unit cases
+composer run test        # 138 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run docs        # the three documentation languages agree
 ```

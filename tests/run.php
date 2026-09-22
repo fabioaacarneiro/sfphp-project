@@ -33,6 +33,7 @@ use SfphpProject\src\Cache\FileDriver;
 use SfphpProject\src\Cache\RedisDriver as CacheRedisDriver;
 use SfphpProject\src\RedisConnection;
 use SfphpProject\src\Assets;
+use SfphpProject\src\Starter;
 use SfphpProject\src\Debug\Dumper;
 use SfphpProject\src\Debug\HtmlDump;
 use SfphpProject\src\Debug\TextDump;
@@ -4723,6 +4724,8 @@ $tests->run('the published package carries the framework and nothing else', func
         'resources/assets/css/sfcss.min.css',
         'resources/assets/js/sfjs.js',
         'resources/assets/js/sfjs.min.js',
+        'resources/starter/public/index.php',
+        'resources/starter/resources/views/welcome.sfht',
     ] as $needed) {
         $tests->assertSame(true, in_array($needed, $entries, true));
     }
@@ -4762,6 +4765,67 @@ $tests->run('the minified script is still a program, and still the same one', fu
     exec(escapeshellarg($node) . ' --check ' . escapeshellarg($minified) . ' 2>&1', $output, $status);
 
     $tests->assertSame(0, $status);
+});
+
+$tests->run('a new project gets something that answers a request', function () use ($tests): void {
+    /*
+     * composer require delivers a framework and nothing that runs: no front
+     * controller, no route, no view. Somebody who installs it and types serve
+     * deserves a page rather than a 404 and a hunt through the documentation
+     * for what to create.
+     */
+    $target = sys_get_temp_dir() . '/sfphp-starter-' . bin2hex(random_bytes(4));
+
+    try {
+        $result = Starter::publish($target, 'Acme\\Shop');
+
+        $tests->assertSame(Starter::files(), $result['written']);
+        $tests->assertSame([], $result['skipped']);
+
+        foreach (Starter::files() as $relative) {
+            $tests->assertSame(true, is_file($target . '/' . $relative));
+        }
+
+        // The namespace the caller asked for, in the file and in the advice.
+        $controller = file_get_contents($target . '/app/Controllers/WelcomeController.php');
+        $tests->assertSame(true, str_contains($controller, 'namespace Acme\\Shop\\Controllers;'));
+        $tests->assertSame(false, str_contains($controller, '{NAMESPACE}'));
+        $tests->assertSame(['Acme\\Shop\\' => 'app/'], Starter::autoload('Acme\\Shop'));
+
+        // Every written file is valid PHP, because a scaffold that does not
+        // parse is worse than none.
+        foreach (['public/index.php', 'server.php', 'routes.php', 'app/Controllers/WelcomeController.php'] as $php) {
+            $status = 0;
+            $output = [];
+            exec('php -l ' . escapeshellarg($target . '/' . $php) . ' 2>&1', $output, $status);
+            $tests->assertSame(0, $status);
+        }
+
+        /*
+         * Running it twice keeps what is there. Overwriting somebody's front
+         * controller because they repeated a command is the kind of help nobody
+         * asks for again.
+         */
+        $again = Starter::publish($target, 'Acme\\Shop');
+        $tests->assertSame([], $again['written']);
+        $tests->assertSame(Starter::files(), $again['skipped']);
+
+        $forced = Starter::publish($target, 'Acme\\Shop', true);
+        $tests->assertSame(Starter::files(), $forced['written']);
+
+        // A namespace that is not one is refused rather than written into a file.
+        $tests->assertThrows(fn () => Starter::publish($target, '9 bad'), RuntimeException::class);
+    } finally {
+        foreach (array_reverse(Starter::files()) as $relative) {
+            @unlink($target . '/' . $relative);
+        }
+
+        foreach (['app/Controllers', 'app', 'public', 'resources/views', 'resources'] as $directory) {
+            @rmdir($target . '/' . $directory);
+        }
+
+        @rmdir($target);
+    }
 });
 
 $tests->finish();
