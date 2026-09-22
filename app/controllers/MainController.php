@@ -2,17 +2,16 @@
 
 namespace SfphpProject\app\controllers;
 
-use SfphpProject\src\Http\Controller;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
 
 /*
- * Extends the framework's Controller, which is optional and which lives in the
- * package — so this line works the same in a clone and in a project that ran
- * `composer require`. The base class used to live in this directory, which is
- * not shipped, and that made $this->view() a fatal for anyone who copied it.
+ * No base class, and none to be had: an action returns a Response, and that is
+ * the whole contract. Response is a factory — view(), json(), redirect(),
+ * route(), back() — so inheriting a class to shorten those calls would be
+ * inheritance paying for nothing.
  */
-final class MainController extends Controller
+final class MainController
 {
     /**
      * Show the home page.
@@ -22,7 +21,7 @@ final class MainController extends Controller
      */
     public function index(Request $request): Response
     {
-        return $this->view('home', [
+        return Response::view('home', [
             'title' => 'SFPHP - Modern PHP Framework',
         ]);
     }

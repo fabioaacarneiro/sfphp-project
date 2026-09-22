@@ -4949,8 +4949,8 @@ $tests->run('generators write into the project that ran them', function () use (
          * package, and that is the whole point of where it lives.
          */
         $tests->assertSame(false, str_contains($source, 'SfphpProject\\app'));
-        $tests->assertSame(true, str_contains($source, 'extends Controller'));
-        $tests->assertSame(true, str_contains($source, 'use SfphpProject\\src\\Http\\Controller;'));
+        $tests->assertSame(false, str_contains($source, 'extends'));
+        $tests->assertSame(true, str_contains($source, 'Response::view('));
 
         // And it is a real action: a Response, not a string.
         $tests->assertSame(true, str_contains($source, 'public function index(Request $request): Response'));
@@ -4976,36 +4976,24 @@ $tests->run('generators write into the project that ran them', function () use (
     }
 });
 
-$tests->run('the optional controller base classes are in the package', function () use ($tests): void {
+$tests->run('a response can be built from anywhere, including back to where you were', function () use ($tests): void {
     /*
-     * They lived in app/, which a composer require does not deliver, so
-     * $this->view() was a line the documentation taught and an installed
-     * project could not run. Where they live is the entire fix, so it is what
-     * this asserts.
+     * Response is a factory, which is what makes a base class unnecessary: a
+     * controller inherits nothing and still reaches every kind of response.
+     * There was a Controller class here offering $this->view() and
+     * $this->redirect(); it inherited a whole class to shorten two calls that
+     * already existed, so route() and back() moved here and it went away.
      */
-    $tests->assertSame(true, class_exists(SfphpProject\src\Http\Controller::class));
-    $tests->assertSame(true, class_exists(SfphpProject\src\Http\ApiController::class));
-
-    $controller = new class extends SfphpProject\src\Http\Controller {
-        public function page(): Response
-        {
-            return $this->view('nonexistent-view-for-the-test', []);
-        }
-
-        public function away(Request $request): Response
-        {
-            return $this->back($request, '/fallback');
-        }
-    };
+    $tests->assertSame(false, class_exists('SfphpProject\\src\\Http\\Controller'));
 
     // back() follows the referer when it is this site.
-    $local = $controller->away(Request::create('GET', '/x', [
+    $local = Response::back(Request::create('GET', '/x', [
         'headers' => ['Referer' => 'https://example.test/posts?page=2', 'Host' => 'example.test'],
     ]));
     $tests->assertSame('/posts?page=2', $local->header('Location'));
 
     // A relative referer has no host to disagree with.
-    $relative = $controller->away(Request::create('GET', '/x', [
+    $relative = Response::back(Request::create('GET', '/x', [
         'headers' => ['Referer' => '/posts', 'Host' => 'example.test'],
     ]));
     $tests->assertSame('/posts', $relative->header('Location'));
@@ -5016,11 +5004,81 @@ $tests->run('the optional controller base classes are in the package', function 
      * borrows a domain's good name.
      */
     foreach (['https://evil.test/steal', '//evil.test/steal', 'javascript:alert(1)', ''] as $hostile) {
-        $refused = $controller->away(Request::create('GET', '/x', [
-            'headers' => ['Referer' => $hostile, 'Host' => 'example.test'],
-        ]));
+        $refused = Response::back(
+            Request::create('GET', '/x', ['headers' => ['Referer' => $hostile, 'Host' => 'example.test']]),
+            '/fallback'
+        );
         $tests->assertSame('/fallback', $refused->header('Location'));
     }
+
+    // And a named route, which is the other redirect an application writes by hand.
+    Router::reset();
+    Router::get('/posts/id:number', 'PostController', 'show')->name('posts.show');
+    $tests->assertSame('/posts/7', Response::route('posts.show', ['id' => 7])->header('Location'));
+    Router::reset();
+});
+
+$tests->run('a request whose body is not the json it claims is refused before the action', function () use ($tests): void {
+    /*
+     * This was two methods on a base class every API controller had to extend,
+     * so the check ran only where somebody remembered to call it. Refusing a
+     * request that cannot be handled is what middleware is for: it happens
+     * once, before the action, for everything it is registered on.
+     */
+    $middleware = new SfphpProject\src\Http\Middleware\RequireJson();
+    $reached = false;
+    $next = function (Request $request) use (&$reached): Response {
+        $reached = true;
+
+        return Response::json(['seen' => $request->attribute('json')]);
+    };
+
+    // The good case: decoded, handed on, and readable by the action.
+    $ok = $middleware->handle(Request::create('POST', '/api/posts', [
+        'headers' => ['Content-Type' => 'application/json'],
+        'rawBody' => '{"title":"Olá"}',
+    ]), $next);
+
+    $tests->assertSame(true, $reached);
+    $tests->assertSame(['title' => 'Olá'], json_decode($ok->body(), true)['seen']);
+
+    // 415 is "I do not speak that".
+    $reached = false;
+    $wrongType = $middleware->handle(Request::create('POST', '/api/posts', [
+        'headers' => ['Content-Type' => 'text/xml'],
+        'rawBody' => '<post/>',
+    ]), $next);
+
+    $tests->assertSame(HTTP_UNSUPPORTED_MEDIA_TYPE, $wrongType->status());
+    $tests->assertSame(false, $reached);
+
+    // 400 is "that was not valid JSON" — a different answer, because a client
+    // debugging one is looking somewhere else entirely.
+    $broken = $middleware->handle(Request::create('POST', '/api/posts', [
+        'headers' => ['Content-Type' => 'application/json'],
+        'rawBody' => '{"title":',
+    ]), $next);
+
+    $tests->assertSame(HTTP_BAD_REQUEST, $broken->status());
+    $tests->assertSame(false, $reached);
+
+    /*
+     * A GET carries no body. Refusing it would make the middleware unusable on
+     * a group that both reads and writes, which is most groups.
+     */
+    $read = $middleware->handle(Request::create('GET', '/api/posts'), $next);
+    $tests->assertSame(true, $reached);
+    $tests->assertSame(HTTP_OK, $read->status());
+
+    // A write with no Content-Type passes unless the endpoint insists.
+    $reached = false;
+    $silent = $middleware->handle(Request::create('POST', '/api/posts'), $next);
+    $tests->assertSame(true, $reached);
+    $tests->assertSame(HTTP_OK, $silent->status());
+
+    $strict = (new SfphpProject\src\Http\Middleware\RequireJson(required: true))
+        ->handle(Request::create('POST', '/api/posts'), $next);
+    $tests->assertSame(HTTP_UNSUPPORTED_MEDIA_TYPE, $strict->status());
 });
 
 $tests->finish();

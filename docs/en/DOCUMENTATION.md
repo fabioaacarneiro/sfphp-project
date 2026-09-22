@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 141 tests, 0 failures
+> Verified against PHP 8.4 · suite: 142 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -504,34 +504,31 @@ $response->status();  $response->body();  $response->header('Content-Type');
 touches the output buffer. Turning it into bytes is the `Emitter`'s job, and
 that separation is what lets the whole path be tested without output buffering.
 
-### Controller
+### No base class
 
-An optional base class, in the package:
+A controller inherits nothing. The framework asks for an action that returns a
+`Response`, and `Response` is a factory, so every kind of response is reachable
+from any class:
 
 ```php
-use SfphpProject\src\Http\Controller;
-
-final class PostController extends Controller
+final class PostController
 {
     public function index(Request $request): Response
     {
-        return $this->view('posts/index', ['posts' => $posts]);
+        return Response::view('posts/index', ['posts' => $posts]);
     }
 }
 ```
 
 | | |
 |---|---|
-| `$this->view($view, $data, $status)` | An HTML response |
-| `$this->redirect($url, $status)` | A redirect |
-| `$this->route($name, $parameters, $query)` | A redirect to a named route |
-| `$this->back($request, $fallback)` | A redirect to where the visitor came from |
-
-**Optional** is the word that matters: the framework asks a controller for an
-action that returns a `Response` and nothing else — no interface, no class to
-extend. `Response::view()` and `Response::redirect()` do the same thing from
-anywhere, and `make:controller` extends `Controller` only because it is the
-friendlier default.
+| `Response::view($view, $data, $status)` | An HTML page |
+| `Response::json($data, $status)` | JSON |
+| `Response::html($html, $status)` · `Response::text()` | A body you built |
+| `Response::redirect($url, $status)` | A redirect |
+| `Response::route($name, $parameters, $query)` | A redirect to a named route |
+| `Response::back($request, $fallback)` | A redirect to where the visitor came from |
+| `Response::noContent()` | 204 |
 
 > **`back()` will not leave your site.** The referer is a header, so the visitor
 > chooses it, which makes it a redirect destination an attacker can pick.
@@ -539,34 +536,51 @@ friendlier default.
 > borrows your domain's good name. A referer naming a different host falls back,
 > and so does one that is not a path.
 
-This class used to live in the example application, where a `composer require`
-never reached it, so `$this->view()` was a line the documentation taught and an
-installed project could not run.
+There was a `BaseController` here offering `$this->view()` and
+`$this->redirect()`. It asked you to inherit a class in order to shorten two
+calls that already existed, which is inheritance paying for nothing, and it
+lived in the example application where a `composer require` never reached it —
+so the line it taught threw a fatal in an installed project. `route()` and
+`back()` were the only things on it that were not already somewhere else, and
+they are on `Response` now.
 
-### ApiController
+### JSON endpoints
 
-The same idea for endpoints that answer JSON:
+An endpoint that answers JSON needs no base class either. What it does need is
+for a body that is not JSON to be refused **before** the action runs, which is
+what the pipeline is for:
 
 ```php
-use SfphpProject\src\Http\ApiController;
+use SfphpProject\src\Http\Middleware\RequireJson;
 
-final class PostApiController extends ApiController
+Router::group('/api', function (): void {
+    Router::post('/posts', 'PostController', 'store');
+}, 'api.', [new RequireJson()]);
+```
+
+```php
+public function store(Request $request): Response
 {
-    public function store(Request $request): Response
-    {
-        $data = $this->payload($request);
+    $data = $request->attribute('json');   // already decoded, already valid
 
-        if ($data instanceof Response) {
-            return $data;   // 415 or 400, ready to return
-        }
-
-        return $this->json(['id' => 1], HTTP_CREATED);
-    }
+    return Response::json(['id' => 1], HTTP_CREATED);
 }
 ```
 
-`payload()` answers **415** when the `Content-Type` is not `application/json`
-and **400** when the body does not decode.
+`RequireJson` answers **415** when the `Content-Type` is not
+`application/json` and **400** when the body does not decode, and puts what it
+decoded on the request. Those two codes are worth telling apart: a client
+debugging "I do not speak that" is looking somewhere very different from one
+debugging "that was not valid JSON".
+
+`GET`, `HEAD`, `OPTIONS` and `DELETE` pass straight through, since they carry no
+body — otherwise the middleware would be unusable on a group that both reads and
+writes, which is most groups. Pass `new RequireJson(required: true)` to refuse a
+write that arrives with no `Content-Type` at all.
+
+This replaced an `ApiController` you had to extend. The check then ran only
+where somebody remembered to call it, and it put a class between the framework
+and every endpoint to do a job the pipeline already existed for.
 
 ### Global helpers
 
@@ -674,6 +688,7 @@ dependencies in its constructor and have them autowired.
 | `VerifyCsrfToken` | Refuses a state-changing request with no valid token |
 | `Authenticate` | Identifies the user, and refuses anonymous requests when required |
 | `RateLimit` | Limits how often the same client may hit a route |
+| `RequireJson` | Refuses a body that is not JSON with 415, one that does not decode with 400 |
 
 `VerifyCsrfToken` lets safe methods and bearer-token requests through — a
 browser never attaches a bearer token by itself, so there is no cross-site
@@ -2763,7 +2778,7 @@ Auth::setDefaultGuard('web');
 
 ```php
 if (Auth::attempt(['email' => $email, 'password' => $password])) {
-    return $this->redirect('/dashboard');
+    return Response::redirect('/dashboard');
 }
 
 return Response::view('login', ['error' => __('auth.failed')]);
@@ -4010,7 +4025,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 141 unit cases
+composer run test        # 142 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
