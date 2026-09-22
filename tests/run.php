@@ -3609,4 +3609,44 @@ $tests->run('bootstrap registers the application paths without owning them', fun
     rmdir($base);
 });
 
+$tests->run('the console finds the project autoloader, not its own', function () use ($tests): void {
+    /*
+     * Found by installing the package into a throwaway project. A path
+     * repository copies the working tree, so the package arrived carrying the
+     * framework's own vendor/ — and the binary tried that one first, loaded an
+     * autoloader built for a different checkout, and died on a dev file the
+     * package does not even ship.
+     *
+     * Composer's binary proxy already publishes the right answer, so the fix is
+     * to ask it, and to put the local checkout last among the guesses.
+     */
+    $binary = (string) file_get_contents(__DIR__ . '/../sfphp');
+
+    $composerGlobal = strpos($binary, "_composer_autoload_path");
+    $tests->assertTrue($composerGlobal !== false);
+
+    $positions = [];
+
+    foreach ([
+        'installed_sibling' => "__DIR__ . '/../../autoload.php'",
+        'installed_bin' => "__DIR__ . '/../autoload.php'",
+        'local_checkout' => "__DIR__ . '/vendor/autoload.php'",
+    ] as $name => $needle) {
+        $at = strpos($binary, $needle);
+        $tests->assertTrue($at !== false);
+        $positions[$name] = $at;
+    }
+
+    // Composer's own answer is consulted before any guess.
+    $tests->assertTrue($composerGlobal < $positions['installed_sibling']);
+
+    // And the checkout is the last guess, never the first.
+    $tests->assertTrue($positions['local_checkout'] > $positions['installed_sibling']);
+    $tests->assertTrue($positions['local_checkout'] > $positions['installed_bin']);
+
+    // The package must not carry a vendor/ of its own into a consumer.
+    $attributes = (string) file_get_contents(__DIR__ . '/../.gitattributes');
+    $tests->assertTrue((bool) preg_match('#^/vendor\s+export-ignore#m', $attributes));
+});
+
 $tests->finish();
