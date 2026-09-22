@@ -4812,6 +4812,7 @@ $tests->run('the published package is a project that runs out of the box', funct
         'resources/assets/js/sfjs.js',
         'resources/assets/js/sfjs.min.js',
         'resources/starter/public/index.php',
+        'resources/starter/app/Controllers/WelcomeController.php.stub',
         'resources/starter/resources/views/welcome.sfht',
         // Without these, "generated from a config" is not true for anybody who
         // installed the framework rather than cloning it.
@@ -5183,6 +5184,44 @@ $tests->run('the console finds a project laid out like a project, not like this 
         }
 
         @rmdir($project);
+    }
+});
+
+$tests->run('a template that is not valid php is not named like php', function () use ($tests): void {
+    /*
+     * The welcome controller's placeholder sits in its `namespace`
+     * declaration, so the file cannot parse — which is correct, and which made
+     * an editor report an error on a file working exactly as intended. Anything
+     * in this directory that does not parse carries .stub, and the lint script
+     * covers resources/ so a new one cannot arrive unnoticed.
+     */
+    foreach (glob(Starter::path() . '/**/*.php') ?: [] as $file) {
+        $status = 0;
+        $output = [];
+        exec('php -l ' . escapeshellarg($file) . ' 2>&1', $output, $status);
+        $tests->assertSame(0, $status);
+    }
+
+    // And publishing still writes the file under its real name.
+    $target = sys_get_temp_dir() . '/sfphp-stub-' . bin2hex(random_bytes(4));
+
+    try {
+        Starter::publish($target, 'Acme\\Shop');
+
+        $written = $target . '/app/Controllers/WelcomeController.php';
+        $tests->assertSame(true, is_file($written));
+        $tests->assertSame(false, is_file($written . '.stub'));
+        $tests->assertSame(true, str_contains((string) file_get_contents($written), 'namespace Acme\\Shop\\Controllers;'));
+    } finally {
+        foreach (Starter::files() as $relative) {
+            @unlink($target . '/' . $relative);
+        }
+
+        foreach (['app/Controllers', 'app', 'public', 'resources/views', 'resources'] as $directory) {
+            @rmdir($target . '/' . $directory);
+        }
+
+        @rmdir($target);
     }
 });
 
