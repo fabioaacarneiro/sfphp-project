@@ -4139,15 +4139,17 @@ que você começa a escrever a sua.
 ```
 
 Ele esvazia `app/components`, `app/controllers`, `app/models`, `app/Jobs`,
-`app/resources/views`, `database/seeders` e `database/factories`, e reescreve o
-arquivo de rotas sem rota nenhuma — do contrário a aplicação subiria apontando
-para um controller que não existe mais. As pastas ficam, porque é nelas que a
-próxima coisa vai.
+`app/resources/views`, `database/migrations`, `database/seeders` e
+`database/factories`, e reescreve o arquivo de rotas sem rota nenhuma — do
+contrário a aplicação subiria apontando para um controller que não existe mais.
+As pastas ficam, porque é nelas que a próxima coisa vai.
 
-**As migrations são preservadas.** As tabelas de usuários e de sessões são
-contra o que o guard de autenticação e o driver de sessão em banco foram
-escritos, e um projeto que as apagasse descobriria isso no primeiro login, não
-aqui. Se quiser removê-las, remova você.
+**As duas migrations que o framework distribui são preservadas**: as tabelas de
+usuários e de sessões, contra as quais o guard de autenticação e o driver de
+sessão em banco foram escritos, e cuja falta um projeto notaria no primeiro
+login, não aqui. Uma migration que você escreveu é sua, e vai junto com o resto
+do que você escreveu. Um `.gitkeep` também fica — ele existe para segurar uma
+pasta vazia, que é justamente o que sobra.
 
 Antes de apagar qualquer coisa ele imprime o que vai apagar, com a contagem por
 pasta, e espera você digitar a palavra `reset`. Sem terminal para responder —

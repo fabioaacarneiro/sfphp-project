@@ -4213,15 +4213,17 @@ que empiezas a escribir la tuya.
 ```
 
 Vacía `app/components`, `app/controllers`, `app/models`, `app/Jobs`,
-`app/resources/views`, `database/seeders` y `database/factories`, y reescribe el
-archivo de rutas sin ninguna ruta — de lo contrario la aplicación arrancaría
-apuntando a un controlador que ya no está. Las carpetas se quedan, porque son
-donde va lo siguiente.
+`app/resources/views`, `database/migrations`, `database/seeders` y
+`database/factories`, y reescribe el archivo de rutas sin ninguna ruta — de lo
+contrario la aplicación arrancaría apuntando a un controlador que ya no está.
+Las carpetas se quedan, porque son donde va lo siguiente.
 
-**Las migraciones se conservan.** Las tablas de usuarios y de sesiones son
-contra lo que están escritos el guard de autenticación y el driver de sesión en
-base de datos, y un proyecto que las borrara lo descubriría en el primer inicio
-de sesión, no aquí. Si quieres quitarlas, quítalas tú.
+**Las dos migraciones que el framework trae se conservan**: las tablas de
+usuarios y de sesiones, contra las que están escritos el guard de autenticación
+y el driver de sesión en base de datos, y cuya falta un proyecto notaría en el
+primer inicio de sesión, no aquí. Una migración que escribiste es tuya, y se va
+con el resto de lo que escribiste. Un `.gitkeep` también se queda — existe para
+sostener una carpeta vacía, que es lo que queda.
 
 Antes de borrar nada imprime lo que va a borrar, con el recuento por carpeta, y
 espera a que escribas la palabra `reset`. Sin terminal donde responder — una
