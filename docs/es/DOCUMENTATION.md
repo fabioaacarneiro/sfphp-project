@@ -2927,10 +2927,10 @@ guardado sigue perteneciendo fuera del document root.
 | Ausente | Situación |
 |---|---|
 | Revocación de tokens | Un JWT es válido hasta que expira; no hay lista de revocación |
-| Recuperación de contraseña, verificación de correo, 2FA | Fuera de alcance |
+| Recuperación de contraseña, verificación de correo, 2FA | Los flujos son de la aplicación; [Correo](#correo) es la pieza que el framework les debía |
 | «Recordarme» | La columna `remember_token` existe; nada la usa |
 | Abstracción de almacenamiento para subidas | Los archivos se validan y se guardan localmente; S3 o un volumen compartido es de la aplicación. Consulta [Subida de archivos](#subida-de-archivos) |
-| Registro de auditoría / seguridad | Solo `error_log()` |
+| Registro de auditoría | Los registros son estructurados y llevan id de petición, pero nada escribe un rastro deliberado de "quién cambió qué". Consulta [Registro](#registro) |
 
 ---
 
@@ -3508,12 +3508,14 @@ hace, y que deberías conocer antes de elegirlo.
 
 | Ausente | Impacto |
 |---|---|
-| **Recuperación de contraseña y doble factor** | El inicio de sesión existe; estos flujos no. Consulta [Autenticación](#autenticación) |
+| **Recuperación de contraseña y doble factor** | El inicio de sesión existe; estos flujos no, y son de la aplicación. Consulta [Autenticación](#autenticación) y [Correo](#correo) |
 | **Sistema de eventos** | `make:event` y `make:listener` generan clases sin despachador |
 | **Un ORM completo** | Hay una capa de [Modelos](#modelos) con hidratación, tipos de atributo, relaciones (incluido muchos a muchos) y `with()`. No hay mapa de identidad, unidad de trabajo, proxy de carga perezosa, relación polimórfica ni esquema derivado de la clase — y [¿ORM o constructor de consultas?](#orm-o-constructor-de-consultas) explica el motivo de cada uno |
 | **Formato por idioma** | Las fechas y los números no se formatean por idioma; `ext-intl` hace eso bien y el framework no lo intenta. Consulta [Internacionalización](#internacionalización) |
 | **Fechas relativas y localizadas** | "hace 3 horas" y los nombres de mes localizados no existen; el almacenamiento y la conversión sí. Consulta [Tiempo y zonas horarias](#tiempo-y-zonas-horarias) |
 | **Métricas** | Los registros llevan duraciones; no se recogen contadores ni tiempos. Consulta [Registro](#registro) |
+| **Bloqueo de migraciones** | Dos instancias ejecutando `./sfphp migrate` al desplegar pueden ver la misma migración como pendiente. Ejecuta las migraciones como un paso del pipeline, nunca desde una instancia que arranca |
+| **Health check** | Un balanceador necesita un endpoint que diga que la instancia está viva; el framework no trae ninguno |
 | **Caché de rutas** | El despacho es O(n), un `preg_match` por ruta. Bien para decenas, no para centenares |
 | **Revocar sesión desde otro sitio** | Cerrar la sesión de otro dispositivo se puede construir sobre la tabla del driver `database`; no viene nada hecho. Consulta [Sesiones](#sesiones) |
 
