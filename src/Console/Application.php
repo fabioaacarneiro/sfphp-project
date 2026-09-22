@@ -799,7 +799,7 @@ PHP;
         /*
          * The project, not the package. Installed under vendor/, dirname of
          * this file names the framework's own directory, so `make:controller`
-         * would write into vendor/fabio/sfphp/app/ and the file would vanish on
+         * would write into vendor/fabioaacarneiro/sfphp/app/ and the file would vanish on
          * the next `composer update`. Bootstrap knows where the application is
          * because the entry point told it.
          */

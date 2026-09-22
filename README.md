@@ -22,7 +22,7 @@ from a CDN.
 As a dependency:
 
 ```bash
-composer require fabio/sfphp
+composer require fabioaacarneiro/sfphp
 ```
 
 ```php
