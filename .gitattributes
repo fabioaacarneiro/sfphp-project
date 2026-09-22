@@ -27,5 +27,8 @@
 /README.pt-BR.md    export-ignore
 /README.es.md       export-ignore
 
-# Keep: composer.json, README.md, LICENSE, sfphp, and src/ — which includes
-# src/I18n/lang/, the framework's own message catalogs.
+# Keep: composer.json, README.md, LICENSE, sfphp, src/ — which includes
+# src/I18n/lang/, the framework's own message catalogs — and resources/assets/,
+# which holds SFCSS and SFJS. Those two are tools the framework ships rather
+# than files of the example application, so a consumer has to receive them;
+# ./sfphp assets:publish copies them into whatever directory a project serves.

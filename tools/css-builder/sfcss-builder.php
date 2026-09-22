@@ -22,8 +22,14 @@ if ($config === null) {
 $css = generateCss($config);
 
 // Generate both full and minified versions
-$outputPath = __DIR__ . '/../../public/assets/css/sfcss.css';
-$minOutputPath = __DIR__ . '/../../public/assets/css/sfcss.min.css';
+/*
+ * resources/, not public/. SFCSS is a tool the framework ships, like SFJS, so
+ * it has to be inside what a composer require delivers — and public/ is
+ * export-ignored, because a consumer's vendor/ has no business holding a front
+ * controller. ./sfphp assets:publish copies it into a project's public/.
+ */
+$outputPath = __DIR__ . '/../../resources/assets/css/sfcss.css';
+$minOutputPath = __DIR__ . '/../../resources/assets/css/sfcss.min.css';
 
 file_put_contents($outputPath, $css);
 
@@ -56,6 +62,7 @@ function generateCss(array $config): string
 
     // Typography
     $css .= "  --font-family: {$config['typography']['fontFamily']};\n";
+    $css .= "  --font-family-mono: {$config['typography']['monoFamily']};\n";
 
     foreach ($config['typography']['sizes'] as $name => $value) {
         $name = str_replace('2xl', 'size-2xl', $name);
