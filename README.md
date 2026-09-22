@@ -130,6 +130,11 @@ trans_choice('app.items', 5);   // plural forms by range or per-language rule
 - **Middleware** — `VerifyCsrfToken` applies the CSRF check by default to every
   state-changing request
 
+> **Running more than one instance? Set `CACHE_DRIVER=redis`.** Rate limit
+> counters, the token denylist and cache-backed sessions all live in the cache,
+> and the default file driver keeps a separate copy per machine — so a revoked
+> token still works on the other instances and a limit of 60 is really 60 each.
+
 The framework follows **validate on the way in, escape on the way out**.
 Request values arrive unmodified on purpose: escaping on input would corrupt the
 data in the database without protecting its real destination.
@@ -138,7 +143,7 @@ data in the database without protecting its real destination.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 126 unit cases
+composer run test        # 128 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run docs        # the three documentation languages agree
 ```
@@ -178,4 +183,4 @@ Start at [docs/](docs/README.md) to pick a language.
 
 ## Licence
 
-MIT. Created by Fabio Carneiro.
+MIT — see [LICENSE](LICENSE). Created by Fabio Carneiro.
