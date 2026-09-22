@@ -31,23 +31,35 @@ final class MigrationRunner
      */
     public function migrate(?int $step = null): array
     {
-        $repository = $this->repository();
-        $schema = new Schema($this->pdo);
-        $pending = $this->pendingFiles($repository);
-        $selected = $step === null ? $pending : array_slice($pending, 0, $step);
-        $batch = $repository->nextBatch();
-        $applied = [];
+        /*
+         * Taken before the pending list is read, because the race is in the
+         * gap between reading it and acting on it: two instances migrating on
+         * boot both see the same file as pending and both run it.
+         */
+        $lock = new MigrationLock($this->pdo);
+        $lock->acquire();
 
-        foreach ($selected as $file) {
-            $migration = $this->load($file);
-            $this->transactional(function () use ($migration, $schema, $repository, $file, $batch): void {
-                $migration->up($schema);
-                $repository->record(basename($file), $batch);
-            });
-            $applied[] = basename($file);
+        try {
+            $repository = $this->repository();
+            $schema = new Schema($this->pdo);
+            $pending = $this->pendingFiles($repository);
+            $selected = $step === null ? $pending : array_slice($pending, 0, $step);
+            $batch = $repository->nextBatch();
+            $applied = [];
+
+            foreach ($selected as $file) {
+                $migration = $this->load($file);
+                $this->transactional(function () use ($migration, $schema, $repository, $file, $batch): void {
+                    $migration->up($schema);
+                    $repository->record(basename($file), $batch);
+                });
+                $applied[] = basename($file);
+            }
+
+            return $applied;
+        } finally {
+            $lock->release();
         }
-
-        return $applied;
     }
 
     /**
