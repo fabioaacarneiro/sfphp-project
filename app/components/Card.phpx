@@ -21,34 +21,3 @@ function Card(string $title, string $body, string $colour = 'blue'): Sfht
         </div>
     );
 }
-
-/**
- * A list, showing that the SFHT directives work inside the markup.
- */
-function BulletList(array $items): Sfht
-{
-    return sfht(
-        <ul class="list-unstyled">
-            @foreach ($items as $item)
-                <li class="py-1">{{ $item }}</li>
-            @endforeach
-        </ul>
-    );
-}
-
-/**
- * A page, composing the two above.
- *
- * Both interpolations below are {{ }}. The card renders and the list renders,
- * because a component returns Sfht; a string in the same position would be
- * escaped. The type decides, so nobody has to remember which values are safe.
- */
-function CardPage(array $items): Sfht
-{
-    return sfht(
-        <main class="container py-8">
-            {{ Card('Hello', 'Written inside the function', 'emerald') }}
-            {{ BulletList($items) }}
-        </main>
-    );
-}

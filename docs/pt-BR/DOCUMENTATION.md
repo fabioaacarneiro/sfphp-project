@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 149 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 150 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -962,12 +962,39 @@ SFHT, então `{{ }}`, `{!! !!}`, `@if` e `@foreach` funcionam e o escape é o me
 do resto do framework.
 
 ```bash
-./sfphp build --phpx        # compila app/components/*.phpx
+./sfphp build --phpx        # compila todo .phpx sob app/components
 ```
 
 O build escreve o PHP ao lado do fonte e roda `php -l` em cada resultado, então
 erro de sintaxe aparece no build com o número da linha do `.phpx` — o compilador
 preenche a saída para manter esse alinhamento.
+
+### Um componente por arquivo
+
+Um arquivo tem um componente e leva o nome dele, e os componentes de uma mesma
+página ficam em uma pasta própria. O build percorre a árvore inteira e a
+espelha, então o que é compilado se parece com o que foi escrito:
+
+```
+app/components/
+├── Card.phpx
+├── BulletList.phpx
+└── postcode/
+    ├── PostcodePage.phpx
+    ├── PageHeader.phpx
+    ├── PostcodeLookup.phpx
+    ├── Field.phpx
+    ├── HowItWorks.phpx
+    └── PageFooter.phpx
+```
+
+Componentes na mesma pasta compartilham o namespace, então uma página compõe as
+partes dela chamando-as — sem import e sem prefixo. Alcançar uma de fora, de um
+controller por exemplo, é um `use function`:
+
+```php
+use function SfphpProject\app\components\postcode\PostcodePage;
+```
 
 ### Por que um componente devolve Sfht
 
@@ -1006,8 +1033,18 @@ O PHP autoloada classe, não função, então um componente compilado não pode 
 encontrado sob demanda. O front controller o inclui uma vez:
 
 ```php
-foreach (glob(__DIR__ . '/../app/components/compiled/*.php') ?: [] as $component) {
-    require_once $component;
+$compiled = __DIR__ . '/../app/components/compiled';
+
+if (is_dir($compiled)) {
+    $components = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($compiled, FilesystemIterator::SKIP_DOTS)
+    );
+
+    foreach ($components as $component) {
+        if ($component->getExtension() === 'php') {
+            require_once $component->getPathname();
+        }
+    }
 }
 ```
 
@@ -4245,7 +4282,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 149 casos unitários
+composer run test        # 150 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve
