@@ -1114,6 +1114,45 @@ function registerRedisTests(TestRunner $tests, \Redis $redis): void
         $tests->assertSame(null, $queue->pop());
         $tests->assertSame(0, $queue->size());
     });
+
+    $test('CACHE_DRIVER and QUEUE_DRIVER reach a real server', function () use ($tests, $redis): void {
+        /*
+         * The unit suite proves the right class is chosen. Only this proves the
+         * chosen thing works: everything up to here built its drivers by hand,
+         * so nothing had ever gone from a setting in .env through the helper to
+         * a server and back.
+         */
+        \SfphpProject\src\Config::set('CACHE_DRIVER', 'redis');
+        \SfphpProject\src\Config::set('CACHE_PREFIX', 'sft:cache:');
+        \SfphpProject\src\Config::set('QUEUE_DRIVER', 'redis');
+        \SfphpProject\src\RedisConnection::use($redis);
+
+        try {
+            $cache = \SfphpProject\src\Cache\CacheManager::fromConfig();
+            $cache->put('configured', ['through' => 'config'], 60);
+
+            $tests->assertSame(['through' => 'config'], $cache->get('configured'));
+
+            // The prefix is the setting's, not the driver's default, so two
+            // applications can share one instance without colliding.
+            $tests->assertSame(true, $redis->exists('sft:cache:configured') > 0);
+
+            $queue = \SfphpProject\src\Queue\QueueManager::fromConfig();
+            $queue->flush();
+            $id = $queue->push(new SftQueueJob('configurado'));
+
+            $tests->assertSame(1, $queue->size());
+
+            $job = $queue->pop();
+            $tests->assertSame(true, $job instanceof SftQueueJob);
+            $tests->assertSame($id, $job->getId());
+        } finally {
+            \SfphpProject\src\RedisConnection::use(null);
+            \SfphpProject\src\Config::forget('CACHE_DRIVER');
+            \SfphpProject\src\Config::forget('CACHE_PREFIX');
+            \SfphpProject\src\Config::forget('QUEUE_DRIVER');
+        }
+    });
 }
 
 $targets = [

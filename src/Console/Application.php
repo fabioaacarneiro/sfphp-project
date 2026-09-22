@@ -1102,7 +1102,7 @@ PHP;
     {
         try {
             $timeout = $this->optionInt($arguments, 'timeout') ?? 3600;
-            $queue = new \SfphpProject\src\Queue\QueueManager();
+            $queue = queue();
 
             $this->writeLine('Starting queue worker (timeout: ' . $timeout . 's)...');
             $this->writeLine('Press CTRL+C to stop.');
@@ -1128,7 +1128,7 @@ PHP;
     private function queueFailed(array $arguments): int
     {
         try {
-            $queue = new \SfphpProject\src\Queue\QueueManager();
+            $queue = queue();
             $failed = $queue->failed();
 
             if (empty($failed)) {

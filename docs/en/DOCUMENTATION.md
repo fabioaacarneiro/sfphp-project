@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 126 tests, 0 failures
+> Verified against PHP 8.4 · suite: 128 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -1699,15 +1699,51 @@ limiter does the latter.
 > change** for an application that ships its own driver: a class implementing
 > `Cache` must now implement both.
 
-Changing the driver:
+### Choosing the driver
+
+```ini
+CACHE_DRIVER=file          # the default
+CACHE_DRIVER=redis         # needs ext-redis
+CACHE_DRIVER=array         # memory, gone at the end of the request
+
+CACHE_PATH=storage/cache   # where the file driver writes
+CACHE_PREFIX=sfphp:cache:  # so two applications can share one Redis
+
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+```
+
+> **This setting decides more than caching.** Rate limit counters, the token
+> denylist and — with `SESSION_DRIVER=cache` — sessions all live here. On the
+> file driver each machine keeps its own copy, so behind a load balancer a
+> revoked token still works on the other instances and a limit of 60 requests is
+> really 60 *per instance*. **More than one instance means `redis`.**
+
+Selecting `redis` without `ext-redis` **fails at startup** rather than falling
+back to the file driver. A silent fallback would leave an operator believing
+those three things are shared when each machine is keeping its own — a hole that
+surfaces months later and never as an error.
+
+One connection is opened per process and shared by the cache, the queue and the
+session handler, instead of one socket each. An application that builds its own
+— a TLS socket, a cluster client — hands it over:
+
+```php
+use SfphpProject\src\RedisConnection;
+
+RedisConnection::use($myRedis);
+```
+
+Constructing a manager by hand still works, and is how you get a second cache
+that differs from the configured one:
 
 ```php
 use SfphpProject\src\Cache\CacheManager;
 use SfphpProject\src\Cache\MemoryDriver;
-use SfphpProject\src\Cache\RedisDriver;
 
-$cache = new CacheManager(new MemoryDriver());   // for this request only
-$cache = new CacheManager(new RedisDriver());    // needs ext-redis
+$scratch = new CacheManager(new MemoryDriver());   // for this request only
 ```
 
 ```bash
@@ -1754,6 +1790,26 @@ and `SIGINT` shut it down gracefully.
 
 The `jobs` and `failed_jobs` tables are created on demand, on the first
 operation that needs them — instantiating the driver opens no connection.
+
+### Choosing the driver
+
+```ini
+QUEUE_DRIVER=database          # the default
+QUEUE_DRIVER=redis             # needs ext-redis
+
+QUEUE_RESERVATION_SECONDS=900  # longer than your slowest job
+QUEUE_TABLE=jobs
+QUEUE_FAILED_TABLE=failed_jobs
+```
+
+`dispatch()` and `./sfphp queue:work` read the same setting, which is the reason
+it exists rather than being a constructor argument: a worker that built its own
+driver would drain the database while requests pushed to Redis, and neither side
+would report anything wrong.
+
+The database driver needs no extra service and survives a restart, so it is the
+default. Redis is faster and keeps the job table out of the database; both hand
+a job to exactly one worker.
 
 ### More than one worker
 
@@ -2769,10 +2825,11 @@ Tokens are stored hashed, never whole: a cache someone can read — a shared
 Redis, a dump taken while debugging — would otherwise hand out working
 credentials for every token that has not expired yet.
 
-> **The denylist must be shared between instances.** With the default file
-> driver it is local to one machine, so a token revoked on one instance still
-> works on another. Elsewhere a per-instance cache is a performance choice; here
-> it is a hole.
+> **The denylist must be shared between instances.** It lives in the cache, so
+> with the default `CACHE_DRIVER=file` it is local to one machine and a token
+> revoked on one instance still works on another. `CACHE_DRIVER=redis` is the
+> whole fix. Elsewhere a per-instance cache is a performance choice; here it is
+> a hole.
 
 Checking can be turned off per guard, for a service where tokens are short
 enough that the extra read is not worth it:
@@ -3093,7 +3150,7 @@ outside the document root.
 | Missing | Situation |
 |---|---|
 | Password recovery, e-mail verification, 2FA | The flows belong to the application; [Mail](#mail) is the piece the framework owes it |
-| A revocation list shared by default | `TokenDenylist` works on whatever cache is configured; on the file driver that is one machine. See [Revoking a token](#revoking-a-token) |
+| A safe default for more than one instance | `CACHE_DRIVER` defaults to `file`, which is right for one machine and wrong for several. The framework cannot tell which you are running, so it says so rather than guessing. See [Choosing the driver](#choosing-the-driver) |
 | Storage abstraction for uploads | Files are validated and stored locally; S3 or a shared volume is the application's to arrange. See [File uploads](#file-uploads) |
 | Audit logging | Records are structured and carry a request id, but nothing writes a deliberate "who changed what" trail. See [Logging](#logging) |
 
@@ -3715,7 +3772,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 126 unit cases
+composer run test        # 128 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
