@@ -31,6 +31,10 @@ require __DIR__ . '/../vendor/autoload.php';
 SfphpProject\src\Bootstrap::load(dirname(__DIR__));
 ```
 
+```bash
+./vendor/bin/sfphp assets:publish    # SFCSS and SFJS into public/assets
+```
+
 Or start from the example application, with routes, views and migrations
 already in place:
 
@@ -39,6 +43,7 @@ git clone https://github.com/fabioaacarneiro/sfphp-project.git
 cd sfphp-project
 composer install
 cp .env-example .env
+./sfphp assets:publish
 ```
 
 Adjust `.env`:
@@ -49,6 +54,19 @@ Adjust `.env`:
 
 `.env` itself is optional: a fresh clone boots with no configuration, and every
 feature that really needs a value fails with a message naming it.
+
+## Debugging
+
+```php
+dump($order);          // show it and carry on
+dd($request->all());   // show it and stop
+```
+
+`dd()` replaces the response with a page showing only what was dumped — built
+from SFCSS, with the calling line, property visibility, string lengths, and
+collapsible branches. In a terminal the same dump is printed as indented text.
+In production it goes to the log instead, so a forgotten `dd()` is an entry you
+can read rather than a page of internals handed to a visitor.
 
 ## Running
 
@@ -143,7 +161,7 @@ data in the database without protecting its real destination.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 128 unit cases
+composer run test        # 134 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run docs        # the three documentation languages agree
 ```

@@ -4,6 +4,7 @@ namespace SfphpProject\src;
 
 use ErrorException;
 use SfphpProject\src\Http\Emitter;
+use SfphpProject\src\Assets;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
 use Throwable;
@@ -173,10 +174,42 @@ final class ErrorHandler
 
         return Response::html(
             '<!doctype html><html lang="' . $language . '">'
-            . '<head><meta charset="UTF-8"><title>' . $escapedTitle . '</title></head>'
-            . '<body><h1>500</h1><p>' . $escaped . '</p></body></html>',
+            . '<head><meta charset="UTF-8">'
+            . '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+            . '<title>' . $escapedTitle . '</title>'
+            . '<style>' . self::stylesheet() . '</style>'
+            . '<style>body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem}'
+            . '.sf-error h1{font-size:clamp(3.5rem,15vw,5rem);line-height:1;letter-spacing:-.02em}</style>'
+            . '</head>'
+            . '<body><main class="sf-error text-center max-w-lg">'
+            . '<h1 class="font-bold m-0">500</h1>'
+            . '<p class="text-lg text-muted mt-4 mb-0">' . $escaped . '</p>'
+            . '</main></body></html>',
             HTTP_INTERNAL_SERVER_ERROR
         );
+    }
+
+    /**
+     * SFCSS, or nothing at all.
+     *
+     * The framework's own stylesheet, inlined for the same reason the 404 page
+     * inlines it: this is what renders when the application is what is broken,
+     * so it cannot depend on a request for an asset.
+     *
+     * Guarded because this also runs on the shutdown path. A fatal during
+     * bootstrap can mean the autoloader never finished, and an error page that
+     * throws while rendering an error page leaves a visitor with a blank screen
+     * — an unstyled message is a much better failure than none.
+     *
+     * @return string The stylesheet, or an empty string
+     */
+    private static function stylesheet(): string
+    {
+        try {
+            return class_exists(Assets::class) ? Assets::css() : '';
+        } catch (Throwable) {
+            return '';
+        }
     }
 
     /**
