@@ -7,9 +7,11 @@
  *
  *   SFPHP_TEST_MYSQL_DSN='mysql:host=127.0.0.1;port=3306;dbname=sf' SFPHP_TEST_MYSQL_USER=root SFPHP_TEST_MYSQL_PASS=secret
  *   SFPHP_TEST_PGSQL_DSN='pgsql:host=127.0.0.1;port=5432;dbname=sf' SFPHP_TEST_PGSQL_USER=postgres SFPHP_TEST_PGSQL_PASS=secret
+ *   SFPHP_TEST_REDIS_HOST=127.0.0.1 SFPHP_TEST_REDIS_PORT=6379
  *
  * Every table the tests create starts with "sft_" and is the only thing they drop.
- * The run aborts when the database holds any other table (besides "migrations").
+ * The run aborts when the database holds any other table (besides "migrations"),
+ * and when the Redis instance is not empty.
  */
 
 require __DIR__ . '/../vendor/autoload.php';
@@ -971,6 +973,103 @@ PHP);
     });
 }
 
+
+/**
+ * Register the tests that need a real Redis server.
+ *
+ * These subsystems had no integration test at all: the cache, the session
+ * handler over it and the queue driver were all written against a real server's
+ * API and never run against one. The queue driver was losing every job id.
+ *
+ * @param TestRunner $tests The runner
+ * @param \Redis $redis The connection
+ * @return void
+ */
+function registerRedisTests(TestRunner $tests, \Redis $redis): void
+{
+    $test = static function (string $name, callable $body) use ($tests, $redis): void {
+        $tests->run("[redis] $name", static function () use ($body, $redis): void {
+            $redis->flushAll();
+            $body();
+        });
+    };
+
+    $test('the cache driver stores, counts and expires', function () use ($tests, $redis): void {
+        $cache = new \SfphpProject\src\Cache\CacheManager(
+            new \SfphpProject\src\Cache\RedisDriver($redis)
+        );
+
+        $cache->put('k', ['a' => 1], 60);
+        $tests->assertSame(['a' => 1], $cache->get('k'));
+        $tests->assertSame(true, $cache->has('k'));
+        $tests->assertSame('fallback', $cache->get('absent', 'fallback'));
+
+        /*
+         * The counter is stored as a bare integer, because that is the only
+         * thing Redis can add to. get() has to recognise it rather than hand a
+         * non-serialised value to unserialize().
+         */
+        $tests->assertSame(1, $cache->increment('n', 1, 60));
+        $tests->assertSame(6, $cache->increment('n', 5, 60));
+        $tests->assertSame(6, (int) $cache->get('n'));
+
+        $ttl = $cache->ttl('n');
+        $tests->assertSame(true, is_int($ttl) && $ttl > 0 && $ttl <= 60);
+
+        // The lifetime belongs to the counter that was created.
+        $cache->increment('n', 1, 3600);
+        $tests->assertSame(true, $cache->ttl('n') <= 60);
+        $tests->assertSame(null, $cache->ttl('never-set'));
+
+        $cache->forget('k');
+        $tests->assertSame(false, $cache->has('k'));
+    });
+
+    $test('the session handler shares sessions through the cache', function () use ($tests, $redis): void {
+        $cache = new \SfphpProject\src\Cache\CacheManager(
+            new \SfphpProject\src\Cache\RedisDriver($redis)
+        );
+
+        // Two handlers over one store is what two application instances are.
+        $first = new \SfphpProject\src\Session\CacheHandler($cache, 'session:');
+        $second = new \SfphpProject\src\Session\CacheHandler($cache, 'session:');
+
+        $id = str_repeat('a', 32);
+        $tests->assertSame(true, $first->write($id, 'user_id|i:7;'));
+        $tests->assertSame('user_id|i:7;', $second->read($id));
+
+        $tests->assertSame(true, $second->validateId($id));
+        $tests->assertSame(false, $second->validateId('an-id-nobody-issued'));
+
+        $second->destroy($id);
+        $tests->assertSame('', $first->read($id));
+    });
+
+    $test('the queue driver keeps the job id across the round trip', function () use ($tests, $redis): void {
+        $queue = new \SfphpProject\src\Queue\RedisDriver($redis);
+
+        $id = $queue->push(new SftQueueJob('primeiro'));
+        $tests->assertSame(1, $queue->size());
+
+        $job = $queue->pop();
+        $tests->assertSame(true, $job instanceof SftQueueJob);
+        $tests->assertSame('primeiro', $job->mark);
+
+        /*
+         * This is what was broken. Job's own properties were serialised with
+         * the payload, so restoring them put back the null id captured at push
+         * time and overwrote the one the driver had just assigned. Both drivers
+         * had their own copy of that code and only one was fixed, which is why
+         * it now lives on Job.
+         */
+        $tests->assertSame($id, $job->getId());
+
+        // Taken, so it is not handed out twice.
+        $tests->assertSame(null, $queue->pop());
+        $tests->assertSame(0, $queue->size());
+    });
+}
+
 $targets = [
     'mysql' => ['SFPHP_TEST_MYSQL_DSN', 'SFPHP_TEST_MYSQL_USER', 'SFPHP_TEST_MYSQL_PASS'],
     'pgsql' => ['SFPHP_TEST_PGSQL_DSN', 'SFPHP_TEST_PGSQL_USER', 'SFPHP_TEST_PGSQL_PASS'],
@@ -1008,7 +1107,31 @@ foreach ($targets as $driver => [$dsnVariable, $userVariable, $passVariable]) {
     registerSchemaTests($tests, $pdo, $driver);
 }
 
-if ($connections === []) {
+/*
+ * Redis is registered separately: it is not a database connection, and the
+ * subsystems that use it — the cache, the session handler over it and the queue
+ * driver — had no integration test of their own.
+ */
+$redisHost = getenv('SFPHP_TEST_REDIS_HOST');
+
+if ($redisHost === false || $redisHost === '') {
+    echo "SKIP redis: set SFPHP_TEST_REDIS_HOST to run these tests.\n";
+} elseif (!extension_loaded('redis')) {
+    echo "SKIP redis: ext-redis is not installed.\n";
+} else {
+    $redis = new \Redis();
+    $redis->connect($redisHost, (int) (getenv('SFPHP_TEST_REDIS_PORT') ?: 6379));
+
+    if ($redis->dbSize() > 0) {
+        fwrite(STDERR, "Refusing to run against Redis: the database is not empty. Use a throwaway instance.\n");
+        exit(2);
+    }
+
+    registerRedisTests($tests, $redis);
+    $hasRedis = true;
+}
+
+if ($connections === [] && !($hasRedis ?? false)) {
     echo "No database configured; nothing to run.\n";
     exit(0);
 }

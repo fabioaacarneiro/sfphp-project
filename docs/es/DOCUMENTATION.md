@@ -3341,12 +3341,19 @@ los hay:
 ```bash
 SFPHP_TEST_MYSQL_DSN='mysql:host=127.0.0.1;port=3306;dbname=sf' \
 SFPHP_TEST_MYSQL_USER=root SFPHP_TEST_MYSQL_PASS=secret \
+SFPHP_TEST_REDIS_HOST=127.0.0.1 \
   composer run test:db
 ```
 
+Cubre el constructor de esquemas en los dos dialectos, la cola en base de datos
+y — cuando se indica un host de Redis — la caché, el handler de sesión sobre
+ella y el driver de cola de Redis. Esos tres no tenían ninguna prueba que se
+ejecutara contra un servidor hasta esta versión, y por eso el driver de cola
+perdía el id de cada trabajo.
+
 La CI ejecuta dos trabajos: `unit` sobre una matriz de PHP 8.1–8.4 **sin
 `mbstring`**, que es lo que impide que el manejo de UTF-8 dependa de la
-extensión; e `integration` con MySQL 8 y PostgreSQL 16 como servicios.
+extensión; e `integration` con MySQL 8, PostgreSQL 16 y Redis 7 como servicios.
 
 `composer run docs` se ejecuta también en el trabajo `unit`. La documentación
 existe en tres idiomas, y la prosa no se puede comparar mecánicamente — pero la
