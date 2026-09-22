@@ -264,12 +264,51 @@ final class Application
 
     private function printVersion(): int
     {
-        $this->writeLine('SFPHP v1.0.0');
+        $this->writeLine('SFPHP ' . self::version());
         $this->writeLine('');
         $this->writeLine('A minimal, educational PHP microframework');
         $this->writeLine('GitHub: https://github.com/fabioaacarneiro/sfphp-project');
 
         return 0;
+    }
+
+    /**
+     * Which version of the framework this is.
+     *
+     * Asked rather than written down. It used to be a literal in the line above,
+     * which means every release depends on somebody remembering to edit a string
+     * — and the release where they forget is the one that ships a console
+     * claiming to be the previous version.
+     *
+     * Composer's InstalledVersions is generated into the autoloader rather than
+     * required as a package, so reading it costs no dependency. It knows the tag
+     * because the tag is what Packagist resolved.
+     *
+     * @return string The version, as well as it can be known
+     */
+    public static function version(): string
+    {
+        if (class_exists(\Composer\InstalledVersions::class)) {
+            try {
+                $version = \Composer\InstalledVersions::getPrettyVersion('fabioaacarneiro/sfphp');
+
+                if (is_string($version) && $version !== '') {
+                    return $version;
+                }
+            } catch (\OutOfBoundsException) {
+                // Not installed as a dependency: this is a clone, handled below.
+            }
+
+            $root = \Composer\InstalledVersions::getRootPackage();
+            $version = $root['pretty_version'] ?? '';
+
+            if (is_string($version) && $version !== '' && !str_contains($version, 'no-version-set')) {
+                return $version;
+            }
+        }
+
+        // A clone with no tag reachable. Saying so beats inventing a number.
+        return 'dev';
     }
 
     /**
