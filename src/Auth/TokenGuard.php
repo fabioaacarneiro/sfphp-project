@@ -11,8 +11,9 @@ use SfphpProject\src\JWT;
  *
  * The token is a JWT signed with JWT_KEY, so it carries the identifier and
  * proves it was not tampered with. Nothing is stored server-side, which is
- * what makes this usable from a worker or a second process — and also what
- * means a token cannot be revoked before it expires.
+ * what makes this usable from a worker or a second process. It is also why
+ * revocation costs something: a signed token carries no way to take it back, so
+ * the guard consults TokenDenylist on every request unless told not to.
  */
 final class TokenGuard implements Guard
 {
@@ -21,10 +22,12 @@ final class TokenGuard implements Guard
      *
      * @param UserProvider $provider Where users are looked up
      * @param string $claim The claim carrying the identifier
+     * @param bool $checkRevocation Whether to consult the denylist on every request
      */
     public function __construct(
         private UserProvider $provider,
-        private string $claim = 'id'
+        private string $claim = 'id',
+        private bool $checkRevocation = true
     ) {}
 
     /**
@@ -54,6 +57,16 @@ final class TokenGuard implements Guard
         }
 
         if ($claims === null || !isset($claims[$this->claim])) {
+            return null;
+        }
+
+        /*
+         * A signature being valid is not the same as a token being accepted.
+         * Checking the denylist is what lets an account be disabled, or a
+         * device logged out, before the token would have expired on its own —
+         * and it is the price of revoking something stateless.
+         */
+        if ($this->checkRevocation && TokenDenylist::isRevoked($token, $claims)) {
             return null;
         }
 

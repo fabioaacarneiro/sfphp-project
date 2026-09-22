@@ -210,7 +210,7 @@ final class ErrorHandler
      */
     private static function message(Throwable $throwable): string
     {
-        if (defined('APP_ENV') && APP_ENV === 'development') {
+        if (Config::get('APP_ENV') === 'development') {
             return $throwable->getMessage();
         }
 

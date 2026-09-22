@@ -19,14 +19,23 @@ final class EventGenerator extends GeneratorBase
 namespace {NAMESPACE};
 
 /**
- * {CLASS}Event is fired when a specific action occurs.
+ * Something that happened, which other parts of the application may care about.
+ *
+ * Fire it with:
+ *
+ *     Dispatcher::dispatch(new {CLASS}Event($whatever));
+ *
+ * An event is a plain object carrying what a listener needs to do its work.
+ * Give it properties with names, rather than a generic payload: a listener
+ * reading $event->order is clearer than one reading $event->data['order'], and
+ * the constructor then says what this event is about.
  */
 final class {CLASS}Event
 {
     /**
-     * Create an event.
+     * Create the event.
      *
-     * @param mixed $data The event payload
+     * @param mixed $data What happened
      */
     public function __construct(public mixed $data = null) {}
 }

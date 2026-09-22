@@ -1,5 +1,6 @@
 <?php
 
+use SfphpProject\src\Config;
 use SfphpProject\src\Cache\CacheManager;
 use SfphpProject\src\Mail\ArrayDriver as MailArrayDriver;
 use SfphpProject\src\Mail\LogDriver as MailLogDriver;
@@ -62,8 +63,8 @@ if (!function_exists('logger')) {
             return $log;
         }
 
-        $channel = defined('LOG_CHANNEL') ? LOG_CHANNEL : 'stream';
-        $path = defined('LOG_PATH') ? LOG_PATH : 'php://stderr';
+        $channel = Config::get('LOG_CHANNEL', 'stream');
+        $path = Config::get('LOG_PATH', 'php://stderr');
 
         $driver = match ($channel) {
             'error_log' => new ErrorLogDriver(),
@@ -72,8 +73,8 @@ if (!function_exists('logger')) {
         };
 
         $minimum = Level::fromName(
-            defined('LOG_LEVEL') ? LOG_LEVEL : null,
-            defined('APP_ENV') && APP_ENV === 'development' ? Level::Debug : Level::Info
+            Config::get('LOG_LEVEL', null),
+            Config::get('APP_ENV') === 'development' ? Level::Debug : Level::Info
         );
 
         return $log = new LogManager($driver, $minimum);
@@ -97,16 +98,16 @@ if (!function_exists('mailer')) {
             return $mailer;
         }
 
-        $driver = defined('MAIL_DRIVER') ? MAIL_DRIVER : 'log';
+        $driver = Config::get('MAIL_DRIVER', 'log');
 
         $transport = match ($driver) {
             'smtp' => new SmtpDriver(
-                defined('MAIL_HOST') ? MAIL_HOST : 'localhost',
-                defined('MAIL_PORT') ? (int) MAIL_PORT : 25,
-                defined('MAIL_USERNAME') ? (MAIL_USERNAME ?: null) : null,
-                defined('MAIL_PASSWORD') ? (MAIL_PASSWORD ?: null) : null,
-                defined('MAIL_ENCRYPTION') ? MAIL_ENCRYPTION : 'none',
-                defined('MAIL_TIMEOUT') ? (int) MAIL_TIMEOUT : 30
+                Config::get('MAIL_HOST', 'localhost'),
+                Config::int('MAIL_PORT', 25),
+                Config::get('MAIL_USERNAME') ?: null,
+                Config::get('MAIL_PASSWORD') ?: null,
+                Config::get('MAIL_ENCRYPTION', 'none'),
+                Config::int('MAIL_TIMEOUT', 30)
             ),
             'mail' => new MailDriver(),
             'array' => new MailArrayDriver(),
@@ -115,12 +116,12 @@ if (!function_exists('mailer')) {
 
         $mailer = new MailManager(
             $transport,
-            defined('MAIL_FROM_ADDRESS') ? (MAIL_FROM_ADDRESS ?: null) : null,
-            defined('MAIL_FROM_NAME') ? MAIL_FROM_NAME : ''
+            Config::get('MAIL_FROM_ADDRESS') ?: null,
+            Config::get('MAIL_FROM_NAME', '')
         );
 
-        if (defined('MAIL_ALWAYS_TO') && MAIL_ALWAYS_TO !== '') {
-            $mailer->alwaysTo(MAIL_ALWAYS_TO);
+        if (Config::string('MAIL_ALWAYS_TO') !== '') {
+            $mailer->alwaysTo(Config::string('MAIL_ALWAYS_TO'));
         }
 
         return $mailer;

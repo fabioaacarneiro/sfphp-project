@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 119 tests, 0 failures
+> Verified against PHP 8.4 · suite: 126 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -30,6 +30,7 @@ code does today. Where something does not exist, it says so — see
 - [Seeders and factories](#seeders-and-factories)
 - [Cache](#cache)
 - [Queue](#queue)
+- [Events](#events)
 - [Mail](#mail)
 - [Validation](#validation)
 - [File uploads](#file-uploads)
@@ -43,6 +44,7 @@ code does today. Where something does not exist, it says so — see
 - [JWT](#jwt)
 - [Error handling](#error-handling)
 - [Logging](#logging)
+- [Health and metrics](#health-and-metrics)
 - [CLI](#cli)
 - [SFCSS](#sfcss)
 - [SFJS](#sfjs)
@@ -224,6 +226,35 @@ public/index.php
 genuinely needs a value (the database, JWT) fails on its own, with a specific
 message.
 
+### Reading a setting
+
+`Bootstrap` turns `.env` into constants, and the framework reads them through
+`Config` rather than with `constant()` directly:
+
+```php
+use SfphpProject\src\Config;
+
+Config::get('APP_ENV', 'production');
+Config::int('SESSION_LIFETIME', 7200);
+Config::string('MAIL_FROM_ADDRESS');
+Config::has('JWT_KEY');
+```
+
+An explicit `set()` wins, then the constant, then the default the caller passed.
+Nothing that reads `APP_ENV` directly has changed — the constants are still
+defined and still work.
+
+The reason for the indirection is that a constant cannot be unset. That is fine
+for an application, which decides its settings once at boot, and awkward for a
+test, which wants to know what happens with a different session lifetime without
+starting a separate process to find out:
+
+```php
+Config::set('SESSION_LIFETIME', 60);
+// ...
+Config::forget('SESSION_LIFETIME');   // back to the constant
+```
+
 ---
 
 ## Routing
@@ -292,6 +323,13 @@ The request path is decoded segment by segment before matching, so
 `/products/caf%C3%A9` matches `/products/name:alpha`. Encoded separators
 (`%2F`, `%5C`) are **not** turned into real ones: `/a%2Fb` never reaches the
 route `/a/b`.
+
+A route **without parameters** is matched by comparing two strings, never by
+running a regular expression, and a route with them compiles its pattern once
+and keeps it. Most applications are mostly static paths, so most of the
+dispatch loop costs a comparison. What is still linear is the loop itself: the
+router walks the table until something matches, and nothing is compiled ahead of
+time to a file.
 
 ### Groups
 
@@ -1336,6 +1374,17 @@ honour the semantics asked of it, rather than silently changing them.
 
 ### Creating and running
 
+Migrations take a lock before they read the pending list, so two instances
+migrating on deploy cannot both decide the same file is pending and both run it.
+MySQL and PostgreSQL each have an advisory lock — a named lock tied to the
+connection, released when the connection goes away, so a deploy killed
+mid-migration leaves nothing stuck. A driver without one is not refused: it logs
+that it is running unlocked, because failing migrations on SQLite would be worse
+than leaving off a guard where a single writer is the norm anyway.
+
+Running migrations as one step of a pipeline is still the better shape. The lock
+is there because the framework should not depend on everyone having it.
+
 ```bash
 ./sfphp make:migration create_users_table
 ./sfphp make:migration:create users        # pre-filled with id + timestamps
@@ -2032,6 +2081,74 @@ database belong to real people.
 
 ---
 
+## Events
+
+```php
+use SfphpProject\src\Events\Dispatcher;
+
+Dispatcher::listen(OrderPlaced::class, SendReceipt::class);
+Dispatcher::listen(OrderPlaced::class, fn (OrderPlaced $e) => Metrics::count('orders.placed'));
+
+Dispatcher::dispatch(new OrderPlaced($order));
+```
+
+`make:event` and `make:listener` generated classes for four versions with
+nothing to dispatch them. A generator producing code for infrastructure that
+does not exist is worse than no generator, because it looks like a feature.
+
+An event is **any object**. There is no base class to extend and no interface to
+implement, because neither would carry information: what makes something an
+event is that somebody listens for it.
+
+### Listeners
+
+A listener is a callable, or the name of a class with a `handle()` method. The
+class name form is resolved through the container **when the event fires**, so
+a listener that needs a database connection does not open one at boot for an
+event that may never happen.
+
+```bash
+./sfphp make:listener SendReceipt
+```
+
+Registering against a parent class or an interface catches its children, which
+is what makes "record every domain event" expressible without naming each one:
+
+```php
+Dispatcher::listen(DomainEvent::class, AuditTrail::class);
+```
+
+### A listener that throws
+
+It is logged, with the event and the listener named, and the others still run.
+Dispatching is telling, not asking: an event whose third listener failed has
+still happened, and making the action that fired it fail would put one
+listener's bug in the caller's path.
+
+```php
+Dispatcher::dispatchOrFail($event);   // when the caller does depend on them
+```
+
+That is a separate method rather than a flag, because the default matters more
+than the exception: a flag invites passing `true` without deciding.
+
+### Under a persistent runtime
+
+Listeners live in a static and are registered once, at boot, like routes. That
+is the right shape for something an application declares. What must not go in a
+listener is per-request state captured in a closure — it would outlive the
+request that created it and be seen by the next one.
+
+### What is missing
+
+| Missing | Situation |
+|---|---|
+| Queued listeners | A listener runs in the request that fired the event; dispatch a job from it to move the work |
+| Stopping propagation | Every listener runs; there is no "handled, stop" |
+| Wildcard names | Registration is by class, which a parent class already generalises |
+
+---
+
 ## Validation
 
 ```php
@@ -2287,7 +2404,7 @@ would make searching for one harder rather than easier.
 | Missing | Situation |
 |---|---|
 | Embedded CLDR plural rules | Would need `ext-intl` or a copy of the data. `pluralizer()` is the hook |
-| Per-locale date and number formatting | `ext-intl` does that well; the framework does not attempt it |
+| CLDR-accurate formatting without `ext-intl` | `Time::localised()` and `Time::number()` use the extension when it is there and degrade when it is not |
 | Route translation (`/products` ↔ `/produtos`) | Does not exist |
 | String extraction into catalogs | No command scans the code |
 | Text direction (RTL) | A template decision, not the translator's |
@@ -2340,6 +2457,35 @@ APP_TIMEZONE=America/Sao_Paulo
 
 `APP_TIMEZONE` decides how times are **shown**. It does not decide how they are
 stored, and changing it does not change a single row.
+
+### In the visitor's language
+
+`Time::display()` takes a `date()` format, which is fixed text: `d/m/Y` is
+wrong for an American reader and `F` prints "September" to someone reading
+Portuguese. For anything a visitor reads, ask for a style instead of a format
+and let the locale decide the order and the words:
+
+```php
+Time::localised($order->created_at);                        // Sep 21, 2026, 10:00 AM
+Time::localised($order->created_at, 'full', 'none');        // Monday, September 21, 2026
+Time::localised($order->created_at, 'short', 'short', 'pt-BR');  // 21/09/2026, 10:00
+Time::number(1234.56, 2);                                   // 1,234.56 — or 1.234,56 in pt-BR
+```
+
+Both read the active locale when none is given, so a page already running under
+`SetLocale` needs no argument. The styles are `none`, `short`, `medium`, `long`
+and `full`, for the date and for the time independently.
+
+`Time::number()` is here rather than in the translator because the separators
+swap: 1.234,56 in Portuguese against 1,234.56 in English. Printing one for the
+other is not a cosmetic difference — it reads as a different number.
+
+> **With `ext-intl` these are correct; without it they degrade.** The extension
+> is what carries the CLDR data, so the framework uses it when it is there and
+> falls back to an ISO-ish date and a separator guessed from the language when
+> it is not — the same arrangement `Str` has with mbstring. The fallback gets
+> the long tail wrong, but it gets it wrong as a readable number in the wrong
+> convention, never as a wrong number.
 
 ### Reading values in
 
@@ -2411,7 +2557,7 @@ wrong time.
 
 | Missing | Situation |
 |---|---|
-| Per-locale date formatting | `Time::display()` takes a `date()` format; localised month and day names need `ext-intl`. See [Internationalisation](#internationalisation) |
+| CLDR data of its own | `Time::localised()` reads it from `ext-intl`; without the extension the fallback is ISO-ish rather than wrong |
 | Relative times ("3 hours ago") | Not provided; the phrasing is per language and belongs to the application |
 | A per-user zone column | `Time::in()` takes one; where the user's zone is stored is the application's decision |
 
@@ -2579,7 +2725,7 @@ prompt, which is not your application's form.
 | Proof | session cookie | `Authorization: Bearer` |
 | State | on the server | none |
 | Suits | pages | APIs, workers, another process |
-| Revoke before expiry | yes, delete the session | **no** |
+| Revoke before expiry | yes, delete the session | yes, through the denylist |
 | `Auth::login()` | yes | no — throws |
 
 `SessionGuard` stores **only the identifier** in the session, never the user.
@@ -2592,9 +2738,75 @@ what stops session fixation: an attacker who planted a known id beforehand
 cannot use it afterwards, because the id the victim ends up with is new.
 
 `TokenGuard` stores nothing on the server, which is what makes it usable
-outside a web request — and also what means **a token cannot be revoked before
-it expires**. If you need revocation, you need a list of invalidated tokens,
-which the framework does not provide.
+outside a web request. That is also what makes revocation something you have to
+decide about: a token is accepted because its signature is valid, so nothing
+about the token itself can take it back.
+
+### Revoking a token
+
+```php
+use SfphpProject\src\Auth\TokenDenylist;
+
+TokenDenylist::revoke($token);          // this one token
+TokenDenylist::revokeUser($user->id);   // every token issued before now
+```
+
+The only way to revoke a stateless token is to stop being stateless about the
+ones you have revoked, and the trade is worth seeing plainly: the guard now asks
+the cache on every request, so a token is no longer free to verify.
+
+What keeps that cheap is that a revoked token only has to be remembered until it
+would have expired anyway. A list of everything ever revoked would grow forever;
+this one is entries with a lifetime, so it stays the size of "revoked recently".
+
+`revokeUser()` is "log out everywhere". It cannot list the user's tokens —
+nothing ever recorded them — so it records the moment instead, and a token whose
+`iat` is older than that moment is refused. A login *after* it keeps working,
+which is what stops logging out everywhere from locking someone out of logging
+back in.
+
+Tokens are stored hashed, never whole: a cache someone can read — a shared
+Redis, a dump taken while debugging — would otherwise hand out working
+credentials for every token that has not expired yet.
+
+> **The denylist must be shared between instances.** With the default file
+> driver it is local to one machine, so a token revoked on one instance still
+> works on another. Elsewhere a per-instance cache is a performance choice; here
+> it is a hole.
+
+Checking can be turned off per guard, for a service where tokens are short
+enough that the extra read is not worth it:
+
+```php
+$guard = new TokenGuard($provider, 'id', checkRevocation: false);
+```
+
+### Remembering a login
+
+```php
+use SfphpProject\src\Auth\RememberToken;
+
+$token = RememberToken::issue();
+// ['cookie' => 'selector:verifier', 'selector' => ..., 'hash' => ..., 'expires' => ...]
+```
+
+A remember cookie is a password that never expires and that the user does not
+know they have, so its shape matters. The cookie carries a **selector** in the
+clear, which is the lookup key, and a **verifier**, which is stored only as a
+sha256 hash. A database someone reads therefore does not hand them working
+cookies, and finding the row still costs one indexed lookup rather than a scan.
+
+```php
+$parts = RememberToken::parse($_COOKIE['remember'] ?? '');
+
+if ($parts !== null && RememberToken::matches($parts['verifier'], $row->remember_token)) {
+    // Log the user in, then issue a new token: a cookie works exactly once.
+}
+```
+
+Rotating on every use is what limits the damage. If a stolen cookie is used, the
+real user's next request fails and the theft becomes visible, instead of two
+people sharing an account quietly for a month.
 
 ### Authorization
 
@@ -2664,10 +2876,9 @@ by CI.
 
 | Missing | Situation |
 |---|---|
-| "Remember me" | The migration brings the `remember_token` column; nothing uses it |
+| The "remember me" flow | `RememberToken` issues and verifies the cookie; reading it on a request and reissuing it is the application's |
 | Password recovery | No token table, no e-mail flow |
 | E-mail verification | The `email_verified_at` column exists; the flow does not |
-| Token revocation | A JWT is valid until it expires; there is no revocation list |
 | Two-factor | Does not exist |
 | Roles and permissions | `Gate` decides; storing roles is your application's job |
 
@@ -2859,6 +3070,18 @@ there would look like protection without being any.
 - A failed connection logs the detail and throws a generic exception: the host,
   database and user never reach the visitor
 
+### Uploads
+
+- A file is refused unless `is_uploaded_file()` agrees it is one, so a forged
+  `$_FILES` cannot make the framework read an arbitrary path
+- The media type is read from the file's own bytes, never from the header the
+  client sent
+- The stored name is generated; the client's name is stripped of path segments
+  and null bytes and used only for display
+
+See [File uploads](#file-uploads), including why the stored file still belongs
+outside the document root.
+
 ### Output
 
 - SFHT's `{{ }}` escapes by default; raw output takes `{!! !!}`
@@ -2869,11 +3092,10 @@ there would look like protection without being any.
 
 | Missing | Situation |
 |---|---|
-| Token revocation | A JWT is valid until it expires; there is no revocation list |
-| Password recovery, e-mail verification, 2FA | Out of scope |
-| "Remember me" | The `remember_token` column exists; nothing uses it |
+| Password recovery, e-mail verification, 2FA | The flows belong to the application; [Mail](#mail) is the piece the framework owes it |
+| A revocation list shared by default | `TokenDenylist` works on whatever cache is configured; on the file driver that is one machine. See [Revoking a token](#revoking-a-token) |
 | Storage abstraction for uploads | Files are validated and stored locally; S3 or a shared volume is the application's to arrange. See [File uploads](#file-uploads) |
-| Audit / security logging | Only `error_log()` |
+| Audit logging | Records are structured and carry a request id, but nothing writes a deliberate "who changed what" trail. See [Logging](#logging) |
 
 ---
 
@@ -3234,10 +3456,99 @@ a log aggregator and not.
 
 | Missing | Situation |
 |---|---|
-| Metrics | Counters and timings are not collected; a log line carries a duration, which is not the same thing |
+| Tracing | A request id ties one request's records together; following a call across services needs a trace id propagated between them |
 | Sampling | Every record that passes the level is written; there is no "one in a hundred" |
 | Several destinations at once | One driver at a time — no fan-out to a file and a collector together |
 | Log rotation | The file grows; rotation belongs to `logrotate` or the platform |
+
+---
+
+## Health and metrics
+
+### Health
+
+A load balancer needs somewhere to ask whether sending traffic here will work,
+and "the process is running" is the wrong question: an instance whose database
+is unreachable still accepts connections and still serves errors to everyone
+routed to it.
+
+```php
+use SfphpProject\src\Health;
+
+Health::registerDefaults(['database', 'cache']);
+Health::register('payments', fn (): bool => $gateway->ping());
+
+$report = Health::check();
+// ['healthy' => true, 'checks' => ['database' => ['ok' => true, 'ms' => 1.4], ...]]
+```
+
+The framework ships the checks and not the route, because where it lives and who
+may see it are the application's to decide:
+
+```php
+Router::get('/health', 'HealthController', 'show');
+
+public function show(Request $request): Response
+{
+    $report = Health::check();
+
+    return Response::json($report, $report['healthy'] ? HTTP_OK : 503);
+}
+```
+
+Each check is timed, because "the database answered" and "the database answered
+in four seconds" are different states and only one of them is visible in a
+boolean. A check that throws counts as a failure and its **message** is
+reported — not its trace, which names paths and classes that are nobody else's
+business.
+
+> **A health endpoint describes your infrastructure.** Left public, it tells
+> anyone which dependencies you have and which are currently down, which is the
+> first thing worth knowing before attacking something. Put it behind the
+> balancer's network, or behind a token.
+
+Nothing is registered by default: a health endpoint reporting on a database the
+application does not use would be answering the wrong question.
+
+### Metrics
+
+```php
+use SfphpProject\src\Log\Metrics;
+
+Metrics::count('orders.placed');
+Metrics::count('payments.failed', ['gateway' => 'stripe']);
+
+$report = Metrics::time('report.build', fn () => $builder->run());
+```
+
+A log line carries a duration, which answers "how long did this request take".
+It does not answer "how long do requests take", and the difference is the reason
+metrics exist: one is an anecdote, the other is the shape of the system.
+
+`time()` records the call that **threw**, as well as the one that returned —
+something that only gets slow when it is failing is exactly the thing worth
+seeing.
+
+The collector is in-process. `snapshot()` reads it as an array, and
+`prometheus()` renders the text format a scraper understands, assembled here
+rather than through a client library:
+
+```
+orders_placed 2
+payments_failed{gateway="stripe"} 1
+report_build_ms_count 2
+report_build_ms_sum 41.882
+report_build_ms_min 18.204
+report_build_ms_max 23.678
+```
+
+### What is missing
+
+| Missing | Situation |
+|---|---|
+| Aggregation across instances | Each process holds its own counts; a scraper or a push gateway does the joining |
+| Histograms and percentiles | Count, sum, min and max are recorded; a p99 needs buckets this does not keep |
+| Persistence | Counts are lost when the process ends, which under php-fpm is every request. Scrape a persistent runtime, or push |
 
 ---
 
@@ -3264,10 +3575,10 @@ a log aggregator and not.
 ./sfphp make:scaffold Post     # controller + model + repository + service
 ```
 
-> `make:middleware` and `make:policy` now generate against contracts that exist
-> and run. `make:event` and `make:listener` still produce code for missing
-> infrastructure: there is no event dispatcher. See
-> [Known limitations](#known-limitations).
+> Every generator now produces code against something that exists and runs —
+> `make:event` and `make:listener` included, since `Dispatcher` arrived. What a
+> generated file still owes you is its registration: a listener has to be handed
+> to `Dispatcher::listen()` where the application boots. See [Events](#events).
 
 ### Database
 
@@ -3404,7 +3715,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 119 unit cases
+composer run test        # 126 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
@@ -3420,10 +3731,16 @@ SFPHP_TEST_REDIS_HOST=127.0.0.1 \
   composer run test:db
 ```
 
-It covers the schema builder against both dialects, the database queue, and —
-when a Redis host is given — the cache, the session handler over it and the
-Redis queue driver. Those three had no test that ran against a server until
-this version, and the queue driver was losing every job id because of it.
+It covers the schema builder against both dialects, the database queue, the
+migration lock and — when a Redis host is given — the cache, the session handler
+over it and the Redis queue driver. Those three had no test that ran against a
+server until this version, and the queue driver was losing every job id because
+of it.
+
+Anything whose work happens **on the server** belongs here rather than in the
+unit suite, because that code reads correctly and still does nothing: the
+migration lock is `GET_LOCK` and `pg_try_advisory_lock`, so only a second real
+connection being refused shows that it holds.
 
 CI runs two jobs: `unit` on a PHP 8.1–8.4 matrix **without `mbstring`**, which
 is what keeps the UTF-8 handling from depending on the extension; and
@@ -3447,13 +3764,12 @@ does not do, and you should know before choosing it.
 
 | Missing | Impact |
 |---|---|
-| **Password recovery and two-factor** | Login exists; these flows do not. See [Authentication](#authentication) |
-| **Event system** | `make:event` and `make:listener` generate classes with no dispatcher |
+| **Password recovery and two-factor** | Login exists; these flows do not, and they are the application's to write. See [Authentication](#authentication) and [Mail](#mail) |
+| **An event bus between processes** | `Dispatcher` delivers in the same process, synchronously. Telling another service something happened is a queue job or a message broker, not this |
 | **A full ORM** | There is a [Models](#models) layer with hydration, attribute types, relations (including many-to-many) and `with()`. There is no identity map, unit of work, lazy-loading proxy, polymorphic relation or schema derived from the class — and [ORM or query builder?](#orm-or-query-builder) explains the reason for each |
-| **Per-locale formatting** | Dates and numbers are not formatted per language; `ext-intl` does that well and the framework does not attempt it. See [Internationalisation](#internationalisation) |
-| **Relative and localised dates** | "3 hours ago" and localised month names are not provided; storage and conversion are. See [Time and time zones](#time-and-time-zones) |
-| **Metrics** | Records carry durations; counters and timings are not collected. See [Logging](#logging) |
-| **Route caching** | Dispatch is O(n), one `preg_match` per route. Fine for dozens, not hundreds |
+| **Relative dates** | "3 hours ago" is not provided: the phrasing is per language and belongs to the application. Localised dates and numbers are, through `Time::localised()` and `Time::number()`. See [Time and time zones](#time-and-time-zones) |
+| **A metrics backend** | `Metrics` counts and times in the process and prints Prometheus text; shipping it to a collector, and keeping it across requests, is the deployment's. See [Health and metrics](#health-and-metrics) |
+| **Route caching to disk** | A static path is matched by comparison rather than by `preg_match`, but a parameterised route still costs one match, and nothing is compiled ahead of time. Fine for hundreds, not thousands |
 | **Session revocation from elsewhere** | Ending another device's session is buildable on the `database` driver's table; nothing ships. See [Sessions](#sessions) |
 
 SFHT also has no automatic loop variables (`$loop`) and no partial block
@@ -3461,4 +3777,4 @@ inheritance (`@parent`).
 
 ---
 
-*Documentation reviewed on 2026-09-21 against the running code.*
+*Documentation reviewed on 2026-09-22 against the running code.*
