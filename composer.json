@@ -33,7 +33,14 @@
         "test:all": [
             "@test",
             "@test:db"
-        ]
+        ],
+        "post-install-cmd": [
+            "@php sfphp assets:publish"
+        ],
+        "post-update-cmd": [
+            "@php sfphp assets:publish"
+        ],
+        "assets": "@php sfphp assets:publish"
     },
     "suggest": {
         "ext-mbstring": "Improves Unicode case conversion; the framework falls back to ASCII folding without it.",

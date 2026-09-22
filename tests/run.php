@@ -4685,7 +4685,17 @@ $tests->run('the published package carries the framework and nothing else', func
         return;
     }
 
-    $command = 'git -C ' . escapeshellarg($root) . ' archive --format=tar HEAD 2>/dev/null | tar -t 2>/dev/null';
+    /*
+     * The index rather than HEAD. What gets published is a commit, but running
+     * against HEAD means a shipped file reads as missing for as long as it is
+     * staged and not yet committed — the test would be red during exactly the
+     * change it exists to check.
+     */
+    $tree = trim((string) shell_exec('git -C ' . escapeshellarg($root) . ' write-tree 2>/dev/null'));
+    $ref = $tree === '' ? 'HEAD' : $tree;
+
+    $command = 'git -C ' . escapeshellarg($root) . ' archive --format=tar ' . escapeshellarg($ref)
+        . ' 2>/dev/null | tar -t 2>/dev/null';
     $listing = shell_exec($command);
 
     if (!is_string($listing) || trim($listing) === '') {
@@ -4712,6 +4722,7 @@ $tests->run('the published package carries the framework and nothing else', func
         'src/I18n/lang/en/http.php',
         'resources/assets/css/sfcss.min.css',
         'resources/assets/js/sfjs.js',
+        'resources/assets/js/sfjs.min.js',
     ] as $needed) {
         $tests->assertSame(true, in_array($needed, $entries, true));
     }
@@ -4719,6 +4730,38 @@ $tests->run('the published package carries the framework and nothing else', func
     // The console is run as a command, so it has to arrive executable.
     $mode = shell_exec('git -C ' . escapeshellarg($root) . ' ls-files -s sfphp 2>/dev/null');
     $tests->assertSame(true, is_string($mode) && str_starts_with(trim((string) $mode), '100755'));
+});
+
+$tests->run('the minified script is still a program, and still the same one', function () use ($tests): void {
+    /*
+     * A minifier that is wrong produces a file that looks fine in a directory
+     * listing and breaks every page that loads it. SFJS has no regex literals,
+     * which is what makes a minifier this small safe — and this is what would
+     * notice if that stopped being true.
+     */
+    $readable = Assets::path() . '/js/sfjs.js';
+    $minified = Assets::path() . '/js/sfjs.min.js';
+
+    $tests->assertSame(true, is_file($minified));
+    $tests->assertSame(true, filesize($minified) < filesize($readable));
+
+    // Comments went, the code did not.
+    $source = file_get_contents($minified);
+    $tests->assertSame(false, str_contains($source, 'HTMX-like AJAX'));
+    $tests->assertSame(true, str_contains($source, 'const sf'));
+
+    $node = trim((string) shell_exec('command -v node 2>/dev/null'));
+
+    if ($node === '') {
+        // No JavaScript engine here; the CI runner has one.
+        return;
+    }
+
+    $status = 0;
+    $output = [];
+    exec(escapeshellarg($node) . ' --check ' . escapeshellarg($minified) . ' 2>&1', $output, $status);
+
+    $tests->assertSame(0, $status);
 });
 
 $tests->finish();

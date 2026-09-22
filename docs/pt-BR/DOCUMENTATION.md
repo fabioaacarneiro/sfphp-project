@@ -3810,12 +3810,25 @@ Referência completa: [SFCSS](SFCSS.md) e
 
 ## SFJS
 
-Biblioteca JavaScript sem dependências — 11KB crus, **3,0KB gzipped**.
-Exposta como `window.sf`.
+Biblioteca JavaScript sem dependências — 11KB crus, 8KB minificados, **2,4KB
+gzipped**. Exposta como `window.sf`.
 
 ```html
-<script src="/assets/js/sfjs.js"></script>
+<script src="/assets/js/sfjs.min.js"></script>
+<script src="/assets/js/sfjs.js"></script>     <!-- legível, para depurar -->
 ```
+
+```bash
+./sfphp js:build         # regera o sfjs.min.js a partir do sfjs.js
+./sfphp assets:publish   # copia os dois para public/assets
+```
+
+O minificador remove comentários e colapsa espaço em branco, e de propósito não
+reescreve tokens — nada de encurtar nomes, remover ponto e vírgula ou juntar
+instruções numa linha. É aí que um minificador muda o sentido de um programa, e
+o quilobyte a mais não compensa manter um parser de JavaScript num framework sem
+dependências. Um teste confere que os dois builds expõem a mesma API e que o
+minificado ainda é analisável.
 
 ### API programática
 

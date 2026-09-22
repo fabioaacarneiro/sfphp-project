@@ -3816,12 +3816,25 @@ Full reference: [SFCSS](SFCSS.md) and
 
 ## SFJS
 
-A dependency-free JavaScript library — 11KB raw, **3.0KB gzipped**. Exposed as
-`window.sf`.
+A dependency-free JavaScript library — 11KB raw, 8KB minified, **2.4KB
+gzipped**. Exposed as `window.sf`.
 
 ```html
-<script src="/assets/js/sfjs.js"></script>
+<script src="/assets/js/sfjs.min.js"></script>
+<script src="/assets/js/sfjs.js"></script>     <!-- readable, for debugging -->
 ```
+
+```bash
+./sfphp js:build         # rebuilds sfjs.min.js from sfjs.js
+./sfphp assets:publish   # copies both into public/assets
+```
+
+The minifier removes comments and collapses whitespace, and deliberately does
+not rewrite tokens — no shortened names, no dropped semicolons, no statements
+joined onto one line. Those are where a minifier changes what a program means,
+and the extra kilobyte is not worth owning a JavaScript parser in a framework
+that has no dependencies. A test checks that both builds expose the same API and
+that the minified one still parses.
 
 ### Programmatic API
 

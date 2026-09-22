@@ -67,11 +67,12 @@ final class Assets
     /**
      * SFJS, as bytes.
      *
+     * @param bool $minified Whether to read the minified build
      * @return string The script
      */
-    public static function js(): string
+    public static function js(bool $minified = true): string
     {
-        return self::read('js/sfjs.js');
+        return self::read('js/' . ($minified ? 'sfjs.min.js' : 'sfjs.js'));
     }
 
     /**
@@ -120,7 +121,7 @@ final class Assets
      */
     public static function files(): array
     {
-        return ['css/sfcss.css', 'css/sfcss.min.css', 'js/sfjs.js'];
+        return ['css/sfcss.css', 'css/sfcss.min.css', 'js/sfjs.js', 'js/sfjs.min.js'];
     }
 
     /**
