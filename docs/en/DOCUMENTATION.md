@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 128 tests, 0 failures
+> Verified against PHP 8.4 · suite: 134 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -42,6 +42,7 @@ code does today. Where something does not exist, it says so — see
 - [Sessions](#sessions)
 - [CSRF](#csrf)
 - [JWT](#jwt)
+- [Debugging](#debugging)
 - [Error handling](#error-handling)
 - [Logging](#logging)
 - [Health and metrics](#health-and-metrics)
@@ -58,7 +59,7 @@ code does today. Where something does not exist, it says so — see
 **It is** a lean framework for web applications and APIs, with routing,
 Request/Response objects, a middleware pipeline, a DI container, a query
 builder, a schema builder with MySQL/PostgreSQL parity, a template engine,
-cache, queues, and a CLI with 32 commands.
+cache, queues, and a CLI with 33 commands.
 
 **It is not** a replacement for Laravel or Symfony. There is no full ORM and no
 event system, and authentication covers login, guards and authorization but not
@@ -3348,6 +3349,68 @@ php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 
 ---
 
+## Debugging
+
+```php
+dump($order);              // show it and carry on
+dump($a, $b, $c);          // several at once
+dd($request->all());       // show it and stop
+```
+
+`dd()` **replaces the response** with a page showing only what was dumped. That
+is the difference from printing a value into the page you were already
+rendering: you asked to stop and look, so what you are looking at is not mixed
+in with a half-finished layout.
+
+The screen is built from SFCSS — the same stylesheet an application writes its
+own pages with — and the stylesheet is inlined rather than linked, because a
+screen the framework renders has to render when the application around it is
+what is broken.
+
+What it shows, and why each part is there:
+
+| | |
+|---|---|
+| The line that called it | A dump you cannot locate is a riddle. `app/controllers/OrderController.php:42` |
+| Property visibility | `private $token` read as public sends you looking in the wrong place |
+| String length | A value that looks right and is 11 characters when you expected 10 is the bug |
+| `already shown above` | A value that points at itself is reported rather than followed |
+| `uninitialised` | A typed property that was never assigned. Reading it throws; that state is usually the answer being looked for |
+| `only the first 200 shown` | What was cut is stated. A truncated dump that admits it beats a browser that stops responding |
+
+Branches collapse. They use `<details>`, so collapsing works with no script at
+all — including behind a Content-Security-Policy that blocks inline scripts.
+
+### In a terminal
+
+```bash
+./sfphp queue:work
+```
+
+A queue worker, a console command and a test run have no browser. There the
+same dump is written to standard output as indented text, coloured with ANSI
+when the output is a terminal and plain when it is redirected or piped — escape
+codes in a file you are about to `grep` are noise.
+
+### In production
+
+```php
+dd($user);   // APP_ENV=production
+```
+
+The dump is **written to the log** and the visitor gets the ordinary error page.
+`dd()` still stops, by throwing.
+
+A dump handed to a visitor shows whatever was passed to it: a user record, the
+request headers, a configuration array. Working the same way in every
+environment would mean a forgotten `dd()` is a data leak; this way it is an
+entry in your log and a 500 for them. The log goes through `LogManager`, so
+passwords and tokens are redacted on the way.
+
+`dump()` in production writes to the log too, and does not stop.
+
+---
+
 ## Error handling
 
 An exception thrown inside an action is caught by the router, at a boundary
@@ -3611,7 +3674,7 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` exposes **32 commands**.
+`./sfphp` exposes **33 commands**.
 
 ### Generation (12 generators)
 
@@ -3658,6 +3721,22 @@ report_build_ms_max 23.678
 ./sfphp queue:failed
 ```
 
+All four follow `CACHE_DRIVER` and `QUEUE_DRIVER`. A `cache:clear` that emptied
+a file cache while the application used Redis would report success and change
+nothing.
+
+### Assets
+
+```bash
+./sfphp assets:publish                     # into public/assets
+./sfphp assets:publish --path=web/static   # somewhere else
+./sfphp assets:publish --force             # overwrite what is there
+```
+
+Copies SFCSS and SFJS out of the package and into a directory the project
+serves. Run it after installing and after upgrading; a second run that finds
+the same files copies nothing and says so.
+
 ### Server and utilities
 
 ```bash
@@ -3684,21 +3763,46 @@ from that config.
 
 | | |
 |---|---|
-| Classes in total | **2,337** |
-| — base utilities | 1,209 |
+| Classes in total | **2,339** |
+| — base utilities | 1,211 |
 | — `hover:` variants | 600 |
 | — responsive variants (`sm` `md` `lg` `xl`) | 528 |
 | Colour classes | 600 palette (20 families × 10 shades × `bg`/`text`/`border`) + 25 theme |
-| Size | 110KB raw · 92KB minified · **16.1KB gzipped** |
+| Size | 112KB raw · 94KB minified · **16.4KB gzipped** |
 | Dependencies | none |
 
 ```bash
-./sfphp css:build     # builds public/assets/css/sfcss.css and .min.css
+./sfphp css:build        # builds resources/assets/css/sfcss.css and .min.css
+./sfphp assets:publish   # copies it into public/assets
 ```
 
 ```html
 <link rel="stylesheet" href="/assets/css/sfcss.css">
 ```
+
+SFCSS lives in the **package**, not in a public directory, because it is a tool
+the framework ships rather than a file of the example application — the same as
+SFJS. `composer require` delivers both; `assets:publish` puts them where a
+browser can reach them.
+
+### What the framework's own screens use
+
+`code`, `pre` and `kbd` are styled, `font-mono` and `font-sans` set the family,
+and the neutral surfaces are variables rather than fixed hex values:
+
+```css
+--surface  --surface-raised  --surface-sunken
+--surface-border  --surface-border-strong
+--body-color  --body-color-muted  --code-color
+```
+
+A `prefers-color-scheme: dark` block redefines those eight and nothing else.
+Brand and palette colours keep their meaning in both themes; what has to change
+is the paper they sit on.
+
+That set exists because the error page and the dump screen are built from SFCSS
+and inline it — a framework with its own stylesheet should not have its own
+screens written in a second one.
 
 Full reference: [SFCSS](SFCSS.md) and
 [utilities reference](SFCSS_UTILITIES.md).
@@ -3707,7 +3811,7 @@ Full reference: [SFCSS](SFCSS.md) and
 
 ## SFJS
 
-A dependency-free JavaScript library — 12KB raw, **3.0KB gzipped**. Exposed as
+A dependency-free JavaScript library — 11KB raw, **3.0KB gzipped**. Exposed as
 `window.sf`.
 
 ```html
@@ -3772,7 +3876,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 128 unit cases
+composer run test        # 134 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
