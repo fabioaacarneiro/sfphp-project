@@ -94,7 +94,7 @@ Optional extensions, declared under `suggest`:
 ### Starting a project
 
 ```bash
-composer create-project fabioaacarneiro/sfphp my-app
+composer create-project fabioaacarneiro/sfphp-framework my-app
 cd my-app
 ./sfphp serve
 ```
@@ -128,7 +128,7 @@ framework is `src/` and does not mind.
 ### Adding it to a project you already have
 
 ```bash
-composer require fabioaacarneiro/sfphp
+composer require fabioaacarneiro/sfphp-framework
 ./vendor/bin/sfphp init
 ```
 
@@ -3899,7 +3899,7 @@ config, and the generator ships with the package — a stylesheet described as
 "generated from a config" is of no use to somebody who has no generator.
 
 ```bash
-cp vendor/fabioaacarneiro/sfphp/tools/css-builder/sfcss.config.json .
+cp vendor/fabioaacarneiro/sfphp-framework/tools/css-builder/sfcss.config.json .
 # edit it: palettes, spacing, breakpoints, fonts
 ./vendor/bin/sfphp css:build
 ```

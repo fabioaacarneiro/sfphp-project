@@ -1,5 +1,5 @@
 {
-    "name": "fabioaacarneiro/sfphp",
+    "name": "fabioaacarneiro/sfphp-framework",
     "description": "A full-stack PHP framework with zero runtime dependencies, built to be used in any language and any script.",
     "license": "MIT",
     "require": {
