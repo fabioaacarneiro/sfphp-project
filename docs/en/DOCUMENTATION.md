@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 152 tests, 0 failures
+> Verified against PHP 8.4 · suite: 153 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -4343,7 +4343,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 152 unit cases
+composer run test        # 153 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
