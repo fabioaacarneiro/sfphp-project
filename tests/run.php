@@ -41,7 +41,6 @@ use SfphpProject\src\Cache\FileDriver;
 use SfphpProject\src\Cache\RedisDriver as CacheRedisDriver;
 use SfphpProject\src\RedisConnection;
 use SfphpProject\src\Assets;
-use SfphpProject\src\Starter;
 use SfphpProject\src\Debug\Dumper;
 use SfphpProject\src\Debug\HtmlDump;
 use SfphpProject\src\Debug\TextDump;
@@ -3642,11 +3641,18 @@ $tests->run('the package is a project somebody can start developing in', functio
 
     $tests->assertSame(null, $composer['autoload-dev'] ?? null);
 
-    // Creating a project leaves it ready to run rather than ready to configure.
+    /*
+     * Creating a project leaves it ready to run rather than ready to configure.
+     * There is no post-install hook any more: `composer require` was the path
+     * that needed one, and that path is gone — it put a whole second
+     * application inside the consumer's vendor/, which is exactly what this
+     * layout exists to avoid.
+     */
     $tests->assertSame(
         ['@php sfphp env:example', '@php sfphp assets:publish'],
         $composer['scripts']['post-create-project-cmd']
     );
+    $tests->assertSame(null, $composer['scripts']['post-install-cmd'] ?? null);
 
     // And excluded from what a `composer require` downloads.
     $attributes = (string) file_get_contents(__DIR__ . '/../.gitattributes');
@@ -4811,9 +4817,6 @@ $tests->run('the published package is a project that runs out of the box', funct
         'resources/assets/css/sfcss.min.css',
         'resources/assets/js/sfjs.js',
         'resources/assets/js/sfjs.min.js',
-        'resources/starter/public/index.php',
-        'resources/starter/app/Controllers/WelcomeController.php.stub',
-        'resources/starter/resources/views/welcome.sfht',
         // Without these, "generated from a config" is not true for anybody who
         // installed the framework rather than cloning it.
         'tools/css-builder/sfcss-builder.php',
@@ -4867,67 +4870,6 @@ $tests->run('the minified script is still a program, and still the same one', fu
     exec(escapeshellarg($node) . ' --check ' . escapeshellarg($minified) . ' 2>&1', $output, $status);
 
     $tests->assertSame(0, $status);
-});
-
-$tests->run('a new project gets something that answers a request', function () use ($tests): void {
-    /*
-     * composer require delivers a framework and nothing that runs: no front
-     * controller, no route, no view. Somebody who installs it and types serve
-     * deserves a page rather than a 404 and a hunt through the documentation
-     * for what to create.
-     */
-    $target = sys_get_temp_dir() . '/sfphp-starter-' . bin2hex(random_bytes(4));
-
-    try {
-        $result = Starter::publish($target, 'Acme\\Shop');
-
-        $tests->assertSame(Starter::files(), $result['written']);
-        $tests->assertSame([], $result['skipped']);
-
-        foreach (Starter::files() as $relative) {
-            $tests->assertSame(true, is_file($target . '/' . $relative));
-        }
-
-        // The namespace the caller asked for, in the file and in the advice.
-        $controller = file_get_contents($target . '/app/Controllers/WelcomeController.php');
-        $tests->assertSame(true, str_contains($controller, 'namespace Acme\\Shop\\Controllers;'));
-        $tests->assertSame(false, str_contains($controller, '{NAMESPACE}'));
-        $tests->assertSame(['Acme\\Shop\\' => 'app/'], Starter::autoload('Acme\\Shop'));
-
-        // Every written file is valid PHP, because a scaffold that does not
-        // parse is worse than none.
-        foreach (['public/index.php', 'server.php', 'routes.php', 'app/Controllers/WelcomeController.php'] as $php) {
-            $status = 0;
-            $output = [];
-            exec('php -l ' . escapeshellarg($target . '/' . $php) . ' 2>&1', $output, $status);
-            $tests->assertSame(0, $status);
-        }
-
-        /*
-         * Running it twice keeps what is there. Overwriting somebody's front
-         * controller because they repeated a command is the kind of help nobody
-         * asks for again.
-         */
-        $again = Starter::publish($target, 'Acme\\Shop');
-        $tests->assertSame([], $again['written']);
-        $tests->assertSame(Starter::files(), $again['skipped']);
-
-        $forced = Starter::publish($target, 'Acme\\Shop', true);
-        $tests->assertSame(Starter::files(), $forced['written']);
-
-        // A namespace that is not one is refused rather than written into a file.
-        $tests->assertThrows(fn () => Starter::publish($target, '9 bad'), RuntimeException::class);
-    } finally {
-        foreach (array_reverse(Starter::files()) as $relative) {
-            @unlink($target . '/' . $relative);
-        }
-
-        foreach (['app/Controllers', 'app', 'public', 'resources/views', 'resources'] as $directory) {
-            @rmdir($target . '/' . $directory);
-        }
-
-        @rmdir($target);
-    }
 });
 
 $tests->run('the dark theme changes nothing a page did not ask for', function () use ($tests): void {
@@ -5184,44 +5126,6 @@ $tests->run('the console finds a project laid out like a project, not like this 
         }
 
         @rmdir($project);
-    }
-});
-
-$tests->run('a template that is not valid php is not named like php', function () use ($tests): void {
-    /*
-     * The welcome controller's placeholder sits in its `namespace`
-     * declaration, so the file cannot parse — which is correct, and which made
-     * an editor report an error on a file working exactly as intended. Anything
-     * in this directory that does not parse carries .stub, and the lint script
-     * covers resources/ so a new one cannot arrive unnoticed.
-     */
-    foreach (glob(Starter::path() . '/**/*.php') ?: [] as $file) {
-        $status = 0;
-        $output = [];
-        exec('php -l ' . escapeshellarg($file) . ' 2>&1', $output, $status);
-        $tests->assertSame(0, $status);
-    }
-
-    // And publishing still writes the file under its real name.
-    $target = sys_get_temp_dir() . '/sfphp-stub-' . bin2hex(random_bytes(4));
-
-    try {
-        Starter::publish($target, 'Acme\\Shop');
-
-        $written = $target . '/app/Controllers/WelcomeController.php';
-        $tests->assertSame(true, is_file($written));
-        $tests->assertSame(false, is_file($written . '.stub'));
-        $tests->assertSame(true, str_contains((string) file_get_contents($written), 'namespace Acme\\Shop\\Controllers;'));
-    } finally {
-        foreach (Starter::files() as $relative) {
-            @unlink($target . '/' . $relative);
-        }
-
-        foreach (['app/Controllers', 'app', 'public', 'resources/views', 'resources'] as $directory) {
-            @rmdir($target . '/' . $directory);
-        }
-
-        @rmdir($target);
     }
 });
 

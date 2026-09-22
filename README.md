@@ -34,21 +34,18 @@ is written for you with a real `JWT_KEY`, and SFCSS and SFJS are published into
 Everything there is yours; the framework is `src/` and does not mind what you
 delete.
 
-Adding it to a project you already have instead:
+Nothing you edit lives in `vendor/`. It holds the autoloader and nothing else,
+because the framework has no dependencies:
 
-```bash
-composer require fabioaacarneiro/sfphp-framework
-./vendor/bin/sfphp init
 ```
-
-`init` writes only what is missing and keeps whatever is already there. The one
-thing the framework has an opinion about is a single call at the top of your
-front controller:
-
-```php
-require __DIR__ . '/../vendor/autoload.php';
-
-SfphpProject\src\Bootstrap::load(dirname(__DIR__));
+my-app/
+  public/      what the web server serves
+  app/         your code and your templates
+  src/         the framework, and what configures it: routes, middleware
+  database/    migrations, seeders, factories
+  lang/        your message catalogs
+  sfphp        the console
+  vendor/      the autoloader. Nothing to open
 ```
 
 To work on the framework itself, clone it — a clone adds the test suite, the
@@ -165,7 +162,7 @@ data in the database without protecting its real destination.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 145 unit cases
+composer run test        # 143 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run docs        # the three documentation languages agree
 ```

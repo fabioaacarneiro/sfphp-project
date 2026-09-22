@@ -18,35 +18,39 @@ framework — nem as de erro — carrega CSS, fontes ou JavaScript de um CDN.
 
 ## Instalação
 
-Como dependência:
-
 ```bash
-composer require fabioaacarneiro/sfphp-framework
+composer create-project fabioaacarneiro/sfphp-framework meu-app
+cd meu-app
+./sfphp serve
 ```
 
-```php
-require __DIR__ . '/../vendor/autoload.php';
+É toda a configuração. O <http://localhost:8000> responde, e o que você tem é
+uma aplicação funcionando para editar — um controller, as views dele, as rotas,
+migrations de users e sessions, e o console em `./sfphp` na raiz. O `.env` vem
+escrito com uma `JWT_KEY` de verdade, e o SFCSS e o SFJS já publicados em
+`public/assets`.
 
-SfphpProject\src\Bootstrap::load(dirname(__DIR__));
+Nada do que você edita fica no `vendor/`. Ele guarda o autoloader e mais nada,
+porque o framework não tem dependências:
+
+```
+meu-app/
+  public/      o que o servidor web serve
+  app/         o seu código e os seus templates
+  src/         o framework, e o que o configura: rotas, middleware
+  database/    migrations, seeders, factories
+  lang/        os seus catálogos de mensagem
+  sfphp        o console
+  vendor/      o autoloader. Nada para abrir
 ```
 
-Ou comece pela aplicação de exemplo, com rotas, views e migrations já prontas:
+Para trabalhar **no** framework, clone — um clone acrescenta a suíte de testes,
+a documentação nos três idiomas e a definição do CI:
 
 ```bash
 git clone https://github.com/fabioaacarneiro/sfphp-project.git
-cd sfphp-project
-composer install
-cp .env-example .env
+cd sfphp-project && composer install && cp .env-example .env && ./sfphp serve
 ```
-
-Ajuste o `.env`:
-
-- **`JWT_KEY`** — obrigatória para emitir ou validar tokens. Gere com
-  `php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"`
-- **Banco de dados** — opcional. Configure só se precisar.
-
-O `.env` é opcional: um clone novo sobe sem configuração, e cada recurso que
-realmente precisa de um valor falha com mensagem específica.
 
 ## Executando
 

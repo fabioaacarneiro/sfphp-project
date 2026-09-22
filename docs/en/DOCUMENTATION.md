@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 145 tests, 0 failures
+> Verified against PHP 8.4 · suite: 143 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -59,7 +59,7 @@ code does today. Where something does not exist, it says so — see
 **It is** a lean framework for web applications and APIs, with routing,
 Request/Response objects, a middleware pipeline, a DI container, a query
 builder, a schema builder with MySQL/PostgreSQL parity, a template engine,
-cache, queues, and a CLI with 35 commands.
+cache, queues, and a CLI with 34 commands.
 
 **It is not** a replacement for Laravel or Symfony. There is no full ORM and no
 event system, and authentication covers login, guards and authorization but not
@@ -125,21 +125,24 @@ SFJS into `public/assets`.
 Everything there is **yours**. Delete the example controller and its views; the
 framework is `src/` and does not mind.
 
-### Adding it to a project you already have
+### Where everything lives
 
-```bash
-composer require fabioaacarneiro/sfphp-framework
-./vendor/bin/sfphp init
-```
+Nothing you edit is inside `vendor/`, and that is the rule the layout is built
+on: `vendor/` holds the autoloader and nothing else, because the framework has
+no dependencies and a created project carries its own copy of it.
 
-`init` writes only what is missing — a front controller, a route file, a
-controller, a view, the router script the built-in server uses — and publishes
-the assets. A file that is already there is kept and reported rather than
-overwritten; `--force` overrides that and `--namespace=Acme\Shop` changes the
-namespace the generated classes use.
+| | |
+|---|---|
+| `public/` | What the web server serves — the front controller, and the published assets |
+| `app/` | Your code and your templates: controllers, models, services, views |
+| `src/` | The framework, and what configures it: routes, middleware, migrations, the settings layer |
+| `database/` | Migrations, seeders and factories |
+| `lang/` | Your message catalogs |
+| `.env` | Configuration, never committed |
+| `vendor/` | The autoloader. Nothing to open, nothing to edit |
 
-The only part the framework has an opinion about is one call, at the top of your
-front controller and of any console entry point:
+The one call the framework asks for is already in the front controller `init`
+wrote, and it is worth knowing because it is what ties the two halves together:
 
 ```php
 require __DIR__ . '/../vendor/autoload.php';
@@ -3762,7 +3765,7 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` exposes **35 commands**.
+`./sfphp` exposes **34 commands**.
 
 ### Generation (12 generators)
 
@@ -3813,17 +3816,6 @@ All four follow `CACHE_DRIVER` and `QUEUE_DRIVER`. A `cache:clear` that emptied
 a file cache while the application used Redis would report success and change
 nothing.
 
-### Scaffolding a project
-
-```bash
-./vendor/bin/sfphp init
-./vendor/bin/sfphp init --namespace=Acme\Shop
-./vendor/bin/sfphp init --force            # overwrite what is there
-```
-
-For a project that installed the framework and has nothing to run yet. See
-[Adding it to a project you already have](#adding-it-to-a-project-you-already-have).
-
 ### Assets
 
 ```bash
@@ -3872,7 +3864,7 @@ expose the CLI to untrusted input.
 ## SFCSS
 
 A utility CSS framework. **It arrives built** — `composer require` delivers the
-stylesheet, and `composer install`, `sfphp init` and `sfphp serve` each copy it
+stylesheet, and `composer create-project` and `sfphp serve` each copy it
 into `public/assets`, so using it is one line of HTML:
 
 ```html
@@ -3895,22 +3887,20 @@ it, which is [further down](#changing-sfcss).
 ### Changing SFCSS
 
 The colours, the spacing scale, the type scale and the breakpoints come from a
-config, and the generator ships with the package — a stylesheet described as
-"generated from a config" is of no use to somebody who has no generator.
+config, and it is in your project — `tools/css-builder/sfcss.config.json`, next
+to the generator that reads it. Edit it and rebuild:
 
 ```bash
-cp vendor/fabioaacarneiro/sfphp-framework/tools/css-builder/sfcss.config.json .
-# edit it: palettes, spacing, breakpoints, fonts
-./vendor/bin/sfphp css:build
+# tools/css-builder/sfcss.config.json — palettes, spacing, breakpoints, fonts
+./sfphp css:build
 ```
 
-`css:build` uses **your** config when there is one next to `composer.json` and
-writes into your `public/assets/css`. Editing the copy inside `vendor/` would
-work until the next `composer update` threw it away, which is why yours wins and
-why the build never writes into the package.
+`css:build` writes into `public/assets/css`, which is what the browser reads.
+A config placed next to `composer.json` wins over the one in `tools/`, for a
+project that would rather keep its design apart from the generator.
 
 ```bash
-./vendor/bin/sfphp css:build --config=design/sfcss.json --output=web/css
+./sfphp css:build --config=design/sfcss.json --output=web/css
 ```
 
 > **A stylesheet you built is not overwritten.** `composer install` and `serve`
@@ -4031,7 +4021,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 145 unit cases
+composer run test        # 143 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
