@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 153 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 154 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -926,8 +926,15 @@ $engine->setGlobals(['version' => '1.0.0', 'anio' => date('Y')]);
 
 Las plantillas se compilan a PHP en disco y se ejecutan con `include`, de modo
 que **OPcache funciona** y los errores de ejecución señalan un archivo y una
-línea reales. La escritura es atómica e invalida OPcache en esa ruta exacta. La
-caché se revalida por marca de tiempo.
+línea reales. La escritura es atómica e invalida OPcache en esa ruta exacta.
+
+El archivo compilado se llama por la ruta de la plantilla **y por su versión** —
+su fecha de modificación y su tamaño —, así que una plantilla que cambia compila
+a otro archivo y un compilado solo responde por los bytes con los que se hizo.
+Antes era solo la ruta, con una comparación de "más nuevo que", que únicamente
+vale mientras el tiempo avanza: extraer un archivo comprimido lo hace retroceder,
+y una plantilla actualizada instalada por `composer create-project` llegaba más
+vieja que una caché escrita minutos antes y nunca se recompilaba.
 
 ```php
 $engine->clearCache();
@@ -4411,7 +4418,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 153 casos unitarios
+composer run test        # 154 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve

@@ -26,12 +26,29 @@ final class Cache
     /**
      * Get cache key for a template file.
      *
+     * The key names the source, not just its location: the path says which
+     * template, and the modification time and size say which version of it.
+     * A template that changes therefore compiles to a different file, and a
+     * compiled file can only ever answer for the bytes it was made from.
+     *
+     * This used to be the path alone, with a newer-than comparison deciding
+     * whether the compiled file still counted. That is only true while time
+     * moves forward, and extracting an archive moves it backwards: a
+     * `composer create-project` writes the package's own timestamps, so an
+     * updated template arrived older than a cache file written minutes before
+     * and was never recompiled. The site served the previous version of a page
+     * whose source on disk was already the new one.
+     *
      * @param string $path The template file path
      * @return string The cache key
      */
     public function getCacheKey(string $path): string
     {
-        return md5($path);
+        $stamp = is_file($path)
+            ? dechex((int) filemtime($path)) . '-' . dechex((int) filesize($path))
+            : '0-0';
+
+        return md5($path) . '-' . $stamp;
     }
 
     /**
@@ -75,13 +92,15 @@ final class Cache
         }
 
         /*
-         * filemtime() has one-second resolution, so a template edited in the
-         * same second the cache was written compares equal. Treating equal as
-         * stale forces a recompile on the next request, which is the safe
-         * direction: serving a stale template is a bug, recompiling once more
-         * than needed is not.
+         * The name already pins the version, so a compiled file that exists
+         * was made from this exact template. What the name cannot separate is
+         * two edits within the same second that leave the size unchanged —
+         * filemtime() has one-second resolution. Treating a cache file written
+         * in the template's own second as stale closes that: it forces one
+         * more compile, and serving a stale template is a bug while compiling
+         * twice is not.
          */
-        return filemtime($cachePath) > filemtime($templatePath);
+        return filemtime($cachePath) !== filemtime($templatePath);
     }
 
     /**
@@ -121,7 +140,36 @@ final class Cache
             opcache_invalidate($cachePath, true);
         }
 
+        /*
+         * The previous versions of this same template, which now answer for
+         * bytes nobody has any more. Left alone they would accumulate one file
+         * per edit, which on a template being worked on is a file per save.
+         */
+        $this->clearOlderThan($templatePath, $cachePath);
+
         return true;
+    }
+
+    /**
+     * Remove the compiled files of a template's earlier versions.
+     *
+     * @param string $templatePath The template file path
+     * @param string $keep The compiled file to leave in place
+     * @return void
+     */
+    private function clearOlderThan(string $templatePath, string $keep): void
+    {
+        foreach (glob($this->cacheDir . '/' . md5($templatePath) . '-*.php') ?: [] as $file) {
+            if ($file === $keep) {
+                continue;
+            }
+
+            if (function_exists('opcache_invalidate')) {
+                opcache_invalidate($file, true);
+            }
+
+            @unlink($file);
+        }
     }
 
     /**
@@ -169,15 +217,8 @@ final class Cache
      */
     public function clearFor(string $templatePath): bool
     {
-        $cachePath = $this->compiledPath($templatePath);
-
-        if (is_file($cachePath)) {
-            if (function_exists('opcache_invalidate')) {
-                opcache_invalidate($cachePath, true);
-            }
-
-            return unlink($cachePath);
-        }
+        // Every version of it, since the name carries the version.
+        $this->clearOlderThan($templatePath, '');
 
         return true;
     }

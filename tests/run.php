@@ -1487,6 +1487,46 @@ $tests->run('sfht reports unbalanced directives instead of failing silently', fu
     $tests->assertThrows(fn () => $sfht('{{ $x | nosuchfilter }}', ['x' => 1]), RuntimeException::class);
 });
 
+$tests->run('a template that arrives older than its cache is still recompiled', function () use ($tests): void {
+    /*
+     * Reported from a project installed with composer create-project: the
+     * page rendered was the previous release's, while the file on disk was
+     * already the new one. Extracting an archive writes the package's own
+     * timestamps, so the updated template arrived *older* than a cache file
+     * written minutes earlier — and a newer-than comparison called that cache
+     * current. Time moving forward was never a safe thing to rely on.
+     */
+    $directory = sys_get_temp_dir() . '/sfphp-cache-age-' . bin2hex(random_bytes(6));
+    mkdir($directory . '/views', 0755, true);
+
+    $template = $directory . '/views/page.sfht';
+    $engine = new SfhtEngine([$directory . '/views'], $directory . '/cache');
+
+    try {
+        file_put_contents($template, '<p>first</p>');
+        $tests->assertSame('<p>first</p>', $engine->render('page'));
+
+        // The new file, carrying an older timestamp, exactly as a dist does.
+        file_put_contents($template, '<p>second</p>');
+        touch($template, time() - 3600);
+        clearstatcache(true, $template);
+
+        $tests->assertSame('<p>second</p>', $engine->render('page'));
+
+        // And the version nobody has any more does not pile up.
+        $tests->assertSame(1, count(glob($directory . '/cache/*.php') ?: []));
+    } finally {
+        foreach (glob($directory . '/cache/*') ?: [] as $file) {
+            @unlink($file);
+        }
+
+        @unlink($template);
+        @rmdir($directory . '/cache');
+        @rmdir($directory . '/views');
+        @rmdir($directory);
+    }
+});
+
 $tests->run('sfht compiles to an includable file rather than eval', function () use ($tests, $sfht, $sfhtDirectory): void {
     $sfht('<p>{{ $a }}</p>', ['a' => 1]);
 
