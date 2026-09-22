@@ -15,6 +15,15 @@ use SfphpProject\src\Router;
 require_once __DIR__ . "/../vendor/autoload.php";
 
 /*
+ * Explicit, where it used to happen through composer's autoload-dev files
+ * entry. That entry is loaded whenever this package is the root one — which it
+ * is in a `composer create-project` install — and it required a file that lives
+ * in app/, which the package does not ship. So the install failed at autoload
+ * time, before any script could run.
+ */
+SfphpProject\src\Bootstrap::load(dirname(__DIR__));
+
+/*
  * Registered even though the router catches failures inside the pipeline.
  * These handlers cover what a try/catch cannot see: a warning raised during
  * bootstrap, and a fatal reported at shutdown such as running out of memory or

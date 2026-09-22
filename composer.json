@@ -9,7 +9,10 @@
     },
     "autoload": {
         "psr-4": {
-            "SfphpProject\\src\\": "src/"
+            "SfphpProject\\src\\": "src/",
+            "SfphpProject\\app\\": "app/",
+            "Database\\Seeders\\": "database/seeders/",
+            "Database\\Factories\\": "database/factories/"
         },
         "files": [
             "src/runtime.php",
@@ -40,7 +43,11 @@
         "post-update-cmd": [
             "@php sfphp assets:publish"
         ],
-        "assets": "@php sfphp assets:publish"
+        "assets": "@php sfphp assets:publish",
+        "post-create-project-cmd": [
+            "@php sfphp env:example",
+            "@php sfphp assets:publish"
+        ]
     },
     "suggest": {
         "ext-mbstring": "Improves Unicode case conversion; the framework falls back to ASCII folding without it.",
@@ -48,7 +55,7 @@
         "ext-pcntl": "Enables graceful shutdown of the queue worker.",
         "ext-fileinfo": "Reads an uploaded file's real media type. Without it assertType() refuses rather than guessing."
     },
-    "type": "library",
+    "type": "project",
     "keywords": [
         "framework",
         "router",
@@ -58,16 +65,6 @@
         "i18n",
         "zero-dependencies"
     ],
-    "autoload-dev": {
-        "psr-4": {
-            "SfphpProject\\app\\": "app/",
-            "Database\\Seeders\\": "database/seeders/",
-            "Database\\Factories\\": "database/factories/"
-        },
-        "files": [
-            "app/config/config.php"
-        ]
-    },
     "config": {
         "sort-packages": true
     },
