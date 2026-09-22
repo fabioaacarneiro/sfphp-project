@@ -6,7 +6,7 @@ class QueueManager
 {
     protected Queue $driver;
 
-    public function __construct(Queue $driver = null)
+    public function __construct(?Queue $driver = null)
     {
         $this->driver = $driver ?? new DatabaseDriver();
     }

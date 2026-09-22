@@ -8,7 +8,7 @@ class RedisDriver implements Queue
     protected string $prefix = 'queue:';
     protected string $failedPrefix = 'failed:';
 
-    public function __construct(\Redis $redis = null)
+    public function __construct(?\Redis $redis = null)
     {
         if ($redis === null) {
             $redis = new \Redis();

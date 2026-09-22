@@ -58,7 +58,24 @@ final class Session
             return;
         }
 
-        if (session_status() !== PHP_SESSION_NONE || headers_sent()) {
+        if (session_status() !== PHP_SESSION_NONE) {
+            return;
+        }
+
+        /*
+         * "Headers already sent" means a cookie can no longer be set, so on the
+         * web there is no point starting a session the visitor will never be
+         * able to send back. On the command line it means only that something
+         * has been printed, and there is no cookie in the first place — a queue
+         * worker, a console command and the test suite all print long before
+         * they touch a session.
+         *
+         * Conflating the two made this fail in a way that was very hard to see:
+         * one deprecation notice printed at startup was enough to make every
+         * later session silently not exist, taking the idle and absolute
+         * deadlines with it.
+         */
+        if (PHP_SAPI !== 'cli' && headers_sent()) {
             return;
         }
 
@@ -227,7 +244,12 @@ final class Session
      */
     public static function regenerate(): void
     {
-        if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            return;
+        }
+
+        // Same distinction as in start(): the cookie is a web concern only.
+        if (PHP_SAPI === 'cli' || !headers_sent()) {
             session_regenerate_id(true);
         }
     }

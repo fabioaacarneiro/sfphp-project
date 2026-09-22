@@ -2322,7 +2322,7 @@ $tests->run('transactions commit, roll back and preserve the original error', fu
         // A nested call joins the transaction already open.
         $pdo->calls = [];
         Database::transaction(function (): void {
-            Database::transaction(fn (): null => null);
+            Database::transaction(fn () => null);
         });
         $tests->assertSame(['begin', 'commit'], $pdo->calls);
 
@@ -2521,14 +2521,25 @@ $tests->run('password hashing delegates to PHP and stays current', function () u
     $tests->assertSame(false, Hash::needsRehash($hash));
 
     /*
-     * The throwaway hash used to equalise timing on a failed lookup must have
-     * been produced with the parameters password_hash() uses today. PHP 8.4
-     * raised bcrypt's default cost from 10 to 12, and a hash left at 10
-     * verifies about four times faster than a real one — which would reopen
-     * the very difference it exists to hide. This fails when PHP moves again.
+     * The throwaway hash used to equalise timing on a failed lookup must carry
+     * the parameters password_hash() uses on the PHP that is running. A
+     * mismatch in either direction makes the no-such-user path take a
+     * different time from the wrong-password path, which is the difference an
+     * attacker uses to learn which accounts exist.
+     *
+     * The assertion is about the hash actually used, not the baked constant:
+     * PASSWORD_DEFAULT is bcrypt cost 10 on PHP 8.1 to 8.3 and cost 12 on 8.4,
+     * so no single constant can be right everywhere. Asserting the constant is
+     * what made this pass on 8.4 and fail on every other supported version.
      */
-    $timing = (new ReflectionClass(Auth::class))->getConstant('TIMING_HASH');
+    $resolve = new ReflectionMethod(Auth::class, 'timingHash');
+    $resolve->setAccessible(true);
+    $timing = $resolve->invoke(null);
+
     $tests->assertSame(false, password_needs_rehash($timing, PASSWORD_DEFAULT));
+
+    // And it really is a hash something can be verified against.
+    $tests->assertSame(false, password_verify('anything at all', $timing));
 });
 
 $tests->run('credentials are checked and a session login is kept', function () use ($tests): void {
@@ -2957,12 +2968,21 @@ $tests->run('concurrent processes do not lose counts', function () use ($tests):
             . ' ' . escapeshellarg('shared')
             . ' ' . escapeshellarg((string) $perWorker);
 
-        $processes[] = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes[$i]);
+        /*
+         * Output goes to /dev/null rather than to pipes nobody reads. With
+         * pipes, closing the read end while a worker was still writing killed
+         * that worker mid-loop, and the count came up short for a reason that
+         * had nothing to do with locking — which is exactly the failure this
+         * test is supposed to be able to attribute.
+         */
+        $processes[] = proc_open(
+            $command,
+            [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
+            $pipes[$i]
+        );
     }
 
-    foreach ($processes as $index => $process) {
-        fclose($pipes[$index][1]);
-        fclose($pipes[$index][2]);
+    foreach ($processes as $process) {
         proc_close($process);
     }
 
