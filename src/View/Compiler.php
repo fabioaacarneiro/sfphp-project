@@ -128,10 +128,31 @@ final class Compiler
         }
 
         if ($escape) {
-            $code = "htmlspecialchars((string) ({$code}), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')";
+            /*
+             * Markup the framework produced prints as it is; everything else is
+             * escaped. Without this, composing a component would need the raw
+             * form, {!! Card(...) !!}, and asking an author to remember which
+             * values are trusted is how {!! $comment !!} eventually ships.
+             */
+            $code = "\SfphpProject\src\View\Compiler::text({$code})";
         }
 
         return "echo {$code};\n";
+    }
+
+    /**
+     * Render a value for output, escaping anything that is not known markup.
+     *
+     * @param mixed $value The value
+     * @return string The text to print
+     */
+    public static function text(mixed $value): string
+    {
+        if ($value instanceof Sfht) {
+            return (string) $value;
+        }
+
+        return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 
     /**

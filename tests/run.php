@@ -90,6 +90,7 @@ use SfphpProject\src\Str;
 use SfphpProject\src\Time;
 use SfphpProject\src\Validator;
 use SfphpProject\src\View;
+use SfphpProject\src\View\Phpx;
 use SfphpProject\src\View\SfhtEngine;
 
 require __DIR__ . '/TestRunner.php';
@@ -1492,6 +1493,140 @@ $tests->run('sfht compiles to an includable file rather than eval', function () 
     $compiled = glob($sfhtDirectory . '/cache/*.php');
     $tests->assertTrue($compiled !== [] && $compiled !== false);
     $tests->assertTrue(str_starts_with(file_get_contents($compiled[0]), '<?php'));
+});
+
+$tests->run('phpx compiles markup that lives inside a function', function () use ($tests): void {
+    /*
+     * The whole point of the compiler in one source: a region opened with
+     * sfht( and closed by its matching parenthesis, with a parenthesis inside
+     * an attribute that must not be mistaken for the closing one.
+     */
+    $source = <<<'PHPX'
+    <?php
+    namespace SfphpTest\Phpx;
+
+    use SfphpProject\src\View\Sfht;
+
+    function Badge(string $label): Sfht
+    {
+        return sfht(
+            <span class="badge" title="a)b">{{ $label }}</span>
+        );
+    }
+
+    function Panel(string $text): Sfht
+    {
+        return sfht(
+            <div>
+                @php $count = 2; @endphp
+                {{ Badge('ok') }}
+                {{ $text }}
+                @if ($count === 2)<i>two</i>@endif
+            </div>
+        );
+    }
+
+    function notsfht(): string
+    {
+        return 'kept';
+    }
+    PHPX;
+
+    $file = sys_get_temp_dir() . '/sfphp-phpx-' . bin2hex(random_bytes(6)) . '.php';
+    file_put_contents($file, (new Phpx())->compile($source));
+
+    try {
+        // What build --phpx checks, checked here too: the output has to be PHP.
+        exec('php -l ' . escapeshellarg($file) . ' 2>&1', $output, $status);
+        $tests->assertSame(0, $status);
+
+        require $file;
+
+        $badge = SfphpTest\Phpx\Badge('<b>');
+        $tests->assertSame('<span class="badge" title="a)b">&lt;b&gt;</span>', (string) $badge);
+
+        $panel = (string) SfphpTest\Phpx\Panel('<script>');
+
+        /*
+         * Both interpolations are {{ }}. The component renders and the string
+         * is escaped, because the type decides — this is the reason a
+         * component returns Sfht instead of a string.
+         */
+        $tests->assertTrue(str_contains($panel, '<span class="badge" title="a)b">ok</span>'));
+        $tests->assertTrue(str_contains($panel, '&lt;script&gt;'));
+        $tests->assertSame(0, substr_count($panel, '<script>'));
+
+        // @php and the directives work inside a region, as they do in a .sfht.
+        $tests->assertTrue(str_contains($panel, '<i>two</i>'));
+
+        // A function whose name merely ends in sfht( is not a markup region.
+        $tests->assertSame('kept', SfphpTest\Phpx\notsfht());
+    } finally {
+        @unlink($file);
+    }
+});
+
+$tests->run('phpx keeps the line numbers of the file the author wrote', function () use ($tests): void {
+    /*
+     * A region spans several lines and compiles to one expression, so without
+     * padding every line after it would shift and php -l would name the wrong
+     * one — which is the only thing standing between a syntax error and a
+     * useless error message.
+     */
+    $source = "<?php\nfunction A(): \\SfphpProject\\src\\View\\Sfht\n{\n    return sfht(\n        <p>one</p>\n        <p>two</p>\n    );\n}\n// marker\n";
+    $compiled = (new Phpx())->compile($source);
+
+    $tests->assertSame(substr_count($source, "\n"), substr_count($compiled, "\n"));
+    $tests->assertSame(8, array_search('// marker', explode("\n", $compiled), true));
+});
+
+$tests->run('build --phpx mirrors the folders the components live in', function () use ($tests): void {
+    /*
+     * One component per file is the convention, so a page's parts live in a
+     * folder of their own — and the build has to walk into it. It used to scan
+     * the first level only, which silently compiled nothing for a project that
+     * organised its components at all.
+     */
+    $root = sys_get_temp_dir() . '/sfphp-build-' . bin2hex(random_bytes(6));
+    mkdir($root . '/src/page', 0755, true);
+
+    file_put_contents(
+        $root . '/src/Loose.phpx',
+        "<?php\nfunction Loose(): \\SfphpProject\\src\\View\\Sfht\n{\n    return sfht(<p>loose</p>);\n}\n"
+    );
+    file_put_contents(
+        $root . '/src/page/Nested.phpx',
+        "<?php\nfunction Nested(): \\SfphpProject\\src\\View\\Sfht\n{\n    return sfht(<p>nested</p>);\n}\n"
+    );
+
+    try {
+        $command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(dirname(__DIR__) . '/sfphp')
+            . ' build --phpx --from=' . escapeshellarg($root . '/src')
+            . ' --to=' . escapeshellarg($root . '/out') . ' 2>&1';
+
+        $output = [];
+        $status = 0;
+        exec($command, $output, $status);
+
+        $tests->assertSame(0, $status);
+        $tests->assertTrue(is_file($root . '/out/Loose.php'));
+        $tests->assertTrue(is_file($root . '/out/page/Nested.php'));
+    } finally {
+        foreach (['/out/page/Nested.php', '/out/Loose.php', '/src/page/Nested.phpx', '/src/Loose.phpx'] as $file) {
+            @unlink($root . $file);
+        }
+
+        foreach (['/out/page', '/out', '/src/page', '/src', ''] as $directory) {
+            @rmdir($root . $directory);
+        }
+    }
+});
+
+$tests->run('phpx refuses a markup region that is never closed', function () use ($tests): void {
+    $tests->assertThrows(
+        fn () => (new Phpx())->compile("<?php\n\nfunction B() { return sfht(\n  <p>x</p>\n; }\n"),
+        RuntimeException::class
+    );
 });
 
 $tests->run('cache and queue classes are autoloadable', function () use ($tests): void {
@@ -4806,7 +4941,14 @@ $tests->run('the published package is a project that runs out of the box', funct
 
     $tests->assertSame(
         [
-            '.env-example', 'LICENSE', 'README.md', 'app', 'composer.json', 'database',
+            /*
+             * The editor settings travel too. Language associations for .phpx
+             * and .sfht are the project's rather than a person's — without them
+             * a contributor opens a component and sees uncoloured text and
+             * false syntax errors.
+             */
+            '.editorconfig', '.env-example', '.vscode', '.zed',
+            'LICENSE', 'README.md', 'app', 'composer.json', 'database',
             'lang', 'public', 'resources', 'server.php', 'sfphp', 'src', 'tools',
         ],
         $top
@@ -4868,11 +5010,223 @@ $tests->run('the minified script is still a program, and still the same one', fu
         return;
     }
 
-    $status = 0;
-    $output = [];
-    exec(escapeshellarg($node) . ' --check ' . escapeshellarg($minified) . ' 2>&1', $output, $status);
+    /*
+     * Both files, because only the minified one used to be checked — and a
+     * mistake in the readable source is a mistake in every copy of it. One
+     * arrived this way: a const that redeclared the parameter it sat next to.
+     */
+    foreach ([$readable, $minified] as $script) {
+        $status = 0;
+        $output = [];
+        exec(escapeshellarg($node) . ' --check ' . escapeshellarg($script) . ' 2>&1', $output, $status);
 
-    $tests->assertSame(0, $status);
+        $tests->assertSame(0, $status);
+    }
+});
+
+$tests->run('a declarative form sends the fields a visitor typed', function () use ($tests): void {
+    /*
+     * Two bugs lived here, and neither was visible from PHP. The click handler
+     * walks up from whatever was clicked, so a submit button found the form,
+     * prevented the default and fetched the bare action — the submit event,
+     * which is the only place fields are serialised, never fired. And when it
+     * did fire, form.submit() called GET with the three-argument shape the
+     * other verbs use, so the fields arrived as the options object.
+     *
+     * A real browser is the only honest way to check that, so this runs one
+     * when there is one and steps aside when there is not.
+     */
+    $browser = '';
+
+    foreach (['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'] as $candidate) {
+        $found = trim((string) shell_exec('command -v ' . escapeshellarg($candidate) . ' 2>/dev/null'));
+
+        if ($found !== '') {
+            $browser = $found;
+            break;
+        }
+    }
+
+    if ($browser === '') {
+        return;
+    }
+
+    $directory = sys_get_temp_dir() . '/sfphp-sfjs-' . bin2hex(random_bytes(6));
+    mkdir($directory . '/profile', 0755, true);
+
+    $page = $directory . '/harness.html';
+    $script = Assets::path() . '/js/sfjs.min.js';
+
+    file_put_contents($page, <<<HTML
+    <!DOCTYPE html>
+    <html><head><meta charset="utf-8"></head>
+    <body>
+    <form method="get" action="/look" \x40hxGet="/look" \x40hxTarget="#result">
+      <input name="postcode" value="01001-000">
+      <button type="submit">Look up</button>
+    </form>
+    <div id="result"></div>
+    <div id="log">nothing happened</div>
+    <script>
+      const log = [];
+      window.fetch = (url, init) => {
+        log.push('FETCH ' + url);
+        return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve('<p>swapped</p>') });
+      };
+    </script>
+    <script src="file://{$script}"></script>
+    <script>
+      window.addEventListener('load', () => {
+        document.querySelector('button').click();
+        setTimeout(() => { document.getElementById('log').textContent = log.join(' | '); }, 50);
+      });
+    </script>
+    </body></html>
+    HTML);
+
+    try {
+        $command = escapeshellarg($browser)
+            . ' --headless --disable-gpu --no-sandbox --virtual-time-budget=3000'
+            . ' --user-data-dir=' . escapeshellarg($directory . '/profile')
+            . ' --dump-dom ' . escapeshellarg('file://' . $page) . ' 2>/dev/null';
+
+        $dom = (string) shell_exec($command);
+
+        // The typed value left the page, which is the whole point.
+        $tests->assertTrue(str_contains($dom, 'FETCH /look?postcode=01001-000'));
+
+        // And the answer landed where the attribute said.
+        $tests->assertTrue(str_contains($dom, '<p>swapped</p>'));
+    } finally {
+        @unlink($page);
+
+        foreach (glob($directory . '/profile/*') ?: [] as $leftover) {
+            if (is_file($leftover)) {
+                @unlink($leftover);
+            }
+        }
+
+        exec('rm -rf ' . escapeshellarg($directory) . ' 2>/dev/null');
+    }
+});
+
+$tests->run('reset removes the example application and refuses to do it in silence', function () use ($tests): void {
+    /*
+     * This deletes a project's application, so it is tested against a project
+     * of its own: a directory with an autoloader shim and a copy of the binary,
+     * which is what the command reads the root from. Pointing it at anything
+     * else would be a test that can destroy the thing it is testing.
+     */
+    $root = sys_get_temp_dir() . '/sfphp-reset-' . bin2hex(random_bytes(6));
+
+    foreach ([
+        'vendor', 'src', 'app/config', 'app/components/page', 'app/controllers',
+        'app/models', 'app/Jobs', 'app/resources/views/partials',
+        'database/seeders', 'database/factories', 'database/migrations',
+    ] as $directory) {
+        mkdir($root . '/' . $directory, 0755, true);
+    }
+
+    file_put_contents(
+        $root . '/vendor/autoload.php',
+        '<?php require ' . var_export(dirname(__DIR__) . '/vendor/autoload.php', true) . ';'
+    );
+    copy(dirname(__DIR__) . '/sfphp', $root . '/sfphp');
+    chmod($root . '/sfphp', 0755);
+
+    $removed = [
+        'app/components/page/Card.phpx',
+        'app/controllers/MainController.php',
+        'app/models/User.php',
+        'app/Jobs/SendEmailJob.php',
+        'app/resources/views/home.sfht',
+        'app/resources/views/partials/header.sfht',
+        'database/seeders/DatabaseSeeder.php',
+        'database/factories/UserFactory.php',
+        // A migration the project wrote goes with the rest of what it wrote.
+        'database/migrations/2026_10_01_000001_create_posts_table.php',
+    ];
+
+    $kept = [
+        'app/config/config.php',
+        'database/migrations/2026_01_01_000001_create_users_table.php',
+        'database/migrations/2026_01_01_000002_create_sessions_table.php',
+        // A .gitkeep exists to hold an empty directory, which is what is left.
+        'database/migrations/.gitkeep',
+    ];
+
+    foreach ([...$removed, ...$kept] as $file) {
+        file_put_contents($root . '/' . $file, '<?php // example');
+    }
+
+    file_put_contents($root . '/src/routes.php', "<?php\n\nRouter::get('/', 'MainController', 'index');\n");
+
+    $binary = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/sfphp');
+
+    try {
+        /*
+         * With no terminal to answer at, it has to refuse. A command that
+         * deletes an application must not proceed on silence, which is exactly
+         * what a pipe or a CI job gives it.
+         */
+        $output = [];
+        $status = 0;
+        exec($binary . ' reset < /dev/null 2>&1', $output, $status);
+
+        $tests->assertSame(1, $status);
+        $tests->assertTrue(is_file($root . '/app/controllers/MainController.php'));
+
+        // It still says what it would have done, so the warning is readable.
+        $printed = implode("\n", $output);
+        $tests->assertTrue(str_contains($printed, 'cannot be undone'));
+
+        $output = [];
+        $status = 0;
+        exec($binary . ' reset --force 2>&1', $output, $status);
+
+        /*
+         * is_file() above filled the stat cache, so without this the file that
+         * was checked before the deletion still reports as present — a test
+         * that fails while the command is correct.
+         */
+        clearstatcache(true);
+
+        $tests->assertSame(0, $status);
+
+        foreach ($removed as $file) {
+            $tests->assertSame(false, is_file($root . '/' . $file));
+        }
+
+        // The directories stay, because they are where the next thing goes.
+        $tests->assertTrue(is_dir($root . '/app/controllers'));
+        $tests->assertTrue(is_dir($root . '/app/resources/views'));
+
+        /*
+         * The framework's own migrations survive. The users and sessions
+         * tables are what the authentication guard and the database session
+         * driver are written against, and a project that lost them would find
+         * out at a login. A migration the project wrote is the project's, and
+         * goes with the rest of it.
+         */
+        foreach ($kept as $file) {
+            $tests->assertTrue(is_file($root . '/' . $file));
+        }
+
+        // The routes file is rewritten, or the application boots into a
+        // controller that is no longer there.
+        $routes = (string) file_get_contents($root . '/src/routes.php');
+        $tests->assertSame(false, str_contains($routes, 'MainController'));
+
+        // Running it again has nothing left to do, and says so.
+        $output = [];
+        $status = 0;
+        exec($binary . ' reset < /dev/null 2>&1', $output, $status);
+
+        $tests->assertSame(0, $status);
+        $tests->assertTrue(str_contains(implode("\n", $output), 'already gone'));
+    } finally {
+        exec('rm -rf ' . escapeshellarg($root) . ' 2>/dev/null');
+    }
 });
 
 $tests->run('the dark theme changes nothing a page did not ask for', function () use ($tests): void {

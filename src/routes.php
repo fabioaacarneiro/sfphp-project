@@ -35,3 +35,5 @@
 use SfphpProject\src\Router;
 
 Router::get("/", "MainController", "index");
+Router::get('/phpx', 'PhpxController', 'index')->name('phpx');
+Router::get('/phpx/postcode', 'PhpxController', 'postcode')->name('phpx.postcode');

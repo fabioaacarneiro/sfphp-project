@@ -1,15 +1,14 @@
 <div class="container mx-auto p-4 md:p-8">
     <div class="text-center mb-8">
         <h1 class="text-4xl md:text-5xl font-bold mb-2 text-primary">
-            <i class="fas fa-code"></i>
             {{ APP_NAME }}
         </h1>
         <h2 class="text-2xl md:text-3xl text-muted mb-6">
-            Simple Framework PHP
+            A simple PHP framework
         </h2>
 
         <div class="card bg-light p-4 md:p-6 mb-6" style="max-width: 500px; margin: 0 auto;">
-            <img src="<?= e(asset('images/php.png')) ?>" alt="PHP Logo" class="w-100" style="max-width: 100%; height: auto;">
+            <img src="{{ asset('images/php.png') }}" alt="PHP" class="w-100" style="max-width: 100%; height: auto;">
         </div>
     </div>
 
@@ -18,14 +17,15 @@
         <div class="card">
             <div class="card-body">
                 <h3 class="text-2xl font-bold text-primary mb-3">
-                    <i class="fas fa-target"></i>
-                    Foco no Aprendizado
+                    Built to be read
                 </h3>
                 <p class="text-muted mb-2">
-                    Um framework minimalista para quem quer usar PHP puro e aprender arquitetura web de verdade.
+                    A small framework for writing plain PHP and learning how web
+                    architecture actually fits together.
                 </p>
                 <p class="text-sm">
-                    Sem abstrações desnecessárias. Código limpo, padrões claros, e total controle sobre o que você está fazendo.
+                    No abstractions you did not ask for. Clear code, clear
+                    conventions, and full control over what happens.
                 </p>
             </div>
         </div>
@@ -34,29 +34,23 @@
         <div class="card">
             <div class="card-body">
                 <h3 class="text-2xl font-bold text-success mb-3">
-                    <i class="fas fa-rocket"></i>
-                    Características
+                    What is in the box
                 </h3>
                 <ul class="list-unstyled">
                     <li class="mb-2">
-                        <i class="fas fa-check text-success"></i>
-                        <strong>24 Comandos CLI</strong> para geração de código
+                        <strong>A CLI</strong> that generates the boilerplate
                     </li>
                     <li class="mb-2">
-                        <i class="fas fa-check text-success"></i>
-                        <strong>Schema Builder</strong> 100% MySQL + PostgreSQL
+                        <strong>Schema builder</strong> for MySQL and PostgreSQL
                     </li>
                     <li class="mb-2">
-                        <i class="fas fa-check text-success"></i>
-                        <strong>SFHT Templates</strong> engine nativo
+                        <strong>SFHT templates</strong> and <strong>.phpx</strong> components
                     </li>
                     <li class="mb-2">
-                        <i class="fas fa-check text-success"></i>
-                        <strong>SFCSS Framework</strong> minimalista
+                        <strong>SFCSS and SFJS</strong>, shipped with the framework
                     </li>
                     <li>
-                        <i class="fas fa-check text-success"></i>
-                        <strong>Zero Dependências</strong> em produção
+                        <strong>Zero dependencies</strong> in production
                     </li>
                 </ul>
             </div>
@@ -65,15 +59,13 @@
 
     <div class="alert alert-info mb-8">
         <h4 class="mt-0 mb-2">
-            <i class="fas fa-lightbulb"></i>
-            Versão {{ APP_VERSION }} • Criado por
+            Version {{ APP_VERSION }} • by
             <a href="https://github.com/fabioaacarneiro" class="text-primary" style="text-decoration: none;">Fabio Carneiro</a>
             © {{ date('Y') }}
         </h4>
         <p class="mb-0">
-            Desenvolvido com foco em educação e qualidade de código.
             <a href="https://github.com/fabioaacarneiro/sfphp-project" class="text-primary" style="text-decoration: none;">
-                <i class="fab fa-github"></i> Ver no GitHub
+                View on GitHub
             </a>
         </p>
     </div>
