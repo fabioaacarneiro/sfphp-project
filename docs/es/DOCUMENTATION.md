@@ -2904,6 +2904,18 @@ insegura, así que enviarla ahí parecería protección sin serlo.
 - Una conexión fallida registra el detalle en el log y lanza una excepción
   genérica: el host, la base de datos y el usuario nunca llegan al visitante
 
+### Subidas
+
+- Un archivo se rechaza salvo que `is_uploaded_file()` confirme que lo es, así
+  que un `$_FILES` falsificado no hace que el framework lea una ruta arbitraria
+- El tipo se lee de los bytes del propio archivo, nunca de la cabecera que envió
+  el cliente
+- El nombre guardado se genera; al nombre del cliente se le quitan las rutas y
+  los bytes nulos y solo sirve para mostrarlo
+
+Consulta [Subida de archivos](#subida-de-archivos), incluido por qué el archivo
+guardado sigue perteneciendo fuera del document root.
+
 ### Salida
 
 - El `{{ }}` de SFHT escapa por defecto; la salida cruda exige `{!! !!}`
