@@ -205,7 +205,13 @@ if (!function_exists('dump')) {
             return;
         }
 
-        echo HtmlDump::render($values, $caller);
+        /*
+         * A fragment, not a page. dump() appends to a response that is already
+         * being written, so sending a second <!DOCTYPE html> into the middle of
+         * a document would be malformed — and would repeat the stylesheet on
+         * every call. dd() sends the page, because dd() is the response.
+         */
+        echo HtmlDump::fragment($values, $caller);
     }
 }
 

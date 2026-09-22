@@ -1596,7 +1596,13 @@ $tests->run('the built stylesheet is css, not the builder log', function () use 
      * sfcss.css. The builder writes both files itself and only prints a
      * summary, so every run replaced the stylesheet with two lines of log.
      */
-    $stylesheet = dirname(__DIR__) . '/public/assets/css/sfcss.css';
+    /*
+     * resources/, which is where the builder writes and what the package
+     * carries. This read public/assets, which is now a published copy and
+     * gitignored — so the test passed on a working tree that had published and
+     * failed on a fresh checkout, which is the wrong way round.
+     */
+    $stylesheet = dirname(__DIR__) . '/resources/assets/css/sfcss.css';
 
     $tests->assertTrue(is_file($stylesheet));
 
@@ -4551,6 +4557,40 @@ $tests->run('the dump screen is SFCSS, escaped, and asks nothing of the network'
 
     // Where it was called from, because a dump you cannot locate is a riddle.
     $tests->assertSame(true, str_contains($html, 'routes.php:12'));
+});
+
+$tests->run('dump appends a fragment, and the stylesheet only once', function () use ($tests): void {
+    /*
+     * dump() writes into a response that is already being written. A second
+     * <!DOCTYPE html> in the middle of a document is malformed, and repeating
+     * ninety kilobytes of stylesheet for every call in a loop is its own
+     * problem.
+     */
+    HtmlDump::forgetStylesheet();
+
+    $first = HtmlDump::fragment([['a' => 1]], ['file' => '/app/x.php', 'line' => 3]);
+
+    $tests->assertSame(false, str_contains($first, '<!DOCTYPE'));
+    $tests->assertSame(false, str_contains($first, '<body'));
+    $tests->assertSame(true, str_contains($first, 'sf-dump-fragment'));
+    $tests->assertSame(true, str_contains($first, '<style>'));
+    $tests->assertSame(true, str_contains($first, 'x.php:3'));
+
+    $second = HtmlDump::fragment([['b' => 2]]);
+
+    // The second one is cards and nothing else.
+    $tests->assertSame(false, str_contains($second, '<style>'));
+    $tests->assertSame(true, str_contains($second, 'sf-dump-fragment'));
+
+    /*
+     * Under a persistent runtime the flag would otherwise carry into the next
+     * request and the second visitor would get an unstyled dump.
+     */
+    HtmlDump::forgetStylesheet();
+    $tests->assertSame(true, str_contains(HtmlDump::fragment([1]), '<style>'));
+
+    // dd()'s page is still a whole document.
+    $tests->assertSame(true, str_contains(HtmlDump::render([1]), '<!DOCTYPE'));
 });
 
 $tests->run('a dump renders for a terminal too, without colour when redirected', function () use ($tests): void {

@@ -1,6 +1,6 @@
 # SFCSS — Simple Framework CSS
 
-> Verified against the built stylesheet · 2,337 classes · 16.1KB gzipped
+> Verified against the built stylesheet · 2,339 classes · 16.4KB gzipped
 >
 > 🌍 Also available in [Português](../pt-BR/SFCSS.md) and
 > [Español](../es/SFCSS.md).
@@ -71,8 +71,8 @@ php tools/css-builder/sfcss-builder.php
 
 That writes both outputs:
 
-- `public/assets/css/sfcss.css` — 110KB, readable
-- `public/assets/css/sfcss.min.css` — 92KB, minified (16.1KB gzipped)
+- `resources/assets/css/sfcss.css` — 112KB, readable
+- `resources/assets/css/sfcss.min.css` — 94KB, minified (16.4KB gzipped)
 
 ### What the builder does
 
@@ -320,7 +320,7 @@ summary:
 | Spacing | `m-*` and `p-*` on every side, plus `gap-*` |
 | Sizing | `w-*` / `h-*` in rem, fractions, percentages and arbitrary pixels |
 | Layout | display, flexbox, grid |
-| Typography | 8 sizes, 4 weights, alignment, transform, decoration |
+| Typography | 8 sizes, 4 weights, 2 families, alignment, transform, decoration |
 | Colours | 20 families × 10 shades × `bg`/`text`/`border` |
 | Effects | borders, radius, shadows, opacity |
 | Position | static, relative, absolute, fixed, sticky |
@@ -349,7 +349,37 @@ summary:
 <p class="text-base">Normal</p>
 <h1 class="text-3xl font-bold">Large heading</h1>
 <p class="text-center uppercase">Centred and upper case</p>
+<p class="font-mono">Monospace</p>
 ```
+
+`code`, `pre` and `kbd` are styled by the base sheet, so a snippet needs no
+class at all:
+
+```html
+<p>Run <code>composer install</code> first.</p>
+<pre><code>./sfphp migrate</code></pre>
+<p>Press <kbd>Ctrl</kbd> + <kbd>C</kbd> to stop.</p>
+```
+
+### Surfaces and the dark theme
+
+Eight variables carry the neutrals, and a `prefers-color-scheme: dark` block
+redefines those eight and nothing else — a palette colour means the same thing
+in both themes; what changes is the paper it sits on.
+
+| Variable | Used for |
+|---|---|
+| `--surface` | The page, and a card's own background |
+| `--surface-raised` | A card header and footer |
+| `--surface-sunken` | `code` and `pre` backgrounds |
+| `--surface-border` | Card and divider borders |
+| `--surface-border-strong` | A `kbd` outline |
+| `--body-color` | Ordinary text |
+| `--body-color-muted` | `.text-muted` |
+| `--code-color` | Inline `code` |
+
+Anything built on these follows the theme without a second stylesheet — which
+is how the framework's own error page and dump screen are written.
 
 ### Colours
 
@@ -463,14 +493,14 @@ those are generated as literal values rather than variable references.
 
 | | |
 |---|---|
-| Classes in total | **2,337** |
-| — base utilities and components | 1,209 |
+| Classes in total | **2,339** |
+| — base utilities and components | 1,211 |
 | — `hover:` variants | 600 |
 | — responsive variants (`sm` `md` `lg` `xl`) | 528 |
 | Colour classes | 620 |
-| Raw | 110KB |
-| Minified | 92KB |
-| **Gzipped** | **16.1KB** |
+| Raw | 112KB |
+| Minified | 94KB |
+| **Gzipped** | **16.4KB** |
 | Dependencies | none |
 | JavaScript | none |
 

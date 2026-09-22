@@ -1,7 +1,7 @@
 # SFCSS — Referencia completa de utilidades
 
 > **Tamaño:** 110KB en crudo · 92KB minificado · **16,1KB comprimidos**
-> **Clases:** 2.337 en total — 1.209 base, 600 `hover:`, 528 responsivas
+> **Clases:** 2.339 en total — 1.211 base, 600 `hover:`, 528 responsivas
 > **Colores:** 600 clases de paleta (20 familias × 10 tonos × `bg`/`text`/`border`) más 25 clases del tema
 >
 > 🌍 Disponible también en [English](../en/SFCSS_UTILITIES.md) y
@@ -261,6 +261,16 @@ escala base.
 <p class="font-bold">         <!-- 700 -->
 <p class="font-extrabold">    <!-- 800 -->
 ```
+
+### Familia de fuente
+
+```html
+<p class="font-sans">         <!-- --font-family, el valor por defecto -->
+<p class="font-mono">         <!-- --font-family-mono -->
+```
+
+`code`, `pre`, `kbd` y `samp` ya toman la familia monoespaciada de la hoja base,
+así que no necesitan clase.
 
 ### Alineación
 
@@ -527,7 +537,7 @@ forma responsiva.
 
 | | |
 |---|---|
-| Selectores únicos | **2.337** |
+| Selectores únicos | **2.339** |
 | Utilidades base y componentes | 1.209 |
 | Variantes `hover:` | 600 |
 | Variantes responsivas | 528 |
