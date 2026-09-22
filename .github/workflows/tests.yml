@@ -27,7 +27,10 @@ jobs:
           extensions: json, pdo
           coverage: none
       - run: composer install --prefer-dist --no-progress
-      - run: composer validate --no-check-publish --strict
+      # Full validation, publish checks included: this package is published,
+      # so a composer.json that Packagist would refuse has to fail here rather
+      # than at the moment somebody tries to install it.
+      - run: composer validate --strict
       - run: composer run lint
       - run: composer run test
 

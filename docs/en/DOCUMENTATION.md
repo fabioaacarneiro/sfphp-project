@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 134 tests, 0 failures
+> Verified against PHP 8.4 · suite: 136 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -98,9 +98,14 @@ composer require fabioaacarneiro/sfphp
 ```
 
 The package carries the framework and nothing else: no example application, no
-test suite, no `app/` directory appearing inside your `vendor/`. One call wires
-your project to it, at the top of your front controller and of any console entry
-point:
+test suite, no `app/` directory appearing inside your `vendor/`. What arrives is
+`src/`, the console, the licence, the readme and `resources/assets/` — SFCSS and
+SFJS, which travel with the framework rather than being left behind in a public
+directory you never receive. A test asserts that list, because what a consumer
+gets is the archive rather than the repository and the two drift silently.
+
+One call wires your project to it, at the top of your front controller and of
+any console entry point:
 
 ```php
 require __DIR__ . '/../vendor/autoload.php';
@@ -3876,7 +3881,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 134 unit cases
+composer run test        # 136 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
