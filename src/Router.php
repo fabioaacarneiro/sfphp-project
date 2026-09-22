@@ -510,7 +510,7 @@ class Router
 
         $html = <<<HTML
         <!doctype html>
-        <html lang="{$language}">
+        <html lang="{$language}" data-theme="auto">
         <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">

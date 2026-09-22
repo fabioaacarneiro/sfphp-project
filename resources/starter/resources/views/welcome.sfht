@@ -67,11 +67,8 @@
     </div>
 
     <p class="text-xs text-muted mt-8 mb-0">
-        Zero runtime dependencies. Documentation in
-        <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/en/DOCUMENTATION.md">English</a>,
-        <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/pt-BR/DOCUMENTATION.md">português</a>
-        and
-        <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/es/DOCUMENTATION.md">español</a>.
+        Zero runtime dependencies. The documentation is also in português and
+        español.
     </p>
 
 </main>

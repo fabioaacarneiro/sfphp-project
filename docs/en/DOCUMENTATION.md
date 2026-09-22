@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 138 tests, 0 failures
+> Verified against PHP 8.4 · suite: 139 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -3767,11 +3767,25 @@ For a project that installed the framework and has nothing to run yet. See
 ./sfphp assets:publish                     # into public/assets
 ./sfphp assets:publish --path=web/static   # somewhere else
 ./sfphp assets:publish --force             # overwrite what is there
+./sfphp assets:publish --symlink           # link instead of copying
 ```
 
 Copies SFCSS and SFJS out of the package and into a directory the project
-serves. Run it after installing and after upgrading; a second run that finds
-the same files copies nothing and says so.
+serves. `composer install` and `./sfphp serve` both run it, so this is for an
+upgrade or an unusual layout; a run that finds the same files copies nothing and
+says so.
+
+> **Why the files exist twice.** The package keeps them where they are
+> version-controlled and where an upgrade replaces them; the browser can only
+> read what is under the document root, and no package can write into your
+> `public/` at install time. So one is the source and the other is a published
+> copy — `public/assets/css` and `public/assets/js` belong in `.gitignore`,
+> like `vendor/`.
+>
+> `--symlink` makes it one file where symbolic links work. It is not the
+> default because a link is a deployment decision: it breaks when a deploy
+> copies rather than moves, it needs care on Windows, and an upgrade then
+> changes what a running site serves instead of waiting for you to publish.
 
 ### Server and utilities
 
@@ -3779,7 +3793,8 @@ the same files copies nothing and says so.
 ./sfphp serve          # http://localhost:8000
 ./sfphp routes         # a table of the registered routes
 ./sfphp env:example    # creates .env from .env-example
-./sfphp css:build      # builds SFCSS from the config
+./sfphp css:build      # builds SFCSS from the config; --config= --output=
+./sfphp js:build       # minifies SFJS
 ./sfphp tinker         # REPL — local development only
 ./sfphp list
 ./sfphp version
@@ -3793,9 +3808,16 @@ expose the CLI to untrusted input.
 
 ## SFCSS
 
-A utility CSS framework generated from `tools/css-builder/sfcss.config.json`.
-The `hover:` variants and the `sm`/`md`/`lg`/`xl` breakpoints are generated
-from that config.
+A utility CSS framework. **It arrives built** — `composer require` delivers the
+stylesheet, and `composer install`, `sfphp init` and `sfphp serve` each copy it
+into `public/assets`, so using it is one line of HTML:
+
+```html
+<link rel="stylesheet" href="/assets/css/sfcss.min.css">
+```
+
+Nothing has to be generated to use SFCSS. The generator is there for changing
+it, which is [further down](#changing-sfcss).
 
 | | |
 |---|---|
@@ -3807,19 +3829,38 @@ from that config.
 | Size | 112KB raw · 94KB minified · **16.4KB gzipped** |
 | Dependencies | none |
 
+### Changing SFCSS
+
+The colours, the spacing scale, the type scale and the breakpoints come from a
+config, and the generator ships with the package — a stylesheet described as
+"generated from a config" is of no use to somebody who has no generator.
+
 ```bash
-./sfphp css:build        # builds resources/assets/css/sfcss.css and .min.css
-./sfphp assets:publish   # copies it into public/assets
+cp vendor/fabioaacarneiro/sfphp/tools/css-builder/sfcss.config.json .
+# edit it: palettes, spacing, breakpoints, fonts
+./vendor/bin/sfphp css:build
 ```
 
-```html
-<link rel="stylesheet" href="/assets/css/sfcss.css">
+`css:build` uses **your** config when there is one next to `composer.json` and
+writes into your `public/assets/css`. Editing the copy inside `vendor/` would
+work until the next `composer update` threw it away, which is why yours wins and
+why the build never writes into the package.
+
+```bash
+./vendor/bin/sfphp css:build --config=design/sfcss.json --output=web/css
 ```
 
-SFCSS lives in the **package**, not in a public directory, because it is a tool
-the framework ships rather than a file of the example application — the same as
-SFJS. `composer require` delivers both; `assets:publish` puts them where a
-browser can reach them.
+> **A stylesheet you built is not overwritten.** `composer install` and `serve`
+> publish the framework's assets, and when one of yours differs they say they
+> kept it rather than replacing it. `assets:publish --force` takes the
+> framework's version back.
+
+For a change of colour alone, editing the config is more than you need: the
+theme reads CSS variables, so overriding them in your own stylesheet is enough.
+
+```css
+:root { --primary: #ff6600; }
+```
 
 ### What the framework's own screens use
 
@@ -3832,9 +3873,11 @@ and the neutral surfaces are variables rather than fixed hex values:
 --body-color  --body-color-muted  --code-color
 ```
 
-A `prefers-color-scheme: dark` block redefines those eight and nothing else.
-Brand and palette colours keep their meaning in both themes; what has to change
-is the paper they sit on.
+A page opts into a theme with `data-theme` on its root element — `light` (the
+default), `dark`, or `auto` to follow the reader's system setting. Only those
+eight change. Brand and palette colours keep their meaning in both themes; what
+has to change is the paper they sit on, and a page that says nothing stays
+light.
 
 That set exists because the error page and the dump screen are built from SFCSS
 and inline it — a framework with its own stylesheet should not have its own
@@ -3925,7 +3968,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 138 unit cases
+composer run test        # 139 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves

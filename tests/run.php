@@ -2572,7 +2572,7 @@ $tests->run('a 404 is rendered in the visitor language', function () use ($tests
     $tests->assertSame('en', $ingles->header('Content-Language'));
 
     // E o atributo lang do documento acompanha.
-    $tests->assertTrue(str_contains($portugues->body(), '<html lang="pt-BR">'));
+    $tests->assertTrue(str_contains($portugues->body(), '<html lang="pt-BR"'));
 
     Translator::setLocale(APP_LOCALE);
 });
@@ -3624,9 +3624,19 @@ $tests->run('the package declares only the framework', function () use ($tests):
     // And excluded from what a `composer require` downloads.
     $attributes = (string) file_get_contents(__DIR__ . '/../.gitattributes');
 
-    foreach (['/app', '/database', '/public', '/tests', '/tools', '/docs', '/lang'] as $directory) {
+    foreach (['/app', '/database', '/public', '/tests', '/docs', '/lang'] as $directory) {
         $tests->assertTrue((bool) preg_match('#^' . preg_quote($directory, '#') . '\s+export-ignore#m', $attributes));
     }
+
+    /*
+     * tools/ used to be excluded whole, which made "SFCSS is generated from
+     * sfcss.config.json" untrue for everybody who installed the framework: they
+     * had the stylesheet and no way to build another. The builders travel; the
+     * documentation parity check, which is about this repository's own three
+     * languages, does not.
+     */
+    $tests->assertTrue((bool) preg_match('#^/tools/docs-parity\.php\s+export-ignore#m', $attributes));
+    $tests->assertSame(0, preg_match('#^/tools\s+export-ignore#m', $attributes));
 });
 
 $tests->run('the framework reads no constant it did not define itself', function () use ($tests): void {
@@ -4652,15 +4662,53 @@ $tests->run('the framework ships its stylesheet and script, and can publish them
     $target = sys_get_temp_dir() . '/sfphp-assets-' . bin2hex(random_bytes(4));
 
     try {
-        $written = Assets::publish($target);
+        $written = Assets::publish($target)['written'];
         $tests->assertSame(Assets::files(), $written);
         $tests->assertSame(true, is_file($target . '/css/sfcss.min.css'));
 
         // Publishing twice copies nothing: reporting work that did not happen
         // is how a command stops being believed.
-        $tests->assertSame([], Assets::publish($target));
-        $tests->assertSame(Assets::files(), Assets::publish($target, true));
+        $tests->assertSame([], Assets::publish($target)['written']);
+        $tests->assertSame(Assets::files(), Assets::publish($target, true)['written']);
+
+        /*
+         * A stylesheet somebody built from their own config lives here. The
+         * next composer install runs publish, and overwriting it would throw
+         * their palette away silently — the worst way to lose work.
+         */
+        file_put_contents($target . '/css/sfcss.css', '/* mine */');
+        $again = Assets::publish($target);
+
+        $tests->assertSame(['css/sfcss.css'], $again['kept']);
+        $tests->assertSame('/* mine */', file_get_contents($target . '/css/sfcss.css'));
+
+        // Asking for it explicitly does replace it.
+        $tests->assertSame(true, in_array('css/sfcss.css', Assets::publish($target, true)['written'], true));
+
+        /*
+         * Copying means the same bytes exist twice: once in the package and
+         * once under a document root a browser can reach. Where symbolic links
+         * work, that can be one file instead — which is the answer to why there
+         * appear to be two.
+         */
+        $tests->assertThrows(fn () => Assets::link($target), RuntimeException::class);
+
+        $tests->assertSame(['css', 'js'], Assets::link($target, true));
+        $tests->assertSame(true, is_link($target . '/css'));
+        $tests->assertSame(
+            md5_file(Assets::path() . '/css/sfcss.min.css'),
+            md5_file($target . '/css/sfcss.min.css')
+        );
+
+        // Linking twice is not an error and not work.
+        $tests->assertSame([], Assets::link($target));
     } finally {
+        foreach (['css', 'js'] as $directory) {
+            if (is_link($target . '/' . $directory)) {
+                @unlink($target . '/' . $directory);
+            }
+        }
+
         foreach (Assets::files() as $relative) {
             @unlink($target . '/' . $relative);
         }
@@ -4712,7 +4760,7 @@ $tests->run('the published package carries the framework and nothing else', func
     sort($top);
 
     $tests->assertSame(
-        ['LICENSE', 'README.md', 'composer.json', 'resources', 'sfphp', 'src'],
+        ['LICENSE', 'README.md', 'composer.json', 'resources', 'sfphp', 'src', 'tools'],
         $top
     );
 
@@ -4726,6 +4774,12 @@ $tests->run('the published package carries the framework and nothing else', func
         'resources/assets/js/sfjs.min.js',
         'resources/starter/public/index.php',
         'resources/starter/resources/views/welcome.sfht',
+        // Without these, "generated from a config" is not true for anybody who
+        // installed the framework rather than cloning it.
+        'tools/css-builder/sfcss-builder.php',
+        'tools/css-builder/sfcss.config.json',
+        'tools/css-builder/sfcss-base.css',
+        'tools/js-builder/sfjs-builder.php',
     ] as $needed) {
         $tests->assertSame(true, in_array($needed, $entries, true));
     }
@@ -4826,6 +4880,42 @@ $tests->run('a new project gets something that answers a request', function () u
 
         @rmdir($target);
     }
+});
+
+$tests->run('the dark theme changes nothing a page did not ask for', function () use ($tests): void {
+    /*
+     * This shipped applying prefers-color-scheme to :root directly, so a page
+     * that had never asked for a dark theme got dark cards — while bg-blue-50
+     * and text-slate-600, being fixed palette values, stayed as light as they
+     * were. A light heading on a dark card is not a theme, it is a collision.
+     */
+    $css = Assets::css(false);
+
+    // No bare prefers-color-scheme block: the media query only applies to a
+    // root that opted in.
+    $tests->assertSame(0, preg_match('/@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{/', $css));
+
+    $tests->assertSame(true, str_contains($css, ':root[data-theme="dark"]'));
+    $tests->assertSame(true, str_contains($css, ':root[data-theme="auto"]'));
+
+    /*
+     * The light values sit on a bare :root, so a page that says nothing is
+     * light — and the dark ones only ever appear under a [data-theme] selector.
+     */
+    $tests->assertSame(1, preg_match('/^:root \{[^}]*--surface: #ffffff/m', $css));
+
+    // Every dark definition sits inside a data-theme block, never on its own.
+    $parts = explode('--surface: #17181c', $css);
+
+    for ($index = 1; $index < count($parts); $index++) {
+        $tests->assertSame(true, str_contains(substr($parts[$index - 1], -400), 'data-theme'));
+    }
+
+    /*
+     * The framework's own screens are the framework's pages, not somebody's, so
+     * they do follow the reader's setting.
+     */
+    $tests->assertSame(true, str_contains(HtmlDump::render([1]), 'data-theme="auto"'));
 });
 
 $tests->finish();

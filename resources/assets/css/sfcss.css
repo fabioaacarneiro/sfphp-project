@@ -673,9 +673,34 @@ html {
 /*
  * The neutrals, and only the neutrals. Brand and palette colours keep their
  * meaning in both themes; what has to change is the paper they sit on.
+ *
+ * Opt-in, and that is the important part. An earlier version applied this from
+ * prefers-color-scheme alone, so a page that had never asked for a dark theme
+ * got dark cards — while bg-blue-50 and text-slate-600, being fixed palette
+ * values, stayed exactly as light as they were. The result was a light heading
+ * on a dark card: not a theme, a collision.
+ *
+ * A page says which it wants on the root element:
+ *
+ *     <html data-theme="dark">    always dark
+ *     <html data-theme="light">   always light
+ *     <html data-theme="auto">    follow the reader's system setting
+ *
+ * Saying nothing stays light, so no existing page changes under anybody.
  */
+:root[data-theme="dark"] {
+  --surface: #17181c;
+  --surface-raised: #1f2126;
+  --surface-sunken: #121317;
+  --surface-border: #2f3239;
+  --surface-border-strong: #3d414a;
+  --body-color: #e6e7ea;
+  --body-color-muted: #9ca3af;
+  --code-color: #f9a8d4;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root[data-theme="auto"] {
     --surface: #17181c;
     --surface-raised: #1f2126;
     --surface-sunken: #121317;

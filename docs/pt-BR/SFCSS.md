@@ -364,9 +364,22 @@ de classe nenhuma:
 
 ### Superfícies e o tema escuro
 
-Oito variáveis carregam os neutros, e um bloco `prefers-color-scheme: dark`
-redefine essas oito e nada mais — uma cor de paleta significa a mesma coisa nos
-dois temas; o que muda é o papel em que ela se apoia.
+Oito variáveis carregam os neutros, e a página diz qual tema quer:
+
+```html
+<html data-theme="light">   <!-- o padrão; não dizer nada dá no mesmo -->
+<html data-theme="dark">
+<html data-theme="auto">    <!-- segue a configuração de quem lê -->
+```
+
+Só essas oito mudam — uma cor de paleta significa a mesma coisa nos dois temas;
+o que muda é o papel em que ela se apoia.
+
+> **É opt-in de propósito.** Uma versão anterior aplicava o
+> `prefers-color-scheme` direto no `:root`, então uma página que nunca pediu
+> tema escuro ganhava cards escuros — enquanto `bg-blue-50` e `text-slate-600`,
+> sendo valores fixos de paleta, continuavam exatamente tão claros quanto eram.
+> Um título claro sobre um card escuro não é um tema, é uma colisão.
 
 | Variável | Serve para |
 |---|---|

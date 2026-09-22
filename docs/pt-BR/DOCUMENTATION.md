@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 138 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 139 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -3761,11 +3761,25 @@ Para um projeto que instalou o framework e ainda não tem o que rodar. Veja
 ./sfphp assets:publish                     # para public/assets
 ./sfphp assets:publish --path=web/static   # para outro lugar
 ./sfphp assets:publish --force             # sobrescreve o que estiver lá
+./sfphp assets:publish --symlink           # link em vez de cópia
 ```
 
 Copia o SFCSS e o SFJS de dentro do pacote para um diretório que o projeto
-serve. Rode depois de instalar e depois de atualizar; uma segunda execução que
-encontra os mesmos arquivos não copia nada e avisa.
+serve. O `composer install` e o `./sfphp serve` já rodam isso, então o comando
+serve para uma atualização ou um layout fora do comum; uma execução que encontra
+os mesmos arquivos não copia nada e avisa.
+
+> **Por que os arquivos existem duas vezes.** O pacote os guarda onde eles são
+> versionados e onde uma atualização os substitui; o navegador só consegue ler o
+> que está sob o document root, e nenhum pacote pode escrever no seu `public/`
+> na hora da instalação. Então um é a fonte e o outro é cópia publicada — o
+> `public/assets/css` e o `public/assets/js` pertencem ao `.gitignore`, como o
+> `vendor/`.
+>
+> O `--symlink` faz virar um arquivo só onde link simbólico funciona. Não é o
+> padrão porque link é decisão de deploy: quebra quando o deploy copia em vez de
+> mover, exige cuidado no Windows, e uma atualização passa a mudar o que um site
+> no ar está servindo em vez de esperar você publicar.
 
 ### Servidor e utilitários
 
@@ -3773,7 +3787,8 @@ encontra os mesmos arquivos não copia nada e avisa.
 ./sfphp serve          # http://localhost:8000
 ./sfphp routes         # tabela de rotas registradas
 ./sfphp env:example    # cria .env a partir de .env-example
-./sfphp css:build      # gera o SFCSS a partir do config
+./sfphp css:build      # gera o SFCSS a partir do config; --config= --output=
+./sfphp js:build       # minifica o SFJS
 ./sfphp tinker         # REPL — só para desenvolvimento local
 ./sfphp list
 ./sfphp version
@@ -3787,9 +3802,16 @@ local; nunca exponha o CLI a entrada não confiável.
 
 ## SFCSS
 
-Framework CSS utilitário gerado a partir de
-`tools/css-builder/sfcss.config.json`. Variantes `hover:` e os breakpoints
-`sm`/`md`/`lg`/`xl` são gerados a partir do próprio config.
+Framework CSS utilitário. **Ele chega pronto** — o `composer require` entrega a
+folha de estilo, e o `composer install`, o `sfphp init` e o `sfphp serve` copiam
+para `public/assets`, então usar é uma linha de HTML:
+
+```html
+<link rel="stylesheet" href="/assets/css/sfcss.min.css">
+```
+
+Nada precisa ser gerado para usar o SFCSS. O gerador existe para **mudá-lo**, o
+que está [mais abaixo](#mudar-o-sfcss).
 
 | | |
 |---|---|
@@ -3801,19 +3823,38 @@ Framework CSS utilitário gerado a partir de
 | Tamanho | 112KB cru · 94KB minificado · **16,4KB gzipped** |
 | Dependências | nenhuma |
 
+### Mudar o SFCSS
+
+As cores, a escala de espaçamento, a escala tipográfica e os breakpoints vêm de
+um config, e o gerador viaja no pacote — uma folha de estilo descrita como
+"gerada a partir de um config" não serve de nada para quem não tem o gerador.
+
 ```bash
-./sfphp css:build        # gera resources/assets/css/sfcss.css e .min.css
-./sfphp assets:publish   # copia para public/assets
+cp vendor/fabioaacarneiro/sfphp/tools/css-builder/sfcss.config.json .
+# edite: paletas, espaçamento, breakpoints, fontes
+./vendor/bin/sfphp css:build
 ```
 
-```html
-<link rel="stylesheet" href="/assets/css/sfcss.css">
+O `css:build` usa o **seu** config quando existe um ao lado do `composer.json`, e
+escreve no seu `public/assets/css`. Editar a cópia dentro do `vendor/`
+funcionaria até o próximo `composer update` jogar fora, e é por isso que o seu
+ganha e que a build nunca escreve dentro do pacote.
+
+```bash
+./vendor/bin/sfphp css:build --config=design/sfcss.json --output=web/css
 ```
 
-O SFCSS mora no **pacote**, não num diretório público, porque é uma ferramenta
-que o framework distribui e não um arquivo da aplicação de exemplo — igual ao
-SFJS. O `composer require` entrega os dois; o `assets:publish` os coloca onde um
-navegador alcança.
+> **Uma folha de estilo que você gerou não é sobrescrita.** O `composer install`
+> e o `serve` publicam os assets do framework, e quando um dos seus é diferente
+> eles dizem que o mantiveram em vez de trocar. O `assets:publish --force` traz
+> a versão do framework de volta.
+
+Para mudar só uma cor, editar o config é mais do que você precisa: o tema lê
+variáveis CSS, então sobrescrevê-las na sua própria folha basta.
+
+```css
+:root { --primary: #ff6600; }
+```
 
 ### O que as telas do próprio framework usam
 
@@ -3826,9 +3867,11 @@ família, e as superfícies neutras são variáveis em vez de hex fixo:
 --body-color  --body-color-muted  --code-color
 ```
 
-Um bloco `prefers-color-scheme: dark` redefine essas oito e nada mais. Cores de
-marca e de paleta mantêm o significado nos dois temas; o que precisa mudar é o
-papel em que elas se apoiam.
+A página escolhe o tema com `data-theme` no elemento raiz — `light` (o padrão),
+`dark`, ou `auto` para seguir a configuração de quem lê. Só essas oito mudam.
+Cores de marca e de paleta mantêm o significado nos dois temas; o que precisa
+mudar é o papel em que elas se apoiam, e uma página que não diz nada continua
+clara.
 
 Esse conjunto existe porque a página de erro e a tela de dump são feitas com
 SFCSS e o embutem — um framework que tem a própria folha de estilo não deveria
@@ -3919,7 +3962,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 138 casos unitários
+composer run test        # 139 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve

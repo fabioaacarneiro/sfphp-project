@@ -17,7 +17,10 @@
 /docs               export-ignore
 /public             export-ignore
 /tests              export-ignore
-/tools              export-ignore
+# The builders travel: SFCSS is "generated from a config", and that is only
+# true for somebody who has the generator. docs-parity checks this repository's
+# own three languages and is nobody else's business.
+/tools/docs-parity.php  export-ignore
 /.github            export-ignore
 /lang               export-ignore
 /server.php         export-ignore
