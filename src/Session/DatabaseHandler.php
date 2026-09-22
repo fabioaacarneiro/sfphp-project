@@ -2,6 +2,7 @@
 
 namespace SfphpProject\src\Session;
 
+use SfphpProject\src\Config;
 use PDO;
 use PDOException;
 use SessionHandlerInterface;
@@ -214,7 +215,7 @@ final class DatabaseHandler implements SessionHandlerInterface, SessionUpdateTim
      */
     private function lifetime(): int
     {
-        $configured = defined('SESSION_LIFETIME') ? (int) SESSION_LIFETIME : 0;
+        $configured = Config::int('SESSION_LIFETIME', 0);
 
         return $configured > 0 ? $configured : max(60, (int) ini_get('session.gc_maxlifetime'));
     }
