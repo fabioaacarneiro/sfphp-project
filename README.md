@@ -123,6 +123,10 @@ trans_choice('app.items', 5);   // plural forms by range or per-language rule
   wrong password
 - **Session** — the id is regenerated on login and logout, `use_strict_mode`
   refuses an id PHP never issued, and idle and absolute deadlines are enforced
+- **Token revocation** — `TokenDenylist` refuses one token or every token issued
+  to a user before a moment, remembering each only until it would have expired
+- **"Remember me"** — a selector and a verifier, the verifier stored hashed and
+  rotated on every use, so a stolen cookie works once and becomes visible
 - **Middleware** — `VerifyCsrfToken` applies the CSRF check by default to every
   state-changing request
 
@@ -134,7 +138,7 @@ data in the database without protecting its real destination.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 119 unit cases
+composer run test        # 126 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run docs        # the three documentation languages agree
 ```
@@ -145,9 +149,12 @@ tests against real MySQL 8 and PostgreSQL 16.
 
 ## What is not in it
 
-Stated up front, so you can decide with the facts: there is no event system, and
-authentication covers login, guards and authorization but not password recovery,
-two-factor or token revocation. The Models layer is **not a full ORM** — no
+Stated up front, so you can decide with the facts: authentication covers login,
+guards, authorization, token revocation and the "remember me" cookie, but not
+password recovery or two-factor — those flows belong to an application, and
+[Mail](docs/en/DOCUMENTATION.md#mail) is the piece the framework owed them.
+Events are dispatched in-process and synchronously; there is no message broker.
+The Models layer is **not a full ORM** — no
 identity map, unit of work, lazy-loading proxy, polymorphic relation or schema
 derived from the class. The reason for each absence is in
 [ORM or query builder?](docs/en/DOCUMENTATION.md#orm-or-query-builder),
