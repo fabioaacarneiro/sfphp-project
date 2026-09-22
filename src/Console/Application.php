@@ -56,6 +56,7 @@ final class Application
                 'env:example' => $this->envExample(),
                 'routes' => $this->routes($arguments),
                 'css:build' => $this->cssBuild($arguments),
+                'js:build' => $this->jsBuild($arguments),
                 'make:migration' => $this->makeMigration($arguments),
                 'make:migration:create' => $this->makeMigrationCreate($arguments),
                 'make:controller' => $this->makeController($arguments),
@@ -139,6 +140,7 @@ final class Application
             $this->writeLine('  env:example           Create .env from .env-example');
             $this->writeLine('  routes                List all registered routes');
             $this->writeLine('  css:build             Build SFCSS from config.json');
+            $this->writeLine('  js:build              Minify SFJS');
             $this->writeLine('');
             $this->writeLine('Utility Commands:');
             $this->writeLine('  list                  Show all available commands');
@@ -507,6 +509,19 @@ final class Application
     {
         $host = 'localhost';
         $port = 8000;
+
+        /*
+         * The stylesheet and the script live in the package and are copied into
+         * public/ on install. A checkout that has not been installed, or one
+         * where public/assets was cleaned, would otherwise serve a page whose
+         * <link> 404s — and an unstyled first impression reads as a broken
+         * framework rather than as a missing step.
+         */
+        $published = Assets::publish($this->projectPath(Assets::PUBLIC_PATH));
+
+        if ($published !== []) {
+            $this->writeLine('Published ' . count($published) . ' asset file(s).');
+        }
 
         $this->writeLine('Starting development server...');
         $this->writeLine("Server running at http://$host:$port");
@@ -1194,6 +1209,46 @@ PHP;
 
     /**
      * Build SFCSS from config.json.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function jsBuild(array $arguments): int
+    {
+        try {
+            $builderPath = $this->rootPath() . '/tools/js-builder/sfjs-builder.php';
+
+            if (!is_file($builderPath)) {
+                fwrite(STDERR, "Error: sfjs-builder.php not found at {$builderPath}" . PHP_EOL);
+
+                return 1;
+            }
+
+            $output = [];
+            $status = 0;
+            exec('php ' . escapeshellarg($builderPath) . ' 2>&1', $output, $status);
+
+            if ($status !== 0) {
+                fwrite(STDERR, 'Error: Failed to minify SFJS' . PHP_EOL);
+                fwrite(STDERR, implode(PHP_EOL, $output) . PHP_EOL);
+
+                return 1;
+            }
+
+            $this->writeLine(implode(PHP_EOL, $output));
+            $this->writeLine('');
+            $this->writeLine('Run ./sfphp assets:publish to copy it where the browser can reach it.');
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+
+            return 1;
+        }
+    }
+
+    /**
+     * Build SFCSS from its configuration.
      *
      * @param array<int, string> $arguments The command arguments
      * @return int

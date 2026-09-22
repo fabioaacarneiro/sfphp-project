@@ -337,6 +337,22 @@ if (!function_exists('trans_choice')) {
     }
 }
 
+if (!function_exists('lang_tag')) {
+    /**
+     * The active locale as an HTML language attribute.
+     *
+     * A catalog is named pt_BR and a `lang` attribute wants pt-BR. The
+     * framework was converting between the two in four places, which is three
+     * chances to forget.
+     *
+     * @return string A BCP 47 tag
+     */
+    function lang_tag(): string
+    {
+        return str_replace('_', '-', locale());
+    }
+}
+
 if (!function_exists('locale')) {
     /**
      * Get the active locale.
