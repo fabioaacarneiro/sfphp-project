@@ -3,7 +3,6 @@
 namespace SfphpProject\src\Console;
 
 use SfphpProject\src\Assets;
-use SfphpProject\src\Starter;
 use SfphpProject\src\Bootstrap;
 use SfphpProject\src\Console\Generators\ControllerGenerator;
 use SfphpProject\src\Console\Generators\EventGenerator;
@@ -78,7 +77,6 @@ final class Application
                 'status' => $this->status($arguments),
                 'db:seed' => $this->dbSeed($arguments),
                 'db:fresh' => $this->dbFresh($arguments),
-                'init' => $this->init($arguments),
                 'assets:publish' => $this->assetsPublish($arguments),
                 'cache:clear' => $this->cacheClear($arguments),
                 'cache:flush' => $this->cacheFlush($arguments),
@@ -129,7 +127,6 @@ final class Application
             $this->writeLine('  db:seed               Run database seeders');
             $this->writeLine('');
             $this->writeLine('Cache Commands:');
-            $this->writeLine('  init                  Scaffold a new project: front controller, route, view');
             $this->writeLine('  assets:publish        Copy SFCSS and SFJS into public/assets');
             $this->writeLine('  cache:clear           Clear expired cache entries');
             $this->writeLine('  cache:flush           Flush all cache');
@@ -1173,65 +1170,6 @@ PHP;
             return 0;
         } catch (Throwable $e) {
             $this->writeLine('Error: ' . $e->getMessage());
-            return 1;
-        }
-    }
-
-    /**
-     * Clear expired cache entries.
-     *
-     * @param array<int, string> $arguments The command arguments
-     * @return int
-     */
-    private function init(array $arguments): int
-    {
-        try {
-            $root = $this->rootPath();
-            $namespace = $this->option($arguments, 'namespace') ?? 'App\\';
-            $force = in_array('--force', $arguments, true);
-
-            $result = Starter::publish($root, $namespace, $force);
-
-            foreach ($result['written'] as $relative) {
-                $this->writeLine('  created  ' . $relative);
-            }
-
-            foreach ($result['skipped'] as $relative) {
-                // Overwriting somebody's front controller because they ran a
-                // command twice is the kind of help nobody asks for again.
-                $this->writeLine('  kept     ' . $relative . ' (already there)');
-            }
-
-            $published = Assets::publish($root . '/' . Assets::PUBLIC_PATH);
-
-            foreach ($published['written'] as $relative) {
-                $this->writeLine('  created  ' . Assets::PUBLIC_PATH . '/' . $relative);
-            }
-
-            foreach ($published['kept'] as $relative) {
-                $this->writeLine('  kept     ' . Assets::PUBLIC_PATH . '/' . $relative . ' (yours, and different)');
-            }
-
-            if ($result['written'] === [] && $published['written'] === []) {
-                $this->writeLine('Nothing to do. Use --force to write the starter over what is there.');
-
-                return 0;
-            }
-
-            $map = Starter::autoload($namespace);
-            $prefix = array_key_first($map);
-
-            $this->writeLine('');
-            $this->writeLine('Add this to your composer.json, then run composer dump-autoload:');
-            $this->writeLine('');
-            $this->writeLine('    "autoload": { "psr-4": { "' . str_replace('\\', '\\\\', $prefix) . '": "' . $map[$prefix] . '" } }');
-            $this->writeLine('');
-            $this->writeLine('Then: ./vendor/bin/sfphp serve');
-
-            return 0;
-        } catch (Throwable $e) {
-            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
-
             return 1;
         }
     }
