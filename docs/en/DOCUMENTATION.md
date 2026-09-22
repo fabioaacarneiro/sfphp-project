@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 143 tests, 0 failures
+> Verified against PHP 8.4 · suite: 146 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -31,6 +31,7 @@ code does today. Where something does not exist, it says so — see
 - [Cache](#cache)
 - [Queue](#queue)
 - [Events](#events)
+- [HTTP client](#http-client)
 - [Mail](#mail)
 - [Validation](#validation)
 - [File uploads](#file-uploads)
@@ -2063,6 +2064,99 @@ the framework ships in all three languages.
 
 ---
 
+## HTTP client
+
+Calling another service used to mean `curl_setopt_array` with a dozen constants,
+decoding the body by hand, and remembering — or, far more often, forgetting — to
+set a timeout.
+
+```php
+use SfphpProject\src\Http\Http;
+
+$response = Http::get('https://api.example.com/users', ['page' => 2]);
+$response = Http::post('https://api.example.com/users', ['name' => 'Ana']);
+
+$response->ok();       // true for 2xx
+$response->status();   // 200
+$response->json();     // the decoded body
+```
+
+A body given as an array is sent as JSON, with the `Content-Type` and `Accept`
+headers that implies. `->asForm()` sends it as a form instead, and a string is
+sent as it is — a caller who encoded the body owns its type.
+
+### A client for a service you call often
+
+```php
+$billing = Http::base('https://billing.internal')
+    ->token($jwt)
+    ->timeout(5);
+
+$invoice = $billing->get('/invoices/7')->throw()->json();
+```
+
+A client is a **value**: every method returns a new one, so a client configured
+for a service can be handed around without anything being able to change it.
+
+| | |
+|---|---|
+| `Http::base($url)` | Relative paths hang off this |
+| `->token($jwt)` · `->basic($user, $pass)` | Authorization |
+| `->headers([...])` | Anything else |
+| `->timeout($seconds, $connect)` | How long to wait |
+| `->asForm()` | Send bodies as forms rather than JSON |
+
+### Reading the answer
+
+An error **is** an answer: the server was reached, understood and said no. So a
+404 and a 500 come back to be inspected rather than thrown.
+
+| | |
+|---|---|
+| `ok()` | 2xx |
+| `failed()` · `clientError()` · `serverError()` | 4xx or 5xx, 4xx, 5xx |
+| `body()` · `json()` | The body, raw or decoded |
+| `header($name)` · `headers()` | Case-insensitive |
+| `throw()` | Raise on 4xx and 5xx, and return `$this` otherwise |
+
+`json()` answers `null` when the body is not JSON, because a service returning
+an error page instead is a thing that happens; `json(strict: true)` throws
+instead.
+
+A request that produced **no** answer — a refused connection, a name that does
+not resolve, a timeout, a certificate that failed to verify — throws
+`ClientException`. There is nothing to return.
+
+### What it does not do
+
+**Retry.** How many times to try, how long to wait between attempts and which
+failures deserve another one are decisions about the service being called rather
+than about HTTP — a request that charges a card is not one to repeat because a
+response was slow. That belongs in the integration, next to the knowledge that
+can answer it.
+
+### What it defends
+
+A timeout is set whether you ask for one or not: 5 seconds to connect and 15
+for the whole exchange. A call with no timeout holds a worker until PHP's own
+limit, so one slow service takes the whole application with it.
+
+Certificates are verified. `->insecure()` turns that off and is named to be
+uncomfortable to type, because `CURLOPT_SSL_VERIFYPEER => false` copied from a
+forum answer is among the most common holes in PHP.
+
+Redirects are followed, capped at five, and **never** from `https://` to
+`http://` — a downgrade the server asks for and the client should refuse, since
+everything after it travels in the clear, including the `Authorization` header
+this may be carrying.
+
+> **A URL that came from a visitor is a request an attacker chose.** Pointed at
+> `169.254.169.254`, or at something only your network can reach, this fetches
+> it and hands back the answer — the attack called SSRF. Nothing here can tell a
+> URL you built from one somebody typed, so check the ones you did not build.
+
+---
+
 ## Mail
 
 ```php
@@ -4021,7 +4115,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 143 unit cases
+composer run test        # 146 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves

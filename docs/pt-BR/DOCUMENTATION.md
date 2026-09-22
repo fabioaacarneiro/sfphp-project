@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 143 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 146 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -31,6 +31,7 @@ hoje. Onde algo não existe, está dito que não existe — veja
 - [Cache](#cache)
 - [Queue](#queue)
 - [Eventos](#eventos)
+- [Cliente HTTP](#cliente-http)
 - [E-mail](#e-mail)
 - [Validação](#validação)
 - [Upload de arquivos](#upload-de-arquivos)
@@ -2054,6 +2055,98 @@ que o framework traz nos três idiomas.
 
 ---
 
+## Cliente HTTP
+
+Chamar outro serviço significava `curl_setopt_array` com uma dúzia de
+constantes, decodificar o corpo na mão e lembrar — ou, muito mais frequentemente,
+esquecer — de definir um timeout.
+
+```php
+use SfphpProject\src\Http\Http;
+
+$resposta = Http::get('https://api.exemplo.com/users', ['page' => 2]);
+$resposta = Http::post('https://api.exemplo.com/users', ['name' => 'Ana']);
+
+$resposta->ok();       // true para 2xx
+$resposta->status();   // 200
+$resposta->json();     // o corpo decodificado
+```
+
+Um corpo passado como array vai como JSON, com os headers `Content-Type` e
+`Accept` que isso implica. O `->asForm()` manda como formulário, e uma string vai
+como está — quem codificou o corpo é dono do tipo dele.
+
+### Um cliente para um serviço que você chama sempre
+
+```php
+$billing = Http::base('https://billing.interno')
+    ->token($jwt)
+    ->timeout(5);
+
+$fatura = $billing->get('/invoices/7')->throw()->json();
+```
+
+Um cliente é um **valor**: cada método devolve um novo, então um cliente
+configurado para um serviço pode circular sem que nada consiga alterá-lo.
+
+| | |
+|---|---|
+| `Http::base($url)` | Os caminhos relativos penduram aqui |
+| `->token($jwt)` · `->basic($usuario, $senha)` | Autorização |
+| `->headers([...])` | Qualquer outro header |
+| `->timeout($segundos, $conexao)` | Quanto esperar |
+| `->asForm()` | Mandar corpos como formulário em vez de JSON |
+
+### Ler a resposta
+
+Um erro **é** uma resposta: o servidor foi alcançado, entendeu e disse não. Então
+404 e 500 voltam para serem inspecionados, não lançados.
+
+| | |
+|---|---|
+| `ok()` | 2xx |
+| `failed()` · `clientError()` · `serverError()` | 4xx ou 5xx, 4xx, 5xx |
+| `body()` · `json()` | O corpo, cru ou decodificado |
+| `header($nome)` · `headers()` | Sem diferenciar maiúsculas |
+| `throw()` | Lança em 4xx e 5xx, e devolve `$this` nos outros casos |
+
+O `json()` responde `null` quando o corpo não é JSON, porque um serviço devolver
+página de erro no lugar é coisa que acontece; o `json(strict: true)` lança.
+
+Uma requisição que **não** produziu resposta — conexão recusada, nome que não
+resolve, timeout, certificado que não verificou — lança `ClientException`. Não há
+o que devolver.
+
+### O que ele não faz
+
+**Retry.** Quantas vezes tentar, quanto esperar entre tentativas e quais falhas
+merecem outra são decisões sobre o serviço chamado, não sobre HTTP — uma
+requisição que cobra um cartão não é para repetir porque a resposta demorou. Isso
+pertence à integração, ao lado do conhecimento que consegue responder.
+
+### O que ele protege
+
+Um timeout é definido quer você peça ou não: 5 segundos para conectar e 15 para a
+troca inteira. Uma chamada sem timeout segura um worker até o limite do próprio
+PHP, então um serviço lento leva a aplicação inteira junto.
+
+Certificados são verificados. O `->insecure()` desliga isso e tem nome
+desconfortável de propósito, porque `CURLOPT_SSL_VERIFYPEER => false` copiado de
+resposta de fórum está entre os buracos mais comuns em PHP.
+
+Redirects são seguidos, limitados a cinco, e **nunca** de `https://` para
+`http://` — um rebaixamento que o servidor pede e o cliente deve recusar, já que
+tudo depois dele viaja em claro, inclusive o header `Authorization` que a
+requisição possa estar carregando.
+
+> **Uma URL que veio de um visitante é uma requisição que um atacante escolheu.**
+> Apontada para `169.254.169.254`, ou para algo que só a sua rede alcança, isto
+> busca e devolve a resposta — o ataque chamado SSRF. Nada aqui distingue uma URL
+> que você montou de uma que alguém digitou, então verifique as que não foram
+> você que montou.
+
+---
+
 ## E-mail
 
 ```php
@@ -4013,7 +4106,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 143 casos unitários
+composer run test        # 146 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve

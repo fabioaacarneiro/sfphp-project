@@ -47,7 +47,8 @@
         "ext-mbstring": "Improves Unicode case conversion; the framework falls back to ASCII folding without it.",
         "ext-redis": "Enables the Redis cache and queue drivers.",
         "ext-pcntl": "Enables graceful shutdown of the queue worker.",
-        "ext-fileinfo": "Reads an uploaded file's real media type. Without it assertType() refuses rather than guessing."
+        "ext-fileinfo": "Reads an uploaded file's real media type. Without it assertType() refuses rather than guessing.",
+        "ext-curl": "Required by the HTTP client. Without it, Http::get() and friends refuse rather than degrade."
     },
     "type": "project",
     "keywords": [
