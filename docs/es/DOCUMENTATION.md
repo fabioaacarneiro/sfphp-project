@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 114 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 119 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -32,6 +32,7 @@ hace hoy. Donde algo no existe, se dice que no existe — véase
 - [Colas](#colas)
 - [Correo](#correo)
 - [Validación](#validación)
+- [Subida de archivos](#subida-de-archivos)
 - [Internacionalización](#internacionalización)
 - [Tiempo y zonas horarias](#tiempo-y-zonas-horarias)
 - [Cadenas UTF-8](#cadenas-utf-8)
@@ -1765,6 +1766,128 @@ cuántos miembros quitó y nada comprobaba la respuesta. Ahora sí.
 
 ---
 
+## Subida de archivos
+
+```php
+$file = $request->file('avatar');
+
+if ($file === null || !$file->isValid()) {
+    return Response::json(['message' => $file?->errorMessage()], HTTP_UNPROCESSABLE_ENTITY);
+}
+
+$file->assertType(['image/png', 'image/jpeg'])
+     ->assertExtension(['png', 'jpg', 'jpeg'])
+     ->assertSmallerThan(2 * 1024 * 1024)
+     ->assertImage();
+
+$path = $file->store('/var/app/storage/avatars');
+```
+
+`$_FILES` se exponía en crudo antes de que esto existiera, lo que dejaba a cada
+aplicación escribir desde cero el mismo código crítico de seguridad. Subir un
+archivo es una vía clásica para entrar en un servidor, y los errores son
+específicos y repetibles — así que vale la pena nombrarlos en vez de resumirlos.
+
+### Tres mentiras que cuenta un navegador
+
+**El tipo informado es una afirmación.** `$_FILES['x']['type']` es una cabecera
+que envió el cliente, así que un script PHP anunciado como `image/png` llega
+como `image/png`. Comprobarlo no prueba nada. `mimeType()` lee los bytes del
+propio archivo con `ext-fileinfo`, y `assertType()` rechaza en vez de adivinar
+cuando esa extensión falta.
+
+**El nombre informado también es una afirmación.** Usarlo para construir una
+ruta es cómo se escribe `../../public/shell.php`. `clientName()` quita todo lo
+que parezca una ruta, incluido el byte nulo que hace que `shell.php\0.png` pase
+una comprobación de extensión y aterrice como `shell.php` — y `store()` no lo
+usa.
+
+**Un archivo que no se subió no es un archivo.** `$_FILES` se puede falsificar
+cuando un script queda alcanzable de una forma que su autor no previó, apuntando
+`tmp_name` a `/etc/passwd`. `is_uploaded_file()` distingue los dos, y se
+comprueba antes de leer o mover nada; `store()` usa entonces
+`move_uploaded_file()`, que aplica la misma guarda en el momento que importa.
+
+### Comprobaciones
+
+Cada una lanza `UploadException` con un mensaje que nombra lo que rechazó, así
+que un controlador decide si eso es un error de formulario o un fallo:
+
+| | |
+|---|---|
+| `assertType(['image/png'])` | Lo que el archivo **contiene**, por sus bytes |
+| `assertExtension(['png'])` | Cómo se **llama** el archivo |
+| `assertSmallerThan($bytes)` | Por campo, a diferencia de `upload_max_filesize` |
+| `assertImage()` | Decodifica la cabecera, así que una imagen falsa se rechaza |
+
+Merece la pena comprobar tipo y extensión, porque son mentiras distintas: lo que
+un archivo contiene decide cómo lo lee una biblioteca, y en qué termina su
+nombre decide cómo lo trata un servidor web. Un PNG real llamado `avatar.php`
+sigue siendo un problema si cae donde se ejecuta PHP.
+
+```php
+try {
+    $file->assertType(['application/pdf'])->assertSmallerThan(5 * 1024 * 1024);
+} catch (UploadException $e) {
+    $errors['factura'] = $e->getMessage();
+}
+```
+
+`Validator` queda deliberadamente fuera. Trabaja con escalares de un formulario,
+y el tipo real de una subida es algo que solo el propio archivo responde.
+
+### Almacenar
+
+```php
+$path = $file->store('/var/app/storage/facturas');
+// /var/app/storage/facturas/9f2c…a41.pdf
+
+$path = $file->store($directorio, 'informe.csv');   // igualmente saneado
+```
+
+El nombre guardado es **aleatorio**, y eso es el objetivo y no una comodidad: el
+nombre del cliente es entrada del cliente. La extensión se traslada solo cuando
+es alfanumérica simple, así que nada en ella puede ser una ruta ni una segunda
+extensión. Un nombre que pases tú se reduce a algo que no puede ser una ruta, y
+se rechaza del todo cuando no queda nada utilizable.
+
+> **Guarda las subidas fuera del document root.** Nada de esto impide que un
+> archivo se ejecute si se escribe donde el servidor web lo ejecutará. `public/`
+> es el único sitio al que una subida nunca debería ir.
+
+### Varios archivos
+
+```php
+foreach ($request->files('fotos') as $foto) {
+    $foto->assertImage()->store($directorio);
+}
+```
+
+`$_FILES['fotos']` para `name="fotos[]"` no es una lista de archivos — es un
+archivo cuyas propiedades son todas listas. `files()` le da la vuelta, y `file()`
+responde `null` para un campo así en lugar de devolver algo inservible.
+`hasFile()` pregunta si llegó un archivo **utilizable**, no si vino el campo.
+
+### Por qué falló una subida
+
+PHP informa de los fallos como enteros `UPLOAD_ERR_*`, y la diferencia importa a
+quien rellena el formulario: "el archivo es demasiado grande" es algo sobre lo
+que puede actuar y "el servidor no tiene directorio temporal" no lo es.
+`errorMessage()` devuelve el mensaje correcto, traducido, del catálogo `upload.*`
+que el framework trae en los tres idiomas.
+
+### Qué falta
+
+| Ausente | Situación |
+|---|---|
+| Abstracción de almacenamiento | `store()` escribe en una ruta local. S3 o un volumen compartido es de la aplicación, y el disco local no se comparte entre instancias |
+| Procesamiento de imagen | Sin redimensionar ni recodificar. `ext-gd` hace eso y el framework no lo envuelve |
+| Quitar metadatos | El EXIF, incluido dónde se tomó una foto, se conserva tal como llegó |
+| Antivirus | Fuera de alcance; es tarea de ClamAV, sobre el archivo ya guardado |
+| Subida por partes o reanudable | Una petición, un archivo |
+
+---
+
 ## Correo
 
 ```php
@@ -2794,7 +2917,7 @@ insegura, así que enviarla ahí parecería protección sin serlo.
 | Revocación de tokens | Un JWT es válido hasta que expira; no hay lista de revocación |
 | Recuperación de contraseña, verificación de correo, 2FA | Fuera de alcance |
 | «Recordarme» | La columna `remember_token` existe; nada la usa |
-| Protección contra subidas maliciosas | `$_FILES` se expone en crudo; validar tipo y destino es tarea de la aplicación |
+| Abstracción de almacenamiento para subidas | Los archivos se validan y se guardan localmente; S3 o un volumen compartido es de la aplicación. Consulta [Subida de archivos](#subida-de-archivos) |
 | Registro de auditoría / seguridad | Solo `error_log()` |
 
 ---
@@ -3329,7 +3452,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 114 casos unitarios
+composer run test        # 119 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve
