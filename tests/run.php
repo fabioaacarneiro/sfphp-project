@@ -1580,6 +1580,48 @@ $tests->run('phpx keeps the line numbers of the file the author wrote', function
     $tests->assertSame(8, array_search('// marker', explode("\n", $compiled), true));
 });
 
+$tests->run('build --phpx mirrors the folders the components live in', function () use ($tests): void {
+    /*
+     * One component per file is the convention, so a page's parts live in a
+     * folder of their own — and the build has to walk into it. It used to scan
+     * the first level only, which silently compiled nothing for a project that
+     * organised its components at all.
+     */
+    $root = sys_get_temp_dir() . '/sfphp-build-' . bin2hex(random_bytes(6));
+    mkdir($root . '/src/page', 0755, true);
+
+    file_put_contents(
+        $root . '/src/Loose.phpx',
+        "<?php\nfunction Loose(): \\SfphpProject\\src\\View\\Sfht\n{\n    return sfht(<p>loose</p>);\n}\n"
+    );
+    file_put_contents(
+        $root . '/src/page/Nested.phpx',
+        "<?php\nfunction Nested(): \\SfphpProject\\src\\View\\Sfht\n{\n    return sfht(<p>nested</p>);\n}\n"
+    );
+
+    try {
+        $command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(dirname(__DIR__) . '/sfphp')
+            . ' build --phpx --from=' . escapeshellarg($root . '/src')
+            . ' --to=' . escapeshellarg($root . '/out') . ' 2>&1';
+
+        $output = [];
+        $status = 0;
+        exec($command, $output, $status);
+
+        $tests->assertSame(0, $status);
+        $tests->assertTrue(is_file($root . '/out/Loose.php'));
+        $tests->assertTrue(is_file($root . '/out/page/Nested.php'));
+    } finally {
+        foreach (['/out/page/Nested.php', '/out/Loose.php', '/src/page/Nested.phpx', '/src/Loose.phpx'] as $file) {
+            @unlink($root . $file);
+        }
+
+        foreach (['/out/page', '/out', '/src/page', '/src', ''] as $directory) {
+            @rmdir($root . $directory);
+        }
+    }
+});
+
 $tests->run('phpx refuses a markup region that is never closed', function () use ($tests): void {
     $tests->assertThrows(
         fn () => (new Phpx())->compile("<?php\n\nfunction B() { return sfht(\n  <p>x</p>\n; }\n"),

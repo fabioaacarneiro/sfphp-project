@@ -1,0 +1,40 @@
+<?php
+
+namespace SfphpProject\app\components\postcode;
+
+use SfphpProject\src\View\Sfht;
+
+/**
+ * The page that demonstrates .phpx, SFCSS and SFJS working together.
+ *
+ * It composes the components beside it and nothing else, so what the page is
+ * made of can be read in one screen. Each of them lives in its own file, named
+ * after the function, which is the convention this framework follows.
+ */
+function PostcodePage(): Sfht
+{
+    return sfht(
+        <!DOCTYPE html>
+        <html lang="{{ lang_tag() }}">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>.phpx + SFCSS + SFJS — SFPHP</title>
+            <link rel="stylesheet" href="{{ asset('css/sfcss.min.css') }}">
+        </head>
+        <body class="bg-light">
+            {{ PageHeader() }}
+
+            <main class="container py-12 max-w-2xl mx-auto px-4">
+                {{ PostcodeLookup() }}
+                {{ HowItWorks() }}
+            </main>
+
+            {{ PageFooter() }}
+
+            <script src="{{ asset('js/sfjs.min.js') }}"></script>
+            <script src="{{ asset('js/postcode.js') }}"></script>
+        </body>
+        </html>
+    );
+}

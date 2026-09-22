@@ -20,6 +20,11 @@ use SfphpProject\src\Database;
 use SfphpProject\src\Database\Seeder;
 use SfphpProject\src\Migrations\MigrationCreator;
 use SfphpProject\src\Migrations\MigrationRunner;
+use FilesystemIterator;
+use RecursiveCallbackFilterIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use SplFileInfo;
 use Throwable;
 
 /**
@@ -894,6 +899,15 @@ PHP;
      */
     private function projectPath(string $path): string
     {
+        /*
+         * An absolute path is already the answer. Hanging it off the root used
+         * to produce a directory nobody has, and a command handed one then
+         * reported there was nothing to do — a silence that reads as success.
+         */
+        if (str_starts_with($path, DIRECTORY_SEPARATOR) || preg_match('#^[A-Za-z]:[\\\\/]#', $path) === 1) {
+            return $path;
+        }
+
         return rtrim($this->rootPath(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
     }
 
@@ -1418,9 +1432,24 @@ PHP;
             $compiler = new \SfphpProject\src\View\Phpx();
             $built = 0;
 
-            foreach (glob($source . '/*.phpx') ?: [] as $file) {
+            foreach ($this->componentFiles($source, $target) as $file) {
                 $php = $compiler->compile((string) file_get_contents($file));
-                $out = $target . '/' . basename($file, '.phpx') . '.php';
+
+                /*
+                 * The tree under the source is mirrored under the target, so a
+                 * page whose components live together in a folder compiles to
+                 * a folder rather than to six files loose among everything
+                 * else. One component per file is the convention; the
+                 * directory is what keeps that from becoming a pile.
+                 */
+                $out = $target . '/' . substr($file, strlen($source) + 1, -strlen('.phpx')) . '.php';
+                $directory = dirname($out);
+
+                if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
+                    fwrite(STDERR, 'Error: could not create ' . $directory . PHP_EOL);
+
+                    return 1;
+                }
 
                 if (file_put_contents($out, $php) === false) {
                     fwrite(STDERR, 'Error: could not write ' . $out . PHP_EOL);
@@ -1457,6 +1486,38 @@ PHP;
 
             return 1;
         }
+    }
+
+    /**
+     * Every .phpx under a directory, in a stable order.
+     *
+     * Recursive, because the components of one page belong in one folder. The
+     * target is skipped: it usually sits inside the source, and compiling what
+     * was just compiled would be a loop with output.
+     *
+     * @param string $source The directory to scan
+     * @param string $target The directory being written to
+     * @return list<string> The absolute paths
+     */
+    private function componentFiles(string $source, string $target): array
+    {
+        $files = [];
+
+        $directories = new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS);
+        $filter = new RecursiveCallbackFilterIterator(
+            $directories,
+            static fn (SplFileInfo $file): bool => $file->getPathname() !== $target
+        );
+
+        foreach (new RecursiveIteratorIterator($filter) as $file) {
+            if ($file->isFile() && $file->getExtension() === 'phpx') {
+                $files[] = $file->getPathname();
+            }
+        }
+
+        sort($files);
+
+        return $files;
     }
 
     /**

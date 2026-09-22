@@ -5,7 +5,7 @@ namespace SfphpProject\app\controllers;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
 
-use function SfphpProject\app\components\PostcodePage;
+use function SfphpProject\app\components\postcode\PostcodePage;
 
 /**
  * Serves the page that demonstrates .phpx, SFCSS and SFJS together.
