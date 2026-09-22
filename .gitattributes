@@ -1,0 +1,25 @@
+# What a `composer require` does not need.
+#
+# Everything here is part of this repository and none of it is part of the
+# framework: the example application, its database files, the test suite, the
+# documentation in three languages and the CSS builder. Shipping them would put
+# an app/ directory inside every consumer's vendor/ — confusing at best, and at
+# worst something a stray autoload rule picks up.
+
+/app                export-ignore
+/database           export-ignore
+/docs               export-ignore
+/public             export-ignore
+/tests              export-ignore
+/tools              export-ignore
+/.github            export-ignore
+/lang               export-ignore
+/server.php         export-ignore
+/.env-example       export-ignore
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
+/README.pt-BR.md    export-ignore
+/README.es.md       export-ignore
+
+# Keep: composer.json, README.md, LICENSE, sfphp, and src/ — which includes
+# src/I18n/lang/, the framework's own message catalogs.

@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 102 tests, 0 failures
+> Verified against PHP 8.4 · suite: 105 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -86,6 +86,45 @@ Optional extensions, declared under `suggest`:
 - Composer 2
 - PDO with your database's driver (optional — only if you use a database)
 
+### As a dependency
+
+```bash
+composer require fabio/sfphp
+```
+
+The package carries the framework and nothing else: no example application, no
+test suite, no `app/` directory appearing inside your `vendor/`. One call wires
+your project to it, at the top of your front controller and of any console entry
+point:
+
+```php
+require __DIR__ . '/../vendor/autoload.php';
+
+use SfphpProject\src\Bootstrap;
+
+Bootstrap::load(dirname(__DIR__));
+```
+
+That loads your `.env` if you have one, defines the settings the framework reads
+unless you already defined them, and registers where your views and message
+catalogs live. A project with an unusual layout says so:
+
+```php
+Bootstrap::load(dirname(__DIR__), [
+    'views' => 'resources/views',
+    'lang' => 'resources/lang',
+    'env' => null,               // configuration comes from the environment
+]);
+```
+
+The console arrives as `vendor/bin/sfphp`, and generates files into **your**
+project rather than into the package.
+
+### As a starting point
+
+To begin from the example application instead — routes, controllers, views and
+migrations already in place:
+
 ```bash
 git clone https://github.com/fabioaacarneiro/sfphp-project.git
 cd sfphp-project
@@ -102,6 +141,25 @@ php -S localhost:8000 -t public server.php      # equivalent
 ```
 
 In production, point the `DocumentRoot` at `public/`.
+
+### What belongs to whom
+
+The line runs between the framework and the application, and it is worth
+knowing because everything above depends on it.
+
+| | |
+|---|---|
+| The package autoloads | `src/` only, plus four files inside it |
+| The application owns | `.env`, its constants, its views, its catalogs, its routes |
+| `Bootstrap::load()` | Is how the second tells the first about itself |
+
+Every setting the framework reads is consulted through `defined()`, so a project
+that never calls `Bootstrap::load()` still boots on the defaults — and a test
+asserts that no framework file reads one without that guard.
+
+The runtime time zone is the exception: it is set to UTC when the package loads,
+before anything can ask, because it is a correctness rule rather than a setting.
+See [Time and time zones](#time-and-time-zones).
 
 ---
 
@@ -128,8 +186,14 @@ PSR-4 autoloading:
 | `Database\Seeders\` | `database/seeders/` |
 | `Database\Factories\` | `database/factories/` |
 
-And four files always loaded (`autoload.files`): `app/config/config.php`,
-`src/utils.php`, `src/http.php`, `src/helpers.php`.
+The first mapping is the package's; the other three are this repository's own,
+declared under `autoload-dev` so they never reach a project that installs the
+framework.
+
+Four files are always loaded (`autoload.files`), and all four live in `src/`:
+`runtime.php`, `utils.php`, `http.php` and `helpers.php`. The example
+application's `app/config/config.php` is loaded too, through `autoload-dev`,
+and all it does is call `Bootstrap::load()`.
 
 ---
 
@@ -138,10 +202,11 @@ And four files always loaded (`autoload.files`): `app/config/config.php`,
 ```
 public/index.php
  ├─ vendor/autoload.php
- │   └─ config.php → loads .env (optional), defines APP_NAME/VERSION/ENV/LOCALE
+ │   └─ runtime.php→ date_default_timezone_set('UTC')
  │      utils.php  → global helpers: e(), asset(), csrf_*()
  │      http.php   → HTTP_OK, GET, POST, ... constants
  │      helpers.php→ cache(), logger(), now(), dispatch(), __(), trans_choice(), locale()
+ │      config.php → Bootstrap::load(): .env, constants, view and lang paths
  ├─ ErrorHandler::register()  safety net for fatals and bootstrap failures
  ├─ require src/routes.php    fills the static route registry
  ├─ new Container()
@@ -1835,9 +1900,9 @@ APP_LOCALES=en,pt_BR,es
 application offers; `APP_LOCALES` are the ones it offers, in order of
 preference. With no configuration, both default to English.
 
-The application's `lang/` path is registered in `app/config/config.php`, which
-runs from the autoloader — so the CLI, a queue worker and the test suite all
-see the same messages a web request would.
+The application's `lang/` path is registered by `Bootstrap::load()`, which every
+entry point calls — so the CLI, a queue worker and the test suite all see the
+same messages a web request would.
 
 ### Validation
 
@@ -2993,7 +3058,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 102 unit cases
+composer run test        # 105 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
@@ -3038,7 +3103,6 @@ does not do, and you should know before choosing it.
 | **Metrics** | Records carry durations; counters and timings are not collected. See [Logging](#logging) |
 | **Route caching** | Dispatch is O(n), one `preg_match` per route. Fine for dozens, not hundreds |
 | **Session revocation from elsewhere** | Ending another device's session is buildable on the `database` driver's table; nothing ships. See [Sessions](#sessions) |
-| **Distribution as a package** | The controller namespace is already a Router parameter, but `composer.json` still describes an application rather than a library |
 
 SFHT also has no automatic loop variables (`$loop`) and no partial block
 inheritance (`@parent`).

@@ -21,6 +21,12 @@ final class View
 
     private static ?SfhtEngine $engine = null;
 
+    /** @var list<string>|null Directories searched for templates. */
+    private static ?array $paths = null;
+
+    /** Where compiled templates are written. */
+    private static ?string $cachePath = null;
+
     /**
      * Render a view and return the result.
      *
@@ -112,11 +118,37 @@ final class View
     private static function engine(): SfhtEngine
     {
         if (self::$engine === null) {
-            $viewsPath = __DIR__ . '/../app/resources/views';
-            $cachePath = sys_get_temp_dir() . '/sfphp-sfht-cache';
-            self::$engine = new SfhtEngine([$viewsPath], $cachePath);
+            /*
+             * Falls back to the conventional layout when nothing registered a
+             * path. The framework used to reach into "../app/resources/views"
+             * from inside src/, which worked only while the framework and the
+             * application were the same checkout — installed under vendor/,
+             * that path names a directory in the package rather than in the
+             * project. Bootstrap::load() registers the real one.
+             */
+            $paths = self::$paths ?? [Bootstrap::basePath('app/resources/views')];
+            $cache = self::$cachePath ?? sys_get_temp_dir() . '/sfphp-sfht-cache';
+
+            self::$engine = new SfhtEngine($paths, $cache);
         }
 
         return self::$engine;
+    }
+
+    /**
+     * Say where templates live.
+     *
+     * Called by Bootstrap::load(); an application with an unusual layout can
+     * call it directly instead.
+     *
+     * @param list<string> $paths Directories searched for templates, in order
+     * @param string|null $cachePath Where compiled templates are written, or null for the default
+     * @return void
+     */
+    public static function setPaths(array $paths, ?string $cachePath = null): void
+    {
+        self::$paths = $paths;
+        self::$cachePath = $cachePath;
+        self::$engine = null;
     }
 }

@@ -2,6 +2,7 @@
 
 namespace SfphpProject\src\Console;
 
+use SfphpProject\src\Bootstrap;
 use SfphpProject\src\Console\Generators\ControllerGenerator;
 use SfphpProject\src\Console\Generators\EventGenerator;
 use SfphpProject\src\Console\Generators\FactoryGenerator;
@@ -792,7 +793,14 @@ PHP;
      */
     private function rootPath(): string
     {
-        return dirname(__DIR__, 2);
+        /*
+         * The project, not the package. Installed under vendor/, dirname of
+         * this file names the framework's own directory, so `make:controller`
+         * would write into vendor/fabio/sfphp/app/ and the file would vanish on
+         * the next `composer update`. Bootstrap knows where the application is
+         * because the entry point told it.
+         */
+        return Bootstrap::basePath();
     }
 
     /**

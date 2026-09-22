@@ -19,6 +19,21 @@ JavaScript desde un CDN.
 
 ## Instalación
 
+Como dependencia:
+
+```bash
+composer require fabio/sfphp
+```
+
+```php
+require __DIR__ . '/../vendor/autoload.php';
+
+SfphpProject\src\Bootstrap::load(dirname(__DIR__));
+```
+
+O empieza desde la aplicación de ejemplo, con rutas, vistas y migraciones ya
+puestas:
+
 ```bash
 git clone https://github.com/fabioaacarneiro/sfphp-project.git
 cd sfphp-project
@@ -121,7 +136,7 @@ corrompería el dato en la base de datos sin proteger su destino real.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 102 casos unitarios
+composer run test        # 105 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run docs        # los tres idiomas de la documentación concuerdan
 ```
