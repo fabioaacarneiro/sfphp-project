@@ -1698,7 +1698,9 @@ final class SendEmailJob extends Job
 
     public function handle(): void
     {
-        mail($this->to, 'Hola', 'Cuerpo');
+        mailer()->send(
+            (new Message())->to($this->to)->subject('Hola')->text('Cuerpo')
+        );
     }
 }
 ```
@@ -1716,12 +1718,50 @@ dispatch(new SendEmailJob('a@b.com'), 300);    // con un retraso en segundos
 ./sfphp queue:failed
 ```
 
-El worker procesa hasta agotar el tiempo, incrementa los intentos al fallar, y
-mueve un trabajo a `failed_jobs` cuando se le acaban los intentos. Con
+El worker procesa hasta el tiempo límite, incrementa los intentos al fallar y
+mueve el trabajo a `failed_jobs` cuando se le acaban los intentos. Con
 `ext-pcntl`, `SIGTERM` y `SIGINT` lo apagan de forma ordenada.
 
-Las tablas `jobs` y `failed_jobs` se crean bajo demanda, en la primera
-operación que las necesita — instanciar el driver no abre ninguna conexión.
+Las tablas `jobs` y `failed_jobs` se crean bajo demanda, en la primera operación
+que las necesita — instanciar el driver no abre ninguna conexión.
+
+### Más de un worker
+
+Un trabajo se entrega a exactamente un worker. Vale decirlo porque no era
+cierto hasta esta versión, y porque el fallo era invisible con un solo worker:
+`pop()` seleccionaba una fila y luego la actualizaba, así que dos workers leían
+el mismo trabajo, ambos lo marcaban como reservado y **ambos lo ejecutaban**.
+Para una cola eso no es lentitud, es un efecto secundario duplicado — el mismo
+correo dos veces, la misma tarjeta cobrada dos veces.
+
+La reserva ahora es una reclamación. El `UPDATE` lleva la condición de que el
+trabajo siga sin reservar, y solo lo tiene el worker cuya sentencia afecta a una
+fila; quien pierde busca el siguiente en vez de ejecutar el de otro. Un update
+condicional en lugar de `SELECT … FOR UPDATE SKIP LOCKED`, porque el framework
+soporta siete drivers y no todos lo tienen.
+
+```php
+new DatabaseDriver(reservationSeconds: 900);
+```
+
+**Un trabajo reservado por un worker que murió vuelve.** Un worker muerto entre
+reservar y terminar deja el trabajo marcado como tomado sin nadie trabajando en
+él. Todo trabajo reservado más de `reservationSeconds` — quince minutos por
+defecto — se libera para que otro worker lo reclame. Ponlo por encima de lo más
+que un trabajo pueda tardar legítimamente, o un trabajo lento se tomará dos
+veces.
+
+El driver de Redis tenía el mismo defecto por el mismo motivo: `zRem` informa
+cuántos miembros quitó y nada comprobaba la respuesta. Ahora sí.
+
+### Qué falta
+
+| Ausente | Situación |
+|---|---|
+| Varias colas con nombre | Todo va a `default`; la columna existe y nada la lee |
+| Reprocesar un trabajo fallido | `failed_jobs` los registra; volver a ponerlo es manual |
+| Espera entre intentos | Un reintento espera 60 segundos fijos |
+| Supervisor | Mantener el worker vivo es tarea de `systemd`, `supervisor` o la plataforma |
 
 ---
 

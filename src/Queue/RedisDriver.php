@@ -52,8 +52,17 @@ class RedisDriver implements Queue
             return null;
         }
 
+        /*
+         * zRem reports how many members it removed, and that report is the
+         * claim: two workers can both read the same item, and only the one
+         * whose zRem returns 1 actually took it. Ignoring the result meant both
+         * ran the job — the same duplicated side effect the database driver had.
+         */
+        if ((int) $this->redis->zRem($this->prefix . 'default', $items[0]) !== 1) {
+            return null;
+        }
+
         $payload = json_decode($items[0], true);
-        $this->redis->zRem($this->prefix . 'default', $items[0]);
 
         $instance = new $payload['class']();
         $instance->setId($payload['id']);
