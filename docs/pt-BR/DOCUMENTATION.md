@@ -2873,10 +2873,10 @@ guardado ainda pertence a fora do document root.
 | Ausente | Situação |
 |---|---|
 | Revogação de token | Um JWT vale até expirar; não há lista de revogados |
-| Recuperação de senha, verificação de e-mail, 2FA | Fora de escopo |
+| Recuperação de senha, verificação de e-mail, 2FA | Os fluxos são da aplicação; o [E-mail](#e-mail) é a peça que o framework devia a eles |
 | "Lembrar de mim" | A coluna `remember_token` existe; nada a usa |
 | Abstração de armazenamento para upload | Arquivos são validados e guardados localmente; S3 ou volume compartilhado é da aplicação. Ver [Upload de arquivos](#upload-de-arquivos) |
-| Auditoria / log de segurança | Só `error_log()` |
+| Log de auditoria | Os registros são estruturados e carregam id de requisição, mas nada escreve uma trilha deliberada de "quem mudou o quê". Ver [Log](#log) |
 
 ---
 
@@ -3449,12 +3449,14 @@ não faz, e que você deve saber antes de escolhê-lo.
 
 | Ausência | Impacto |
 |---|---|
-| **Recuperação de senha e dois fatores** | O login existe; esses fluxos não. Ver [Autenticação](#autenticação) |
+| **Recuperação de senha e dois fatores** | O login existe; esses fluxos não, e são da aplicação escrever. Ver [Autenticação](#autenticação) e [E-mail](#e-mail) |
 | **Sistema de eventos** | `make:event` e `make:listener` geram classes sem dispatcher |
 | **ORM completo** | Existe uma camada de [Models](#models) com hidratação, tipos de atributo, relacionamentos (incluindo muitos-para-muitos) e `with()`. Não existe identity map, unit of work, proxy de lazy loading, relação polimórfica nem schema derivado da classe — e [ORM ou Query Builder?](#orm-ou-query-builder) explica o motivo de cada um |
 | **Formatação por locale** | Data e número não são formatados por idioma; `ext-intl` faz isso bem e o framework não tenta. Ver [Internacionalização](#internacionalização) |
 | **Datas relativas e localizadas** | "3 horas atrás" e nomes de mês localizados não existem; armazenamento e conversão existem. Ver [Tempo e fusos horários](#tempo-e-fusos-horários) |
 | **Métricas** | Os registros carregam durações; contadores e tempos não são coletados. Ver [Log](#log) |
+| **Trava de migration** | Duas instâncias rodando `./sfphp migrate` no deploy podem ver a mesma migration como pendente. Rode migration como um passo do pipeline, nunca de uma instância subindo |
+| **Health check** | Um balanceador precisa de um endpoint dizendo que a instância está viva; o framework não traz |
 | **Cache de rotas** | O despacho é O(n), com uma `preg_match` por rota. Adequado a dezenas, não a centenas |
 | **Revogar sessão de outro lugar** | Encerrar a sessão de outro dispositivo dá para construir sobre a tabela do driver `database`; nada vem pronto. Ver [Sessões](#sessões) |
 

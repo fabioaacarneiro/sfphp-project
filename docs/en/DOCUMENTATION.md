@@ -2882,10 +2882,10 @@ outside the document root.
 | Missing | Situation |
 |---|---|
 | Token revocation | A JWT is valid until it expires; there is no revocation list |
-| Password recovery, e-mail verification, 2FA | Out of scope |
+| Password recovery, e-mail verification, 2FA | The flows belong to the application; [Mail](#mail) is the piece the framework owes it |
 | "Remember me" | The `remember_token` column exists; nothing uses it |
 | Storage abstraction for uploads | Files are validated and stored locally; S3 or a shared volume is the application's to arrange. See [File uploads](#file-uploads) |
-| Audit / security logging | Only `error_log()` |
+| Audit logging | Records are structured and carry a request id, but nothing writes a deliberate "who changed what" trail. See [Logging](#logging) |
 
 ---
 
@@ -3459,12 +3459,14 @@ does not do, and you should know before choosing it.
 
 | Missing | Impact |
 |---|---|
-| **Password recovery and two-factor** | Login exists; these flows do not. See [Authentication](#authentication) |
+| **Password recovery and two-factor** | Login exists; these flows do not, and they are the application's to write. See [Authentication](#authentication) and [Mail](#mail) |
 | **Event system** | `make:event` and `make:listener` generate classes with no dispatcher |
 | **A full ORM** | There is a [Models](#models) layer with hydration, attribute types, relations (including many-to-many) and `with()`. There is no identity map, unit of work, lazy-loading proxy, polymorphic relation or schema derived from the class — and [ORM or query builder?](#orm-or-query-builder) explains the reason for each |
 | **Per-locale formatting** | Dates and numbers are not formatted per language; `ext-intl` does that well and the framework does not attempt it. See [Internationalisation](#internationalisation) |
 | **Relative and localised dates** | "3 hours ago" and localised month names are not provided; storage and conversion are. See [Time and time zones](#time-and-time-zones) |
 | **Metrics** | Records carry durations; counters and timings are not collected. See [Logging](#logging) |
+| **A migration lock** | Two instances running `./sfphp migrate` on deploy can both see a migration as pending. Run migrations as one step of a pipeline, never from a booting instance |
+| **A health check** | A load balancer needs an endpoint saying the instance is alive; the framework ships none |
 | **Route caching** | Dispatch is O(n), one `preg_match` per route. Fine for dozens, not hundreds |
 | **Session revocation from elsewhere** | Ending another device's session is buildable on the `database` driver's table; nothing ships. See [Sessions](#sessions) |
 
