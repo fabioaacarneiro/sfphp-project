@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 152 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 154 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -909,8 +909,15 @@ $engine->setGlobals(['versao' => '1.0.0', 'ano' => date('Y')]);
 
 Templates compilam para PHP em disco e são executados com `include`, de modo
 que o **OPcache funciona** e erros de runtime apontam arquivo e linha reais. A
-gravação é atômica e invalida o OPcache no caminho exato. O cache revalida por
-timestamp.
+gravação é atômica e invalida o OPcache no caminho exato.
+
+O arquivo compilado leva o nome do caminho do template **e da versão dele** — a
+data de modificação e o tamanho —, então um template que muda compila para outro
+arquivo e um compilado só responde pelos bytes de que foi feito. Antes era só o
+caminho, com uma comparação de "mais novo que", o que só vale enquanto o tempo
+anda para a frente: extrair um arquivo compactado o faz andar para trás, e um
+template atualizado instalado por `composer create-project` chegava mais velho
+que um cache escrito minutos antes e nunca era recompilado.
 
 ```php
 $engine->clearCache();
@@ -4335,7 +4342,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 152 casos unitários
+composer run test        # 154 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve

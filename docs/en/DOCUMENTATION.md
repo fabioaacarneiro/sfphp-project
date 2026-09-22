@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 152 tests, 0 failures
+> Verified against PHP 8.4 · suite: 154 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -917,7 +917,15 @@ $engine->setGlobals(['version' => '1.0.0', 'year' => date('Y')]);
 
 Templates compile to PHP on disk and are executed with `include`, so **OPcache
 works** and runtime errors report a real file and line. The write is atomic and
-invalidates OPcache for that exact path. The cache revalidates by timestamp.
+invalidates OPcache for that exact path.
+
+A compiled file is named after the template's path **and version** — its
+modification time and size — so a template that changes compiles to a different
+file and a compiled file only ever answers for the bytes it was made from. This
+used to be the path alone with a newer-than comparison, which holds only while
+time moves forward: extracting an archive moves it backwards, so an updated
+template installed by `composer create-project` arrived older than a cache file
+written minutes before and was never recompiled.
 
 ```php
 $engine->clearCache();
@@ -4343,7 +4351,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 152 unit cases
+composer run test        # 154 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
