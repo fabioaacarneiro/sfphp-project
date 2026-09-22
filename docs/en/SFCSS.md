@@ -363,9 +363,22 @@ class at all:
 
 ### Surfaces and the dark theme
 
-Eight variables carry the neutrals, and a `prefers-color-scheme: dark` block
-redefines those eight and nothing else — a palette colour means the same thing
-in both themes; what changes is the paper it sits on.
+Eight variables carry the neutrals, and a page says which theme it wants:
+
+```html
+<html data-theme="light">   <!-- the default; saying nothing is the same -->
+<html data-theme="dark">
+<html data-theme="auto">    <!-- follow the reader's system setting -->
+```
+
+Only those eight change — a palette colour means the same thing in both themes;
+what changes is the paper it sits on.
+
+> **It is opt-in on purpose.** An earlier version applied `prefers-color-scheme`
+> to `:root` directly, so a page that had never asked for a dark theme got dark
+> cards — while `bg-blue-50` and `text-slate-600`, being fixed palette values,
+> stayed exactly as light as they were. A light heading on a dark card is not a
+> theme, it is a collision.
 
 | Variable | Used for |
 |---|---|
