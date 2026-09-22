@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 95 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 102 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -36,6 +36,7 @@ hace hoy. Donde algo no existe, se dice que no existe — véase
 - [Cadenas UTF-8](#cadenas-utf-8)
 - [Autenticación](#autenticación)
 - [Seguridad](#seguridad)
+- [Sesiones](#sesiones)
 - [CSRF](#csrf)
 - [JWT](#jwt)
 - [Manejo de errores](#manejo-de-errores)
@@ -499,7 +500,7 @@ declarar dependencias en su constructor y recibirlas por autowiring.
 | `LogRequests` | Da un id a la petición y registra su desenlace |
 | `SecurityHeaders` | Añade `nosniff`, `X-Frame-Options`, `Referrer-Policy`; CSP y HSTS bajo demanda |
 | `SetLocale` | Negocia el idioma a partir de `Accept-Language` |
-| `StartSession` | Inicia la sesión con cookie `httponly` + `samesite=Lax` + `secure` bajo HTTPS |
+| `StartSession` | Inicia la sesión y aplica los plazos de inactividad y absoluto |
 | `VerifyCsrfToken` | Rechaza una petición que cambia estado sin un token válido |
 | `Authenticate` | Identifica al usuario, y rechaza anónimos cuando se exige |
 | `RateLimit` | Limita cuántas veces el mismo cliente golpea una ruta |
@@ -2459,6 +2460,12 @@ insegura, así que enviarla ahí parecería protección sin serlo.
   — lo decide la petición, respetando los proxies de confianza
 - Id de sesión **regenerado al entrar y al salir**, contra la fijación de
   sesión
+- `session.use_strict_mode` activo, así que un id que PHP nunca emitió se
+  rechaza en vez de adoptarse
+- Un plazo por **inactividad** y uno **absoluto**, ambos aplicados en el
+  pipeline — consulta [Sesiones](#sesiones)
+- Un almacén que puede compartirse entre instancias, así que la sesión no queda
+  atada a una máquina
 - Un token CSRF de 32 bytes, comparado con `hash_equals`
 - `VerifyCsrfToken` aplica la comprobación **por defecto** a toda petición que
   cambia estado; los métodos seguros y las peticiones con token bearer pasan
@@ -2495,9 +2502,130 @@ insegura, así que enviarla ahí parecería protección sin serlo.
 | Revocación de tokens | Un JWT es válido hasta que expira; no hay lista de revocación |
 | Recuperación de contraseña, verificación de correo, 2FA | Fuera de alcance |
 | «Recordarme» | La columna `remember_token` existe; nada la usa |
-| Caducidad de sesión por inactividad o absoluta | Lo que diga `php.ini` |
 | Protección contra subidas maliciosas | `$_FILES` se expone en crudo; validar tipo y destino es tarea de la aplicación |
 | Registro de auditoría / seguridad | Solo `error_log()` |
+
+---
+
+## Sesiones
+
+```php
+use SfphpProject\src\Session\Session;
+
+Session::put('cart_id', 42);
+Session::get('cart_id');
+Session::get('ausente', 'por defecto');
+Session::has('cart_id');
+Session::forget('cart_id');
+Session::all();
+Session::regenerate();     // id nuevo, los mismos datos
+Session::invalidate();     // id nuevo, sin datos
+Session::id();
+```
+
+`$_SESSION` sigue existiendo y funcionando, pero ya nada del framework lo toca.
+Pasar por `Session` es lo que vuelve inevitables los dos plazos de abajo: un
+código que iniciara la sesión de otra forma se los habría saltado.
+
+### Dos plazos
+
+```ini
+SESSION_LIFETIME=7200             # inactividad: segundos sin petición
+SESSION_ABSOLUTE_LIFETIME=43200   # absoluto: segundos desde que empezó la sesión
+```
+
+Antes de esto una sesión duraba lo que dijera `php.ini`, que en un alojamiento
+compartido es un número que nadie de la aplicación eligió.
+
+El plazo por **inactividad** cierra una sesión dejada abierta en una máquina de
+la que alguien se alejó. El **absoluto** cierra una sesión viva demasiado tiempo
+por mucho movimiento que haya tenido, y es el que pregunta una auditoría: es el
+que limita cuánto vale una cookie robada. Cualquiera se desactiva con `0`, y los
+dos los aplica `StartSession`, que es el único sitio donde se pueden aplicar una
+vez y cubrir todas las rutas.
+
+Cuando vence un plazo, los datos se van **y el id cambia con ellos**. Vaciar los
+datos conservando el id dejaría al visitante con una cookie que sigue nombrando
+una sesión viva, que es casi todo lo que caducar una pretendía evitar.
+
+```php
+if (Session::expiredReason() === 'idle') {
+    // mostrar "se cerró tu sesión tras un periodo de inactividad"
+}
+```
+
+Eso se lee una vez y se olvida, así que el aviso aparece en la petición
+siguiente a la caducidad y no en todas las posteriores.
+
+### Dónde se guardan las sesiones
+
+```ini
+SESSION_DRIVER=native      # native, database o cache
+```
+
+| Driver | Guarda en | Úsalo cuando |
+|---|---|---|
+| `native` | Los archivos del propio PHP | Una máquina. El valor por defecto |
+| `cache` | La caché, mediante `CacheManager` | Varias instancias, con Redis configurado |
+| `database` | Una tabla `sessions` | Varias instancias, y ya tienes base de datos |
+
+Los archivos nativos son locales a una máquina, así que dos instancias de la
+aplicación no ven las sesiones de la otra. Eso es lo que obliga a usar sesiones
+pegajosas en un balanceador, y por eso un despliegue que añade una segunda
+máquina cierra la sesión de todo el mundo. Un handler compartido lo elimina, y
+es el único cambio que hace al framework utilizable detrás de más de un proceso.
+
+`cache` es más rápido y no es duradero — una caché vaciada es todo el mundo
+fuera. `database` cuesta una lectura y una escritura por petición en la conexión
+que la aplicación ya usa, y sobrevive a un reinicio. Con el driver de caché de
+archivo, `cache` se comporta exactamente como `native`: eso lo decide el driver,
+no el handler.
+
+El driver de base de datos necesita su tabla:
+
+```bash
+./sfphp migrate
+```
+
+También se puede pasar un handler directamente, que es como un despliegue
+conecta uno propio:
+
+```php
+$router->middleware(new StartSession(new CacheHandler(), 1800, 28800));
+```
+
+Sirve cualquier clase que implemente el `SessionHandlerInterface` del propio
+PHP. Implementar además `SessionUpdateTimestampHandlerInterface` — los dos
+handlers incluidos lo hacen — es lo que hace funcionar la sección siguiente.
+
+### Fijación de sesión
+
+Dos defensas, y cierran mitades distintas del mismo ataque.
+
+El id se **regenera al entrar y al salir**, así que un id que un atacante haya
+plantado antes no es el id con el que acaba la víctima.
+
+Y `session.use_strict_mode` ya está activo. Sin él PHP adopta cualquier id que
+lleve la cookie, incluido uno que nunca emitió — que es la puerta a la que llama
+el atacante antes que nada. Con él, un id desconocido se rechaza y se emite uno
+nuevo:
+
+```
+GET / con Cookie: PHPSESSID=un-id-que-nadie-emitio
+→ Set-Cookie: PHPSESSID=636dbac9b2f1bc09c3d335c16115bc89
+```
+
+Por eso un handler debería implementar `validateId()`: así es como PHP le
+pregunta al almacén si un id nombra una sesión que existe.
+
+### Qué falta
+
+| Ausente | Situación |
+|---|---|
+| Listar o revocar la sesión de otro dispositivo | La tabla del driver `database` permite construirlo; no viene nada hecho |
+| Rotación periódica del id | El id cambia al entrar, al salir y al caducar, no por tiempo |
+| Cifrado en reposo | La carga se guarda tal como PHP la serializa; una base de datos o caché con cifrado propio es la respuesta |
+| Datos de una sola petición | No hay un helper de "guarda esto exactamente una petición más" |
 
 ---
 
@@ -2909,7 +3037,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 95 casos unitarios
+composer run test        # 102 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve
@@ -2946,7 +3074,6 @@ hace, y que deberías conocer antes de elegirlo.
 
 | Ausente | Impacto |
 |---|---|
-| **Caducidad de sesión** | Por inactividad o absoluta: lo que diga `php.ini`. Consulta [Seguridad](#seguridad) |
 | **Recuperación de contraseña y doble factor** | El inicio de sesión existe; estos flujos no. Consulta [Autenticación](#autenticación) |
 | **Sistema de eventos** | `make:event` y `make:listener` generan clases sin despachador |
 | **Un ORM completo** | Hay una capa de [Modelos](#modelos) con hidratación, tipos de atributo, relaciones (incluido muchos a muchos) y `with()`. No hay mapa de identidad, unidad de trabajo, proxy de carga perezosa, relación polimórfica ni esquema derivado de la clase — y [¿ORM o constructor de consultas?](#orm-o-constructor-de-consultas) explica el motivo de cada uno |
@@ -2954,7 +3081,7 @@ hace, y que deberías conocer antes de elegirlo.
 | **Fechas relativas y localizadas** | "hace 3 horas" y los nombres de mes localizados no existen; el almacenamiento y la conversión sí. Consulta [Tiempo y zonas horarias](#tiempo-y-zonas-horarias) |
 | **Métricas** | Los registros llevan duraciones; no se recogen contadores ni tiempos. Consulta [Registro](#registro) |
 | **Caché de rutas** | El despacho es O(n), un `preg_match` por ruta. Bien para decenas, no para centenares |
-| **Sesión conectable** | `$_SESSION` nativo. Varias instancias necesitan sesiones pegajosas |
+| **Revocar sesión desde otro sitio** | Cerrar la sesión de otro dispositivo se puede construir sobre la tabla del driver `database`; no viene nada hecho. Consulta [Sesiones](#sesiones) |
 | **Distribución como paquete** | El espacio de nombres de los controladores ya es un parámetro del Router, pero `composer.json` sigue describiendo una aplicación en vez de una biblioteca |
 
 SFHT tampoco tiene variables automáticas de bucle (`$loop`) ni herencia parcial
