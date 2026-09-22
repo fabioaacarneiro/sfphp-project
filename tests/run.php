@@ -5486,6 +5486,26 @@ $tests->run('the console finds a project laid out like a project, not like this 
     }
 });
 
+$tests->run('the development branch declares which release it is heading for', function () use ($tests): void {
+    /*
+     * Without a branch alias, Packagist offers the default branch only as
+     * dev-master, so nobody can depend on the next minor before it is tagged
+     * and a caret constraint matches nothing at all. It is also the one place
+     * that says out loud which version this branch becomes.
+     */
+    $composer = json_decode(
+        (string) file_get_contents(__DIR__ . '/../composer.json'),
+        true,
+        512,
+        JSON_THROW_ON_ERROR
+    );
+
+    $alias = $composer['extra']['branch-alias']['dev-master'] ?? null;
+
+    $tests->assertTrue(is_string($alias));
+    $tests->assertSame(1, preg_match('/^\d+\.\d+\.x-dev$/', (string) $alias));
+});
+
 $tests->run('the console reports the version it actually is', function () use ($tests): void {
     /*
      * This was a literal in the line the command prints, so every release
