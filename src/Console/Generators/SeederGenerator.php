@@ -30,6 +30,6 @@ PHP;
 
         file_put_contents($filePath, $content);
 
-        return "Seeder created: {$filePath}";
+        return $filePath;
     }
 }
