@@ -6,6 +6,12 @@
 # an app/ directory inside every consumer's vendor/ — confusing at best, and at
 # worst something a stray autoload rule picks up.
 
+# vendor/ is gitignored, so `git archive` never sees it — but a path repository
+# copies the working tree, and an inner vendor/ inside the package made the
+# console load the framework's own autoloader instead of the project's.
+/vendor             export-ignore
+/composer.lock      export-ignore
+
 /app                export-ignore
 /database           export-ignore
 /docs               export-ignore
