@@ -2,6 +2,14 @@
 
 require __DIR__ . '/../vendor/autoload.php';
 
+/*
+ * Explicit, because the example application's config used to do it through
+ * composer's autoload-dev files entry — which is loaded whenever this package
+ * is the root one, including in a `composer create-project` install, where it
+ * required a file the package does not ship.
+ */
+SfphpProject\src\Bootstrap::load(dirname(__DIR__));
+
 use SfphpProject\src\Csrf;
 use SfphpProject\src\Database;
 use SfphpProject\src\ErrorHandler;
@@ -3598,18 +3606,22 @@ $tests->run('the sessions migration compiles on both dialects', function () use 
     }
 });
 
-$tests->run('the package declares only the framework', function () use ($tests): void {
+$tests->run('the package is a project somebody can start developing in', function () use ($tests): void {
     /*
-     * The framework became something you install rather than something you
-     * clone, and the two halves of this repository had to come apart for that.
-     * A package that autoloads app/config/config.php defines APP_NAME inside
-     * whatever installed it; a package that ships app/ puts an application
-     * inside the consumer's vendor/.
+     * A skeleton, not a library. `composer create-project` hands over a working
+     * application — routes, a controller, views, migrations, the front
+     * controller and the console at the root — because "install it and start
+     * developing" is the promise, and a framework you have to wire up first is
+     * not that.
      */
     $composer = json_decode((string) file_get_contents(__DIR__ . '/../composer.json'), true);
 
-    $tests->assertSame('library', $composer['type']);
-    $tests->assertSame(['SfphpProject\\src\\' => 'src/'], $composer['autoload']['psr-4']);
+    $tests->assertSame('project', $composer['type']);
+
+    // The application's namespaces are the project's, not a development extra.
+    foreach (['SfphpProject\\src\\' => 'src/', 'SfphpProject\\app\\' => 'app/'] as $prefix => $path) {
+        $tests->assertSame($path, $composer['autoload']['psr-4'][$prefix] ?? null);
+    }
 
     // Nothing the package loads may live outside src/.
     foreach ($composer['autoload']['files'] as $file) {
@@ -3617,15 +3629,39 @@ $tests->run('the package declares only the framework', function () use ($tests):
         $tests->assertTrue(is_file(__DIR__ . '/../' . $file));
     }
 
-    // The example application is still autoloaded here, and only here.
-    $tests->assertTrue(isset($composer['autoload-dev']['psr-4']['SfphpProject\\app\\']));
-    $tests->assertTrue(in_array('app/config/config.php', $composer['autoload-dev']['files'], true));
+    /*
+     * Nothing is loaded through an autoload "files" entry that lives under
+     * app/. That entry runs whenever this package is the root one — which it is
+     * in a created project — and it used to require app/config/config.php,
+     * which broke the install at autoload time, before any script could run.
+     * The front controller and the console call Bootstrap::load() themselves.
+     */
+    foreach ($composer['autoload']['files'] ?? [] as $file) {
+        $tests->assertTrue(str_starts_with($file, 'src/'));
+    }
+
+    $tests->assertSame(null, $composer['autoload-dev'] ?? null);
+
+    // Creating a project leaves it ready to run rather than ready to configure.
+    $tests->assertSame(
+        ['@php sfphp env:example', '@php sfphp assets:publish'],
+        $composer['scripts']['post-create-project-cmd']
+    );
 
     // And excluded from what a `composer require` downloads.
     $attributes = (string) file_get_contents(__DIR__ . '/../.gitattributes');
 
-    foreach (['/app', '/database', '/public', '/tests', '/docs', '/lang'] as $directory) {
+    /*
+     * What stays behind is what belongs to developing the framework rather than
+     * to developing with it. The application, its views, its migrations and the
+     * front controller travel: they are the project.
+     */
+    foreach (['/tests', '/docs', '/.github'] as $directory) {
         $tests->assertTrue((bool) preg_match('#^' . preg_quote($directory, '#') . '\s+export-ignore#m', $attributes));
+    }
+
+    foreach (['/app', '/public', '/database', '/lang', '/server.php', '/.env-example'] as $shipped) {
+        $tests->assertSame(0, preg_match('#^' . preg_quote($shipped, '#') . '\s+export-ignore#m', $attributes));
     }
 
     /*
@@ -4719,13 +4755,13 @@ $tests->run('the framework ships its stylesheet and script, and can publish them
     }
 });
 
-$tests->run('the published package carries the framework and nothing else', function () use ($tests): void {
+$tests->run('the published package is a project that runs out of the box', function () use ($tests): void {
     /*
-     * What a consumer receives is the git archive, which honours the
+     * What somebody receives is the git archive, which honours the
      * export-ignore rules in .gitattributes — not what is in the repository.
-     * The two drift silently: a directory added here appears in everybody's
-     * vendor/ until somebody notices, and a rule that stops matching removes
-     * something the package needs.
+     * The two drift silently: a directory added here appears in every created
+     * project until somebody notices, and a rule that stops matching removes
+     * something the project needs to run.
      */
     $root = dirname(__DIR__);
 
@@ -4760,7 +4796,10 @@ $tests->run('the published package carries the framework and nothing else', func
     sort($top);
 
     $tests->assertSame(
-        ['LICENSE', 'README.md', 'composer.json', 'resources', 'sfphp', 'src', 'tools'],
+        [
+            '.env-example', 'LICENSE', 'README.md', 'app', 'composer.json', 'database',
+            'lang', 'public', 'resources', 'server.php', 'sfphp', 'src', 'tools',
+        ],
         $top
     );
 
@@ -4780,6 +4819,14 @@ $tests->run('the published package carries the framework and nothing else', func
         'tools/css-builder/sfcss.config.json',
         'tools/css-builder/sfcss-base.css',
         'tools/js-builder/sfjs-builder.php',
+        // The application: what makes this a project rather than a framework
+        // somebody still has to assemble.
+        'public/index.php',
+        'server.php',
+        'src/routes.php',
+        'app/controllers/MainController.php',
+        'app/resources/views/home.sfht',
+        'database/migrations/2026_09_21_000001_create_users_table.php',
     ] as $needed) {
         $tests->assertSame(true, in_array($needed, $entries, true));
     }

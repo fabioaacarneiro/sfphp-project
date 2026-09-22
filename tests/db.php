@@ -15,6 +15,14 @@
  */
 
 require __DIR__ . '/../vendor/autoload.php';
+
+/*
+ * Explicit, because the example application's config used to do it through
+ * composer's autoload-dev files entry — which is loaded whenever this package
+ * is the root one, including in a `composer create-project` install, where it
+ * required a file the package does not ship.
+ */
+SfphpProject\src\Bootstrap::load(dirname(__DIR__));
 require __DIR__ . '/TestRunner.php';
 
 use SfphpProject\src\Migrations\Blueprint;

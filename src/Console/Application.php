@@ -569,8 +569,27 @@ final class Application
             return 0;
         }
 
-        copy($example, $env);
-        $this->writeLine('Created .env from .env-example');
+        $contents = (string) file_get_contents($example);
+
+        /*
+         * The placeholder is rejected on purpose, so copying the example
+         * verbatim leaves a project that cannot issue a token — and the first
+         * thing anybody does after creating a project is not read about key
+         * generation. A fresh 32-byte key costs nothing and removes the step.
+         */
+        $contents = str_replace(
+            'JWT_KEY=your_secret_token_here',
+            'JWT_KEY=' . bin2hex(random_bytes(32)),
+            $contents
+        );
+
+        if (file_put_contents($env, $contents) === false) {
+            fwrite(STDERR, 'Error: could not write ' . $env . PHP_EOL);
+
+            return 1;
+        }
+
+        $this->writeLine('Created .env from .env-example, with a generated JWT_KEY');
 
         return 0;
     }

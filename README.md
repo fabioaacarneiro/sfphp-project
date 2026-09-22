@@ -19,21 +19,31 @@ from a CDN.
 
 ## Installing
 
-As a dependency:
+```bash
+composer create-project fabioaacarneiro/sfphp my-app
+cd my-app
+./sfphp serve
+```
+
+That is the whole setup: <http://localhost:8000> answers, and what you have is
+a working application to edit — a controller, its views, the routes, migrations
+for users and sessions, and the console at `./sfphp` in the project root. `.env`
+is written for you with a real `JWT_KEY`, and SFCSS and SFJS are published into
+`public/assets`.
+
+Everything there is yours; the framework is `src/` and does not mind what you
+delete.
+
+Adding it to a project you already have instead:
 
 ```bash
 composer require fabioaacarneiro/sfphp
+./vendor/bin/sfphp init
 ```
 
-```bash
-./vendor/bin/sfphp init      # front controller, a route, a view, the assets
-./vendor/bin/sfphp serve     # http://localhost:8000
-```
-
-`init` leaves a project that answers a request: a welcome page saying where
-everything is, with links to the documentation. All of it is yours to delete.
-By hand instead, the front controller is the only part the framework has an
-opinion about:
+`init` writes only what is missing and keeps whatever is already there. The one
+thing the framework has an opinion about is a single call at the top of your
+front controller:
 
 ```php
 require __DIR__ . '/../vendor/autoload.php';
@@ -41,25 +51,13 @@ require __DIR__ . '/../vendor/autoload.php';
 SfphpProject\src\Bootstrap::load(dirname(__DIR__));
 ```
 
-Or start from the example application, with routes, views and migrations
-already in place:
+To work on the framework itself, clone it — a clone adds the test suite, the
+documentation in three languages and the CI definition:
 
 ```bash
 git clone https://github.com/fabioaacarneiro/sfphp-project.git
-cd sfphp-project
-composer install
-cp .env-example .env
-./sfphp assets:publish
+cd sfphp-project && composer install && cp .env-example .env && ./sfphp serve
 ```
-
-Adjust `.env`:
-
-- **`JWT_KEY`** — required to issue or validate tokens. Generate one with
-  `php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"`
-- **Database** — optional. Configure it only if you need it.
-
-`.env` itself is optional: a fresh clone boots with no configuration, and every
-feature that really needs a value fails with a message naming it.
 
 ## Debugging
 
