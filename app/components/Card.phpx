@@ -8,22 +8,15 @@ use SfphpProject\src\View\Sfht;
  * A card, written the way templ writes them: a function whose markup lives
  * inside it, with the parameters as the props.
  */
-function Card(string $titulo, string $corpo, string $cor = 'blue'): Sfht
+function Card(string $title, string $body, string $colour = 'blue'): Sfht
 {
     return sfht(
-        <div class="card mb-4 border-{{ $cor }}-500">
+        <div class="card mb-4 border-{{ $colour }}-500">
             <div class="card-header">
-                <div class="testando">
-                    <div class="teste">
-                        <section>
-                            <h1>olá</h1>
-                        </section>
-                    </div>
-                </div>
-                <h3 class="m-0 text-{{ $cor }}-600">{{ $titulo }}</h3>
+                <h3 class="m-0 text-{{ $colour }}-600">{{ $title }}</h3>
             </div>
             <div class="card-body">
-                <p class="text-muted">{{ $corpo }}</p>
+                <p class="text-muted">{{ $body }}</p>
             </div>
         </div>
     );
@@ -32,15 +25,12 @@ function Card(string $titulo, string $corpo, string $cor = 'blue'): Sfht
 /**
  * A list, showing that the SFHT directives work inside the markup.
  */
-function Lista(array $itens): Sfht
+function BulletList(array $items): Sfht
 {
     return sfht(
         <ul class="list-unstyled">
-            @foreach ($itens as $item)
+            @foreach ($items as $item)
                 <li class="py-1">{{ $item }}</li>
-                <div class="teste">
-                    <h1>teste</h1>
-                </div>
             @endforeach
         </ul>
     );
@@ -53,12 +43,12 @@ function Lista(array $itens): Sfht
  * because a component returns Sfht; a string in the same position would be
  * escaped. The type decides, so nobody has to remember which values are safe.
  */
-function Pagina(array $itens): Sfht
+function CardPage(array $items): Sfht
 {
     return sfht(
         <main class="container py-8">
-            {{ Card('Olá', 'Escrito dentro da função', "emerald") }}
-            {{ Lista($itens) }}
+            {{ Card('Hello', 'Written inside the function', 'emerald') }}
+            {{ BulletList($items) }}
         </main>
     );
 }

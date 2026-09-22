@@ -31,6 +31,16 @@ SfphpProject\src\Bootstrap::load(dirname(__DIR__));
  */
 ErrorHandler::register();
 
+/*
+ * Compiled .phpx components. PHP autoloads classes, not functions, so a
+ * component cannot be found on demand — they are required here, once, after
+ * `./sfphp build --phpx` has produced them. A project that writes no components
+ * simply has an empty directory.
+ */
+foreach (glob(__DIR__ . "/../app/components/compiled/*.php") ?: [] as $__component) {
+    require_once $__component;
+}
+
 require_once __DIR__ . "/../src/routes.php";
 
 $container = new Container();
