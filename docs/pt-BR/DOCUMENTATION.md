@@ -2076,6 +2076,26 @@ Um corpo passado como array vai como JSON, com os headers `Content-Type` e
 `Accept` que isso implica. O `->asForm()` manda como formulário, e uma string vai
 como está — quem codificou o corpo é dono do tipo dele.
 
+Todo verbo existe na fachada e no cliente, com a mesma assinatura:
+
+```php
+Http::get($url, $query);       // valores de query, anexados à URL
+Http::post($url, $corpo);
+Http::put($url, $corpo);
+Http::patch($url, $corpo);
+Http::delete($url, $corpo);    // corpo é permitido, e frequentemente ignorado
+
+Http::client();                // um cliente sem nada configurado
+```
+
+Para um método que esses não cobrem — `OPTIONS`, `HEAD`, ou algo que um serviço
+inventou — o `send()` aceita:
+
+```php
+Http::client()->send('OPTIONS', 'https://api.exemplo.com/users');
+Http::client()->send('REPORT', $url, $corpo, ['page' => 2]);
+```
+
 ### Um cliente para um serviço que você chama sempre
 
 ```php
@@ -2089,13 +2109,18 @@ $fatura = $billing->get('/invoices/7')->throw()->json();
 Um cliente é um **valor**: cada método devolve um novo, então um cliente
 configurado para um serviço pode circular sem que nada consiga alterá-lo.
 
-| | |
-|---|---|
-| `Http::base($url)` | Os caminhos relativos penduram aqui |
-| `->token($jwt)` · `->basic($usuario, $senha)` | Autorização |
-| `->headers([...])` | Qualquer outro header |
-| `->timeout($segundos, $conexao)` | Quanto esperar |
-| `->asForm()` | Mandar corpos como formulário em vez de JSON |
+| Na fachada | No cliente | Faz |
+|---|---|---|
+| `Http::base($url)` | `->base($url)` | Os caminhos relativos penduram aqui |
+| `Http::withToken($jwt)` | `->token($jwt)` | Um bearer token |
+| `Http::withBasic($usuario, $senha)` | `->basic($usuario, $senha)` | Credenciais HTTP basic |
+| `Http::withHeaders([...])` | `->headers([...])` | Qualquer outro header |
+| `Http::timeout($segundos, $conexao)` | `->timeout($segundos, $conexao)` | Quanto esperar |
+| — | `->asForm()` | Mandar corpos como formulário em vez de JSON |
+| — | `->insecure()` | Parar de verificar certificados |
+
+Cada uma na fachada equivale a `Http::client()` seguido do método de instância, e
+todas devolvem um cliente, então encadeiam em qualquer ordem.
 
 ### Ler a resposta
 
@@ -2104,10 +2129,12 @@ Um erro **é** uma resposta: o servidor foi alcançado, entendeu e disse não. E
 
 | | |
 |---|---|
+| `status()` | O código |
 | `ok()` | 2xx |
 | `failed()` · `clientError()` · `serverError()` | 4xx ou 5xx, 4xx, 5xx |
 | `body()` · `json()` | O corpo, cru ou decodificado |
 | `header($nome)` · `headers()` | Sem diferenciar maiúsculas |
+| `url()` | A URL que respondeu, **depois** dos redirects |
 | `throw()` | Lança em 4xx e 5xx, e devolve `$this` nos outros casos |
 
 O `json()` responde `null` quando o corpo não é JSON, porque um serviço devolver

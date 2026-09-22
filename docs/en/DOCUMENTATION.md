@@ -2085,6 +2085,26 @@ A body given as an array is sent as JSON, with the `Content-Type` and `Accept`
 headers that implies. `->asForm()` sends it as a form instead, and a string is
 sent as it is — a caller who encoded the body owns its type.
 
+Every verb exists on the facade and on a client, with the same signature:
+
+```php
+Http::get($url, $query);       // query values, appended to the URL
+Http::post($url, $body);
+Http::put($url, $body);
+Http::patch($url, $body);
+Http::delete($url, $body);     // a body is allowed, and often ignored
+
+Http::client();                // a client with nothing configured
+```
+
+For a method these do not cover — `OPTIONS`, `HEAD`, or something a service
+invented — `send()` takes it:
+
+```php
+Http::client()->send('OPTIONS', 'https://api.example.com/users');
+Http::client()->send('REPORT', $url, $body, ['page' => 2]);
+```
+
 ### A client for a service you call often
 
 ```php
@@ -2098,13 +2118,18 @@ $invoice = $billing->get('/invoices/7')->throw()->json();
 A client is a **value**: every method returns a new one, so a client configured
 for a service can be handed around without anything being able to change it.
 
-| | |
-|---|---|
-| `Http::base($url)` | Relative paths hang off this |
-| `->token($jwt)` · `->basic($user, $pass)` | Authorization |
-| `->headers([...])` | Anything else |
-| `->timeout($seconds, $connect)` | How long to wait |
-| `->asForm()` | Send bodies as forms rather than JSON |
+| On the facade | On a client | Does |
+|---|---|---|
+| `Http::base($url)` | `->base($url)` | Relative paths hang off this |
+| `Http::withToken($jwt)` | `->token($jwt)` | A bearer token |
+| `Http::withBasic($user, $pass)` | `->basic($user, $pass)` | HTTP basic credentials |
+| `Http::withHeaders([...])` | `->headers([...])` | Anything else |
+| `Http::timeout($seconds, $connect)` | `->timeout($seconds, $connect)` | How long to wait |
+| — | `->asForm()` | Send bodies as forms rather than JSON |
+| — | `->insecure()` | Stop verifying certificates |
+
+Each one on the facade is the same as `Http::client()` followed by the instance
+method, and each returns a client, so they chain in any order.
 
 ### Reading the answer
 
@@ -2113,10 +2138,12 @@ An error **is** an answer: the server was reached, understood and said no. So a
 
 | | |
 |---|---|
+| `status()` | The code |
 | `ok()` | 2xx |
 | `failed()` · `clientError()` · `serverError()` | 4xx or 5xx, 4xx, 5xx |
 | `body()` · `json()` | The body, raw or decoded |
 | `header($name)` · `headers()` | Case-insensitive |
+| `url()` | The URL that answered, **after** any redirects |
 | `throw()` | Raise on 4xx and 5xx, and return `$this` otherwise |
 
 `json()` answers `null` when the body is not JSON, because a service returning

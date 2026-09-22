@@ -2113,6 +2113,26 @@ Un cuerpo pasado como array va como JSON, con las cabeceras `Content-Type` y
 `Accept` que eso implica. `->asForm()` lo manda como formulario, y una cadena va
 tal cual — quien codificó el cuerpo es dueño de su tipo.
 
+Cada verbo existe en la fachada y en un cliente, con la misma firma:
+
+```php
+Http::get($url, $query);       // valores de query, añadidos a la URL
+Http::post($url, $cuerpo);
+Http::put($url, $cuerpo);
+Http::patch($url, $cuerpo);
+Http::delete($url, $cuerpo);   // se permite cuerpo, y a menudo se ignora
+
+Http::client();                // un cliente sin nada configurado
+```
+
+Para un método que estos no cubren — `OPTIONS`, `HEAD`, o algo que un servicio
+inventó — `send()` lo acepta:
+
+```php
+Http::client()->send('OPTIONS', 'https://api.ejemplo.com/users');
+Http::client()->send('REPORT', $url, $cuerpo, ['page' => 2]);
+```
+
 ### Un cliente para un servicio que llamas a menudo
 
 ```php
@@ -2126,13 +2146,18 @@ $factura = $billing->get('/invoices/7')->throw()->json();
 Un cliente es un **valor**: cada método devuelve uno nuevo, así que un cliente
 configurado para un servicio puede circular sin que nada pueda cambiarlo.
 
-| | |
-|---|---|
-| `Http::base($url)` | Las rutas relativas cuelgan de aquí |
-| `->token($jwt)` · `->basic($usuario, $clave)` | Autorización |
-| `->headers([...])` | Cualquier otra cabecera |
-| `->timeout($segundos, $conexion)` | Cuánto esperar |
-| `->asForm()` | Mandar cuerpos como formulario en vez de JSON |
+| En la fachada | En un cliente | Hace |
+|---|---|---|
+| `Http::base($url)` | `->base($url)` | Las rutas relativas cuelgan de aquí |
+| `Http::withToken($jwt)` | `->token($jwt)` | Un bearer token |
+| `Http::withBasic($usuario, $clave)` | `->basic($usuario, $clave)` | Credenciales HTTP basic |
+| `Http::withHeaders([...])` | `->headers([...])` | Cualquier otra cabecera |
+| `Http::timeout($segundos, $conexion)` | `->timeout($segundos, $conexion)` | Cuánto esperar |
+| — | `->asForm()` | Mandar cuerpos como formulario en vez de JSON |
+| — | `->insecure()` | Dejar de verificar certificados |
+
+Cada una en la fachada equivale a `Http::client()` seguido del método de
+instancia, y todas devuelven un cliente, así que encadenan en cualquier orden.
 
 ### Leer la respuesta
 
@@ -2141,10 +2166,12 @@ Así que un 404 y un 500 vuelven para ser inspeccionados, no lanzados.
 
 | | |
 |---|---|
+| `status()` | El código |
 | `ok()` | 2xx |
 | `failed()` · `clientError()` · `serverError()` | 4xx o 5xx, 4xx, 5xx |
 | `body()` · `json()` | El cuerpo, crudo o decodificado |
 | `header($nombre)` · `headers()` | Sin distinguir mayúsculas |
+| `url()` | La URL que respondió, **después** de las redirecciones |
 | `throw()` | Lanza en 4xx y 5xx, y devuelve `$this` en los demás casos |
 
 `json()` responde `null` cuando el cuerpo no es JSON, porque que un servicio
