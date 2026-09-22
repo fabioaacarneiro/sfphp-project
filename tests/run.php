@@ -5225,4 +5225,24 @@ $tests->run('a template that is not valid php is not named like php', function (
     }
 });
 
+$tests->run('the console reports the version it actually is', function () use ($tests): void {
+    /*
+     * This was a literal in the line the command prints, so every release
+     * depended on somebody remembering to edit a string — and the release where
+     * they forget is the one whose console claims to be the previous version.
+     * Composer's InstalledVersions is generated into the autoloader rather than
+     * required as a package, so asking it costs no dependency.
+     */
+    $source = (string) file_get_contents(__DIR__ . '/../src/Console/Application.php');
+
+    $tests->assertSame(false, str_contains($source, "'SFPHP v1.0.0'"));
+    $tests->assertSame(true, str_contains($source, 'InstalledVersions'));
+
+    $version = SfphpProject\src\Console\Application::version();
+
+    // Always something, and never a number nobody set.
+    $tests->assertSame(true, $version !== '');
+    $tests->assertSame(false, str_contains($version, 'no-version-set'));
+});
+
 $tests->finish();
