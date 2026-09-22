@@ -61,13 +61,14 @@ hace hoy. Donde algo no existe, se dice que no existe — véase
 **Es** un framework ligero para aplicaciones web y APIs, con enrutamiento,
 objetos Request/Response, una tubería de middleware, un contenedor de
 inyección de dependencias, un constructor de consultas, un constructor de
-esquemas con paridad MySQL/PostgreSQL, un motor de plantillas, caché, colas y
-un CLI con 35 comandos.
+esquemas con paridad MySQL/PostgreSQL, un motor de plantillas, componentes en
+`.phpx`, un cliente HTTP, eventos, caché, colas y un CLI con 35 comandos.
 
-**No es** un sustituto de Laravel o Symfony. No hay un ORM completo ni sistema
-de eventos, y la autenticación cubre inicio de sesión, guards y autorización,
-pero no recuperación de contraseña ni doble factor. Lo que existe es lo
-bastante pequeño para leerse de principio a fin.
+**No es** un sustituto de Laravel o Symfony. No hay un ORM completo, los
+eventos se despachan en el proceso y de forma síncrona, sin broker de mensajes,
+y la autenticación cubre inicio de sesión, guards y autorización, pero no
+recuperación de contraseña ni doble factor. Lo que existe es lo bastante pequeño
+para leerse de principio a fin.
 
 ### Cero dependencias, literalmente
 
@@ -762,6 +763,13 @@ echo $engine->render('home', ['title' => 'Hola']);
 **`{{ }}` escapa por defecto** (`ENT_QUOTES | ENT_SUBSTITUTE`, UTF-8). La forma
 segura es la corta; esquivarla exige escribir más.
 
+Hay exactamente una excepción, y la lleva un tipo, no una sintaxis: un valor que
+sea `Sfht` se imprime tal cual, porque `Sfht` significa marcado que este
+framework produjo. Es lo que permite componer un componente con `{{ }}` mientras
+una cadena en la misma posición sigue escapada — véase
+[Componentes y .phpx](#componentes-y-phpx). Todo lo que no sea `Sfht` se escapa,
+incluida una cadena de la que estés seguro.
+
 La expresión es PHP real — llamadas a funciones, operadores e índices
 funcionan:
 
@@ -979,7 +987,9 @@ los dos es SFHT, así que `{{ }}`, `{!! !!}`, `@if` y `@foreach` funcionan y el
 escapado es el mismo que en el resto del framework.
 
 ```bash
-./sfphp build --phpx        # compila todo .phpx bajo app/components
+./sfphp build --phpx                       # todo .phpx bajo app/components
+./sfphp build --phpx --from=src/ui         # desde otra carpeta
+./sfphp build --phpx --to=build/components # salida en otra carpeta
 ```
 
 La compilación escribe el PHP junto al fuente y ejecuta `php -l` sobre cada
@@ -4456,6 +4466,7 @@ hace, y que deberías conocer antes de elegirlo.
 | **Fechas relativas** | "hace 3 horas" no existe: la frase es por idioma y pertenece a la aplicación. Las fechas y los números localizados sí, con `Time::localised()` y `Time::number()`. Consulta [Tiempo y zonas horarias](#tiempo-y-zonas-horarias) |
 | **Un backend de métricas** | `Metrics` cuenta y cronometra dentro del proceso e imprime el texto de Prometheus; llevarlo a un colector, y conservarlo entre peticiones, es del despliegue. Consulta [Health y métricas](#health-check-y-métricas) |
 | **Caché de rutas en disco** | Una ruta estática se compara en vez de pasar por `preg_match`, pero una ruta con parámetro sigue costando un match, y nada se compila de antemano. Bien para centenares, no para millares |
+| **Un language server para `.phpx`** | El editor obtiene coloreado, Emmet y autocompletado por la configuración que trae el paquete, pero un `.phpx` no es PHP válido, así que el diagnóstico queda apagado — y apagado para todo `.php` a su lado. Lo que atrapa un error de verdad es `./sfphp build --phpx` y `composer run lint`. Véase [Componentes y .phpx](#componentes-y-phpx) |
 | **Revocar sesión desde otro sitio** | Cerrar la sesión de otro dispositivo se puede construir sobre la tabla del driver `database`; no viene nada hecho. Consulta [Sesiones](#sesiones) |
 
 SFHT tampoco tiene variables automáticas de bucle (`$loop`) ni herencia parcial
