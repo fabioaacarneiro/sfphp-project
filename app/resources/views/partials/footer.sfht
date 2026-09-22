@@ -1,4 +1,4 @@
     <!-- SFJS Library for interactivity -->
-    <script src="/assets/js/sfjs.js"></script>
+    <script src="{{ asset('js/sfjs.min.js') }}"></script>
 </body>
 </html>

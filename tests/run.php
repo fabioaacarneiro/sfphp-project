@@ -33,6 +33,7 @@ use SfphpProject\src\Cache\FileDriver;
 use SfphpProject\src\Cache\RedisDriver as CacheRedisDriver;
 use SfphpProject\src\RedisConnection;
 use SfphpProject\src\Assets;
+use SfphpProject\src\Starter;
 use SfphpProject\src\Debug\Dumper;
 use SfphpProject\src\Debug\HtmlDump;
 use SfphpProject\src\Debug\TextDump;
@@ -1596,7 +1597,13 @@ $tests->run('the built stylesheet is css, not the builder log', function () use 
      * sfcss.css. The builder writes both files itself and only prints a
      * summary, so every run replaced the stylesheet with two lines of log.
      */
-    $stylesheet = dirname(__DIR__) . '/public/assets/css/sfcss.css';
+    /*
+     * resources/, which is where the builder writes and what the package
+     * carries. This read public/assets, which is now a published copy and
+     * gitignored — so the test passed on a working tree that had published and
+     * failed on a fresh checkout, which is the wrong way round.
+     */
+    $stylesheet = dirname(__DIR__) . '/resources/assets/css/sfcss.css';
 
     $tests->assertTrue(is_file($stylesheet));
 
@@ -4553,6 +4560,40 @@ $tests->run('the dump screen is SFCSS, escaped, and asks nothing of the network'
     $tests->assertSame(true, str_contains($html, 'routes.php:12'));
 });
 
+$tests->run('dump appends a fragment, and the stylesheet only once', function () use ($tests): void {
+    /*
+     * dump() writes into a response that is already being written. A second
+     * <!DOCTYPE html> in the middle of a document is malformed, and repeating
+     * ninety kilobytes of stylesheet for every call in a loop is its own
+     * problem.
+     */
+    HtmlDump::forgetStylesheet();
+
+    $first = HtmlDump::fragment([['a' => 1]], ['file' => '/app/x.php', 'line' => 3]);
+
+    $tests->assertSame(false, str_contains($first, '<!DOCTYPE'));
+    $tests->assertSame(false, str_contains($first, '<body'));
+    $tests->assertSame(true, str_contains($first, 'sf-dump-fragment'));
+    $tests->assertSame(true, str_contains($first, '<style>'));
+    $tests->assertSame(true, str_contains($first, 'x.php:3'));
+
+    $second = HtmlDump::fragment([['b' => 2]]);
+
+    // The second one is cards and nothing else.
+    $tests->assertSame(false, str_contains($second, '<style>'));
+    $tests->assertSame(true, str_contains($second, 'sf-dump-fragment'));
+
+    /*
+     * Under a persistent runtime the flag would otherwise carry into the next
+     * request and the second visitor would get an unstyled dump.
+     */
+    HtmlDump::forgetStylesheet();
+    $tests->assertSame(true, str_contains(HtmlDump::fragment([1]), '<style>'));
+
+    // dd()'s page is still a whole document.
+    $tests->assertSame(true, str_contains(HtmlDump::render([1]), '<!DOCTYPE'));
+});
+
 $tests->run('a dump renders for a terminal too, without colour when redirected', function () use ($tests): void {
     $plain = TextDump::render([['a' => 1, 'b' => [true, null]]], null, false);
 
@@ -4626,6 +4667,163 @@ $tests->run('the framework ships its stylesheet and script, and can publish them
 
         @rmdir($target . '/css');
         @rmdir($target . '/js');
+        @rmdir($target);
+    }
+});
+
+$tests->run('the published package carries the framework and nothing else', function () use ($tests): void {
+    /*
+     * What a consumer receives is the git archive, which honours the
+     * export-ignore rules in .gitattributes — not what is in the repository.
+     * The two drift silently: a directory added here appears in everybody's
+     * vendor/ until somebody notices, and a rule that stops matching removes
+     * something the package needs.
+     */
+    $root = dirname(__DIR__);
+
+    if (!is_dir($root . '/.git')) {
+        // An exported copy has no history to archive. Nothing to check.
+        return;
+    }
+
+    /*
+     * The index rather than HEAD. What gets published is a commit, but running
+     * against HEAD means a shipped file reads as missing for as long as it is
+     * staged and not yet committed — the test would be red during exactly the
+     * change it exists to check.
+     */
+    $tree = trim((string) shell_exec('git -C ' . escapeshellarg($root) . ' write-tree 2>/dev/null'));
+    $ref = $tree === '' ? 'HEAD' : $tree;
+
+    $command = 'git -C ' . escapeshellarg($root) . ' archive --format=tar ' . escapeshellarg($ref)
+        . ' 2>/dev/null | tar -t 2>/dev/null';
+    $listing = shell_exec($command);
+
+    if (!is_string($listing) || trim($listing) === '') {
+        // No git or no tar on this machine; the CI job has both.
+        return;
+    }
+
+    $entries = array_filter(explode("\n", trim($listing)));
+    $top = array_values(array_unique(array_map(
+        static fn (string $path): string => explode('/', $path)[0],
+        $entries
+    )));
+    sort($top);
+
+    $tests->assertSame(
+        ['LICENSE', 'README.md', 'composer.json', 'resources', 'sfphp', 'src'],
+        $top
+    );
+
+    // The pieces a consumer actually needs, named rather than assumed.
+    foreach ([
+        'src/Bootstrap.php',
+        'src/helpers.php',
+        'src/I18n/lang/en/http.php',
+        'resources/assets/css/sfcss.min.css',
+        'resources/assets/js/sfjs.js',
+        'resources/assets/js/sfjs.min.js',
+        'resources/starter/public/index.php',
+        'resources/starter/resources/views/welcome.sfht',
+    ] as $needed) {
+        $tests->assertSame(true, in_array($needed, $entries, true));
+    }
+
+    // The console is run as a command, so it has to arrive executable.
+    $mode = shell_exec('git -C ' . escapeshellarg($root) . ' ls-files -s sfphp 2>/dev/null');
+    $tests->assertSame(true, is_string($mode) && str_starts_with(trim((string) $mode), '100755'));
+});
+
+$tests->run('the minified script is still a program, and still the same one', function () use ($tests): void {
+    /*
+     * A minifier that is wrong produces a file that looks fine in a directory
+     * listing and breaks every page that loads it. SFJS has no regex literals,
+     * which is what makes a minifier this small safe — and this is what would
+     * notice if that stopped being true.
+     */
+    $readable = Assets::path() . '/js/sfjs.js';
+    $minified = Assets::path() . '/js/sfjs.min.js';
+
+    $tests->assertSame(true, is_file($minified));
+    $tests->assertSame(true, filesize($minified) < filesize($readable));
+
+    // Comments went, the code did not.
+    $source = file_get_contents($minified);
+    $tests->assertSame(false, str_contains($source, 'HTMX-like AJAX'));
+    $tests->assertSame(true, str_contains($source, 'const sf'));
+
+    $node = trim((string) shell_exec('command -v node 2>/dev/null'));
+
+    if ($node === '') {
+        // No JavaScript engine here; the CI runner has one.
+        return;
+    }
+
+    $status = 0;
+    $output = [];
+    exec(escapeshellarg($node) . ' --check ' . escapeshellarg($minified) . ' 2>&1', $output, $status);
+
+    $tests->assertSame(0, $status);
+});
+
+$tests->run('a new project gets something that answers a request', function () use ($tests): void {
+    /*
+     * composer require delivers a framework and nothing that runs: no front
+     * controller, no route, no view. Somebody who installs it and types serve
+     * deserves a page rather than a 404 and a hunt through the documentation
+     * for what to create.
+     */
+    $target = sys_get_temp_dir() . '/sfphp-starter-' . bin2hex(random_bytes(4));
+
+    try {
+        $result = Starter::publish($target, 'Acme\\Shop');
+
+        $tests->assertSame(Starter::files(), $result['written']);
+        $tests->assertSame([], $result['skipped']);
+
+        foreach (Starter::files() as $relative) {
+            $tests->assertSame(true, is_file($target . '/' . $relative));
+        }
+
+        // The namespace the caller asked for, in the file and in the advice.
+        $controller = file_get_contents($target . '/app/Controllers/WelcomeController.php');
+        $tests->assertSame(true, str_contains($controller, 'namespace Acme\\Shop\\Controllers;'));
+        $tests->assertSame(false, str_contains($controller, '{NAMESPACE}'));
+        $tests->assertSame(['Acme\\Shop\\' => 'app/'], Starter::autoload('Acme\\Shop'));
+
+        // Every written file is valid PHP, because a scaffold that does not
+        // parse is worse than none.
+        foreach (['public/index.php', 'server.php', 'routes.php', 'app/Controllers/WelcomeController.php'] as $php) {
+            $status = 0;
+            $output = [];
+            exec('php -l ' . escapeshellarg($target . '/' . $php) . ' 2>&1', $output, $status);
+            $tests->assertSame(0, $status);
+        }
+
+        /*
+         * Running it twice keeps what is there. Overwriting somebody's front
+         * controller because they repeated a command is the kind of help nobody
+         * asks for again.
+         */
+        $again = Starter::publish($target, 'Acme\\Shop');
+        $tests->assertSame([], $again['written']);
+        $tests->assertSame(Starter::files(), $again['skipped']);
+
+        $forced = Starter::publish($target, 'Acme\\Shop', true);
+        $tests->assertSame(Starter::files(), $forced['written']);
+
+        // A namespace that is not one is refused rather than written into a file.
+        $tests->assertThrows(fn () => Starter::publish($target, '9 bad'), RuntimeException::class);
+    } finally {
+        foreach (array_reverse(Starter::files()) as $relative) {
+            @unlink($target . '/' . $relative);
+        }
+
+        foreach (['app/Controllers', 'app', 'public', 'resources/views', 'resources'] as $directory) {
+            @rmdir($target . '/' . $directory);
+        }
+
         @rmdir($target);
     }
 });

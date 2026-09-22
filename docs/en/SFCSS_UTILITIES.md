@@ -1,7 +1,7 @@
 # SFCSS — Complete utilities reference
 
 > **Size:** 110KB raw · 92KB minified · **16.1KB gzipped**
-> **Classes:** 2,337 in total — 1,209 base, 600 `hover:`, 528 responsive
+> **Classes:** 2,339 in total — 1,211 base, 600 `hover:`, 528 responsive
 > **Colours:** 600 palette classes (20 families × 10 shades × `bg`/`text`/`border`) plus 25 theme classes
 >
 > 🌍 Also available in [Português](../pt-BR/SFCSS_UTILITIES.md) and
@@ -260,6 +260,16 @@ scale.
 <p class="font-bold">         <!-- 700 -->
 <p class="font-extrabold">    <!-- 800 -->
 ```
+
+### Font family
+
+```html
+<p class="font-sans">         <!-- --font-family, the default -->
+<p class="font-mono">         <!-- --font-family-mono -->
+```
+
+`code`, `pre`, `kbd` and `samp` take the monospace family from the base sheet,
+so they need no class.
 
 ### Alignment
 
@@ -524,7 +534,7 @@ several times over for classes nobody writes responsively.
 
 | | |
 |---|---|
-| Unique selectors | **2,337** |
+| Unique selectors | **2,339** |
 | Base utilities and components | 1,209 |
 | `hover:` variants | 600 |
 | Responsive variants | 528 |

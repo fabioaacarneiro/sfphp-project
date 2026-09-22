@@ -1,7 +1,7 @@
 # SFCSS — Referência completa de utilitários
 
 > **Tamanho:** 110KB cru · 92KB minificado · **16,1KB gzipped**
-> **Classes:** 2.337 no total — 1.209 base, 600 `hover:`, 528 responsivas
+> **Classes:** 2.339 no total — 1.211 base, 600 `hover:`, 528 responsivas
 > **Cores:** 600 classes de paleta (20 famílias × 10 tons × `bg`/`text`/`border`) mais 25 classes de tema
 >
 > 🌍 Disponível também em [English](../en/SFCSS_UTILITIES.md) e
@@ -258,6 +258,16 @@ embora `md:d-inline-flex` e as demais formas com breakpoint existam.
 <p class="font-bold">         <!-- 700 -->
 <p class="font-extrabold">    <!-- 800 -->
 ```
+
+### Família da fonte
+
+```html
+<p class="font-sans">         <!-- --font-family, o padrão -->
+<p class="font-mono">         <!-- --font-family-mono -->
+```
+
+`code`, `pre`, `kbd` e `samp` já pegam a família monoespaçada da folha base,
+então não precisam de classe.
 
 ### Alinhamento
 
@@ -522,7 +532,7 @@ vezes por classes que ninguém escreve de forma responsiva.
 
 | | |
 |---|---|
-| Seletores únicos | **2.337** |
+| Seletores únicos | **2.339** |
 | Utilitários base e componentes | 1.209 |
 | Variantes `hover:` | 600 |
 | Variantes responsivas | 528 |

@@ -3,6 +3,7 @@
 namespace SfphpProject\src\Console;
 
 use SfphpProject\src\Assets;
+use SfphpProject\src\Starter;
 use SfphpProject\src\Bootstrap;
 use SfphpProject\src\Console\Generators\ControllerGenerator;
 use SfphpProject\src\Console\Generators\EventGenerator;
@@ -56,6 +57,7 @@ final class Application
                 'env:example' => $this->envExample(),
                 'routes' => $this->routes($arguments),
                 'css:build' => $this->cssBuild($arguments),
+                'js:build' => $this->jsBuild($arguments),
                 'make:migration' => $this->makeMigration($arguments),
                 'make:migration:create' => $this->makeMigrationCreate($arguments),
                 'make:controller' => $this->makeController($arguments),
@@ -76,6 +78,7 @@ final class Application
                 'status' => $this->status($arguments),
                 'db:seed' => $this->dbSeed($arguments),
                 'db:fresh' => $this->dbFresh($arguments),
+                'init' => $this->init($arguments),
                 'assets:publish' => $this->assetsPublish($arguments),
                 'cache:clear' => $this->cacheClear($arguments),
                 'cache:flush' => $this->cacheFlush($arguments),
@@ -126,6 +129,7 @@ final class Application
             $this->writeLine('  db:seed               Run database seeders');
             $this->writeLine('');
             $this->writeLine('Cache Commands:');
+            $this->writeLine('  init                  Scaffold a new project: front controller, route, view');
             $this->writeLine('  assets:publish        Copy SFCSS and SFJS into public/assets');
             $this->writeLine('  cache:clear           Clear expired cache entries');
             $this->writeLine('  cache:flush           Flush all cache');
@@ -139,6 +143,7 @@ final class Application
             $this->writeLine('  env:example           Create .env from .env-example');
             $this->writeLine('  routes                List all registered routes');
             $this->writeLine('  css:build             Build SFCSS from config.json');
+            $this->writeLine('  js:build              Minify SFJS');
             $this->writeLine('');
             $this->writeLine('Utility Commands:');
             $this->writeLine('  list                  Show all available commands');
@@ -508,6 +513,19 @@ final class Application
         $host = 'localhost';
         $port = 8000;
 
+        /*
+         * The stylesheet and the script live in the package and are copied into
+         * public/ on install. A checkout that has not been installed, or one
+         * where public/assets was cleaned, would otherwise serve a page whose
+         * <link> 404s — and an unstyled first impression reads as a broken
+         * framework rather than as a missing step.
+         */
+        $published = Assets::publish($this->projectPath(Assets::PUBLIC_PATH));
+
+        if ($published !== []) {
+            $this->writeLine('Published ' . count($published) . ' asset file(s).');
+        }
+
         $this->writeLine('Starting development server...');
         $this->writeLine("Server running at http://$host:$port");
         $this->writeLine('Press Ctrl+C to stop');
@@ -799,7 +817,7 @@ PHP;
         /*
          * The project, not the package. Installed under vendor/, dirname of
          * this file names the framework's own directory, so `make:controller`
-         * would write into vendor/fabio/sfphp/app/ and the file would vanish on
+         * would write into vendor/fabioaacarneiro/sfphp/app/ and the file would vanish on
          * the next `composer update`. Bootstrap knows where the application is
          * because the entry point told it.
          */
@@ -1059,6 +1077,61 @@ PHP;
      * @param array<int, string> $arguments The command arguments
      * @return int
      */
+    private function init(array $arguments): int
+    {
+        try {
+            $root = $this->rootPath();
+            $namespace = $this->option($arguments, 'namespace') ?? 'App\\';
+            $force = in_array('--force', $arguments, true);
+
+            $result = Starter::publish($root, $namespace, $force);
+
+            foreach ($result['written'] as $relative) {
+                $this->writeLine('  created  ' . $relative);
+            }
+
+            foreach ($result['skipped'] as $relative) {
+                // Overwriting somebody's front controller because they ran a
+                // command twice is the kind of help nobody asks for again.
+                $this->writeLine('  kept     ' . $relative . ' (already there)');
+            }
+
+            $published = Assets::publish($root . '/' . Assets::PUBLIC_PATH);
+
+            foreach ($published as $relative) {
+                $this->writeLine('  created  ' . Assets::PUBLIC_PATH . '/' . $relative);
+            }
+
+            if ($result['written'] === [] && $published === []) {
+                $this->writeLine('Nothing to do. Use --force to write the starter over what is there.');
+
+                return 0;
+            }
+
+            $map = Starter::autoload($namespace);
+            $prefix = array_key_first($map);
+
+            $this->writeLine('');
+            $this->writeLine('Add this to your composer.json, then run composer dump-autoload:');
+            $this->writeLine('');
+            $this->writeLine('    "autoload": { "psr-4": { "' . str_replace('\\', '\\\\', $prefix) . '": "' . $map[$prefix] . '" } }');
+            $this->writeLine('');
+            $this->writeLine('Then: ./vendor/bin/sfphp serve');
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+
+            return 1;
+        }
+    }
+
+    /**
+     * Copy the framework's stylesheet and script into the project.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
     private function assetsPublish(array $arguments): int
     {
         try {
@@ -1194,6 +1267,46 @@ PHP;
 
     /**
      * Build SFCSS from config.json.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function jsBuild(array $arguments): int
+    {
+        try {
+            $builderPath = $this->rootPath() . '/tools/js-builder/sfjs-builder.php';
+
+            if (!is_file($builderPath)) {
+                fwrite(STDERR, "Error: sfjs-builder.php not found at {$builderPath}" . PHP_EOL);
+
+                return 1;
+            }
+
+            $output = [];
+            $status = 0;
+            exec('php ' . escapeshellarg($builderPath) . ' 2>&1', $output, $status);
+
+            if ($status !== 0) {
+                fwrite(STDERR, 'Error: Failed to minify SFJS' . PHP_EOL);
+                fwrite(STDERR, implode(PHP_EOL, $output) . PHP_EOL);
+
+                return 1;
+            }
+
+            $this->writeLine(implode(PHP_EOL, $output));
+            $this->writeLine('');
+            $this->writeLine('Run ./sfphp assets:publish to copy it where the browser can reach it.');
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+
+            return 1;
+        }
+    }
+
+    /**
+     * Build SFCSS from its configuration.
      *
      * @param array<int, string> $arguments The command arguments
      * @return int
