@@ -5024,6 +5024,92 @@ $tests->run('the minified script is still a program, and still the same one', fu
     }
 });
 
+$tests->run('a declarative form sends the fields a visitor typed', function () use ($tests): void {
+    /*
+     * Two bugs lived here, and neither was visible from PHP. The click handler
+     * walks up from whatever was clicked, so a submit button found the form,
+     * prevented the default and fetched the bare action — the submit event,
+     * which is the only place fields are serialised, never fired. And when it
+     * did fire, form.submit() called GET with the three-argument shape the
+     * other verbs use, so the fields arrived as the options object.
+     *
+     * A real browser is the only honest way to check that, so this runs one
+     * when there is one and steps aside when there is not.
+     */
+    $browser = '';
+
+    foreach (['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'] as $candidate) {
+        $found = trim((string) shell_exec('command -v ' . escapeshellarg($candidate) . ' 2>/dev/null'));
+
+        if ($found !== '') {
+            $browser = $found;
+            break;
+        }
+    }
+
+    if ($browser === '') {
+        return;
+    }
+
+    $directory = sys_get_temp_dir() . '/sfphp-sfjs-' . bin2hex(random_bytes(6));
+    mkdir($directory . '/profile', 0755, true);
+
+    $page = $directory . '/harness.html';
+    $script = Assets::path() . '/js/sfjs.min.js';
+
+    file_put_contents($page, <<<HTML
+    <!DOCTYPE html>
+    <html><head><meta charset="utf-8"></head>
+    <body>
+    <form method="get" action="/look" \x40hxGet="/look" \x40hxTarget="#result">
+      <input name="postcode" value="01001-000">
+      <button type="submit">Look up</button>
+    </form>
+    <div id="result"></div>
+    <div id="log">nothing happened</div>
+    <script>
+      const log = [];
+      window.fetch = (url, init) => {
+        log.push('FETCH ' + url);
+        return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve('<p>swapped</p>') });
+      };
+    </script>
+    <script src="file://{$script}"></script>
+    <script>
+      window.addEventListener('load', () => {
+        document.querySelector('button').click();
+        setTimeout(() => { document.getElementById('log').textContent = log.join(' | '); }, 50);
+      });
+    </script>
+    </body></html>
+    HTML);
+
+    try {
+        $command = escapeshellarg($browser)
+            . ' --headless --disable-gpu --no-sandbox --virtual-time-budget=3000'
+            . ' --user-data-dir=' . escapeshellarg($directory . '/profile')
+            . ' --dump-dom ' . escapeshellarg('file://' . $page) . ' 2>/dev/null';
+
+        $dom = (string) shell_exec($command);
+
+        // The typed value left the page, which is the whole point.
+        $tests->assertTrue(str_contains($dom, 'FETCH /look?postcode=01001-000'));
+
+        // And the answer landed where the attribute said.
+        $tests->assertTrue(str_contains($dom, '<p>swapped</p>'));
+    } finally {
+        @unlink($page);
+
+        foreach (glob($directory . '/profile/*') ?: [] as $leftover) {
+            if (is_file($leftover)) {
+                @unlink($leftover);
+            }
+        }
+
+        exec('rm -rf ' . escapeshellarg($directory) . ' 2>/dev/null');
+    }
+});
+
 $tests->run('the dark theme changes nothing a page did not ask for', function () use ($tests): void {
     /*
      * This shipped applying prefers-color-scheme to :root directly, so a page

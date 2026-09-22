@@ -1,6 +1,6 @@
 <?php
 
-namespace SfphpProject\app\components\postcode;
+namespace SfphpProject\app\components\postcode\explain;
 
 use SfphpProject\src\Bootstrap;
 use SfphpProject\src\View\Sfht;
@@ -15,7 +15,7 @@ use SfphpProject\src\View\Sfht;
  */
 function HowItWorks(): Sfht
 {
-    $source = (string) file_get_contents(Bootstrap::basePath('app/components/postcode/Field.phpx'));
+    $source = (string) file_get_contents(Bootstrap::basePath('app/components/postcode/lookup/Field.phpx'));
 
     return sfht(
         <section class="card">

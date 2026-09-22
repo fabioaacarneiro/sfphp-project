@@ -1,6 +1,6 @@
 <?php
 
-namespace SfphpProject\app\components\postcode;
+namespace SfphpProject\app\components\postcode\lookup;
 
 use SfphpProject\src\View\Sfht;
 
@@ -18,14 +18,17 @@ use SfphpProject\src\View\Sfht;
  */
 function PostcodeLookup(?Sfht $result = null): Sfht
 {
-    return sfht(
-        <section class="card mb-8">
+    return (static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<section class="card mb-8">
             <div class="card-header">
                 <h2 class="text-lg font-semibold m-0">Look up a postcode</h2>
             </div>
 
             <div class="card-body">
-                <form method="get" action="/phpx/postcode" @hxGet="/phpx/postcode" @hxTarget="#result">
+                <form method="get" action="/phpx/postcode" ';
+echo '@hxGet';
+echo '="/phpx/postcode" ';
+echo '@hxTarget';
+echo '="#result">
                     <div class="form-group">
                         <label class="form-label" for="postcode">Brazilian postcode</label>
                         <div class="d-flex gap-2 flex-wrap">
@@ -41,8 +44,10 @@ function PostcodeLookup(?Sfht $result = null): Sfht
                     </div>
                 </form>
 
-                <div id="result" class="mt-4">{{ $result }}</div>
+                <div id="result" class="mt-4">';
+echo \SfphpProject\src\View\Compiler::text(($result));
+echo '</div>
             </div>
-        </section>
-    );
+        </section>';
+ return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars());
 }

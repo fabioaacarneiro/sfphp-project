@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 150 tests, 0 failures
+> Verified against PHP 8.4 · suite: 151 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -988,19 +988,24 @@ app/components/
 ├── BulletList.phpx
 └── postcode/
     ├── PostcodePage.phpx
-    ├── PageHeader.phpx
-    ├── PostcodeLookup.phpx
-    ├── Field.phpx
-    ├── HowItWorks.phpx
-    └── PageFooter.phpx
+    ├── layout/
+    │   ├── PageHeader.phpx
+    │   └── PageFooter.phpx
+    ├── lookup/
+    │   ├── PostcodeLookup.phpx
+    │   ├── Address.phpx
+    │   ├── Field.phpx
+    │   └── Notice.phpx
+    └── explain/
+        └── HowItWorks.phpx
 ```
 
-Components in the same folder share a namespace, so a page composes its parts by
-calling them — no import and no prefix. Reaching one from somewhere else, such
-as from a controller, is a `use function`:
+Components in the same folder share a namespace, so they compose each other by
+name — no import and no prefix. Crossing a folder, or reaching one from a
+controller, is a `use function`, the same as for any other function in PHP:
 
 ```php
-use function SfphpProject\app\components\postcode\PostcodePage;
+use function SfphpProject\app\components\postcode\lookup\Address;
 ```
 
 ### Why a component returns Sfht
@@ -4297,7 +4302,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 150 unit cases
+composer run test        # 151 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
