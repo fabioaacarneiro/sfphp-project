@@ -41,11 +41,6 @@ final class Application
     /**
      * The example application's directories, whose contents `reset` removes.
      *
-     * Migrations are deliberately absent: the users and sessions tables are
-     * what the authentication guard and the database session driver are
-     * written against, so a project that dropped them would discover it at the
-     * first login rather than here.
-     *
      * @var list<string>
      */
     private const RESET_DIRECTORIES = [
@@ -54,8 +49,27 @@ final class Application
         'app/models',
         'app/Jobs',
         'app/resources/views',
+        'database/migrations',
         'database/seeders',
         'database/factories',
+    ];
+
+    /**
+     * The migrations `reset` keeps, because the framework itself needs them.
+     *
+     * The users and sessions tables are what the authentication guard and the
+     * database session driver are written against, so a project that dropped
+     * them would discover it at its first login rather than here. Everything
+     * else under database/migrations was written by the project and goes.
+     *
+     * Matched by name rather than by timestamp, so renaming the file's date
+     * does not quietly turn a kept migration into a deleted one.
+     *
+     * @var list<string>
+     */
+    private const RESET_KEEP_MIGRATIONS = [
+        'create_users_table',
+        'create_sessions_table',
     ];
 
     /** What the routes file becomes once the example application is gone. */
@@ -247,12 +261,14 @@ final class Application
                 $this->writeLine('Remove the example application, so the project starts from its own code.');
                 $this->writeLine('');
                 $this->writeLine('Emptied: app/components, app/controllers, app/models, app/Jobs,');
-                $this->writeLine('         app/resources/views, database/seeders, database/factories.');
+                $this->writeLine('         app/resources/views, database/migrations, database/seeders,');
+                $this->writeLine('         database/factories.');
                 $this->writeLine('The routes file is rewritten with no routes.');
                 $this->writeLine('');
-                $this->writeLine('Kept: app/config, database/migrations, lang, public, and the framework.');
-                $this->writeLine('Migrations stay because the authentication guard and the database');
-                $this->writeLine('session driver are written against the users and sessions tables.');
+                $this->writeLine('Kept: app/config, lang, public, the framework, and the two migrations');
+                $this->writeLine('the framework ships — users and sessions, which the authentication');
+                $this->writeLine('guard and the database session driver are written against. Migrations');
+                $this->writeLine('you wrote go with everything else.');
                 $this->writeLine('');
                 $this->writeLine('It lists what it will delete and asks you to type "reset" first.');
                 $this->writeLine('--force skips the question, for a script. There is no undo.');
@@ -1602,7 +1618,10 @@ PHP;
             $total = 0;
 
             foreach (self::RESET_DIRECTORIES as $relative) {
-                $files = $this->filesUnder($this->projectPath($relative));
+                $files = array_values(array_filter(
+                    $this->filesUnder($this->projectPath($relative)),
+                    fn (string $file): bool => $this->resetRemoves($file)
+                ));
 
                 if ($files === []) {
                     continue;
@@ -1634,7 +1653,7 @@ PHP;
             $this->writeLine('');
 
             foreach ($plan as $relative => $files) {
-                $this->writeLine(sprintf('    %-24s %d file(s), emptied', $relative . '/', count($files)));
+                $this->writeLine(sprintf('    %-24s %d file(s)', $relative . '/', count($files)));
             }
 
             if ($routes !== null) {
@@ -1642,8 +1661,11 @@ PHP;
             }
 
             $this->writeLine('');
-            $this->writeLine('  Kept: app/config, database/migrations, lang, public, and the framework.');
-            $this->writeLine('  Not kept: anything of your own already living in the directories above.');
+            $this->writeLine('  Kept: app/config, lang, public, the framework, and the framework\'s own');
+            $this->writeLine('        migrations — the users and sessions tables the authentication');
+            $this->writeLine('        guard and the database session driver are written against.');
+            $this->writeLine('  Not kept: your migrations, and anything of your own already living in');
+            $this->writeLine('            the directories above.');
             $this->writeLine('');
             $this->writeLine('  This cannot be undone. Nothing is backed up and nothing goes to a trash bin.');
             $this->writeLine('');
@@ -1673,8 +1695,15 @@ PHP;
             }
 
             foreach ($plan as $relative => $files) {
-                $this->emptyDirectory($this->projectPath($relative));
-                $this->writeLine('  emptied  ' . $relative . '/');
+                $directory = $this->projectPath($relative);
+                $this->assertInsideProject($directory);
+
+                foreach ($files as $file) {
+                    unlink($file);
+                }
+
+                $this->pruneEmptyDirectories($directory);
+                $this->writeLine('  removed  ' . count($files) . ' from ' . $relative . '/');
             }
 
             if ($routes !== null && file_put_contents($routes, self::EMPTY_ROUTES) === false) {
@@ -1731,46 +1760,92 @@ PHP;
     }
 
     /**
-     * Remove everything inside a directory, and leave the directory.
+     * Decide whether `reset` removes a file.
      *
-     * The directory stays because it is where the next thing goes, and an
-     * application that has to guess which directories to recreate is one that
-     * fails on the first `make:` command.
+     * @param string $file The absolute path
+     * @return bool True when the file goes
+     */
+    private function resetRemoves(string $file): bool
+    {
+        $name = basename($file);
+
+        /*
+         * A .gitkeep is there to keep an empty directory in version control,
+         * which is exactly the state this leaves behind.
+         */
+        if ($name === '.gitkeep') {
+            return false;
+        }
+
+        $inMigrations = str_contains(
+            str_replace('\\', '/', $file),
+            '/database/migrations/'
+        );
+
+        if (!$inMigrations) {
+            return true;
+        }
+
+        foreach (self::RESET_KEEP_MIGRATIONS as $kept) {
+            if (str_contains($name, $kept)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Refuse to touch anything outside the project.
+     *
+     * This deletes recursively, so a path that resolved somewhere unexpected —
+     * a symbolic link, a mistaken option — is the one mistake worth refusing
+     * outright rather than reporting afterwards.
+     *
+     * @param string $directory The directory
+     * @return void
+     * @throws RuntimeException When the directory is not inside the project
+     */
+    private function assertInsideProject(string $directory): void
+    {
+        $resolved = realpath($directory);
+        $root = realpath($this->rootPath());
+
+        if ($resolved === false || $root === false || !str_starts_with($resolved, $root . DIRECTORY_SEPARATOR)) {
+            throw new RuntimeException('Refusing to touch ' . $directory . ', which is not inside the project.');
+        }
+    }
+
+    /**
+     * Remove the empty directories left under a directory, keeping it.
+     *
+     * The directory itself stays because it is where the next thing goes, and
+     * an application that has to guess which directories to recreate is one
+     * that fails on the first `make:` command.
      *
      * @param string $directory The directory
      * @return void
      */
-    private function emptyDirectory(string $directory): void
+    private function pruneEmptyDirectories(string $directory): void
     {
         if (!is_dir($directory)) {
             return;
         }
 
-        /*
-         * Under the project and nowhere else. This deletes recursively, so a
-         * path that resolved somewhere unexpected — a symlink, a bad option —
-         * is the one mistake worth refusing outright.
-         */
-        $resolved = realpath($directory);
-        $root = realpath($this->rootPath());
-
-        if ($resolved === false || $root === false || !str_starts_with($resolved, $root . DIRECTORY_SEPARATOR)) {
-            throw new RuntimeException('Refusing to empty ' . $directory . ', which is not inside the project.');
-        }
-
         $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($resolved, FilesystemIterator::SKIP_DOTS),
+            new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
             RecursiveIteratorIterator::CHILD_FIRST
         );
 
         foreach ($iterator as $entry) {
-            if ($entry->isDir()) {
-                rmdir($entry->getPathname());
-
+            if (!$entry->isDir()) {
                 continue;
             }
 
-            unlink($entry->getPathname());
+            // glob() would report "." and ".." here; the iterator does not.
+            if (!(new FilesystemIterator($entry->getPathname(), FilesystemIterator::SKIP_DOTS))->valid()) {
+                rmdir($entry->getPathname());
+            }
         }
     }
 

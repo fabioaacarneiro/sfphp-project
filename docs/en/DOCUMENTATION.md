@@ -4147,15 +4147,17 @@ start writing your own.
 ```
 
 It empties `app/components`, `app/controllers`, `app/models`, `app/Jobs`,
-`app/resources/views`, `database/seeders` and `database/factories`, and rewrites
-the routes file with no routes — otherwise the application would boot into a
-controller that is no longer there. The directories stay, because they are where
-the next thing goes.
+`app/resources/views`, `database/migrations`, `database/seeders` and
+`database/factories`, and rewrites the routes file with no routes — otherwise
+the application would boot into a controller that is no longer there. The
+directories stay, because they are where the next thing goes.
 
-**Migrations are kept.** The users and sessions tables are what the
-authentication guard and the database session driver are written against, and a
-project that dropped them would find out at its first login rather than here.
-Delete them yourself if you want them gone.
+**The two migrations the framework ships are kept**: the users and sessions
+tables, which the authentication guard and the database session driver are
+written against, and which a project that dropped them would miss at its first
+login rather than here. A migration you wrote is yours, and goes with the rest
+of what you wrote. A `.gitkeep` stays too — it exists to hold an empty
+directory, which is what this leaves behind.
 
 Before deleting anything it prints what it is about to delete, with a count per
 directory, and waits for you to type the word `reset`. With no terminal to

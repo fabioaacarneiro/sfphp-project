@@ -5143,11 +5143,16 @@ $tests->run('reset removes the example application and refuses to do it in silen
         'app/resources/views/partials/header.sfht',
         'database/seeders/DatabaseSeeder.php',
         'database/factories/UserFactory.php',
+        // A migration the project wrote goes with the rest of what it wrote.
+        'database/migrations/2026_10_01_000001_create_posts_table.php',
     ];
 
     $kept = [
         'app/config/config.php',
         'database/migrations/2026_01_01_000001_create_users_table.php',
+        'database/migrations/2026_01_01_000002_create_sessions_table.php',
+        // A .gitkeep exists to hold an empty directory, which is what is left.
+        'database/migrations/.gitkeep',
     ];
 
     foreach ([...$removed, ...$kept] as $file) {
@@ -5197,9 +5202,11 @@ $tests->run('reset removes the example application and refuses to do it in silen
         $tests->assertTrue(is_dir($root . '/app/resources/views'));
 
         /*
-         * Migrations survive. The users and sessions tables are what the
-         * authentication guard and the database session driver are written
-         * against, and a project that lost them would find out at a login.
+         * The framework's own migrations survive. The users and sessions
+         * tables are what the authentication guard and the database session
+         * driver are written against, and a project that lost them would find
+         * out at a login. A migration the project wrote is the project's, and
+         * goes with the rest of it.
          */
         foreach ($kept as $file) {
             $tests->assertTrue(is_file($root . '/' . $file));
