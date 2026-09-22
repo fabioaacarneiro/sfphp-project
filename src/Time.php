@@ -145,7 +145,111 @@ final class Time
      */
     public static function displayZone(): DateTimeZone
     {
-        return self::zone(defined('APP_TIMEZONE') ? APP_TIMEZONE : 'UTC');
+        return self::zone(Config::get('APP_TIMEZONE', 'UTC'));
+    }
+
+    /**
+     * Render an instant the way the visitor's language writes dates.
+     *
+     * "21 de septiembre de 2026" rather than "2026-09-21", without the calling
+     * code knowing which language it is in.
+     *
+     * This is the one place the framework uses ext-intl, and it is optional in
+     * the same way ext-mbstring is for Str: when the extension is missing the
+     * output degrades to an ISO-like format rather than being wrong. A date
+     * that reads as 2026-09-21 in a Spanish page is worse than a localised one
+     * and better than one that says September when it means Setembro.
+     *
+     * @param DateTimeInterface $at The instant
+     * @param string $dateStyle "none", "short", "medium", "long" or "full"
+     * @param string $timeStyle The same, for the time part
+     * @param string|null $locale The language, or null for the active one
+     * @return string The formatted time, in the display zone
+     */
+    public static function localised(
+        DateTimeInterface $at,
+        string $dateStyle = 'medium',
+        string $timeStyle = 'short',
+        ?string $locale = null
+    ): string {
+        $instant = self::in($at, self::displayZone());
+        $locale = str_replace('_', '-', $locale ?? (function_exists('locale') ? locale() : 'en'));
+
+        if (!class_exists(\IntlDateFormatter::class)) {
+            return self::withoutIntl($instant, $dateStyle, $timeStyle);
+        }
+
+        $styles = [
+            'none' => \IntlDateFormatter::NONE,
+            'short' => \IntlDateFormatter::SHORT,
+            'medium' => \IntlDateFormatter::MEDIUM,
+            'long' => \IntlDateFormatter::LONG,
+            'full' => \IntlDateFormatter::FULL,
+        ];
+
+        $formatter = new \IntlDateFormatter(
+            $locale,
+            $styles[$dateStyle] ?? \IntlDateFormatter::MEDIUM,
+            $styles[$timeStyle] ?? \IntlDateFormatter::SHORT,
+            self::displayZone()
+        );
+
+        $formatted = $formatter->format($instant);
+
+        return $formatted === false ? self::withoutIntl($instant, $dateStyle, $timeStyle) : $formatted;
+    }
+
+    /**
+     * Render a number the way the visitor's language writes numbers.
+     *
+     * 1.234,56 in Portuguese and 1,234.56 in English — the separators swap, so
+     * printing one for the other is not a cosmetic difference.
+     *
+     * @param int|float $value The number
+     * @param int $decimals How many decimal places
+     * @param string|null $locale The language, or null for the active one
+     * @return string The formatted number
+     */
+    public static function number(int|float $value, int $decimals = 0, ?string $locale = null): string
+    {
+        $locale = str_replace('_', '-', $locale ?? (function_exists('locale') ? locale() : 'en'));
+
+        if (class_exists(\NumberFormatter::class)) {
+            $formatter = new \NumberFormatter($locale, \NumberFormatter::DECIMAL);
+            $formatter->setAttribute(\NumberFormatter::FRACTION_DIGITS, $decimals);
+            $formatted = $formatter->format($value);
+
+            if ($formatted !== false) {
+                return $formatted;
+            }
+        }
+
+        /*
+         * Without ext-intl the separators are guessed from the language rather
+         * than looked up, which covers the split that actually matters — a
+         * comma decimal separator or a full stop — and gets the long tail
+         * wrong. Documented as such: a wrong guess here is a readable number in
+         * the wrong convention, not a wrong number.
+         */
+        $comma = !str_starts_with($locale, 'en');
+
+        return number_format($value, $decimals, $comma ? ',' : '.', $comma ? '.' : ',');
+    }
+
+    /**
+     * Format a date without ext-intl.
+     *
+     * @param DateTimeImmutable $at The instant, already in the display zone
+     * @param string $dateStyle The requested date style
+     * @param string $timeStyle The requested time style
+     * @return string The formatted time
+     */
+    private static function withoutIntl(DateTimeImmutable $at, string $dateStyle, string $timeStyle): string
+    {
+        $date = $dateStyle === 'none' ? '' : $at->format('Y-m-d');
+        $time = $timeStyle === 'none' ? '' : $at->format('H:i');
+
+        return trim($date . ' ' . $time);
     }
 
     /**
