@@ -1,0 +1,18 @@
+{
+  "file_types": {
+    "PHP": ["phpx"],
+    "HTML": ["sfht"]
+  },
+  "lsp": {
+    "intelephense": {
+      "initialization_options": {
+        "files": {
+          "associations": ["*.php", "*.phtml", "*.phpx"]
+        },
+        "diagnostics": {
+          "enable": false
+        }
+      }
+    }
+  }
+}

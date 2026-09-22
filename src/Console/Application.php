@@ -55,6 +55,7 @@ final class Application
                 'serve' => $this->serve($arguments),
                 'env:example' => $this->envExample(),
                 'routes' => $this->routes($arguments),
+                'build' => $this->build($arguments),
                 'css:build' => $this->cssBuild($arguments),
                 'js:build' => $this->jsBuild($arguments),
                 'make:migration' => $this->makeMigration($arguments),
@@ -139,6 +140,7 @@ final class Application
             $this->writeLine('  serve                 Start development server (localhost:8000)');
             $this->writeLine('  env:example           Create .env from .env-example');
             $this->writeLine('  routes                List all registered routes');
+            $this->writeLine('  build --phpx          Compile .phpx components into PHP');
             $this->writeLine('  css:build             Build SFCSS from config.json');
             $this->writeLine('  js:build              Minify SFJS');
             $this->writeLine('');
@@ -1371,6 +1373,83 @@ PHP;
             $this->writeLine(implode(PHP_EOL, $output));
             $this->writeLine('');
             $this->writeLine('Run ./sfphp assets:publish to copy it where the browser can reach it.');
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+
+            return 1;
+        }
+    }
+
+    /**
+     * Build SFCSS from its configuration.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function build(array $arguments): int
+    {
+        if (!in_array('--phpx', $arguments, true)) {
+            fwrite(STDERR, 'Nothing to build. Pass --phpx to compile .phpx components.' . PHP_EOL);
+
+            return 1;
+        }
+
+        try {
+            $from = $this->option($arguments, 'from') ?? 'app/components';
+            $to = $this->option($arguments, 'to') ?? 'app/components/compiled';
+
+            $source = $this->projectPath($from);
+            $target = $this->projectPath($to);
+
+            if (!is_dir($source)) {
+                $this->writeLine('No ' . $from . ' directory. Nothing to compile.');
+
+                return 0;
+            }
+
+            if (!is_dir($target) && !mkdir($target, 0755, true) && !is_dir($target)) {
+                fwrite(STDERR, 'Error: could not create ' . $target . PHP_EOL);
+
+                return 1;
+            }
+
+            $compiler = new \SfphpProject\src\View\Phpx();
+            $built = 0;
+
+            foreach (glob($source . '/*.phpx') ?: [] as $file) {
+                $php = $compiler->compile((string) file_get_contents($file));
+                $out = $target . '/' . basename($file, '.phpx') . '.php';
+
+                if (file_put_contents($out, $php) === false) {
+                    fwrite(STDERR, 'Error: could not write ' . $out . PHP_EOL);
+
+                    return 1;
+                }
+
+                /*
+                 * Linted here rather than trusted. A .phpx cannot be checked by
+                 * php -l, but what it produces can, and catching a broken
+                 * component at build time is the whole reason this step exists.
+                 */
+                $status = 0;
+                $output = [];
+                exec('php -l ' . escapeshellarg($out) . ' 2>&1', $output, $status);
+
+                if ($status !== 0) {
+                    fwrite(STDERR, 'Error in ' . $this->relativePath($file) . ':' . PHP_EOL);
+                    fwrite(STDERR, implode(PHP_EOL, $output) . PHP_EOL);
+
+                    return 1;
+                }
+
+                $this->writeLine('  ' . $this->relativePath($file) . ' -> ' . $this->relativePath($out));
+                $built++;
+            }
+
+            $this->writeLine('');
+            $this->writeLine($built === 0 ? 'No .phpx files found.' : 'Compiled ' . $built . ' component(s).');
 
             return 0;
         } catch (Throwable $e) {
