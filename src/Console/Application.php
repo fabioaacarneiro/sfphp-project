@@ -2,6 +2,7 @@
 
 namespace SfphpProject\src\Console;
 
+use SfphpProject\src\Assets;
 use SfphpProject\src\Bootstrap;
 use SfphpProject\src\Console\Generators\ControllerGenerator;
 use SfphpProject\src\Console\Generators\EventGenerator;
@@ -75,6 +76,7 @@ final class Application
                 'status' => $this->status($arguments),
                 'db:seed' => $this->dbSeed($arguments),
                 'db:fresh' => $this->dbFresh($arguments),
+                'assets:publish' => $this->assetsPublish($arguments),
                 'cache:clear' => $this->cacheClear($arguments),
                 'cache:flush' => $this->cacheFlush($arguments),
                 'queue:work' => $this->queueWork($arguments),
@@ -124,6 +126,7 @@ final class Application
             $this->writeLine('  db:seed               Run database seeders');
             $this->writeLine('');
             $this->writeLine('Cache Commands:');
+            $this->writeLine('  assets:publish        Copy SFCSS and SFJS into public/assets');
             $this->writeLine('  cache:clear           Clear expired cache entries');
             $this->writeLine('  cache:flush           Flush all cache');
             $this->writeLine('');
@@ -1056,10 +1059,51 @@ PHP;
      * @param array<int, string> $arguments The command arguments
      * @return int
      */
+    private function assetsPublish(array $arguments): int
+    {
+        try {
+            /*
+             * SFCSS and SFJS ship inside the package, where a browser cannot
+             * reach them. This is how they get to a directory a project serves
+             * — the same command for a fresh clone and for an installation,
+             * because they are the same problem.
+             */
+            $force = in_array('--force', $arguments, true);
+            $target = $this->option($arguments, 'path') ?? $this->projectPath(Assets::PUBLIC_PATH);
+
+            $written = Assets::publish($target, $force);
+
+            if ($written === []) {
+                $this->writeLine('Assets are already up to date. Use --force to copy them anyway.');
+
+                return 0;
+            }
+
+            foreach ($written as $relative) {
+                $this->writeLine('  ' . $this->relativePath($target . '/' . $relative));
+            }
+
+            $this->writeLine('');
+            $this->writeLine('Published ' . count($written) . ' file(s).');
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+
+            return 1;
+        }
+    }
+
+    /**
+     * Clear expired cache entries.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
     private function cacheClear(array $arguments): int
     {
         try {
-            $cache = new \SfphpProject\src\Cache\CacheManager();
+            $cache = cache();
             $cache->flush();
 
             $this->writeLine('Cache cleared successfully.');
@@ -1080,7 +1124,7 @@ PHP;
     private function cacheFlush(array $arguments): int
     {
         try {
-            $cache = new \SfphpProject\src\Cache\CacheManager();
+            $cache = cache();
             $cache->flush();
 
             $this->writeLine('All cache flushed successfully.');
@@ -1159,7 +1203,13 @@ PHP;
         try {
             $configPath = $this->rootPath() . '/tools/css-builder/sfcss.config.json';
             $builderPath = $this->rootPath() . '/tools/css-builder/sfcss-builder.php';
-            $outputPath = $this->rootPath() . '/public/assets/css/sfcss.css';
+            /*
+             * resources/, which is where the builder writes and where the
+             * package carries it. This pointed at public/ and kept passing
+             * because a published copy happened to be there — so it reported
+             * the size of the old file rather than the one just built.
+             */
+            $outputPath = $this->rootPath() . '/resources/assets/css/sfcss.css';
 
             if (!is_file($configPath)) {
                 fwrite(STDERR, "Error: sfcss.config.json not found at {$configPath}" . PHP_EOL);
@@ -1208,6 +1258,9 @@ PHP;
                 clearstatcache(true, $minifiedPath);
                 $this->writeLine('  ' . $minifiedPath . ' (' . number_format(filesize($minifiedPath)) . ' bytes)');
             }
+
+            $this->writeLine('');
+            $this->writeLine('Run ./sfphp assets:publish to copy it where the browser can reach it.');
 
             return 0;
         } catch (Throwable $e) {

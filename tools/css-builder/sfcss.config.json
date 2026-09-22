@@ -263,6 +263,7 @@
   "typography": {
     "fontFamily": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
     "sizes": {
+      "xs": "0.75rem",
       "sm": "0.875rem",
       "base": "1rem",
       "lg": "1.125rem",
@@ -275,7 +276,8 @@
       "normal": 400,
       "semibold": 600,
       "bold": 700
-    }
+    },
+    "monoFamily": "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace"
   },
   "border": {
     "radius": "0.25rem",

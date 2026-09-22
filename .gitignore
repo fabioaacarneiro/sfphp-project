@@ -37,3 +37,9 @@ package-lock.json
 
 # Cache directories
 .claude/
+
+# Published by ./sfphp assets:publish from resources/assets, which is the one
+# copy under version control. Two copies of the same file drift.
+/public/assets/css/sfcss.css
+/public/assets/css/sfcss.min.css
+/public/assets/js/sfjs.js
