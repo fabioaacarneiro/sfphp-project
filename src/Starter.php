@@ -152,7 +152,19 @@ final class Starter
      */
     private static function read(string $relative): string
     {
+        /*
+         * A template whose placeholder sits in a `namespace` declaration is not
+         * valid PHP, so it cannot be a .php file: an editor reports an error on
+         * a file that is working exactly as intended, and any linter pointed at
+         * this directory fails. Those carry a .stub extension and the ones that
+         * happen to parse — a placeholder inside a string — do not need to.
+         */
         $path = self::path() . '/' . $relative;
+
+        if (!is_file($path) && is_file($path . '.stub')) {
+            $path .= '.stub';
+        }
+
         $contents = is_file($path) ? file_get_contents($path) : false;
 
         if ($contents === false) {
