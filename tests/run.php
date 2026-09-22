@@ -32,6 +32,11 @@ use SfphpProject\src\Console\Application;
 use SfphpProject\src\Cache\FileDriver;
 use SfphpProject\src\Cache\RedisDriver as CacheRedisDriver;
 use SfphpProject\src\RedisConnection;
+use SfphpProject\src\Assets;
+use SfphpProject\src\Debug\Dumper;
+use SfphpProject\src\Debug\HtmlDump;
+use SfphpProject\src\Debug\TextDump;
+use SfphpProject\src\Env;
 use SfphpProject\src\Cache\MemoryDriver;
 use SfphpProject\src\Auth\Auth;
 use SfphpProject\src\Auth\Authenticatable;
@@ -4205,11 +4210,17 @@ $tests->run('settings can be overridden without a separate process', function ()
      */
     $tests->assertSame(APP_ENV, Config::get('APP_ENV'));
 
-    Config::set('APP_ENV', 'development');
-    $tests->assertSame('development', Config::get('APP_ENV'));
+    /*
+     * A value nothing else would produce. This compared against the literal
+     * 'production', which held only while the checkout had no .env — so
+     * creating one turned a passing test red without anything being wrong.
+     */
+    $constant = APP_ENV;
+    Config::set('APP_ENV', 'sentinel-environment');
+    $tests->assertSame('sentinel-environment', Config::get('APP_ENV'));
 
-    // The constant is still there and still right; the override sits in front.
-    $tests->assertSame('production', APP_ENV);
+    // The constant is untouched; the override sits in front of it.
+    $tests->assertSame($constant, APP_ENV);
 
     Config::forget('APP_ENV');
     $tests->assertSame(APP_ENV, Config::get('APP_ENV'));
@@ -4456,6 +4467,167 @@ $tests->run('redis is selected through the shared connection, or refused out lou
 
     Config::forget('CACHE_DRIVER');
     RedisConnection::use(null);
+});
+
+$tests->run('a dump describes a value without following it forever', function () use ($tests): void {
+    $node = new class {
+        public string $name = 'root';
+        protected int $depth = 2;
+        private array $tags = ['a', 'b'];
+        public ?object $self = null;
+        public int $uninitialised;
+    };
+    $node->self = $node;
+
+    $described = Dumper::describe($node);
+
+    $tests->assertSame('object', $described['type']);
+
+    $by = [];
+
+    foreach ($described['children'] as $child) {
+        $by[$child['key']] = $child;
+    }
+
+    // Visibility is part of what a dump is for: a private property read as
+    // public sends somebody looking in the wrong place.
+    $tests->assertSame('public', $by['name']['visibility']);
+    $tests->assertSame('protected', $by['depth']['visibility']);
+    $tests->assertSame('private', $by['tags']['visibility']);
+
+    // A value that points at itself is reported, not followed.
+    $tests->assertSame(true, $by['self']['value']['circular'] ?? false);
+
+    // A typed property with no value throws when read. That is a state worth
+    // showing rather than an error worth propagating.
+    $tests->assertSame('uninitialised', $by['uninitialised']['value']['type']);
+});
+
+$tests->run('a dump states what it had to cut', function () use ($tests): void {
+    $long = str_repeat('a', Dumper::MAX_STRING + 50);
+    $string = Dumper::describe($long);
+
+    $tests->assertSame(true, $string['truncated']);
+    $tests->assertSame(Dumper::MAX_STRING + 50, $string['length']);
+    $tests->assertSame(Dumper::MAX_STRING, strlen($string['value']));
+
+    // Depth is capped, and the cap is reported rather than silently flattened.
+    $deep = 'bottom';
+
+    for ($i = 0; $i < Dumper::MAX_DEPTH + 3; $i++) {
+        $deep = [$deep];
+    }
+
+    $described = Dumper::describe($deep);
+
+    for ($i = 0; $i < Dumper::MAX_DEPTH; $i++) {
+        $described = $described['children'][0]['value'];
+    }
+
+    $tests->assertSame(true, $described['deep'] ?? false);
+
+    // A string that is not valid UTF-8 is reported as bytes rather than being
+    // put into an HTML page, where it would produce a blank screen.
+    $tests->assertSame(true, Dumper::describe("\xff\xfe")['binary']);
+});
+
+$tests->run('the dump screen is SFCSS, escaped, and asks nothing of the network', function () use ($tests): void {
+    $html = HtmlDump::render([['<script>alert(1)</script>' => "it's \"quoted\""]], [
+        'file' => '/app/routes.php',
+        'line' => 12,
+    ]);
+
+    // Escaped: a dump renders values an attacker may control.
+    $tests->assertSame(false, str_contains($html, '<script>alert(1)</script>'));
+    $tests->assertSame(true, str_contains($html, '&lt;script&gt;'));
+    $tests->assertSame(true, str_contains($html, '&quot;quoted&quot;'));
+
+    // SFCSS, inlined rather than linked: the screen has to render when the
+    // application around it is what is broken.
+    $tests->assertSame(true, str_contains($html, 'class="card mb-4"'));
+    $tests->assertSame(true, str_contains($html, '.card-header'));
+    $tests->assertSame(0, preg_match('#(src|href)=["\']https?://#', $html));
+    $tests->assertSame(0, preg_match('#<link\b#', $html));
+
+    // Where it was called from, because a dump you cannot locate is a riddle.
+    $tests->assertSame(true, str_contains($html, 'routes.php:12'));
+});
+
+$tests->run('a dump renders for a terminal too, without colour when redirected', function () use ($tests): void {
+    $plain = TextDump::render([['a' => 1, 'b' => [true, null]]], null, false);
+
+    $tests->assertSame(true, str_contains($plain, '"a" => 1'));
+    $tests->assertSame(true, str_contains($plain, 'array ['));
+    // No escape codes when colour is off: piped into a file they are noise.
+    $tests->assertSame(false, str_contains($plain, "\033["));
+
+    $coloured = TextDump::render([1], null, true);
+    $tests->assertSame(true, str_contains($coloured, "\033["));
+});
+
+$tests->run('the environment is read wherever PHP put it', function () use ($tests): void {
+    /*
+     * The framework read $_ENV alone, and variables_order decides whether PHP
+     * fills it — php.ini-production leaves the E out. On such a host a
+     * container started with -e DB_HOST=... passed a value nothing could see,
+     * and the failure was a default being used silently.
+     */
+    $key = 'SFPHP_ENV_PROBE_' . bin2hex(random_bytes(4));
+
+    $tests->assertSame(false, Env::has($key));
+    $tests->assertSame('fallback', Env::get($key, 'fallback'));
+
+    putenv($key . '=from-getenv');
+    $tests->assertSame(true, Env::has($key));
+    $tests->assertSame('from-getenv', Env::get($key));
+
+    // $_ENV wins, being the nearest source.
+    $_ENV[$key] = 'from-env-superglobal';
+    $tests->assertSame('from-env-superglobal', Env::get($key));
+
+    // An environment variable is always a string, so the words everybody
+    // writes for nothing have to mean nothing.
+    $_ENV[$key] = 'null';
+    $tests->assertSame(null, Env::get($key));
+    $_ENV[$key] = 'false';
+    $tests->assertSame('', Env::get($key));
+
+    unset($_ENV[$key]);
+    putenv($key);
+});
+
+$tests->run('the framework ships its stylesheet and script, and can publish them', function () use ($tests): void {
+    /*
+     * SFCSS and SFJS are tools the framework ships, not files of the example
+     * application, so they live where a composer require can reach them.
+     */
+    foreach (Assets::files() as $relative) {
+        $tests->assertSame(true, is_file(Assets::path() . '/' . $relative));
+    }
+
+    $tests->assertSame(true, str_contains(Assets::css(), '.card'));
+    $tests->assertSame(true, str_contains(Assets::js(), 'function') || Assets::js() !== '');
+
+    $target = sys_get_temp_dir() . '/sfphp-assets-' . bin2hex(random_bytes(4));
+
+    try {
+        $written = Assets::publish($target);
+        $tests->assertSame(Assets::files(), $written);
+        $tests->assertSame(true, is_file($target . '/css/sfcss.min.css'));
+
+        // Publishing twice copies nothing: reporting work that did not happen
+        // is how a command stops being believed.
+        $tests->assertSame([], Assets::publish($target));
+        $tests->assertSame(Assets::files(), Assets::publish($target, true));
+    } finally {
+        foreach (Assets::files() as $relative) {
+            @unlink($target . '/' . $relative);
+        }
+
+        @rmdir($target . '/css');
+        @rmdir($target . '/js');
+        @rmdir($target);
+    }
 });
 
 $tests->finish();

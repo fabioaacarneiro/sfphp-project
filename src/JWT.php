@@ -60,7 +60,7 @@ class JWT
      */
     private static function getSecretKey(): string
     {
-        $key = $_ENV['JWT_KEY'] ?? '';
+        $key = Env::get('JWT_KEY') ?? '';
 
         if ($key === '' || $key === 'your_secret_token_here') {
             throw new RuntimeException(

@@ -111,43 +111,43 @@ final class Bootstrap
     private static function defineConstants(): void
     {
         $constants = [
-            'APP_NAME' => $_ENV['APP_NAME'] ?? 'SfphpProject',
-            'APP_VERSION' => $_ENV['APP_VERSION'] ?? '1.0.0',
-            'APP_ENV' => $_ENV['APP_ENV'] ?? 'production',
-            'APP_LOCALE' => $_ENV['APP_LOCALE'] ?? 'en',
+            'APP_NAME' => Env::get('APP_NAME') ?? 'SfphpProject',
+            'APP_VERSION' => Env::get('APP_VERSION') ?? '1.0.0',
+            'APP_ENV' => Env::get('APP_ENV') ?? 'production',
+            'APP_LOCALE' => Env::get('APP_LOCALE') ?? 'en',
             'APP_LOCALES' => array_values(array_filter(array_map(
                 'trim',
-                explode(',', (string) ($_ENV['APP_LOCALES'] ?? 'en,pt_BR,es'))
+                explode(',', (string) (Env::get('APP_LOCALES') ?? 'en,pt_BR,es'))
             ))),
-            'APP_TIMEZONE' => $_ENV['APP_TIMEZONE'] ?? 'UTC',
-            'SESSION_DRIVER' => $_ENV['SESSION_DRIVER'] ?? 'native',
-            'SESSION_LIFETIME' => (int) ($_ENV['SESSION_LIFETIME'] ?? 7200),
-            'SESSION_ABSOLUTE_LIFETIME' => (int) ($_ENV['SESSION_ABSOLUTE_LIFETIME'] ?? 43200),
-            'SESSION_TABLE' => $_ENV['SESSION_TABLE'] ?? 'sessions',
-            'MAIL_DRIVER' => $_ENV['MAIL_DRIVER'] ?? 'log',
-            'MAIL_HOST' => $_ENV['MAIL_HOST'] ?? 'localhost',
-            'MAIL_PORT' => (int) ($_ENV['MAIL_PORT'] ?? 25),
-            'MAIL_USERNAME' => $_ENV['MAIL_USERNAME'] ?? '',
-            'MAIL_PASSWORD' => $_ENV['MAIL_PASSWORD'] ?? '',
-            'MAIL_ENCRYPTION' => $_ENV['MAIL_ENCRYPTION'] ?? 'none',
-            'MAIL_TIMEOUT' => (int) ($_ENV['MAIL_TIMEOUT'] ?? 30),
-            'MAIL_FROM_ADDRESS' => $_ENV['MAIL_FROM_ADDRESS'] ?? '',
-            'MAIL_FROM_NAME' => $_ENV['MAIL_FROM_NAME'] ?? '',
-            'MAIL_ALWAYS_TO' => $_ENV['MAIL_ALWAYS_TO'] ?? '',
-            'LOG_CHANNEL' => $_ENV['LOG_CHANNEL'] ?? 'stream',
-            'LOG_PATH' => $_ENV['LOG_PATH'] ?? 'php://stderr',
-            'CACHE_DRIVER' => $_ENV['CACHE_DRIVER'] ?? 'file',
-            'CACHE_PATH' => $_ENV['CACHE_PATH'] ?? '',
-            'CACHE_PREFIX' => $_ENV['CACHE_PREFIX'] ?? 'sfphp:cache:',
-            'QUEUE_DRIVER' => $_ENV['QUEUE_DRIVER'] ?? 'database',
-            'QUEUE_TABLE' => $_ENV['QUEUE_TABLE'] ?? '',
-            'QUEUE_FAILED_TABLE' => $_ENV['QUEUE_FAILED_TABLE'] ?? '',
-            'QUEUE_RESERVATION_SECONDS' => (int) ($_ENV['QUEUE_RESERVATION_SECONDS'] ?? 900),
-            'REDIS_HOST' => $_ENV['REDIS_HOST'] ?? '127.0.0.1',
-            'REDIS_PORT' => (int) ($_ENV['REDIS_PORT'] ?? 6379),
-            'REDIS_PASSWORD' => $_ENV['REDIS_PASSWORD'] ?? '',
-            'REDIS_DB' => (int) ($_ENV['REDIS_DB'] ?? 0),
-            'REDIS_TIMEOUT' => (int) ($_ENV['REDIS_TIMEOUT'] ?? 2),
+            'APP_TIMEZONE' => Env::get('APP_TIMEZONE') ?? 'UTC',
+            'SESSION_DRIVER' => Env::get('SESSION_DRIVER') ?? 'native',
+            'SESSION_LIFETIME' => (int) (Env::get('SESSION_LIFETIME') ?? 7200),
+            'SESSION_ABSOLUTE_LIFETIME' => (int) (Env::get('SESSION_ABSOLUTE_LIFETIME') ?? 43200),
+            'SESSION_TABLE' => Env::get('SESSION_TABLE') ?? 'sessions',
+            'MAIL_DRIVER' => Env::get('MAIL_DRIVER') ?? 'log',
+            'MAIL_HOST' => Env::get('MAIL_HOST') ?? 'localhost',
+            'MAIL_PORT' => (int) (Env::get('MAIL_PORT') ?? 25),
+            'MAIL_USERNAME' => Env::get('MAIL_USERNAME') ?? '',
+            'MAIL_PASSWORD' => Env::get('MAIL_PASSWORD') ?? '',
+            'MAIL_ENCRYPTION' => Env::get('MAIL_ENCRYPTION') ?? 'none',
+            'MAIL_TIMEOUT' => (int) (Env::get('MAIL_TIMEOUT') ?? 30),
+            'MAIL_FROM_ADDRESS' => Env::get('MAIL_FROM_ADDRESS') ?? '',
+            'MAIL_FROM_NAME' => Env::get('MAIL_FROM_NAME') ?? '',
+            'MAIL_ALWAYS_TO' => Env::get('MAIL_ALWAYS_TO') ?? '',
+            'LOG_CHANNEL' => Env::get('LOG_CHANNEL') ?? 'stream',
+            'LOG_PATH' => Env::get('LOG_PATH') ?? 'php://stderr',
+            'CACHE_DRIVER' => Env::get('CACHE_DRIVER') ?? 'file',
+            'CACHE_PATH' => Env::get('CACHE_PATH') ?? '',
+            'CACHE_PREFIX' => Env::get('CACHE_PREFIX') ?? 'sfphp:cache:',
+            'QUEUE_DRIVER' => Env::get('QUEUE_DRIVER') ?? 'database',
+            'QUEUE_TABLE' => Env::get('QUEUE_TABLE') ?? '',
+            'QUEUE_FAILED_TABLE' => Env::get('QUEUE_FAILED_TABLE') ?? '',
+            'QUEUE_RESERVATION_SECONDS' => (int) (Env::get('QUEUE_RESERVATION_SECONDS') ?? 900),
+            'REDIS_HOST' => Env::get('REDIS_HOST') ?? '127.0.0.1',
+            'REDIS_PORT' => (int) (Env::get('REDIS_PORT') ?? 6379),
+            'REDIS_PASSWORD' => Env::get('REDIS_PASSWORD') ?? '',
+            'REDIS_DB' => (int) (Env::get('REDIS_DB') ?? 0),
+            'REDIS_TIMEOUT' => (int) (Env::get('REDIS_TIMEOUT') ?? 2),
         ];
 
         foreach ($constants as $name => $value) {
@@ -162,7 +162,7 @@ final class Bootstrap
          * every debug line on disk.
          */
         if (!defined('LOG_LEVEL')) {
-            define('LOG_LEVEL', $_ENV['LOG_LEVEL'] ?? (APP_ENV === 'development' ? 'debug' : 'info'));
+            define('LOG_LEVEL', Env::get('LOG_LEVEL') ?? (APP_ENV === 'development' ? 'debug' : 'info'));
         }
     }
 }

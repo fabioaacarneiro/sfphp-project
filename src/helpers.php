@@ -1,6 +1,9 @@
 <?php
 
 use SfphpProject\src\Config;
+use SfphpProject\src\Debug\Dumper;
+use SfphpProject\src\Debug\HtmlDump;
+use SfphpProject\src\Debug\TextDump;
 use SfphpProject\src\Cache\CacheManager;
 use SfphpProject\src\Mail\ArrayDriver as MailArrayDriver;
 use SfphpProject\src\Mail\LogDriver as MailLogDriver;
@@ -172,6 +175,128 @@ if (!function_exists('dispatch')) {
     function dispatch(Job $job, ?int $delay = null): string
     {
         return queue()->push($job, $delay);
+    }
+}
+
+if (!function_exists('dump')) {
+    /**
+     * Show one or more values and carry on.
+     *
+     * In a request the values are appended to the page; in a terminal they go
+     * to standard output. Nothing stops, which is what separates this from
+     * dd(): use it to watch a loop, use dd() to stop and look.
+     *
+     * @param mixed ...$values The values to show
+     * @return void
+     */
+    function dump(mixed ...$values): void
+    {
+        $caller = Dumper::caller();
+
+        if (PHP_SAPI === 'cli') {
+            fwrite(STDOUT, TextDump::render($values, $caller));
+
+            return;
+        }
+
+        if (!sfphp_dump_allowed()) {
+            sfphp_dump_to_log($values, $caller, 'dump');
+
+            return;
+        }
+
+        echo HtmlDump::render($values, $caller);
+    }
+}
+
+if (!function_exists('dd')) {
+    /**
+     * Show one or more values and stop.
+     *
+     * The response is replaced by a page showing what was dumped, rather than
+     * the dump being squeezed in among whatever the page had already printed.
+     * That is the whole point: you asked to stop and look, so what you are
+     * looking at is the only thing on screen.
+     *
+     * @param mixed ...$values The values to show
+     * @return never
+     */
+    function dd(mixed ...$values): never
+    {
+        $caller = Dumper::caller();
+
+        if (PHP_SAPI === 'cli') {
+            fwrite(STDOUT, TextDump::render($values, $caller));
+
+            exit(1);
+        }
+
+        if (!sfphp_dump_allowed()) {
+            /*
+             * Production. The dump would be a page handed to a visitor showing
+             * whatever was passed to it — a user record, request headers,
+             * configuration. It goes to the log, where the LogManager redacts
+             * passwords and tokens, and the visitor gets the ordinary error
+             * page: a forgotten dd() becomes something you can see and nothing
+             * they can.
+             */
+            sfphp_dump_to_log($values, $caller, 'dd');
+
+            throw new RuntimeException(
+                'dd() was called in a production environment. The dump was written to the log instead.'
+            );
+        }
+
+        /*
+         * Headers first: the page is HTML whatever the action was going to
+         * answer, and a dump inside a response already declared as JSON is a
+         * download prompt rather than a screen.
+         */
+        if (!headers_sent()) {
+            /*
+             * 200, not 500. A dump is something you asked for, not a failure:
+             * a 500 makes the browser's network panel mark the request red,
+             * and a proxy or a container platform configured to replace error
+             * bodies with its own page would replace the dump with it.
+             */
+            http_response_code(200);
+            header('Content-Type: text/html; charset=utf-8');
+        }
+
+        echo HtmlDump::render($values, $caller);
+
+        exit(1);
+    }
+}
+
+if (!function_exists('sfphp_dump_allowed')) {
+    /**
+     * Whether a dump may be written to the response.
+     *
+     * @return bool True outside production
+     */
+    function sfphp_dump_allowed(): bool
+    {
+        return Config::get('APP_ENV', 'production') !== 'production';
+    }
+}
+
+if (!function_exists('sfphp_dump_to_log')) {
+    /**
+     * Record a dump that must not reach the response.
+     *
+     * @param list<mixed> $values The values dumped
+     * @param array{file: string, line: int}|null $caller Where it was called
+     * @param string $function Which helper was used
+     * @return void
+     */
+    function sfphp_dump_to_log(array $values, ?array $caller, string $function): void
+    {
+        logger()->warning($function . '() called in production', [
+            'file' => $caller['file'] ?? null,
+            'line' => $caller['line'] ?? null,
+            'dump' => TextDump::render($values, null, false),
+        ]);
     }
 }
 

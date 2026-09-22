@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 128 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 134 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -42,6 +42,7 @@ hace hoy. Donde algo no existe, se dice que no existe — véase
 - [Sesiones](#sesiones)
 - [CSRF](#csrf)
 - [JWT](#jwt)
+- [Depuración](#depuración)
 - [Manejo de errores](#manejo-de-errores)
 - [Registro](#registro)
 - [Health check y métricas](#health-check-y-métricas)
@@ -59,7 +60,7 @@ hace hoy. Donde algo no existe, se dice que no existe — véase
 objetos Request/Response, una tubería de middleware, un contenedor de
 inyección de dependencias, un constructor de consultas, un constructor de
 esquemas con paridad MySQL/PostgreSQL, un motor de plantillas, caché, colas y
-un CLI con 32 comandos.
+un CLI con 33 comandos.
 
 **No es** un sustituto de Laravel o Symfony. No hay un ORM completo ni sistema
 de eventos, y la autenticación cubre inicio de sesión, guards y autorización,
@@ -3401,6 +3402,69 @@ php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 
 ---
 
+## Depuración
+
+```php
+dump($pedido);             // muéstralo y sigue
+dump($a, $b, $c);          // varios a la vez
+dd($request->all());       // muéstralo y para
+```
+
+`dd()` **sustituye la respuesta** por una página que enseña solo lo que se
+volcó. Esa es la diferencia respecto a imprimir un valor dentro de la página que
+ya estabas renderizando: pediste parar y mirar, así que lo que miras no está
+mezclado con una maqueta a medio hacer.
+
+La pantalla está hecha con SFCSS — la misma hoja de estilos con la que una
+aplicación escribe sus propias páginas — y el CSS va incrustado, no enlazado,
+porque una pantalla que el framework renderiza tiene que renderizar cuando la
+aplicación de alrededor es lo que está roto.
+
+Qué enseña, y por qué está cada parte:
+
+| | |
+|---|---|
+| La línea que llamó | Un volcado que no puedes localizar es un acertijo. `app/controllers/PedidoController.php:42` |
+| Visibilidad de la propiedad | Un `private $token` leído como público te manda a buscar al sitio equivocado |
+| Longitud de la cadena | Un valor que parece correcto y tiene 11 caracteres cuando esperabas 10 es el error |
+| `already shown above` | Un valor que se apunta a sí mismo se informa, no se sigue |
+| `uninitialised` | Una propiedad tipada nunca asignada. Leerla lanza; ese estado suele ser justo la respuesta que se busca |
+| `only the first 200 shown` | Lo que se cortó se declara. Un volcado truncado que lo admite es mejor que un navegador que deja de responder |
+
+Las ramas se pliegan. Usan `<details>`, así que plegar funciona sin ningún
+script — incluso tras un Content-Security-Policy que bloquee el script en línea.
+
+### En un terminal
+
+```bash
+./sfphp queue:work
+```
+
+Un worker de cola, un comando de consola y una tanda de pruebas no tienen
+navegador. Allí el mismo volcado va a la salida estándar como texto indentado,
+coloreado con ANSI cuando la salida es un terminal y en crudo cuando se redirige
+o se canaliza — los códigos de escape en un archivo que vas a pasar por `grep`
+son ruido.
+
+### En producción
+
+```php
+dd($usuario);   // APP_ENV=production
+```
+
+El volcado se **escribe en el registro** y el visitante recibe la página de
+error normal. `dd()` sigue parando, lanzando.
+
+Un volcado entregado a un visitante enseña lo que le hayan pasado: un registro
+de usuario, las cabeceras de la petición, un array de configuración. Funcionar
+igual en todos los entornos significaría que un `dd()` olvidado es una fuga de
+datos; así es una entrada en tu registro y un 500 para él. El registro pasa por
+`LogManager`, así que las contraseñas y los tokens se redactan por el camino.
+
+`dump()` en producción también escribe en el registro, y no para.
+
+---
+
 ## Manejo de errores
 
 Una excepción lanzada dentro de una acción la captura el router, en un límite
@@ -3669,7 +3733,7 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` expone **32 comandos**.
+`./sfphp` expone **33 comandos**.
 
 ### Generación (12 generadores)
 
@@ -3717,6 +3781,22 @@ report_build_ms_max 23.678
 ./sfphp queue:failed
 ```
 
+Los cuatro siguen `CACHE_DRIVER` y `QUEUE_DRIVER`. Un `cache:clear` que vaciara
+una caché de archivo mientras la aplicación usa Redis informaría de un éxito sin
+haber cambiado nada.
+
+### Assets
+
+```bash
+./sfphp assets:publish                     # a public/assets
+./sfphp assets:publish --path=web/static   # a otro sitio
+./sfphp assets:publish --force             # sobrescribe lo que haya
+```
+
+Copia SFCSS y SFJS desde dentro del paquete a un directorio que el proyecto
+sirva. Ejecútalo tras instalar y tras actualizar; una segunda ejecución que
+encuentra los mismos archivos no copia nada y lo dice.
+
 ### Servidor y utilidades
 
 ```bash
@@ -3743,21 +3823,46 @@ ruptura `sm`/`md`/`lg`/`xl` se generan desde esa configuración.
 
 | | |
 |---|---|
-| Clases en total | **2.337** |
-| — utilidades base | 1.209 |
+| Clases en total | **2.339** |
+| — utilidades base | 1.211 |
 | — variantes `hover:` | 600 |
 | — variantes responsivas (`sm` `md` `lg` `xl`) | 528 |
 | Clases de color | 600 de paleta (20 familias × 10 tonos × `bg`/`text`/`border`) + 25 del tema |
-| Tamaño | 110KB en crudo · 92KB minificado · **16,1KB comprimido** |
+| Tamaño | 112KB en crudo · 94KB minificado · **16,4KB comprimido** |
 | Dependencias | ninguna |
 
 ```bash
-./sfphp css:build     # construye public/assets/css/sfcss.css y .min.css
+./sfphp css:build        # construye resources/assets/css/sfcss.css y .min.css
+./sfphp assets:publish   # lo copia a public/assets
 ```
 
 ```html
 <link rel="stylesheet" href="/assets/css/sfcss.css">
 ```
+
+SFCSS vive en el **paquete**, no en un directorio público, porque es una
+herramienta que el framework distribuye y no un archivo de la aplicación de
+ejemplo — igual que SFJS. `composer require` entrega los dos; `assets:publish`
+los deja donde un navegador los alcanza.
+
+### Lo que usan las pantallas del propio framework
+
+`code`, `pre` y `kbd` tienen estilo, `font-mono` y `font-sans` fijan la familia,
+y las superficies neutras son variables en vez de hex fijo:
+
+```css
+--surface  --surface-raised  --surface-sunken
+--surface-border  --surface-border-strong
+--body-color  --body-color-muted  --code-color
+```
+
+Un bloque `prefers-color-scheme: dark` redefine esas ocho y nada más. Los
+colores de marca y de paleta conservan su significado en ambos temas; lo que
+tiene que cambiar es el papel sobre el que se apoyan.
+
+Ese conjunto existe porque la página de error y la pantalla de volcado están
+hechas con SFCSS y lo incrustan — un framework con su propia hoja de estilos no
+debería tener sus propias pantallas escritas en una segunda.
 
 Referencia completa: [SFCSS](SFCSS.md) y
 [referencia de utilidades](SFCSS_UTILITIES.md).
@@ -3766,7 +3871,7 @@ Referencia completa: [SFCSS](SFCSS.md) y
 
 ## SFJS
 
-Una biblioteca JavaScript sin dependencias — 12KB en crudo, **3,0KB
+Una biblioteca JavaScript sin dependencias — 11KB en crudo, **3,0KB
 comprimidos**. Expuesta como `window.sf`.
 
 ```html
@@ -3831,7 +3936,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 128 casos unitarios
+composer run test        # 134 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve
