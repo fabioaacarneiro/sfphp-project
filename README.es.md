@@ -60,6 +60,7 @@ En producción, apunta el `DocumentRoot` a `public/`.
 | **SFHT** | Motor de plantillas con escapado automático, herencia de layout y una caché compatible con OPcache |
 | **Registro** | Líneas JSON en UTC, un id de petición que une todas las líneas de una petición, secretos redactados |
 | **Tiempo** | UTC en todo, incluida la sesión de la base de datos; la zona es una decisión de presentación |
+| **Sesiones** | Plazos de inactividad y absoluto, validación estricta de id, y almacén compartible entre instancias |
 | **Caché** | Drivers de archivo, memoria y Redis |
 | **Colas** | Workers con reintentos, drivers de base de datos y Redis |
 | **SFCSS** | 2.337 clases de utilidad con variantes `hover:` y responsivas, 16,1KB comprimidos |
@@ -107,8 +108,8 @@ trans_choice('app.items', 5);   // formas de plural por rango o por regla del id
 - **Contraseñas** — `password_hash` con `PASSWORD_DEFAULT`, y `Auth::attempt()`
   iguala el tiempo de respuesta para que una cuenta inexistente no se distinga
   de una contraseña equivocada
-- **Sesión** — el id se regenera al entrar y al salir, contra la fijación de
-  sesión
+- **Sesión** — el id se regenera al entrar y al salir, `use_strict_mode`
+  rechaza un id que PHP nunca emitió, y hay plazos de inactividad y absoluto
 - **Middleware** — `VerifyCsrfToken` aplica la comprobación CSRF por defecto a
   toda petición que cambia estado
 
@@ -120,7 +121,7 @@ corrompería el dato en la base de datos sin proteger su destino real.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 95 casos unitarios
+composer run test        # 102 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run docs        # los tres idiomas de la documentación concuerdan
 ```
