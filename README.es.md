@@ -76,6 +76,7 @@ En producción, apunta el `DocumentRoot` a `public/`.
 | **Registro** | Líneas JSON en UTC, un id de petición que une todas las líneas de una petición, secretos redactados |
 | **Tiempo** | UTC en todo, incluida la sesión de la base de datos; la zona es una decisión de presentación |
 | **Sesiones** | Plazos de inactividad y absoluto, validación estricta de id, y almacén compartible entre instancias |
+| **Subidas** | Tipo leído de los bytes del archivo, nombre de almacenamiento generado, `$_FILES` falsificado rechazado |
 | **Correo** | SMTP con STARTTLS y TLS implícito, así que cualquier proveedor contratado son cuatro valores en `.env` |
 | **Caché** | Drivers de archivo, memoria y Redis |
 | **Colas** | Workers con reintentos, drivers de base de datos y Redis |
@@ -137,7 +138,7 @@ corrompería el dato en la base de datos sin proteger su destino real.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 114 casos unitarios
+composer run test        # 119 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run docs        # los tres idiomas de la documentación concuerdan
 ```
