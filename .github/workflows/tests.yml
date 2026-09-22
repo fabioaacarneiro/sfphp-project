@@ -34,6 +34,13 @@ jobs:
       - run: composer run lint
       - run: composer run test
 
+      # The example components are committed already compiled, because the
+      # front controller requires them and PHP autoloads classes rather than
+      # functions. Rebuilding and comparing is what catches a .phpx edited
+      # without a rebuild, which would otherwise ship markup nothing serves.
+      - run: ./sfphp build --phpx
+      - run: git diff --exit-code app/components/compiled
+
       # The documentation exists in English, Portuguese and Spanish, and a
       # version that falls behind is worse than one that does not exist,
       # because a reader cannot tell which pages are current. This compares
