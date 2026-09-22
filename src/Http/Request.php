@@ -330,24 +330,90 @@ final class Request
     }
 
     /**
-     * Get an uploaded file entry.
+     * Get an uploaded file.
+     *
+     * Returns an UploadedFile rather than the raw `$_FILES` entry, which is
+     * what this used to hand back. The raw entry is still there through
+     * rawFiles(), but nothing should need it: everything security-critical
+     * about an upload — that it is an upload at all, what it actually contains,
+     * and what it is safe to call it — is on the object.
+     *
+     * A field that accepted several files answers null here; use files().
      *
      * @param string $name The field name
-     * @return array<string, mixed>|null The raw $_FILES entry, or null when absent
+     * @return UploadedFile|null The file, or null when the field is absent or holds several
      */
-    public function file(string $name): ?array
+    public function file(string $name): ?UploadedFile
     {
-        $file = $this->files[$name] ?? null;
+        $entry = $this->files[$name] ?? null;
 
-        return is_array($file) ? $file : null;
+        if (!is_array($entry) || is_array($entry['name'] ?? null)) {
+            return null;
+        }
+
+        return UploadedFile::fromArray($entry);
     }
 
     /**
-     * Get every uploaded file entry.
+     * Get every file sent under one field name.
      *
-     * @return array<string, mixed> The raw $_FILES structure
+     * A form with `name="photos[]"` arrives as one entry whose members are
+     * arrays, which is the shape that catches people out: `$_FILES['photos']`
+     * is not a list of files, it is a file whose every property is a list.
+     * This turns it the right way round.
+     *
+     * @param string $name The field name
+     * @return list<UploadedFile> The files, in the order they were sent
      */
-    public function files(): array
+    public function files(string $name): array
+    {
+        $entry = $this->files[$name] ?? null;
+
+        if (!is_array($entry)) {
+            return [];
+        }
+
+        if (!is_array($entry['name'] ?? null)) {
+            return [UploadedFile::fromArray($entry)];
+        }
+
+        $files = [];
+
+        foreach (array_keys($entry['name']) as $index) {
+            $files[] = UploadedFile::fromArray([
+                'name' => $entry['name'][$index] ?? '',
+                'tmp_name' => $entry['tmp_name'][$index] ?? '',
+                'size' => $entry['size'][$index] ?? 0,
+                'error' => $entry['error'][$index] ?? UPLOAD_ERR_NO_FILE,
+            ]);
+        }
+
+        return $files;
+    }
+
+    /**
+     * Whether a usable file arrived under this field name.
+     *
+     * @param string $name The field name
+     * @return bool True when at least one valid file is present
+     */
+    public function hasFile(string $name): bool
+    {
+        foreach ($this->files($name) as $file) {
+            if ($file->isValid()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The raw `$_FILES` structure.
+     *
+     * @return array<string, mixed> The structure as PHP built it
+     */
+    public function rawFiles(): array
     {
         return $this->files;
     }

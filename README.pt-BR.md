@@ -73,6 +73,7 @@ Em produção, aponte o `DocumentRoot` para `public/`.
 | **Log** | Linhas JSON em UTC, um id de requisição unindo todas as linhas de uma requisição, segredos redigidos |
 | **Tempo** | UTC em tudo, inclusive na sessão do banco; fuso é decisão de exibição |
 | **Sessões** | Prazos ocioso e absoluto, validação estrita de id, e store compartilhável entre instâncias |
+| **Upload** | Tipo lido dos bytes do arquivo, nome de armazenamento gerado, `$_FILES` forjado recusado |
 | **E-mail** | SMTP com STARTTLS e TLS implícito, então qualquer provedor contratado são quatro valores no `.env` |
 | **Cache** | Drivers de arquivo, memória e Redis |
 | **Queue** | Workers com retry, drivers de banco e Redis |
@@ -131,7 +132,7 @@ dado no banco sem proteger o destino real.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 114 casos unitários
+composer run test        # 119 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run docs        # os três idiomas da documentação concordam
 ```

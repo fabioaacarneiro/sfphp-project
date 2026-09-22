@@ -75,6 +75,7 @@ In production, point `DocumentRoot` at `public/`.
 | **Logging** | JSON lines in UTC, a request id joining every line of one request, secrets redacted |
 | **Time** | UTC everywhere, including the database session; zones are a display decision |
 | **Sessions** | Idle and absolute deadlines, strict id validation, and a store shareable between instances |
+| **Uploads** | Type read from the file's bytes, generated storage names, forged `$_FILES` refused |
 | **Mail** | SMTP with STARTTLS and implicit TLS, so any contracted provider is four values in `.env` |
 | **Cache** | File, memory and Redis drivers |
 | **Queue** | Workers with retries, database and Redis drivers |
@@ -133,7 +134,7 @@ data in the database without protecting its real destination.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 114 unit cases
+composer run test        # 119 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run docs        # the three documentation languages agree
 ```
