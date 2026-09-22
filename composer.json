@@ -30,7 +30,7 @@
     "minimum-stability": "stable",
     "scripts": {
         "test": "php tests/run.php",
-        "lint": "find app src public tests tools -type f -name '*.php' -print0 | xargs -0 -n1 php -l && php -l server.php && php -l sfphp",
+        "lint": "find app src public tests tools resources -type f -name '*.php' -print0 | xargs -0 -n1 php -l && php -l server.php && php -l sfphp",
         "test:db": "php tests/db.php",
         "docs": "php tools/docs-parity.php",
         "test:all": [
