@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="{{ lang_tag() }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SFPHP</title>
+
+    <!-- SFCSS, served from your own public/assets: no CDN, no web font. -->
+    <link rel="stylesheet" href="{{ asset('css/sfcss.min.css') }}">
+</head>
+<body class="bg-light">
+
+<main class="container py-20 max-w-2xl mx-auto px-4">
+
+    <h1 class="text-4xl font-bold mb-2">SFPHP</h1>
+    <p class="text-lg text-muted mb-8">
+        It works. This page is <code>resources/views/welcome.sfht</code> — yours
+        to replace.
+    </p>
+
+    <div class="card mb-6">
+        <div class="card-header"><strong>Where things are</strong></div>
+        <div class="card-body">
+            <table class="w-full text-sm">
+                <tr>
+                    <td class="py-2"><code>routes.php</code></td>
+                    <td class="py-2 text-muted">Your routes</td>
+                </tr>
+                <tr>
+                    <td class="py-2"><code>app/Controllers/</code></td>
+                    <td class="py-2 text-muted">Your controllers</td>
+                </tr>
+                <tr>
+                    <td class="py-2"><code>resources/views/</code></td>
+                    <td class="py-2 text-muted">Your templates</td>
+                </tr>
+                <tr>
+                    <td class="py-2"><code>public/index.php</code></td>
+                    <td class="py-2 text-muted">The front controller</td>
+                </tr>
+                <tr>
+                    <td class="py-2"><code>.env</code></td>
+                    <td class="py-2 text-muted">Optional — everything has a default</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="card mb-8">
+        <div class="card-header"><strong>Next</strong></div>
+        <div class="card-body">
+            <pre><code>./vendor/bin/sfphp make:controller Post
+./vendor/bin/sfphp make:migration:create posts
+./vendor/bin/sfphp migrate
+./vendor/bin/sfphp routes</code></pre>
+            <p class="text-sm text-muted mt-4 mb-0">
+                <code>./vendor/bin/sfphp</code> on its own lists all 35 commands.
+            </p>
+        </div>
+    </div>
+
+    <div class="d-flex gap-4 flex-wrap">
+        <a class="btn btn-primary"
+           href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/en/DOCUMENTATION.md">Documentation</a>
+        <a class="btn btn-secondary"
+           href="https://github.com/fabioaacarneiro/sfphp-project">GitHub</a>
+    </div>
+
+    <p class="text-xs text-muted mt-8 mb-0">
+        Zero runtime dependencies. Documentation in
+        <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/en/DOCUMENTATION.md">English</a>,
+        <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/pt-BR/DOCUMENTATION.md">português</a>
+        and
+        <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/es/DOCUMENTATION.md">español</a>.
+    </p>
+
+</main>
+
+<script src="{{ asset('js/sfjs.min.js') }}"></script>
+</body>
+</html>

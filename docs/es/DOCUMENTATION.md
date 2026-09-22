@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 136 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 138 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -60,7 +60,7 @@ hace hoy. Donde algo no existe, se dice que no existe — véase
 objetos Request/Response, una tubería de middleware, un contenedor de
 inyección de dependencias, un constructor de consultas, un constructor de
 esquemas con paridad MySQL/PostgreSQL, un motor de plantillas, caché, colas y
-un CLI con 33 comandos.
+un CLI con 35 comandos.
 
 **No es** un sustituto de Laravel o Symfony. No hay un ORM completo ni sistema
 de eventos, y la autenticación cubre inicio de sesión, guards y autorización,
@@ -106,8 +106,28 @@ directorio público que nunca recibes. Una prueba afirma esa lista, porque lo qu
 recibe quien instala es el archivo generado y no el repositorio, y los dos se
 separan en silencio.
 
-Una llamada conecta tu proyecto con él, al principio de tu front controller y de
-cualquier punto de entrada de consola:
+```bash
+./vendor/bin/sfphp init
+```
+
+`init` escribe lo que un proyecto necesita para poder responder algo:
+controlador frontal, archivo de rutas, un controlador, una vista, el script de
+enrutamiento que usa el servidor incorporado, y SFCSS y SFJS copiados a
+`public/assets`. Imprime la línea de `autoload` para que la pegues en tu
+`composer.json`, y entonces `./vendor/bin/sfphp serve` responde en
+<http://localhost:8000> con una página que dice dónde está cada cosa.
+
+Un archivo que ya está se conserva: ejecutar `init` dos veces informa de lo que
+dejó en paz en vez de sobrescribir tu controlador frontal. `--force` lo cambia,
+y `--namespace=Acme\Shop` cambia el namespace de las clases generadas.
+
+Todo lo que escribe es **tuyo**. Nada de eso lo actualiza un `composer update`
+posterior, y borrar el controlador de bienvenida y su vista es el paso siguiente
+esperado.
+
+Hacerlo a mano también vale — el controlador frontal es la única parte sobre la
+que el framework tiene opinión. Una llamada conecta tu proyecto con él, al
+principio de ese archivo y de cualquier punto de entrada de consola:
 
 ```php
 require __DIR__ . '/../vendor/autoload.php';
@@ -3739,7 +3759,7 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` expone **33 comandos**.
+`./sfphp` expone **35 comandos**.
 
 ### Generación (12 generadores)
 
@@ -3790,6 +3810,17 @@ report_build_ms_max 23.678
 Los cuatro siguen `CACHE_DRIVER` y `QUEUE_DRIVER`. Un `cache:clear` que vaciara
 una caché de archivo mientras la aplicación usa Redis informaría de un éxito sin
 haber cambiado nada.
+
+### Esqueleto de un proyecto
+
+```bash
+./vendor/bin/sfphp init
+./vendor/bin/sfphp init --namespace=Acme\Shop
+./vendor/bin/sfphp init --force            # sobrescribe lo que haya
+```
+
+Para un proyecto que instaló el framework y todavía no tiene qué ejecutar.
+Consulta [Como dependencia](#como-dependencia).
 
 ### Assets
 
@@ -3955,7 +3986,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 136 casos unitarios
+composer run test        # 138 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve
