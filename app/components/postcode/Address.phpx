@@ -1,0 +1,26 @@
+<?php
+
+namespace SfphpProject\app\components\postcode;
+
+use SfphpProject\src\View\Sfht;
+
+/**
+ * An address, composed of the fields beside it.
+ *
+ * This is the fragment the lookup swaps in, and it is also part of the whole
+ * page when the browser asked for one — the same component either way, which
+ * is what stops a page and its updates from drifting apart.
+ */
+function Address(string $street, string $district, string $city, string $state): Sfht
+{
+    return sfht(
+        <div class="card">
+            <div class="card-body">
+                {{ Field('Street', $street) }}
+                {{ Field('District', $district) }}
+                {{ Field('City', $city) }}
+                {{ Field('State', $state) }}
+            </div>
+        </div>
+    );
+}

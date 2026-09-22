@@ -7,8 +7,9 @@ use SfphpProject\src\View\Sfht;
 /**
  * One field of an address.
  *
- * Used from JavaScript rather than from PHP, so it is here to be read: the same
- * shape the browser builds, written once in markup a person can follow.
+ * Composed by Address, which the controller renders for both answers it gives
+ * — the fragment SFJS swaps in and the whole page a browser without JavaScript
+ * receives. Written once, so the two can never disagree.
  */
 function Field(string $label, string $value): Sfht
 {

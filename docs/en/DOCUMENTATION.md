@@ -4276,6 +4276,13 @@ sf.util.debounce(fn, 300);  sf.util.throttle(fn, 300);  sf.util.wait(500);
 <div id="menu">...</div>
 ```
 
+A form works with any of them: `@hxGet` and `@hxDelete` send its fields as a
+query string, the rest send them as the body. What comes back is swapped in as
+markup, so what answers one of these is a fragment — rendered by the same
+component that renders it inside the full page, rather than JSON that JavaScript
+has to rebuild into HTML. The page at `/phpx` does exactly this, and has no
+script of its own because of it.
+
 `@hxSwap` accepts `innerHTML` (the default), `outerHTML`, `beforebegin`,
 `afterbegin`, `beforeend` and `afterend`.
 

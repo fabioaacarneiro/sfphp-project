@@ -4268,6 +4268,13 @@ sf.util.debounce(fn, 300);  sf.util.throttle(fn, 300);  sf.util.wait(500);
 <div id="menu">...</div>
 ```
 
+Um formulário funciona com qualquer um deles: `@hxGet` e `@hxDelete` mandam os
+campos como query string, os outros mandam no corpo. O que volta é trocado como
+markup, então quem responde a um desses é um fragmento — renderizado pelo mesmo
+componente que o renderiza dentro da página inteira, e não JSON para o
+JavaScript remontar em HTML. A página em `/phpx` faz exatamente isso, e por isso
+não tem script próprio.
+
 `@hxSwap` aceita `innerHTML` (padrão), `outerHTML`, `beforebegin`,
 `afterbegin`, `beforeend` e `afterend`.
 
