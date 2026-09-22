@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 108 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 114 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -30,6 +30,7 @@ hace hoy. Donde algo no existe, se dice que no existe — véase
 - [Seeders y factories](#seeders-y-factories)
 - [Caché](#caché)
 - [Colas](#colas)
+- [Correo](#correo)
 - [Validación](#validación)
 - [Internacionalización](#internacionalización)
 - [Tiempo y zonas horarias](#tiempo-y-zonas-horarias)
@@ -207,7 +208,7 @@ public/index.php
  │   └─ runtime.php→ date_default_timezone_set('UTC')
  │      utils.php  → helpers globales: e(), asset(), csrf_*()
  │      http.php   → constantes HTTP_OK, GET, POST, ...
- │      helpers.php→ cache(), logger(), now(), dispatch(), __(), trans_choice(), locale()
+ │      helpers.php→ cache(), logger(), mailer(), now(), dispatch(), __(), ...
  │      config.php → Bootstrap::load(): .env, constantes, rutas de vista y lang
  ├─ ErrorHandler::register()  red de seguridad para fatales y arranque
  ├─ require src/routes.php    llena el registro estático de rutas
@@ -485,6 +486,7 @@ Y por `src/helpers.php`:
 ```php
 cache();                      // un CacheManager con el driver de archivos
 logger();                     // un LogManager, configurado desde LOG_*
+mailer();                     // un MailManager, configurado desde MAIL_*
 now();                        // el instante actual, en UTC
 dispatch(new MiJob());        // encola un trabajo
 __('app.welcome', ['name' => 'Ana']);
@@ -1720,6 +1722,172 @@ mueve un trabajo a `failed_jobs` cuando se le acaban los intentos. Con
 
 Las tablas `jobs` y `failed_jobs` se crean bajo demanda, en la primera
 operación que las necesita — instanciar el driver no abre ninguna conexión.
+
+---
+
+## Correo
+
+```php
+use SfphpProject\src\Mail\Message;
+
+mailer()->send(
+    (new Message())
+        ->to('ana@ejemplo.com', 'Ana')
+        ->subject('Tu pedido')
+        ->text('Gracias por tu compra.')
+        ->html('<p>Gracias por tu compra.</p>')
+);
+```
+
+El framework sabe poner bytes en un servidor de correo. No sabe por qué los
+envías: aquí no hay correo de bienvenida ni recuperación de contraseña, porque
+eso es una decisión sobre para qué sirve una aplicación. Lo que hay es el
+transporte, con la misma forma que la caché y la cola — un contrato, un manager
+y drivers.
+
+### Configuración
+
+```ini
+MAIL_DRIVER=smtp
+MAIL_HOST=smtp.proveedor.com
+MAIL_PORT=587
+MAIL_USERNAME=...
+MAIL_PASSWORD=...
+MAIL_ENCRYPTION=tls              # tls para STARTTLS, ssl para TLS implícito
+MAIL_FROM_ADDRESS=no-responder@tudominio.com
+MAIL_FROM_NAME="Tu Producto"
+```
+
+| Driver | Envía por | Úsalo para |
+|---|---|---|
+| `smtp` | Un servidor de correo | Producción, con un servicio contratado |
+| `mail` | El `mail()` de PHP | Una máquina de desarrollo, y nada más |
+| `log` | El logger | El valor por defecto; muestra lo que habría salido |
+| `array` | Memoria | Pruebas, mediante `ArrayDriver::messages()` |
+
+El valor por defecto es `log`, no `mail`. Un framework cuyo comportamiento de
+fábrica es entregar mensajes a un MTA local sin configurar no envía nada y no
+avisa de nada; escribirlos en el registro al menos dice qué habría salido, y no
+puede alcanzar a una persona real por accidente.
+
+### Un driver, todos los proveedores
+
+`smtp` es el único transporte que el framework necesita, y eso no es una
+concesión. Todo servicio que alguien contrata — SES, Postmark, SendGrid,
+Mailgun, Resend, Brevo — acepta SMTP, así que cambiar de proveedor son cuatro
+valores en el entorno y no un driver nuevo. Un cliente HTTP por proveedor sería
+más código llegando a menos de ellos.
+
+Los dos caminos hacia TLS funcionan, porque los proveedores se reparten entre
+ellos:
+
+| `MAIL_ENCRYPTION` | Puerto, por lo general | Qué ocurre |
+|---|---|---|
+| `tls` | 587 | Conexión limpia, elevada con `STARTTLS` |
+| `ssl` | 465 | Cifrada desde el primer byte |
+| `none` | 25, 1025 | Ninguno de los dos — solo un servidor local |
+
+`AUTH PLAIN` y `AUTH LOGIN` están ambos soportados; lo que anuncia el servidor
+decide cuál se usa. El certificado se verifica por defecto.
+
+### Enviar no es llegar
+
+Configura las credenciales y los mensajes salen correctamente. Que lleguen a la
+bandeja de entrada depende de tres cosas que son DNS y panel del proveedor, no
+código:
+
+- **Registros SPF, DKIM y DMARC** en tu dominio de envío. El proveedor te da los
+  valores. Sin ellos el mensaje se puntúa como spam o se rechaza de entrada.
+- **Un remitente verificado.** Casi todo servicio rechaza un `From` que no hayas
+  demostrado que es tuyo.
+- **Rebotes y quejas**, que el proveedor informa por webhook. Nada de aquí los
+  consume, e ignorarlos quema tu reputación de envío.
+
+Ningún framework hace eso por la aplicación. Se configura una vez por proyecto.
+
+### Escribir un mensaje
+
+```php
+(new Message())
+    ->from('no-responder@tudominio.com', 'Tu Producto')   // suele quedarse con MAIL_FROM_*
+    ->to('ana@ejemplo.com', 'Ana')
+    ->cc('registros@tudominio.com')
+    ->bcc('auditoria@tudominio.com')
+    ->replyTo('soporte@tudominio.com', 'Soporte')
+    ->subject('Tu pedido')
+    ->text('La versión en texto.')
+    ->html('<p>La versión en HTML.</p>')
+    ->attach('factura.pdf', $bytes, 'application/pdf')
+    ->attachFile('/tmp/informe.csv', 'informe.csv', 'text/csv')
+    ->header('X-Campana', 'octubre');
+```
+
+Definir `text()` y `html()` envía un `multipart/alternative` y deja elegir al
+cliente de quien lee. HTML sin alternativa en texto es una de las cosas que hace
+que un mensaje se puntúe como spam, así que vale la pena rellenarlo.
+
+Una **dirección en Bcc llega al servidor y nunca llega a una cabecera**.
+Escribirla mostraría cada destinatario oculto a todos los demás, que es
+justamente lo que Bcc promete no hacer.
+
+### Dos cosas que no son comodidad
+
+**Un salto de línea en una cabecera se rechaza.** Un salto en un nombre, una
+dirección o un asunto permite a quien lo suministró añadir cabeceras propias —
+`Bcc:` a una dirección que nunca quisiste es la clásica, y el valor suele venir
+de un formulario. `Message` lanza en vez de quitarlo, porque enviar en silencio
+un mensaje distinto del pedido es la respuesta equivocada tanto a un ataque como
+a un error.
+
+**Todo es UTF-8 hasta el final.** Un asunto con acento se codifica según RFC
+2047 y un cuerpo según RFC 2045, así que "Confirmación de inscripción" llega
+como sí mismo y no como mojibake. El ASCII puro se deja tal cual, lo que
+mantiene legible un mensaje en crudo.
+
+### Enviar en segundo plano
+
+La cola ya está, y una petición no debería esperar a un servidor de correo:
+
+```php
+final class SendInvoice extends Job
+{
+    public function __construct(private int $orderId) {}
+
+    public function handle(): void
+    {
+        mailer()->send(/* ... */);
+    }
+}
+
+dispatch(new SendInvoice($order->id));
+```
+
+### Probar
+
+```php
+$sent = new ArrayDriver();
+mailer()->driver($sent);
+
+// ... ejercita el código bajo prueba
+
+$sent->last()->recipients();      // ['ana@ejemplo.com']
+$sent->last()->subjectLine();
+```
+
+`MAIL_ALWAYS_TO` redirige todo mensaje a una dirección, conservando el
+destinatario previsto en una cabecera `X-Intended-For`. Es para un entorno de
+preproducción que trabaja sobre una copia de datos de producción, donde las
+direcciones de la base de datos pertenecen a personas reales.
+
+### Qué falta
+
+| Ausente | Situación |
+|---|---|
+| Retorno de entrega | Los rebotes y quejas llegan por webhook al proveedor; nada los consume |
+| Imágenes incrustadas (`cid:`) | Los adjuntos se envían como adjuntos, sin referencia desde el HTML |
+| Plantillas | Renderiza una vista y pasa el resultado a `html()`; el mailer recibe una cadena |
+| Firma DKIM en el cliente | La hace el proveedor, a partir de los registros DNS que publicas |
+| Conexión reutilizada | Una conexión por mensaje. El envío masivo pertenece a la cola |
 
 ---
 
@@ -3121,7 +3289,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 108 casos unitarios
+composer run test        # 114 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve

@@ -54,6 +54,9 @@ use SfphpProject\src\Queue\RedisDriver;
 use SfphpProject\src\RawQuery;
 use SfphpProject\src\Route;
 use SfphpProject\src\Router;
+use SfphpProject\src\Mail\ArrayDriver as MailArrayDriver;
+use SfphpProject\src\Mail\MailManager;
+use SfphpProject\src\Mail\Message;
 use SfphpProject\src\Session\CacheHandler;
 use SfphpProject\src\Session\Session;
 use SfphpProject\src\Str;
@@ -3763,6 +3766,161 @@ $tests->run('unique takes its columns like every other index helper', function (
     });
 
     $tests->assertSame('CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`)', $fluent[1]);
+});
+
+$tests->run('a message renders the headers and body a mail server expects', function () use ($tests): void {
+    $rendered = (new Message())
+        ->from('nao-responda@exemplo.com', 'Loja')
+        ->to('ana@exemplo.com', 'Ana')
+        ->subject('Pedido confirmado')
+        ->text('Obrigado.')
+        ->toString();
+
+    $tests->assertTrue(str_contains($rendered, 'From: Loja <nao-responda@exemplo.com>'));
+    $tests->assertTrue(str_contains($rendered, 'To: Ana <ana@exemplo.com>'));
+    $tests->assertTrue(str_contains($rendered, 'Subject: Pedido confirmado'));
+    $tests->assertTrue(str_contains($rendered, 'Content-Type: text/plain; charset=UTF-8'));
+
+    // Every line ends CRLF, which is what the protocol requires.
+    $tests->assertSame(0, preg_match('/(?<!\r)\n/', $rendered));
+
+    $body = substr($rendered, strpos($rendered, "\r\n\r\n") + 4);
+    $tests->assertSame('Obrigado.', base64_decode(trim($body)));
+});
+
+$tests->run('headers that are not ASCII are encoded, not sent raw', function () use ($tests): void {
+    $rendered = (new Message())
+        ->from('a@exemplo.com', 'Ação Imediata')
+        ->to('b@exemplo.com', 'João Gonçalves')
+        ->subject('Confirmação de inscrição')
+        ->text('Olá João. 日本語')
+        ->toString();
+
+    /*
+     * A mail header is ASCII on the wire. Sending UTF-8 raw is what produces a
+     * subject line of mojibake in half the clients, so anything outside ASCII
+     * travels as an RFC 2047 encoded word.
+     */
+    $tests->assertTrue(str_contains($rendered, 'Subject: =?UTF-8?B?' . base64_encode('Confirmação de inscrição') . '?='));
+    $tests->assertTrue(str_contains($rendered, '=?UTF-8?B?' . base64_encode('Ação Imediata') . '?='));
+
+    // And no bare non-ASCII byte survives in the header block.
+    $headers = substr($rendered, 0, strpos($rendered, "\r\n\r\n"));
+    $tests->assertSame(1, preg_match('/^[\x00-\x7F]*$/', $headers));
+
+    // Pure ASCII is left alone, so a raw message stays readable.
+    $plain = (new Message())->from('a@exemplo.com')->to('b@exemplo.com')->subject('Order')->text('x')->toString();
+    $tests->assertTrue(str_contains($plain, 'Subject: Order'));
+});
+
+$tests->run('a line break in a header is refused, not escaped', function () use ($tests): void {
+    /*
+     * This is the injection. A newline in a value the caller supplied — a name
+     * typed into a form — lets them append headers of their own, and "Bcc: a
+     * third party" is the one that matters. Refused rather than stripped:
+     * quietly sending a different message than the one asked for is the wrong
+     * answer to both an attack and a mistake.
+     */
+    foreach ([
+        fn () => (new Message())->subject("Oi\r\nBcc: vitima@exemplo.com"),
+        fn () => (new Message())->to('a@exemplo.com', "Ana\nBcc: vitima@exemplo.com"),
+        fn () => (new Message())->header('X-Custom', "a\r\nBcc: vitima@exemplo.com"),
+        fn () => (new Message())->attach("nota\r\n.txt", 'x'),
+    ] as $attempt) {
+        $tests->assertThrows($attempt, InvalidArgumentException::class);
+    }
+
+    // A malformed address is refused too, before it reaches a server.
+    $tests->assertThrows(fn () => (new Message())->to('não é um endereço'), InvalidArgumentException::class);
+});
+
+$tests->run('bcc reaches the server and never reaches a header', function () use ($tests): void {
+    $message = (new Message())
+        ->from('a@exemplo.com')
+        ->to('ana@exemplo.com')
+        ->cc('copia@exemplo.com')
+        ->bcc('oculto@exemplo.com')
+        ->subject('x')
+        ->text('y');
+
+    // Delivery uses this list, and it carries the blind copy.
+    $tests->assertSame(
+        ['ana@exemplo.com', 'copia@exemplo.com', 'oculto@exemplo.com'],
+        $message->recipients()
+    );
+
+    /*
+     * The rendered message must not mention it. Writing a Bcc header would show
+     * every blind recipient to everyone else, which is the one thing Bcc
+     * promises not to do.
+     */
+    $rendered = $message->toString();
+    $tests->assertTrue(str_contains($rendered, 'Cc: copia@exemplo.com'));
+    $tests->assertSame(false, str_contains($rendered, 'oculto@exemplo.com'));
+});
+
+$tests->run('text and html travel as alternatives, attachments as parts', function () use ($tests): void {
+    $both = (new Message())
+        ->from('a@exemplo.com')->to('b@exemplo.com')->subject('x')
+        ->text('versão texto')->html('<p>versão HTML</p>')
+        ->toString();
+
+    $tests->assertTrue(str_contains($both, 'Content-Type: multipart/alternative'));
+    $tests->assertTrue(str_contains($both, 'Content-Type: text/plain; charset=UTF-8'));
+    $tests->assertTrue(str_contains($both, 'Content-Type: text/html; charset=UTF-8'));
+
+    $withFile = (new Message())
+        ->from('a@exemplo.com')->to('b@exemplo.com')->subject('x')
+        ->text('corpo')
+        ->attach('nota.txt', 'conteúdo', 'text/plain')
+        ->toString();
+
+    $tests->assertTrue(str_contains($withFile, 'Content-Type: multipart/mixed'));
+    $tests->assertTrue(str_contains($withFile, 'Content-Disposition: attachment; filename="nota.txt"'));
+    $tests->assertTrue(str_contains($withFile, base64_encode('conteúdo')));
+
+    // A message with no sender or no recipient says so instead of going out broken.
+    $tests->assertThrows(
+        fn () => (new Message())->to('b@exemplo.com')->toString(),
+        InvalidArgumentException::class
+    );
+    $tests->assertThrows(
+        fn () => (new Message())->from('a@exemplo.com')->toString(),
+        InvalidArgumentException::class
+    );
+});
+
+$tests->run('the manager fills in the sender and can redirect everything', function () use ($tests): void {
+    $driver = new MailArrayDriver();
+    $mailer = new MailManager($driver, 'nao-responda@exemplo.com', 'Loja');
+
+    $mailer->send((new Message())->to('ana@exemplo.com')->subject('x')->text('y'));
+
+    $tests->assertSame(
+        ['address' => 'nao-responda@exemplo.com', 'name' => 'Loja'],
+        $driver->last()->sender()
+    );
+
+    // A message that names its own sender keeps it.
+    $mailer->send((new Message())->from('outro@exemplo.com')->to('ana@exemplo.com')->subject('x')->text('y'));
+    $tests->assertSame('outro@exemplo.com', $driver->last()->sender()['address']);
+
+    /*
+     * Redirecting is for a staging environment working from a copy of
+     * production data, where the addresses in the database belong to real
+     * people. The intended recipient is kept so the message still says who it
+     * was for.
+     */
+    $driver->flush();
+    $mailer->alwaysTo('equipe@exemplo.com');
+    $mailer->send((new Message())->to('cliente-real@exemplo.com')->subject('x')->text('y'));
+
+    $tests->assertSame(['equipe@exemplo.com'], $driver->last()->recipients());
+    $tests->assertTrue(str_contains($driver->last()->toString(), 'X-Intended-For: cliente-real@exemplo.com'));
+
+    $mailer->alwaysTo(null);
+    $driver->flush();
+    $tests->assertSame(null, $driver->last());
 });
 
 $tests->finish();
