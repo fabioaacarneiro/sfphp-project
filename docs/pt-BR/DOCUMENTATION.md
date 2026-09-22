@@ -3284,12 +3284,18 @@ quando não há:
 ```bash
 SFPHP_TEST_MYSQL_DSN='mysql:host=127.0.0.1;port=3306;dbname=sf' \
 SFPHP_TEST_MYSQL_USER=root SFPHP_TEST_MYSQL_PASS=secret \
+SFPHP_TEST_REDIS_HOST=127.0.0.1 \
   composer run test:db
 ```
 
+Cobre o schema builder nos dois dialetos, a fila em banco e — quando um host
+Redis é informado — o cache, o handler de sessão sobre ele e o driver de fila
+Redis. Esses três não tinham nenhum teste rodando contra servidor até esta
+versão, e por isso o driver de fila perdia o id de todo job.
+
 O CI roda dois jobs: `unit` numa matriz PHP 8.1–8.4 **sem `mbstring`**, o que
 garante que o tratamento UTF-8 não depende da extensão; e `integration` com
-MySQL 8 e PostgreSQL 16 como serviços.
+MySQL 8, PostgreSQL 16 e Redis 7 como serviços.
 
 `composer run docs` roda no job `unit` também. A documentação existe em três
 idiomas, e prosa não dá para comparar mecanicamente — mas estrutura dá. Ele

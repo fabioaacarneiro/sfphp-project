@@ -27,7 +27,7 @@ class RedisDriver implements Queue
         $payload = [
             'id' => $id,
             'class' => get_class($job),
-            'data' => $this->serializeJob($job),
+            'data' => $job->payload(),
             'attempts' => 0,
             'available_at' => $availableAt,
         ];
@@ -67,7 +67,7 @@ class RedisDriver implements Queue
         $instance = new $payload['class']();
         $instance->setId($payload['id']);
         $instance->setAttempts($payload['attempts']);
-        $this->unserializeJob($instance, $payload['data']);
+        $instance->restore($payload['data']);
 
         return $instance;
     }
@@ -142,7 +142,7 @@ class RedisDriver implements Queue
         $payload = [
             'id' => $job->getId(),
             'class' => get_class($job),
-            'data' => $this->serializeJob($job),
+            'data' => $job->payload(),
             'attempts' => $job->getAttempts(),
             'available_at' => $availableAt,
         ];
@@ -169,32 +169,5 @@ class RedisDriver implements Queue
         return (int) $this->redis->zCard($this->prefix . 'default');
     }
 
-    protected function serializeJob(Job $job): array
-    {
-        $reflection = new \ReflectionClass($job);
-        $properties = $reflection->getProperties();
-        $data = [];
 
-        foreach ($properties as $property) {
-            $property->setAccessible(true);
-            if ($property->isInitialized($job)) {
-                $data[$property->getName()] = $property->getValue($job);
-            }
-        }
-
-        return $data;
-    }
-
-    protected function unserializeJob(Job $job, array $data): void
-    {
-        $reflection = new \ReflectionClass($job);
-
-        foreach ($data as $name => $value) {
-            if ($reflection->hasProperty($name)) {
-                $property = $reflection->getProperty($name);
-                $property->setAccessible(true);
-                $property->setValue($job, $value);
-            }
-        }
-    }
 }
