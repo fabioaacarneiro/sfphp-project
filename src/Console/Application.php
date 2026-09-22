@@ -522,8 +522,15 @@ final class Application
          */
         $published = Assets::publish($this->projectPath(Assets::PUBLIC_PATH));
 
-        if ($published !== []) {
-            $this->writeLine('Published ' . count($published) . ' asset file(s).');
+        if ($published['written'] !== []) {
+            $this->writeLine('Published ' . count($published['written']) . ' asset file(s).');
+        }
+
+        if ($published['kept'] !== []) {
+            // Somebody built their own. Serving it is right; saying nothing
+            // about it is not, because an upgrade may have moved on without it.
+            $this->writeLine('Kept your own ' . implode(', ', $published['kept'])
+                . ' (run assets:publish --force to take the framework\'s).');
         }
 
         $this->writeLine('Starting development server...');
@@ -779,6 +786,23 @@ PHP;
         }
 
         return (int) $value;
+    }
+
+    /**
+     * The first of these paths that exists.
+     *
+     * @param list<string> $paths The candidates, nearest first
+     * @return string|null The first that is a file, or null
+     */
+    private function firstExisting(array $paths): ?string
+    {
+        foreach ($paths as $path) {
+            if (is_file($path)) {
+                return $path;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1098,11 +1122,15 @@ PHP;
 
             $published = Assets::publish($root . '/' . Assets::PUBLIC_PATH);
 
-            foreach ($published as $relative) {
+            foreach ($published['written'] as $relative) {
                 $this->writeLine('  created  ' . Assets::PUBLIC_PATH . '/' . $relative);
             }
 
-            if ($result['written'] === [] && $published === []) {
+            foreach ($published['kept'] as $relative) {
+                $this->writeLine('  kept     ' . Assets::PUBLIC_PATH . '/' . $relative . ' (yours, and different)');
+            }
+
+            if ($result['written'] === [] && $published['written'] === []) {
                 $this->writeLine('Nothing to do. Use --force to write the starter over what is there.');
 
                 return 0;
@@ -1164,20 +1192,27 @@ PHP;
                 return 0;
             }
 
-            $written = Assets::publish($target, $force);
+            $result = Assets::publish($target, $force);
 
-            if ($written === []) {
-                $this->writeLine('Assets are already up to date. Use --force to copy them anyway.');
+            foreach ($result['kept'] as $relative) {
+                $this->writeLine('  kept   ' . $this->relativePath($target . '/' . $relative)
+                    . ' — yours, and different from the framework\'s');
+            }
+
+            if ($result['written'] === []) {
+                $this->writeLine($result['kept'] === []
+                    ? 'Assets are already up to date. Use --force to copy them anyway.'
+                    : 'Nothing copied. Use --force to replace your files with the framework\'s.');
 
                 return 0;
             }
 
-            foreach ($written as $relative) {
-                $this->writeLine('  ' . $this->relativePath($target . '/' . $relative));
+            foreach ($result['written'] as $relative) {
+                $this->writeLine('  wrote  ' . $this->relativePath($target . '/' . $relative));
             }
 
             $this->writeLine('');
-            $this->writeLine('Published ' . count($written) . ' file(s).');
+            $this->writeLine('Published ' . count($result['written']) . ' file(s).');
 
             return 0;
         } catch (Throwable $e) {
@@ -1294,7 +1329,7 @@ PHP;
     private function jsBuild(array $arguments): int
     {
         try {
-            $builderPath = $this->rootPath() . '/tools/js-builder/sfjs-builder.php';
+            $builderPath = dirname(Assets::path(), 2) . "/tools/js-builder/sfjs-builder.php";
 
             if (!is_file($builderPath)) {
                 fwrite(STDERR, "Error: sfjs-builder.php not found at {$builderPath}" . PHP_EOL);
@@ -1334,18 +1369,43 @@ PHP;
     private function cssBuild(array $arguments): int
     {
         try {
-            $configPath = $this->rootPath() . '/tools/css-builder/sfcss.config.json';
-            $builderPath = $this->rootPath() . '/tools/css-builder/sfcss-builder.php';
             /*
-             * resources/, which is where the builder writes and where the
-             * package carries it. This pointed at public/ and kept passing
-             * because a published copy happened to be there — so it reported
-             * the size of the old file rather than the one just built.
+             * The builder lives in the package, wherever that is: in this
+             * repository it is the project, and in somebody else's it is under
+             * vendor/. Looking only in the project was why `css:build` failed
+             * for everyone who installed the framework rather than cloning it.
              */
-            $outputPath = $this->rootPath() . '/resources/assets/css/sfcss.css';
+            $packageRoot = dirname(Assets::path(), 2);
+            $builderPath = $packageRoot . '/tools/css-builder/sfcss-builder.php';
 
-            if (!is_file($configPath)) {
-                fwrite(STDERR, "Error: sfcss.config.json not found at {$configPath}" . PHP_EOL);
+            /*
+             * A project's own config wins. Editing the one inside vendor/ would
+             * work until the next composer update threw the edit away, so a
+             * project that wants a different palette keeps its own copy.
+             */
+            $configPath = $this->option($arguments, 'config')
+                ?? $this->firstExisting([
+                    $this->projectPath('sfcss.config.json'),
+                    $this->projectPath('tools/css-builder/sfcss.config.json'),
+                    $packageRoot . '/tools/css-builder/sfcss.config.json',
+                ]);
+
+            /*
+             * In this repository the build updates what the package ships. In a
+             * project that installed it, writing into vendor/ would be thrown
+             * away by the next update, so the build goes where the browser
+             * reads from.
+             */
+            $outputPath = $this->option($arguments, 'output')
+                ?? ($packageRoot === $this->rootPath()
+                    ? $packageRoot . '/resources/assets/css'
+                    : $this->projectPath(Assets::PUBLIC_PATH . '/css'));
+
+            if ($configPath === null || !is_file($configPath)) {
+                fwrite(STDERR, 'Error: no sfcss.config.json found. Copy one from '
+                    . $packageRoot . '/tools/css-builder/sfcss.config.json'
+                    . ' or pass --config=path.' . PHP_EOL);
+
                 return 1;
             }
 
@@ -1354,8 +1414,10 @@ PHP;
                 return 1;
             }
 
-            if (!is_dir(dirname($outputPath))) {
-                mkdir(dirname($outputPath), 0755, true);
+            if (!is_dir($outputPath) && !mkdir($outputPath, 0755, true) && !is_dir($outputPath)) {
+                fwrite(STDERR, 'Error: could not create ' . $outputPath . PHP_EOL);
+
+                return 1;
             }
 
             /*
@@ -1366,7 +1428,13 @@ PHP;
              */
             $output = [];
             $status = 0;
-            exec('php ' . escapeshellarg($builderPath) . ' 2>&1', $output, $status);
+            exec(
+                'php ' . escapeshellarg($builderPath)
+                . ' ' . escapeshellarg($configPath)
+                . ' ' . escapeshellarg($outputPath) . ' 2>&1',
+                $output,
+                $status
+            );
 
             if ($status !== 0) {
                 fwrite(STDERR, 'Error: Failed to build CSS' . PHP_EOL);
@@ -1375,14 +1443,17 @@ PHP;
                 return 1;
             }
 
-            if (!is_file($outputPath)) {
-                fwrite(STDERR, "Error: builder did not produce {$outputPath}" . PHP_EOL);
+            $stylesheet = $outputPath . '/sfcss.css';
+
+            if (!is_file($stylesheet)) {
+                fwrite(STDERR, "Error: builder did not produce {$stylesheet}" . PHP_EOL);
 
                 return 1;
             }
 
-            clearstatcache(true, $outputPath);
-            $minifiedPath = dirname($outputPath) . '/sfcss.min.css';
+            clearstatcache(true, $stylesheet);
+            $outputPath = $stylesheet;
+            $minifiedPath = dirname($stylesheet) . '/sfcss.min.css';
 
             $this->writeLine('SFCSS built successfully.');
             $this->writeLine('  ' . $outputPath . ' (' . number_format(filesize($outputPath)) . ' bytes)');

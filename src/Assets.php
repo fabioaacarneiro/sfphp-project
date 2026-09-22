@@ -80,21 +80,34 @@ final class Assets
      *
      * @param string $target The directory to write into
      * @param bool $force Overwrite files that are already there
-     * @return list<string> The paths written, relative to the target
+     * @return array{written: list<string>, kept: list<string>} What happened
      * @throws RuntimeException When the target cannot be created or written
      */
     public static function publish(string $target, bool $force = false): array
     {
         $target = rtrim($target, '/');
         $written = [];
+        $kept = [];
 
         foreach (self::files() as $relative) {
             $source = self::path() . '/' . $relative;
             $destination = $target . '/' . $relative;
 
-            if (!$force && is_file($destination) && md5_file($destination) === md5_file($source)) {
-                // Already the same file. Saying nothing beats reporting work
-                // that did not happen.
+            if (!$force && is_file($destination)) {
+                if (md5_file($destination) === md5_file($source)) {
+                    // Already the same file. Saying nothing beats reporting
+                    // work that did not happen.
+                    continue;
+                }
+
+                /*
+                 * Different, so somebody changed it — `css:build` against their
+                 * own config writes here. Overwriting would throw their palette
+                 * away on the next composer install, silently, which is the
+                 * worst way to lose work. It is reported instead.
+                 */
+                $kept[] = $relative;
+
                 continue;
             }
 
@@ -111,7 +124,7 @@ final class Assets
             $written[] = $relative;
         }
 
-        return $written;
+        return ['written' => $written, 'kept' => $kept];
     }
 
     /**
