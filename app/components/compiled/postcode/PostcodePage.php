@@ -10,8 +10,12 @@ use SfphpProject\src\View\Sfht;
  * It composes the components beside it and nothing else, so what the page is
  * made of can be read in one screen. Each of them lives in its own file, named
  * after the function, which is the convention this framework follows.
+ *
+ * The result is a prop because the same page answers a browser that ran the
+ * lookup without JavaScript: the controller renders it once, with the address
+ * already in place.
  */
-function PostcodePage(): Sfht
+function PostcodePage(?Sfht $result = null): Sfht
 {
     return (static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<!DOCTYPE html>
         <html lang="';
@@ -32,7 +36,7 @@ echo '
 
             <main class="container py-12 max-w-2xl mx-auto px-4">
                 ';
-echo \SfphpProject\src\View\Compiler::text((PostcodeLookup()));
+echo \SfphpProject\src\View\Compiler::text((PostcodeLookup($result)));
 echo '
                 ';
 echo \SfphpProject\src\View\Compiler::text((HowItWorks()));
@@ -45,9 +49,6 @@ echo '
 
             <script src="';
 echo \SfphpProject\src\View\Compiler::text((asset('js/sfjs.min.js')));
-echo '"></script>
-            <script src="';
-echo \SfphpProject\src\View\Compiler::text((asset('js/postcode.js')));
 echo '"></script>
         </body>
         </html>';

@@ -56,6 +56,25 @@ const sf = (() => {
       });
   }
 
+  function withQuery(url, data) {
+    const entries = Object.entries(data || {}).filter(([, value]) => value !== undefined && value !== null);
+
+    if (entries.length === 0) return url;
+
+    const query = new URLSearchParams();
+
+    entries.forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        value.forEach((one) => query.append(key, one));
+        return;
+      }
+
+      query.append(key, value);
+    });
+
+    return url + (url.includes('?') ? '&' : '?') + query.toString();
+  }
+
   function performSwap(targetSelector, content, strategy) {
     const target = typeof targetSelector === 'string'
       ? document.querySelector(targetSelector)
@@ -126,10 +145,20 @@ const sf = (() => {
       const swapTarget = formElement.getAttribute('@hxTarget');
       const swapStrategy = formElement.getAttribute('@hxSwap') || 'innerHTML';
 
-      return ajax[method.toLowerCase()](action, data, {
-        target: swapTarget || null,
-        swap: swapStrategy,
-      });
+      const swapOptions = { target: swapTarget || null, swap: swapStrategy };
+
+      /*
+       * GET and DELETE take (url, options), the others take (url, data,
+       * options). Calling all five the same way handed the serialised fields
+       * over as the options object, so a declarative GET form lost its target
+       * and its swap strategy and sent no fields at all — it fetched the bare
+       * action and quietly swapped nothing.
+       */
+      if (method === 'GET' || method === 'DELETE') {
+        return ajax[method.toLowerCase()](withQuery(action, data), swapOptions);
+      }
+
+      return ajax[method.toLowerCase()](action, data, swapOptions);
     },
   };
 

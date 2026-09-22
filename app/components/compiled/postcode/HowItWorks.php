@@ -2,13 +2,21 @@
 
 namespace SfphpProject\app\components\postcode;
 
+use SfphpProject\src\Bootstrap;
 use SfphpProject\src\View\Sfht;
 
 /**
  * The explanation, quoting the component above it.
+ *
+ * The source is read from the file rather than copied into this markup, so the
+ * example on the page cannot drift from the code that produced what is above
+ * it — and {{ }} escapes it, which is why a component's source can be shown
+ * without a single entity being written by hand.
  */
 function HowItWorks(): Sfht
 {
+    $source = (string) file_get_contents(Bootstrap::basePath('app/components/postcode/Field.phpx'));
+
     return (static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<section class="card">
             <div class="card-header">
                 <h2 class="text-lg font-semibold m-0">What is going on here</h2>
@@ -16,26 +24,22 @@ function HowItWorks(): Sfht
 
             <div class="card-body">
                 <p>
-                    The card above is a PHP function in a file of its own. Its
+                    Each field above is a PHP function in a file of its own. Its
                     parameters are its props, its markup lives inside it, and it
                     returns <code>Sfht</code> — markup that is already safe:
                 </p>
 
-                <pre><code>function Field(string $label, string $value): Sfht
-{
-    return sfht(
-        &lt;div class="py-1"&gt;
-            &lt;span class="text-xs text-muted d-block"&gt;&#123;&#123; $label &#125;&#125;&lt;/span&gt;
-            &lt;span class="font-semibold"&gt;&#123;&#123; $value &#125;&#125;&lt;/span&gt;
-        &lt;/div&gt;
-    );
-}</code></pre>
+                <pre class="bg-light p-3 rounded-md overflow-auto"><code>';
+echo \SfphpProject\src\View\Compiler::text(($source));
+echo '</code></pre>
 
                 <p class="mt-4">
-                    Composed with <code>&#123;&#123; &#125;&#125;</code>, a component
-                    renders and text that came from outside is escaped — in the
-                    same position. The type decides, so nobody has to remember
-                    what is trusted.
+                    The form carries <code>';
+echo '@hxGet';
+echo '</code>, so SFJS sends it and
+                    swaps the answer into place. The answer is markup rendered
+                    by these same components, which is why this page has no
+                    JavaScript of its own: there is nothing for it to rebuild.
                 </p>
 
                 <p class="mb-0">
@@ -46,6 +50,5 @@ function HowItWorks(): Sfht
                 </p>
             </div>
         </section>';
- return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
-;
+ return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars());
 }

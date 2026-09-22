@@ -5010,11 +5010,18 @@ $tests->run('the minified script is still a program, and still the same one', fu
         return;
     }
 
-    $status = 0;
-    $output = [];
-    exec(escapeshellarg($node) . ' --check ' . escapeshellarg($minified) . ' 2>&1', $output, $status);
+    /*
+     * Both files, because only the minified one used to be checked — and a
+     * mistake in the readable source is a mistake in every copy of it. One
+     * arrived this way: a const that redeclared the parameter it sat next to.
+     */
+    foreach ([$readable, $minified] as $script) {
+        $status = 0;
+        $output = [];
+        exec(escapeshellarg($node) . ' --check ' . escapeshellarg($script) . ' 2>&1', $output, $status);
 
-    $tests->assertSame(0, $status);
+        $tests->assertSame(0, $status);
+    }
 });
 
 $tests->run('the dark theme changes nothing a page did not ask for', function () use ($tests): void {
