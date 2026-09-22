@@ -5,6 +5,7 @@ namespace SfphpProject\src;
 use InvalidArgumentException;
 use LogicException;
 use RuntimeException;
+use SfphpProject\src\Assets;
 use SfphpProject\src\Http\Pipeline;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
@@ -486,18 +487,26 @@ class Router
     ): Response {
 
         /*
-         * Styled with an inline stylesheet on purpose. An earlier version
-         * pulled Tailwind from a public CDN, which made the framework's own
-         * error page depend on a third-party network request: it broke
-         * offline and behind restrictive Content-Security-Policy headers,
-         * added a round trip on the slowest path of the request, and leaked
-         * visitor IPs to another origin. A framework that ships zero
-         * dependencies cannot make its error path depend on one.
+         * SFCSS, inlined. Two rules meet here and both matter.
+         *
+         * The stylesheet is the framework's own, because a screen the framework
+         * renders should not be a second visual language living beside the one
+         * an application writes its pages with.
+         *
+         * It is inlined rather than linked because an earlier version pulled
+         * Tailwind from a public CDN: that made the error page depend on a
+         * third-party request, so it broke offline and behind a restrictive
+         * Content-Security-Policy, added a round trip on the slowest path of
+         * the request, and leaked visitor IPs to another origin. A <link> to
+         * the application's own asset route would be better than that and still
+         * wrong — the error page is what renders when the application is what
+         * is broken.
          */
         $title = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $message = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $home = htmlspecialchars(__('http.back_home'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $language = str_replace('_', '-', Translator::locale());
+        $stylesheet = Assets::css();
 
         $html = <<<HTML
         <!doctype html>
@@ -506,29 +515,17 @@ class Router
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>$title</title>
+        <style>{$stylesheet}</style>
         <style>
-        *{box-sizing:border-box}
-        body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-        padding:1.5rem;background:#f8fafc;color:#0f172a;
-        font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-        main{max-width:32rem;text-align:center}
-        h1{margin:0;font-size:clamp(3.5rem,15vw,5rem);font-weight:700;line-height:1;letter-spacing:-.02em}
-        p{margin:1rem 0 2rem;font-size:1.125rem;color:#475569}
-        a{display:inline-block;padding:.625rem 1.25rem;border-radius:.5rem;
-        background:#2563eb;color:#fff;text-decoration:none;font-weight:600}
-        a:hover{background:#1d4ed8}
-        a:focus-visible{outline:2px solid #1d4ed8;outline-offset:2px}
-        @media(prefers-color-scheme:dark){
-        body{background:#0f172a;color:#f1f5f9}
-        p{color:#94a3b8}
-        }
+        body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem}
+        .sf-error h1{font-size:clamp(3.5rem,15vw,5rem);line-height:1;letter-spacing:-.02em}
         </style>
         </head>
         <body>
-        <main>
-        <h1>$statusCode</h1>
-        <p>$message</p>
-        <a href="/">{$home}</a>
+        <main class="sf-error text-center max-w-lg">
+        <h1 class="font-bold m-0">$statusCode</h1>
+        <p class="text-lg text-muted mt-4 mb-6">$message</p>
+        <a class="btn btn-primary" href="/">{$home}</a>
         </main>
         </body>
         </html>
