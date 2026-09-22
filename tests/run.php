@@ -90,6 +90,7 @@ use SfphpProject\src\Str;
 use SfphpProject\src\Time;
 use SfphpProject\src\Validator;
 use SfphpProject\src\View;
+use SfphpProject\src\View\Phpx;
 use SfphpProject\src\View\SfhtEngine;
 
 require __DIR__ . '/TestRunner.php';
@@ -1492,6 +1493,98 @@ $tests->run('sfht compiles to an includable file rather than eval', function () 
     $compiled = glob($sfhtDirectory . '/cache/*.php');
     $tests->assertTrue($compiled !== [] && $compiled !== false);
     $tests->assertTrue(str_starts_with(file_get_contents($compiled[0]), '<?php'));
+});
+
+$tests->run('phpx compiles markup that lives inside a function', function () use ($tests): void {
+    /*
+     * The whole point of the compiler in one source: a region opened with
+     * sfht( and closed by its matching parenthesis, with a parenthesis inside
+     * an attribute that must not be mistaken for the closing one.
+     */
+    $source = <<<'PHPX'
+    <?php
+    namespace SfphpTest\Phpx;
+
+    use SfphpProject\src\View\Sfht;
+
+    function Badge(string $label): Sfht
+    {
+        return sfht(
+            <span class="badge" title="a)b">{{ $label }}</span>
+        );
+    }
+
+    function Panel(string $text): Sfht
+    {
+        return sfht(
+            <div>
+                @php $count = 2; @endphp
+                {{ Badge('ok') }}
+                {{ $text }}
+                @if ($count === 2)<i>two</i>@endif
+            </div>
+        );
+    }
+
+    function notsfht(): string
+    {
+        return 'kept';
+    }
+    PHPX;
+
+    $file = sys_get_temp_dir() . '/sfphp-phpx-' . bin2hex(random_bytes(6)) . '.php';
+    file_put_contents($file, (new Phpx())->compile($source));
+
+    try {
+        // What build --phpx checks, checked here too: the output has to be PHP.
+        exec('php -l ' . escapeshellarg($file) . ' 2>&1', $output, $status);
+        $tests->assertSame(0, $status);
+
+        require $file;
+
+        $badge = SfphpTest\Phpx\Badge('<b>');
+        $tests->assertSame('<span class="badge" title="a)b">&lt;b&gt;</span>', (string) $badge);
+
+        $panel = (string) SfphpTest\Phpx\Panel('<script>');
+
+        /*
+         * Both interpolations are {{ }}. The component renders and the string
+         * is escaped, because the type decides — this is the reason a
+         * component returns Sfht instead of a string.
+         */
+        $tests->assertTrue(str_contains($panel, '<span class="badge" title="a)b">ok</span>'));
+        $tests->assertTrue(str_contains($panel, '&lt;script&gt;'));
+        $tests->assertSame(0, substr_count($panel, '<script>'));
+
+        // @php and the directives work inside a region, as they do in a .sfht.
+        $tests->assertTrue(str_contains($panel, '<i>two</i>'));
+
+        // A function whose name merely ends in sfht( is not a markup region.
+        $tests->assertSame('kept', SfphpTest\Phpx\notsfht());
+    } finally {
+        @unlink($file);
+    }
+});
+
+$tests->run('phpx keeps the line numbers of the file the author wrote', function () use ($tests): void {
+    /*
+     * A region spans several lines and compiles to one expression, so without
+     * padding every line after it would shift and php -l would name the wrong
+     * one — which is the only thing standing between a syntax error and a
+     * useless error message.
+     */
+    $source = "<?php\nfunction A(): \\SfphpProject\\src\\View\\Sfht\n{\n    return sfht(\n        <p>one</p>\n        <p>two</p>\n    );\n}\n// marker\n";
+    $compiled = (new Phpx())->compile($source);
+
+    $tests->assertSame(substr_count($source, "\n"), substr_count($compiled, "\n"));
+    $tests->assertSame(8, array_search('// marker', explode("\n", $compiled), true));
+});
+
+$tests->run('phpx refuses a markup region that is never closed', function () use ($tests): void {
+    $tests->assertThrows(
+        fn () => (new Phpx())->compile("<?php\n\nfunction B() { return sfht(\n  <p>x</p>\n; }\n"),
+        RuntimeException::class
+    );
 });
 
 $tests->run('cache and queue classes are autoloadable', function () use ($tests): void {
