@@ -108,13 +108,18 @@ abstract class GeneratorBase
      */
     protected function directoryFor(string $directory): string
     {
-        if ($this->applicationNamespace() === self::EXAMPLE_NAMESPACE) {
-            // This repository's example application, whose directories are
-            // lower case and whose namespace matches them exactly.
+        $parts = explode('/', trim(str_replace('\\', '/', $directory), '/'));
+
+        /*
+         * Only app/ follows the project's own PSR-4 prefix, so only app/ has a
+         * spelling to match. database/seeders and database/factories are read
+         * back by `db:seed` and by the factory loader at paths this framework
+         * decides, and capitalising them wrote a seeder into database/Seeders
+         * where nothing ever looked for it.
+         */
+        if (($parts[0] ?? '') !== 'app' || $this->applicationNamespace() === self::EXAMPLE_NAMESPACE) {
             return $directory;
         }
-
-        $parts = explode('/', trim(str_replace('\\', '/', $directory), '/'));
 
         return implode('/', array_map(
             static fn (string $part, int $index): string => $index === 0 ? $part : ucfirst($part),
