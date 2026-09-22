@@ -2850,6 +2850,18 @@ enviá-lo ali pareceria proteção sem ser.
 - Falha de conexão registra o detalhe no log e lança exceção genérica: host,
   banco e usuário não chegam ao visitante
 
+### Upload
+
+- Um arquivo é recusado a menos que o `is_uploaded_file()` concorde que é um,
+  então um `$_FILES` forjado não faz o framework ler um caminho arbitrário
+- O tipo é lido dos próprios bytes do arquivo, nunca do cabeçalho que o cliente
+  mandou
+- O nome guardado é gerado; o nome do cliente tem caminho e byte nulo removidos
+  e serve só para exibição
+
+Ver [Upload de arquivos](#upload-de-arquivos), inclusive por que o arquivo
+guardado ainda pertence a fora do document root.
+
 ### Saída
 
 - `{{ }}` do SFHT escapa por padrão; a saída crua exige `{!! !!}`

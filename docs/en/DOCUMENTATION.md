@@ -2859,6 +2859,18 @@ there would look like protection without being any.
 - A failed connection logs the detail and throws a generic exception: the host,
   database and user never reach the visitor
 
+### Uploads
+
+- A file is refused unless `is_uploaded_file()` agrees it is one, so a forged
+  `$_FILES` cannot make the framework read an arbitrary path
+- The media type is read from the file's own bytes, never from the header the
+  client sent
+- The stored name is generated; the client's name is stripped of path segments
+  and null bytes and used only for display
+
+See [File uploads](#file-uploads), including why the stored file still belongs
+outside the document root.
+
 ### Output
 
 - SFHT's `{{ }}` escapes by default; raw output takes `{!! !!}`
