@@ -18,15 +18,26 @@ use SfphpProject\src\I18n\Translator;
 use SfphpProject\src\Queue\Job;
 
 if (!function_exists('cache')) {
+    /**
+     * The application's cache.
+     *
+     * Built once from CACHE_DRIVER, like the logger from LOG_CHANNEL and the
+     * mailer from MAIL_DRIVER. It read nothing for a long time and always gave
+     * back the file driver, which under more than one instance is the wrong
+     * answer for everything that shares state through it: a revoked token, a
+     * rate limit counter and a session were each kept per machine.
+     *
+     * @return CacheManager The shared cache
+     */
     function cache(): CacheManager
     {
         static $cache = null;
 
-        if ($cache === null) {
-            $cache = new CacheManager();
+        if ($cache !== null) {
+            return $cache;
         }
 
-        return $cache;
+        return $cache = CacheManager::fromConfig();
     }
 }
 
@@ -128,16 +139,39 @@ if (!function_exists('mailer')) {
     }
 }
 
-if (!function_exists('dispatch')) {
-    function dispatch(Job $job, ?int $delay = null): string
+if (!function_exists('queue')) {
+    /**
+     * The application's queue.
+     *
+     * Built once from QUEUE_DRIVER. The worker command and dispatch() share it,
+     * so a job pushed by a request and a job taken by a worker cannot end up on
+     * different queues because one of them was constructed by hand.
+     *
+     * @return QueueManager The shared queue
+     */
+    function queue(): QueueManager
     {
         static $queue = null;
 
-        if ($queue === null) {
-            $queue = new QueueManager();
+        if ($queue !== null) {
+            return $queue;
         }
 
-        return $queue->push($job, $delay);
+        return $queue = QueueManager::fromConfig();
+    }
+}
+
+if (!function_exists('dispatch')) {
+    /**
+     * Put a job on the queue.
+     *
+     * @param Job $job The job
+     * @param int|null $delay Seconds to wait before it may run
+     * @return string The job's id
+     */
+    function dispatch(Job $job, ?int $delay = null): string
+    {
+        return queue()->push($job, $delay);
     }
 }
 
