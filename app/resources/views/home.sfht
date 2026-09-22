@@ -257,9 +257,57 @@
     <div class="container mx-auto max-w-2xl text-center">
         <h2 class="text-4xl font-bold text-slate-900 mb-4">Ready to Build?</h2>
         <p class="text-lg text-slate-700 mb-2">Zero setup, full power.</p>
-        <pre class="text-left d-inline-block"><code>composer require fabioaacarneiro/sfphp-framework
-./vendor/bin/sfphp init
-./vendor/bin/sfphp serve</code></pre>
+        <pre class="text-left d-inline-block"><code>composer create-project fabioaacarneiro/sfphp-framework my-app
+cd my-app
+./sfphp serve</code></pre>
+    </div>
+</section>
+
+<!-- Two ways to write a page -->
+<section class="bg-white py-24 px-4 border-t">
+    <div class="container mx-auto max-w-3xl">
+        <h2 class="text-3xl font-bold text-slate-900 mb-4 text-center">Two ways to write a page</h2>
+        <p class="text-lg text-slate-600 mb-8 text-center">
+            Both ship, and each is better at something. This page is the first one.
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="m-0 text-lg font-semibold">.sfht — templates</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-slate-600">
+                        A file of markup, with layouts, blocks and partials. Anyone
+                        who knows HTML can edit it without reading PHP.
+                    </p>
+                    <p class="text-sm text-muted mb-0">Best for pages and layouts.</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="m-0 text-lg font-semibold">.phpx — components</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-slate-600">
+                        A function whose markup lives inside it. The parameters are
+                        the props, so what a component needs is in its signature.
+                    </p>
+                    <p class="text-sm text-muted mb-0">Best for reusable pieces.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center">
+            <a href="/phpx" class="btn btn-lg btn-primary font-bold rounded-md">
+                See a .phpx example with SFCSS + SFJS
+            </a>
+            <p class="text-sm text-muted mt-3 mb-0">
+                A page built from components, styled with SFCSS, looking an
+                address up through SFJS.
+            </p>
+        </div>
     </div>
 </section>
 

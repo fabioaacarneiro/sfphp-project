@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 146 tests, 0 failures
+> Verified against PHP 8.4 · suite: 152 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -22,6 +22,7 @@ code does today. Where something does not exist, it says so — see
 - [Controllers](#controllers)
 - [Middleware](#middleware)
 - [Views and SFHT](#views-and-sfht)
+- [Components and .phpx](#components-and-phpx)
 - [Container and dependency injection](#container-and-dependency-injection)
 - [Database](#database)
 - [Models](#models)
@@ -60,12 +61,13 @@ code does today. Where something does not exist, it says so — see
 **It is** a lean framework for web applications and APIs, with routing,
 Request/Response objects, a middleware pipeline, a DI container, a query
 builder, a schema builder with MySQL/PostgreSQL parity, a template engine,
-cache, queues, and a CLI with 34 commands.
+components in `.phpx`, an HTTP client, events, cache, queues, and a CLI with 35
+commands.
 
-**It is not** a replacement for Laravel or Symfony. There is no full ORM and no
-event system, and authentication covers login, guards and authorization but not
-password recovery or two-factor. What exists is small enough to read end to
-end.
+**It is not** a replacement for Laravel or Symfony. There is no full ORM,
+events are dispatched in-process and synchronously with no message broker, and
+authentication covers login, guards and authorization but not password recovery
+or two-factor. What exists is small enough to read end to end.
 
 ### Zero dependencies, literally
 
@@ -755,6 +757,13 @@ echo $engine->render('home', ['title' => 'Hello']);
 **`{{ }}` escapes by default** (`ENT_QUOTES | ENT_SUBSTITUTE`, UTF-8). The safe
 form is the short one; bypassing it takes more typing.
 
+There is exactly one exception, and it is carried by a type rather than by a
+syntax: a value that is an `Sfht` is printed as it stands, because `Sfht` means
+markup this framework produced. That is what lets a component be composed with
+`{{ }}` while a string in the same position is still escaped — see
+[Components and .phpx](#components-and-phpx). Anything that is not an `Sfht` is
+escaped, including a string you are certain about.
+
 The expression is real PHP — function calls, operators and indexes all work:
 
 ```sfht
@@ -925,6 +934,160 @@ Unclosed @if opened on line 12.
 Unclosed "{{" expression on line 3.
 Filter not registered: nosuchfilter
 ```
+
+---
+
+## Components and .phpx
+
+There are two ways to write a page, both shipped, and each is better at
+something. The example application uses one for its pages and the other for the
+demonstration at `/phpx`.
+
+| | `.sfht` | `.phpx` |
+|---|---|---|
+| What it is | A file of markup | A PHP function whose markup lives inside it |
+| Composition | `@include`, `@extends`, `@block` | Calling the function |
+| What it receives | Whatever is in scope, plus what is passed | Its parameters, and nothing else |
+| Edited by | Anyone who knows HTML | Somebody who reads PHP |
+| Best at | Pages and layouts | Reusable pieces |
+| Build step | None — compiled on demand | `./sfphp build --phpx` |
+
+### Writing a component
+
+```php
+<?php
+
+namespace App\Components;
+
+use SfphpProject\src\View\Sfht;
+
+function Card(string $title, string $body, string $colour = 'blue'): Sfht
+{
+    return sfht(
+        <div class="card border-{{ $colour }}-500">
+            <div class="card-header"><h3 class="m-0">{{ $title }}</h3></div>
+            <div class="card-body"><p>{{ $body }}</p></div>
+        </div>
+    );
+}
+```
+
+`sfht(` opens a markup region and its matching `)` closes it. Between them is
+SFHT, so `{{ }}`, `{!! !!}`, `@if` and `@foreach` all work and escaping is the
+same as everywhere else in the framework.
+
+```bash
+./sfphp build --phpx                       # every .phpx under app/components
+./sfphp build --phpx --from=src/ui         # somewhere else
+./sfphp build --phpx --to=build/components # output somewhere else
+```
+
+The build writes PHP next to the source and runs `php -l` over each result, so a
+syntax error is reported at build time with the line number of the `.phpx` — the
+compiler pads its output to keep those aligned.
+
+### One component per file
+
+A file holds one component and is named after it, and the components of one page
+live in a folder of their own. The build walks the whole tree and mirrors it, so
+what is compiled looks like what was written:
+
+```
+app/components/
+├── Card.phpx
+├── BulletList.phpx
+└── postcode/
+    ├── PostcodePage.phpx
+    ├── layout/
+    │   ├── PageHeader.phpx
+    │   └── PageFooter.phpx
+    ├── lookup/
+    │   ├── PostcodeLookup.phpx
+    │   ├── Address.phpx
+    │   ├── Field.phpx
+    │   └── Notice.phpx
+    └── explain/
+        └── HowItWorks.phpx
+```
+
+Components in the same folder share a namespace, so they compose each other by
+name — no import and no prefix. Crossing a folder, or reaching one from a
+controller, is a `use function`, the same as for any other function in PHP:
+
+```php
+use function SfphpProject\app\components\postcode\lookup\Address;
+```
+
+### Why a component returns Sfht
+
+```php
+{{ Card('Hello', $body) }}    the card renders
+{{ $body }}                    the text is escaped
+```
+
+Both in the same position, with the right thing happening to each, because the
+**type** says which is which. `Sfht` means "markup this framework produced";
+anything else is text of unknown origin.
+
+The alternative — returning a string and writing `{!! Card(...) !!}` — asks the
+author to remember which values are trusted, and that is the moment somebody
+eventually writes `{!! $comment !!}` and ships a cross-site scripting hole.
+
+> **Wrapping a string in `Sfht` bypasses escaping**, which is what it is for and
+> why `new Sfht($whatever)` deserves a second look. The compiler builds these
+> from markup an author wrote; one built from a request is a decision to trust
+> it.
+
+### Which to reach for
+
+Use `.sfht` when the thing is a **page**: a layout, a block, something a
+designer might open. Use `.phpx` when the thing is a **piece**: a card, a field,
+a table row — anything that takes arguments and appears more than once.
+
+The practical difference is the contract. A partial sees whatever happened to be
+in scope where it was included, so what it needs is discovered by reading it. A
+component's parameters are its props, so what it needs is its signature.
+
+### Loading components
+
+PHP autoloads classes, not functions, so a compiled component cannot be found on
+demand. The front controller requires them once:
+
+```php
+$compiled = __DIR__ . '/../app/components/compiled';
+
+if (is_dir($compiled)) {
+    $components = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($compiled, FilesystemIterator::SKIP_DOTS)
+    );
+
+    foreach ($components as $component) {
+        if ($component->getExtension() === 'php') {
+            require_once $component->getPathname();
+        }
+    }
+}
+```
+
+### Editor support
+
+A `.phpx` file is PHP with markup where PHP does not expect it, so an editor has
+to be told three separate things. The project ships the settings, and a created
+project has them already:
+
+| File | Covers |
+|---|---|
+| `.editorconfig` | Whitespace and encoding, in every editor |
+| `.vscode/settings.json` | Language association, Emmet, and Intelephense's own file list |
+| `.zed/settings.json` | The same, in Zed's format |
+
+Intelephense keeps a list of files to index that is **separate** from the
+editor's language association, which is why completion appears impossible until
+`intelephense.files.associations` names `*.phpx`.
+
+The cost of mapping `.phpx` onto the `php` language is that its markup reads as a
+syntax error, so diagnostics are turned off for every `.php` as well. `./sfphp
+build --phpx` and `composer run lint` still catch real ones.
 
 ---
 
@@ -3886,7 +4049,7 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` exposes **34 commands**.
+`./sfphp` exposes **35 commands**.
 
 ### Generation (12 generators)
 
@@ -3971,6 +4134,8 @@ says so.
 ./sfphp env:example    # creates .env from .env-example
 ./sfphp css:build      # builds SFCSS from the config; --config= --output=
 ./sfphp js:build       # minifies SFJS
+./sfphp build --phpx   # compiles the .phpx components
+./sfphp reset          # removes the example application; --force skips the question
 ./sfphp tinker         # REPL — local development only
 ./sfphp list
 ./sfphp version
@@ -3979,6 +4144,35 @@ says so.
 
 `tinker` evaluates input with `eval()`. It is a local development tool; never
 expose the CLI to untrusted input.
+
+### Starting from zero
+
+The package ships an application: a home page, controllers, components, a model,
+a seeder. It is there to be read and run, and it is in the way the moment you
+start writing your own.
+
+```bash
+./sfphp reset            # asks first
+./sfphp reset --force    # for a script
+```
+
+It empties `app/components`, `app/controllers`, `app/models`, `app/Jobs`,
+`app/resources/views`, `database/migrations`, `database/seeders` and
+`database/factories`, and rewrites the routes file with no routes — otherwise
+the application would boot into a controller that is no longer there. The
+directories stay, because they are where the next thing goes.
+
+**The two migrations the framework ships are kept**: the users and sessions
+tables, which the authentication guard and the database session driver are
+written against, and which a project that dropped them would miss at its first
+login rather than here. A migration you wrote is yours, and goes with the rest
+of what you wrote. A `.gitkeep` stays too — it exists to hold an empty
+directory, which is what this leaves behind.
+
+Before deleting anything it prints what it is about to delete, with a count per
+directory, and waits for you to type the word `reset`. With no terminal to
+answer at — a pipe, a CI job — it refuses instead of proceeding on silence.
+There is no undo and nothing goes to a trash bin.
 
 ---
 
@@ -4128,6 +4322,13 @@ sf.util.debounce(fn, 300);  sf.util.throttle(fn, 300);  sf.util.wait(500);
 <div id="menu">...</div>
 ```
 
+A form works with any of them: `@hxGet` and `@hxDelete` send its fields as a
+query string, the rest send them as the body. What comes back is swapped in as
+markup, so what answers one of these is a fragment — rendered by the same
+component that renders it inside the full page, rather than JSON that JavaScript
+has to rebuild into HTML. The page at `/phpx` does exactly this, and has no
+script of its own because of it.
+
 `@hxSwap` accepts `innerHTML` (the default), `outerHTML`, `beforebegin`,
 `afterbegin`, `beforeend` and `afterend`.
 
@@ -4142,7 +4343,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 146 unit cases
+composer run test        # 152 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
@@ -4197,6 +4398,7 @@ does not do, and you should know before choosing it.
 | **Relative dates** | "3 hours ago" is not provided: the phrasing is per language and belongs to the application. Localised dates and numbers are, through `Time::localised()` and `Time::number()`. See [Time and time zones](#time-and-time-zones) |
 | **A metrics backend** | `Metrics` counts and times in the process and prints Prometheus text; shipping it to a collector, and keeping it across requests, is the deployment's. See [Health and metrics](#health-and-metrics) |
 | **Route caching to disk** | A static path is matched by comparison rather than by `preg_match`, but a parameterised route still costs one match, and nothing is compiled ahead of time. Fine for hundreds, not thousands |
+| **A language server for `.phpx`** | The editor gets highlighting, Emmet and completion through the configuration the package ships, but a `.phpx` is not valid PHP, so diagnostics are turned off — and turned off for every `.php` alongside it. `./sfphp build --phpx` and `composer run lint` are what catch a real error. See [Components and .phpx](#components-and-phpx) |
 | **Session revocation from elsewhere** | Ending another device's session is buildable on the `database` driver's table; nothing ships. See [Sessions](#sessions) |
 
 SFHT also has no automatic loop variables (`$loop`) and no partial block

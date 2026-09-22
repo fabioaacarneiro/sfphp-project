@@ -1,0 +1,54 @@
+<?php
+
+namespace SfphpProject\app\components\postcode\explain;
+
+use SfphpProject\src\Bootstrap;
+use SfphpProject\src\View\Sfht;
+
+/**
+ * The explanation, quoting the component above it.
+ *
+ * The source is read from the file rather than copied into this markup, so the
+ * example on the page cannot drift from the code that produced what is above
+ * it — and {{ }} escapes it, which is why a component's source can be shown
+ * without a single entity being written by hand.
+ */
+function HowItWorks(): Sfht
+{
+    $source = (string) file_get_contents(Bootstrap::basePath('app/components/postcode/lookup/Field.phpx'));
+
+    return (static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<section class="card">
+            <div class="card-header">
+                <h2 class="text-lg font-semibold m-0">What is going on here</h2>
+            </div>
+
+            <div class="card-body">
+                <p>
+                    Each field above is a PHP function in a file of its own. Its
+                    parameters are its props, its markup lives inside it, and it
+                    returns <code>Sfht</code> — markup that is already safe:
+                </p>
+
+                <pre class="bg-light p-3 rounded-md overflow-auto"><code>';
+echo \SfphpProject\src\View\Compiler::text(($source));
+echo '</code></pre>
+
+                <p class="mt-4">
+                    The form carries <code>';
+echo '@hxGet';
+echo '</code>, so SFJS sends it and
+                    swaps the answer into place. The answer is markup rendered
+                    by these same components, which is why this page has no
+                    JavaScript of its own: there is nothing for it to rebuild.
+                </p>
+
+                <p class="mb-0">
+                    <code>./sfphp build --phpx</code> compiles every component
+                    under <code>app/components</code>, mirroring the folders,
+                    and runs <code>php -l</code> over each result — so a syntax
+                    error shows up at build time rather than in production.
+                </p>
+            </div>
+        </section>';
+ return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars());
+}

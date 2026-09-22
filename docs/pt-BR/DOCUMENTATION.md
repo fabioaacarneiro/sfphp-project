@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 146 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 152 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -22,6 +22,7 @@ hoje. Onde algo não existe, está dito que não existe — veja
 - [Controllers](#controllers)
 - [Middleware](#middleware)
 - [Views e SFHT](#views-e-sfht)
+- [Componentes e .phpx](#componentes-e-phpx)
 - [Container e injeção de dependências](#container-e-injeção-de-dependências)
 - [Banco de dados](#banco-de-dados)
 - [Models](#models)
@@ -59,13 +60,14 @@ hoje. Onde algo não existe, está dito que não existe — veja
 
 **É** um framework enxuto para aplicações web e APIs, com roteamento,
 objetos Request/Response, pipeline de middleware, container de DI, query
-builder, schema builder com paridade MySQL/PostgreSQL, template engine, cache,
-filas, e um CLI com 34 comandos.
+builder, schema builder com paridade MySQL/PostgreSQL, template engine,
+componentes em `.phpx`, cliente HTTP, eventos, cache, filas, e um CLI com 35
+comandos.
 
-**Não é** um substituto de Laravel ou Symfony. Não há ORM completo nem sistema
-de eventos, e a autenticação cobre login, guards e autorização, mas não
-recuperação de senha nem dois fatores. O que existe é pequeno o suficiente
-para ser lido inteiro.
+**Não é** um substituto de Laravel ou Symfony. Não há ORM completo, os eventos
+são despachados no processo e de forma síncrona, sem broker de mensagens, e a
+autenticação cobre login, guards e autorização, mas não recuperação de senha nem
+dois fatores. O que existe é pequeno o suficiente para ser lido inteiro.
 
 ### Zero dependências, literalmente
 
@@ -747,6 +749,13 @@ echo $engine->render('home', ['title' => 'Olá']);
 **`{{ }}` escapa por padrão** (`ENT_QUOTES | ENT_SUBSTITUTE`, UTF-8). A forma
 segura é a curta; contorná-la exige escrever mais.
 
+Há exatamente uma exceção, e ela é carregada por um tipo, não por uma sintaxe:
+um valor que seja `Sfht` é impresso como está, porque `Sfht` quer dizer markup
+que este framework produziu. É isso que permite compor um componente com
+`{{ }}` enquanto uma string na mesma posição continua escapada — veja
+[Componentes e .phpx](#componentes-e-phpx). Tudo que não for `Sfht` é escapado,
+inclusive uma string sobre a qual você tem certeza.
+
 A expressão é PHP real — chamadas de função, operadores e índices funcionam:
 
 ```sfht
@@ -918,6 +927,161 @@ Unclosed @if opened on line 12.
 Unclosed "{{" expression on line 3.
 Filter not registered: naoexiste
 ```
+
+---
+
+## Componentes e .phpx
+
+Há duas formas de escrever uma página, as duas distribuídas, e cada uma é melhor
+em alguma coisa. A aplicação de exemplo usa uma nas páginas dela e a outra na
+demonstração em `/phpx`.
+
+| | `.sfht` | `.phpx` |
+|---|---|---|
+| O que é | Um arquivo de markup | Uma função PHP cujo markup mora dentro dela |
+| Composição | `@include`, `@extends`, `@block` | Chamar a função |
+| O que recebe | O que estiver em escopo, mais o que for passado | Os parâmetros dela, e nada além |
+| Editado por | Quem sabe HTML | Quem lê PHP |
+| Melhor para | Páginas e layouts | Pedaços reaproveitáveis |
+| Passo de build | Nenhum — compila sob demanda | `./sfphp build --phpx` |
+
+### Escrever um componente
+
+```php
+<?php
+
+namespace App\Components;
+
+use SfphpProject\src\View\Sfht;
+
+function Card(string $titulo, string $corpo, string $cor = 'blue'): Sfht
+{
+    return sfht(
+        <div class="card border-{{ $cor }}-500">
+            <div class="card-header"><h3 class="m-0">{{ $titulo }}</h3></div>
+            <div class="card-body"><p>{{ $corpo }}</p></div>
+        </div>
+    );
+}
+```
+
+O `sfht(` abre uma região de markup e o `)` correspondente fecha. Entre os dois é
+SFHT, então `{{ }}`, `{!! !!}`, `@if` e `@foreach` funcionam e o escape é o mesmo
+do resto do framework.
+
+```bash
+./sfphp build --phpx                       # todo .phpx sob app/components
+./sfphp build --phpx --from=src/ui         # a partir de outra pasta
+./sfphp build --phpx --to=build/components # saída em outra pasta
+```
+
+O build escreve o PHP ao lado do fonte e roda `php -l` em cada resultado, então
+erro de sintaxe aparece no build com o número da linha do `.phpx` — o compilador
+preenche a saída para manter esse alinhamento.
+
+### Um componente por arquivo
+
+Um arquivo tem um componente e leva o nome dele, e os componentes de uma mesma
+página ficam em uma pasta própria. O build percorre a árvore inteira e a
+espelha, então o que é compilado se parece com o que foi escrito:
+
+```
+app/components/
+├── Card.phpx
+├── BulletList.phpx
+└── postcode/
+    ├── PostcodePage.phpx
+    ├── layout/
+    │   ├── PageHeader.phpx
+    │   └── PageFooter.phpx
+    ├── lookup/
+    │   ├── PostcodeLookup.phpx
+    │   ├── Address.phpx
+    │   ├── Field.phpx
+    │   └── Notice.phpx
+    └── explain/
+        └── HowItWorks.phpx
+```
+
+Componentes na mesma pasta compartilham o namespace, então se compõem pelo nome
+— sem import e sem prefixo. Atravessar uma pasta, ou alcançar um componente de
+um controller, é um `use function`, como para qualquer outra função em PHP:
+
+```php
+use function SfphpProject\app\components\postcode\lookup\Address;
+```
+
+### Por que um componente devolve Sfht
+
+```php
+{{ Card('Olá', $corpo) }}    o card renderiza
+{{ $corpo }}                  o texto é escapado
+```
+
+Os dois na mesma posição, com a coisa certa acontecendo a cada um, porque o
+**tipo** diz qual é qual. `Sfht` quer dizer "markup que este framework produziu";
+qualquer outra coisa é texto de origem desconhecida.
+
+A alternativa — devolver string e escrever `{!! Card(...) !!}` — pede que o autor
+lembre quais valores são confiáveis, e é aí que um dia alguém escreve
+`{!! $comentario !!}` e publica um buraco de cross-site scripting.
+
+> **Embrulhar uma string em `Sfht` contorna o escape**, que é para isso que ele
+> serve e por isso `new Sfht($qualquerCoisa)` merece um segundo olhar. O
+> compilador monta esses objetos a partir de markup que um autor escreveu; um
+> montado a partir de uma requisição é uma decisão de confiar nela.
+
+### Qual escolher
+
+Use `.sfht` quando a coisa é uma **página**: layout, bloco, algo que um designer
+possa abrir. Use `.phpx` quando a coisa é um **pedaço**: um card, um campo, uma
+linha de tabela — qualquer coisa que receba argumentos e apareça mais de uma vez.
+
+A diferença prática é o contrato. Um parcial vê o que por acaso estava em escopo
+onde ele foi incluído, então o que ele precisa se descobre lendo o arquivo. Os
+parâmetros de um componente são as props dele, então o que ele precisa é a
+assinatura.
+
+### Carregar os componentes
+
+O PHP autoloada classe, não função, então um componente compilado não pode ser
+encontrado sob demanda. O front controller o inclui uma vez:
+
+```php
+$compiled = __DIR__ . '/../app/components/compiled';
+
+if (is_dir($compiled)) {
+    $components = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($compiled, FilesystemIterator::SKIP_DOTS)
+    );
+
+    foreach ($components as $component) {
+        if ($component->getExtension() === 'php') {
+            require_once $component->getPathname();
+        }
+    }
+}
+```
+
+### Suporte do editor
+
+Um `.phpx` é PHP com markup onde o PHP não espera, então o editor precisa ser
+avisado de três coisas separadas. O projeto já vem com a configuração, e um
+projeto criado a recebe pronta:
+
+| Arquivo | Cobre |
+|---|---|
+| `.editorconfig` | Espaço em branco e codificação, em todo editor |
+| `.vscode/settings.json` | Associação de linguagem, Emmet e a lista de arquivos do Intelephense |
+| `.zed/settings.json` | O mesmo, no formato do Zed |
+
+O Intelephense mantém uma lista de arquivos a indexar que é **separada** da
+associação de linguagem do editor, e é por isso que o autocomplete parece
+impossível até o `intelephense.files.associations` citar `*.phpx`.
+
+O custo de mapear `.phpx` para a linguagem `php` é que o markup dele é lido como
+erro de sintaxe, então o diagnóstico fica desligado para todo `.php` também. O
+`./sfphp build --phpx` e o `composer run lint` continuam pegando os de verdade.
 
 ---
 
@@ -3877,7 +4041,7 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` expõe **34 comandos**.
+`./sfphp` expõe **35 comandos**.
 
 ### Geração (12 geradores)
 
@@ -3962,6 +4126,8 @@ os mesmos arquivos não copia nada e avisa.
 ./sfphp env:example    # cria .env a partir de .env-example
 ./sfphp css:build      # gera o SFCSS a partir do config; --config= --output=
 ./sfphp js:build       # minifica o SFJS
+./sfphp build --phpx   # compila os componentes .phpx
+./sfphp reset          # remove a aplicação de exemplo; --force pula a pergunta
 ./sfphp tinker         # REPL — só para desenvolvimento local
 ./sfphp list
 ./sfphp version
@@ -3970,6 +4136,35 @@ os mesmos arquivos não copia nada e avisa.
 
 `tinker` avalia entrada com `eval()`. É uma ferramenta de desenvolvimento
 local; nunca exponha o CLI a entrada não confiável.
+
+### Começar do zero
+
+O pacote traz uma aplicação: uma home, controllers, componentes, um model, um
+seeder. Ela existe para ser lida e rodada, e passa a atrapalhar no instante em
+que você começa a escrever a sua.
+
+```bash
+./sfphp reset            # pergunta antes
+./sfphp reset --force    # para script
+```
+
+Ele esvazia `app/components`, `app/controllers`, `app/models`, `app/Jobs`,
+`app/resources/views`, `database/migrations`, `database/seeders` e
+`database/factories`, e reescreve o arquivo de rotas sem rota nenhuma — do
+contrário a aplicação subiria apontando para um controller que não existe mais.
+As pastas ficam, porque é nelas que a próxima coisa vai.
+
+**As duas migrations que o framework distribui são preservadas**: as tabelas de
+usuários e de sessões, contra as quais o guard de autenticação e o driver de
+sessão em banco foram escritos, e cuja falta um projeto notaria no primeiro
+login, não aqui. Uma migration que você escreveu é sua, e vai junto com o resto
+do que você escreveu. Um `.gitkeep` também fica — ele existe para segurar uma
+pasta vazia, que é justamente o que sobra.
+
+Antes de apagar qualquer coisa ele imprime o que vai apagar, com a contagem por
+pasta, e espera você digitar a palavra `reset`. Sem terminal para responder —
+um pipe, um job de CI — ele recusa em vez de seguir no silêncio. Não há desfazer
+e nada vai para uma lixeira.
 
 ---
 
@@ -4119,6 +4314,13 @@ sf.util.debounce(fn, 300);  sf.util.throttle(fn, 300);  sf.util.wait(500);
 <div id="menu">...</div>
 ```
 
+Um formulário funciona com qualquer um deles: `@hxGet` e `@hxDelete` mandam os
+campos como query string, os outros mandam no corpo. O que volta é trocado como
+markup, então quem responde a um desses é um fragmento — renderizado pelo mesmo
+componente que o renderiza dentro da página inteira, e não JSON para o
+JavaScript remontar em HTML. A página em `/phpx` faz exatamente isso, e por isso
+não tem script próprio.
+
 `@hxSwap` aceita `innerHTML` (padrão), `outerHTML`, `beforebegin`,
 `afterbegin`, `beforeend` e `afterend`.
 
@@ -4133,7 +4335,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 146 casos unitários
+composer run test        # 152 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve
@@ -4187,6 +4389,7 @@ não faz, e que você deve saber antes de escolhê-lo.
 | **Datas relativas** | "3 horas atrás" não existe: a frase é por idioma e pertence à aplicação. Data e número localizados existem, pelo `Time::localised()` e pelo `Time::number()`. Ver [Tempo e fusos horários](#tempo-e-fusos-horários) |
 | **Backend de métricas** | O `Metrics` conta e cronometra dentro do processo e imprime o texto do Prometheus; levar isso a um coletor, e mantê-lo entre requisições, é do deploy. Ver [Health e métricas](#health-check-e-métricas) |
 | **Cache de rotas em disco** | Um caminho estático é casado por comparação e não por `preg_match`, mas uma rota com parâmetro ainda custa um match, e nada é compilado de antemão. Adequado a centenas, não a milhares |
+| **Um language server para `.phpx`** | O editor ganha coloração, Emmet e autocomplete pela configuração que o pacote distribui, mas um `.phpx` não é PHP válido, então o diagnóstico fica desligado — e desligado para todo `.php` ao lado dele. Quem pega erro de verdade é o `./sfphp build --phpx` e o `composer run lint`. Veja [Componentes e .phpx](#componentes-e-phpx) |
 | **Revogar sessão de outro lugar** | Encerrar a sessão de outro dispositivo dá para construir sobre a tabela do driver `database`; nada vem pronto. Ver [Sessões](#sessões) |
 
 O SFHT também não tem variáveis automáticas de laço (`$loop`) nem herança

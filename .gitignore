@@ -1,5 +1,10 @@
 # IDE
-.vscode/
+# Editor settings split in two: what belongs to the project is committed, what
+# belongs to a person is not. Language associations and Emmet are the project's
+# — every contributor needs them for .phpx and .sfht to read correctly.
+/.vscode/*
+!/.vscode/settings.json
+!/.vscode/extensions.json
 .idea/
 *.swp
 *.swo

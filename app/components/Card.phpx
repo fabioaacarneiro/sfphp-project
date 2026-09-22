@@ -1,0 +1,23 @@
+<?php
+
+namespace SfphpProject\app\components;
+
+use SfphpProject\src\View\Sfht;
+
+/**
+ * A card, written the way templ writes them: a function whose markup lives
+ * inside it, with the parameters as the props.
+ */
+function Card(string $title, string $body, string $colour = 'blue'): Sfht
+{
+    return sfht(
+        <div class="card mb-4 border-{{ $colour }}-500">
+            <div class="card-header">
+                <h3 class="m-0 text-{{ $colour }}-600">{{ $title }}</h3>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">{{ $body }}</p>
+            </div>
+        </div>
+    );
+}
