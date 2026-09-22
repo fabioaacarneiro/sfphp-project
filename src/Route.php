@@ -30,6 +30,9 @@ final class Route
     private const PARAMETER_PATTERN = '/([A-Za-z_][A-Za-z0-9_]*):(number|alphanum|alpha)/';
 
     private ?string $name = null;
+    /** The compiled pattern, built on first use. */
+    private ?string $compiled = null;
+
     private array $parameters = [];
 
     /**
@@ -114,7 +117,17 @@ final class Route
      */
     public function match(string $path): ?array
     {
-        if (preg_match($this->compilePattern(), $path, $matches) !== 1) {
+        /*
+         * A route with no parameters is a string comparison, not a regular
+         * expression. Most routes in most applications are static, and every
+         * one of them was being turned into a regex and run through the PCRE
+         * engine on every request that did not match it.
+         */
+        if ($this->parameters === []) {
+            return $path === $this->uri ? [] : null;
+        }
+
+        if (preg_match($this->pattern(), $path, $matches) !== 1) {
             return null;
         }
 
@@ -283,6 +296,21 @@ final class Route
      *
      * @return string The regular expression used to match request paths
      */
+    /**
+     * The compiled pattern, built once per route rather than once per match.
+     *
+     * Dispatch walks every route until one matches, so recompiling here meant
+     * building the same regular expression again for every request that missed
+     * it. The pattern depends only on the URI, which does not change after the
+     * route is registered.
+     *
+     * @return string The regular expression
+     */
+    private function pattern(): string
+    {
+        return $this->compiled ??= $this->compilePattern();
+    }
+
     private function compilePattern(): string
     {
         $parameterPatterns = [];

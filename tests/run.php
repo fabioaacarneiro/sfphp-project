@@ -5,7 +5,14 @@ require __DIR__ . '/../vendor/autoload.php';
 use SfphpProject\src\Csrf;
 use SfphpProject\src\Database;
 use SfphpProject\src\ErrorHandler;
+use SfphpProject\src\Config;
 use SfphpProject\src\Container;
+use SfphpProject\src\Dotenv;
+use SfphpProject\src\Health;
+use SfphpProject\src\Auth\RememberToken;
+use SfphpProject\src\Log\Metrics;
+use SfphpProject\src\Migrations\MigrationLock;
+use SfphpProject\src\Events\Dispatcher;
 use SfphpProject\src\JWT;
 use SfphpProject\src\Migrations\Blueprint;
 use SfphpProject\src\Migrations\Identifier;
@@ -76,6 +83,36 @@ require __DIR__ . '/TestRunner.php';
  * records swap in a driver of their own and put this one back afterwards.
  */
 logger()->driver(new LogNullDriver());
+
+/**
+ * Events and listeners used by the dispatcher tests.
+ */
+class DispatcherEvent
+{
+    public array $seen = [];
+}
+
+final class DispatcherChildEvent extends DispatcherEvent
+{
+}
+
+final class DispatcherListener
+{
+    public function handle(object $event): void
+    {
+        $event->seen[] = 'class';
+    }
+}
+
+final class DispatcherBrokenListener
+{
+    public function handle(object $event): void
+    {
+        throw new RuntimeException('listener failed');
+    }
+}
+
+
 
 /**
  * A middleware that chooses its own collaborator when nobody binds one.
@@ -2165,7 +2202,8 @@ $tests->run('every generator produces a class that actually loads', function () 
 
             $source = file_get_contents($path);
             preg_match('/^namespace (.+);/m', $source, $namespace);
-            preg_match('/(?:final )?class (\w+)/', $source, $class);
+            // Anchored: a docblock mentioning "the class name" is not a declaration.
+            preg_match('/^(?:final )?class (\w+)/m', $source, $class);
 
             $fqcn = $namespace[1] . '\\' . $class[1];
 
@@ -3593,7 +3631,8 @@ $tests->run('the framework reads no constant it did not define itself', function
     $directory = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(__DIR__ . '/../src'));
 
     foreach ($directory as $file) {
-        if ($file->getExtension() !== 'php' || $file->getFilename() === 'Bootstrap.php') {
+        if ($file->getExtension() !== 'php'
+            || in_array($file->getFilename(), ['Bootstrap.php', 'Config.php'], true)) {
             continue;
         }
 
@@ -3605,7 +3644,15 @@ $tests->run('the framework reads no constant it did not define itself', function
                 continue;
             }
 
-            if (preg_match('/\b(' . $names . ')\b/', $line) === 1 && !str_contains($line, 'defined(')) {
+            /*
+             * Two forms are safe: a defined() guard, and a read through
+             * Config, which falls back to a default when the constant was
+             * never defined. Anything else is a framework file assuming an
+             * application set something up for it.
+             */
+            $guarded = str_contains($line, 'defined(') || str_contains($line, 'Config::');
+
+            if (preg_match('/\b(' . $names . ')\b/', $line) === 1 && !$guarded) {
                 $unguarded[] = basename($file->getPathname()) . ':' . ($number + 1);
             }
         }
@@ -4078,6 +4125,277 @@ $tests->run('a field with several files is turned the right way round', function
     $tests->assertSame(false, Request::create('POST', '/', ['files' => [
         'doc' => ['name' => 'x', 'tmp_name' => '', 'size' => 0, 'error' => UPLOAD_ERR_NO_FILE],
     ]])->hasFile('doc'));
+});
+
+$tests->run('events reach their listeners, and a broken one does not stop the rest', function () use ($tests): void {
+    /*
+     * make:event and make:listener generated classes for four rounds with
+     * nothing to dispatch them. A generator producing code for infrastructure
+     * that does not exist is worse than no generator: it looks like a feature.
+     */
+    Dispatcher::forget();
+
+    $event = new DispatcherEvent();
+    $tests->assertSame(false, Dispatcher::hasListeners(DispatcherEvent::class));
+
+    Dispatcher::listen(DispatcherEvent::class, static function (DispatcherEvent $e): void {
+        $e->seen[] = 'closure';
+    });
+    Dispatcher::listen(DispatcherEvent::class, DispatcherListener::class);
+
+    $tests->assertSame(true, Dispatcher::hasListeners(DispatcherEvent::class));
+    $tests->assertSame($event, Dispatcher::dispatch($event));
+    $tests->assertSame(['closure', 'class'], $event->seen);
+
+    /*
+     * Dispatching is telling, not asking: an event whose second listener failed
+     * has still happened, so the others still run and the caller is not made to
+     * handle somebody else's failure. The failure is logged instead.
+     */
+    Dispatcher::forget();
+    $log = new LogMemoryDriver();
+    logger()->driver($log);
+
+    $resilient = new DispatcherEvent();
+    Dispatcher::listen(DispatcherEvent::class, DispatcherBrokenListener::class);
+    Dispatcher::listen(DispatcherEvent::class, DispatcherListener::class);
+    Dispatcher::dispatch($resilient);
+
+    $tests->assertSame(['class'], $resilient->seen);
+    $tests->assertSame('listener failed', $log->last()['message']);
+    $tests->assertSame(DispatcherEvent::class, $log->last()['context']['event']);
+    $tests->assertSame(DispatcherBrokenListener::class, $log->last()['context']['listener']);
+
+    logger()->driver(new LogNullDriver());
+
+    // dispatchOrFail is for the caller that genuinely depends on the listeners.
+    $tests->assertThrows(
+        fn () => Dispatcher::dispatchOrFail(new DispatcherEvent()),
+        RuntimeException::class
+    );
+
+    /*
+     * Listening for a parent class catches its children, which is what makes
+     * "record every domain event" expressible without naming each one.
+     */
+    Dispatcher::forget();
+    $child = new DispatcherChildEvent();
+    Dispatcher::listen(DispatcherEvent::class, DispatcherListener::class);
+    Dispatcher::dispatch($child);
+    $tests->assertSame(['class'], $child->seen);
+
+    // A listener class with no handle() says so rather than failing silently.
+    Dispatcher::forget();
+    Dispatcher::listen(DispatcherEvent::class, Container::class);
+    $tests->assertThrows(
+        fn () => Dispatcher::dispatchOrFail(new DispatcherEvent()),
+        RuntimeException::class
+    );
+
+    Dispatcher::forget();
+});
+
+$tests->run('settings can be overridden without a separate process', function () use ($tests): void {
+    /*
+     * They were constants, and a constant cannot be unset — fine for an
+     * application that decides once at boot, awkward for a test that wants to
+     * know what happens with a different value.
+     */
+    $tests->assertSame(APP_ENV, Config::get('APP_ENV'));
+
+    Config::set('APP_ENV', 'development');
+    $tests->assertSame('development', Config::get('APP_ENV'));
+
+    // The constant is still there and still right; the override sits in front.
+    $tests->assertSame('production', APP_ENV);
+
+    Config::forget('APP_ENV');
+    $tests->assertSame(APP_ENV, Config::get('APP_ENV'));
+
+    // A setting nobody defined answers the default rather than failing.
+    $tests->assertSame('fallback', Config::get('NO_SUCH_SETTING', 'fallback'));
+    $tests->assertSame(false, Config::has('NO_SUCH_SETTING'));
+    $tests->assertSame(7, Config::int('NO_SUCH_SETTING', 7));
+    $tests->assertSame('', Config::string('NO_SUCH_SETTING'));
+
+    // int() and string() coerce rather than trusting what is there.
+    Config::set('A_NUMBER', '42');
+    $tests->assertSame(42, Config::int('A_NUMBER'));
+    Config::set('A_NUMBER', ['not scalar']);
+    $tests->assertSame(9, Config::int('A_NUMBER', 9));
+    Config::forget();
+});
+
+$tests->run('metrics count and time, including the call that failed', function () use ($tests): void {
+    Metrics::reset();
+
+    Metrics::count('orders.placed');
+    Metrics::count('orders.placed');
+    Metrics::count('payments.failed', ['gateway' => 'stripe']);
+
+    $snapshot = Metrics::snapshot();
+    $tests->assertSame(2.0, $snapshot['counters']['orders.placed']['value']);
+    $tests->assertSame(['gateway' => 'stripe'], $snapshot['counters']['payments.failed|{"gateway":"stripe"}']['labels']);
+
+    // time() returns what the work returned.
+    $tests->assertSame('done', Metrics::time('work', static fn (): string => 'done'));
+
+    /*
+     * And records the failed call too: something that only gets slow when it is
+     * failing is exactly the thing worth seeing.
+     */
+    try {
+        Metrics::time('work', static function (): void {
+            throw new RuntimeException('boom');
+        });
+    } catch (RuntimeException) {
+    }
+
+    $tests->assertSame(2, Metrics::snapshot()['timers']['work']['count']);
+
+    // The scraper format escapes what would end a label early.
+    Metrics::reset();
+    Metrics::count('a.metric', ['label' => 'with "quote"']);
+    $tests->assertSame(true, str_contains(Metrics::prometheus(), 'with \"quote\"'));
+    $tests->assertSame(true, str_starts_with(Metrics::prometheus(), 'a_metric{label='));
+
+    Metrics::reset();
+    $tests->assertSame('', Metrics::prometheus());
+});
+
+$tests->run('a health check reports each dependency and times it', function () use ($tests): void {
+    Health::forget();
+
+    Health::register('fine', static fn (): bool => true);
+    $report = Health::check();
+    $tests->assertSame(true, $report['healthy']);
+    $tests->assertSame(true, $report['checks']['fine']['ok']);
+    $tests->assertSame(true, $report['checks']['fine']['ms'] >= 0);
+
+    // One failing dependency makes the instance unhealthy.
+    Health::register('broken', static fn (): bool => false);
+    $tests->assertSame(false, Health::check()['healthy']);
+
+    /*
+     * A check that throws is a failed check, and the message is reported so
+     * whoever reads it knows which dependency — but the trace is not, because
+     * this response may leave the deployment.
+     */
+    Health::forget();
+    Health::register('throws', static function (): bool {
+        throw new RuntimeException('connection refused');
+    });
+
+    $report = Health::check();
+    $tests->assertSame(false, $report['healthy']);
+    $tests->assertSame('connection refused', $report['checks']['throws']['error']);
+
+    // A subset can be asked for, which is how a liveness probe differs from a
+    // readiness one.
+    Health::forget();
+    Health::register('a', static fn (): bool => true);
+    Health::register('b', static fn (): bool => false);
+    $tests->assertSame(['a'], array_keys(Health::check(['a'])['checks']));
+    $tests->assertSame(true, Health::check(['a'])['healthy']);
+
+    Health::forget();
+});
+
+$tests->run('a remember cookie is not a password that can be replayed', function () use ($tests): void {
+    $issued = RememberToken::issue();
+    $parsed = RememberToken::parse($issued['cookie']);
+
+    $tests->assertSame($issued['selector'], $parsed['selector']);
+    $tests->assertSame(true, RememberToken::matches($parsed['verifier'], $issued['hash']));
+    $tests->assertSame(false, RememberToken::matches('guessed', $issued['hash']));
+
+    /*
+     * The verifier is stored hashed. A database someone can read otherwise
+     * hands them a working cookie for every remembered user — the column is
+     * the one thing read access gets for free.
+     */
+    $tests->assertSame(false, str_contains($issued['hash'], $parsed['verifier']));
+    $tests->assertSame(64, strlen($issued['hash']));
+
+    // Two issues never collide, which is what makes the selector a lookup key.
+    $tests->assertSame(false, RememberToken::issue()['selector'] === RememberToken::issue()['selector']);
+
+    // A malformed cookie is refused rather than half-read.
+    foreach (['', 'nocolon', ':empty', 'empty:'] as $malformed) {
+        $tests->assertSame(null, RememberToken::parse($malformed));
+    }
+
+    $tests->assertSame(true, $issued['expires'] > time());
+});
+
+$tests->run('dotenv reads a file, and an absent one is not fatal when optional', function () use ($tests): void {
+    $path = sys_get_temp_dir() . '/sfphp-env-' . bin2hex(random_bytes(6));
+
+    file_put_contents($path, <<<'ENV'
+        # a comment
+        PLAIN=value
+        QUOTED="with spaces"
+        SINGLE='single quoted'
+        EMPTY=
+        WITH_EQUALS=a=b=c
+
+        SPACED = padded
+        ENV);
+
+    Dotenv::loadEnv($path);
+
+    $tests->assertSame('value', $_ENV['PLAIN']);
+    $tests->assertSame('with spaces', $_ENV['QUOTED']);
+    $tests->assertSame('single quoted', $_ENV['SINGLE']);
+    $tests->assertSame('', $_ENV['EMPTY']);
+
+    // A value containing "=" keeps all of it; only the first separator counts.
+    $tests->assertSame('a=b=c', $_ENV['WITH_EQUALS']);
+    $tests->assertSame('padded', $_ENV['SPACED']);
+
+    // A comment is not a variable.
+    $tests->assertSame(false, isset($_ENV['# a comment']));
+
+    unlink($path);
+
+    /*
+     * Optional is why a fresh clone boots. A required .env made requiring the
+     * autoloader fatal before the application could say what was missing.
+     */
+    Dotenv::loadEnv($path, required: false);
+    $tests->assertThrows(fn () => Dotenv::loadEnv($path, required: true), RuntimeException::class);
+});
+
+$tests->run('the error handler redacts in production and explains in development', function () use ($tests): void {
+    $failure = new RuntimeException('the database password is hunter2');
+
+    Config::set('APP_ENV', 'production');
+    $hidden = ErrorHandler::toResponse($failure);
+    $tests->assertSame(HTTP_INTERNAL_SERVER_ERROR, $hidden->status());
+
+    /*
+     * An exception message routinely carries a connection string or a query.
+     * Production gets the translated generic message and nothing else.
+     */
+    $tests->assertSame(false, str_contains($hidden->body(), 'hunter2'));
+    $tests->assertSame(true, str_contains($hidden->body(), __('http.server_error_message')));
+
+    Config::set('APP_ENV', 'development');
+    $shown = ErrorHandler::toResponse($failure);
+    $tests->assertSame(true, str_contains($shown->body(), 'hunter2'));
+
+    // The content type follows what the request asked for.
+    $json = ErrorHandler::toResponse($failure, Request::create('GET', '/', [
+        'headers' => ['Accept' => 'application/json'],
+    ]));
+    $tests->assertSame(true, str_contains((string) $json->header('Content-Type'), 'application/json'));
+    $tests->assertSame('the database password is hunter2', json_decode($json->body(), true)['message']);
+
+    // The error page carries no external request, so it renders when the
+    // network is exactly what is broken.
+    $tests->assertSame(0, preg_match('#(src|href)=["\']https?://#', $shown->body()));
+
+    Config::forget('APP_ENV');
 });
 
 $tests->finish();

@@ -2,7 +2,7 @@
 
 namespace SfphpProject\src;
 
-use Exception;
+use RuntimeException;
 
 /**
  * Class to work with .env file
@@ -18,13 +18,19 @@ class Dotenv
      * @param string $filePath Path to the .env file
      * @param bool $required Whether a missing file is an error
      * @return void
-     * @throws Exception If the file is required and does not exist
+     * @throws RuntimeException If the file is required and does not exist
      */
-    static function loadEnv(string $filePath, bool $required = true): void
+    public static function loadEnv(string $filePath, bool $required = true): void
     {
         if (!file_exists($filePath)) {
             if ($required) {
-                throw new Exception(".env file not found!");
+                /*
+                 * Named, because the path is no longer always ".env": an
+                 * application passes its own to Bootstrap::load(), and "file
+                 * not found" without saying which sends whoever reads it
+                 * looking in the wrong directory.
+                 */
+                throw new RuntimeException('The environment file ' . $filePath . ' does not exist.');
             }
 
             return;
