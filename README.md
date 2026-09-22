@@ -59,6 +59,7 @@ In production, point `DocumentRoot` at `public/`.
 | **SFHT** | Template engine with automatic escaping, layout inheritance and an OPcache-friendly cache |
 | **Logging** | JSON lines in UTC, a request id joining every line of one request, secrets redacted |
 | **Time** | UTC everywhere, including the database session; zones are a display decision |
+| **Sessions** | Idle and absolute deadlines, strict id validation, and a store shareable between instances |
 | **Cache** | File, memory and Redis drivers |
 | **Queue** | Workers with retries, database and Redis drivers |
 | **SFCSS** | 2,337 utility classes with `hover:` and responsive variants, 16.1KB gzipped |
@@ -103,8 +104,8 @@ trans_choice('app.items', 5);   // plural forms by range or per-language rule
 - **Passwords** — `password_hash` with `PASSWORD_DEFAULT`, and `Auth::attempt()`
   equalises response time so a non-existent account cannot be told apart from a
   wrong password
-- **Session** — the id is regenerated on login and logout, against session
-  fixation
+- **Session** — the id is regenerated on login and logout, `use_strict_mode`
+  refuses an id PHP never issued, and idle and absolute deadlines are enforced
 - **Middleware** — `VerifyCsrfToken` applies the CSRF check by default to every
   state-changing request
 
@@ -116,7 +117,7 @@ data in the database without protecting its real destination.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 95 unit cases
+composer run test        # 102 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run docs        # the three documentation languages agree
 ```

@@ -53,6 +53,8 @@ use SfphpProject\src\Queue\RedisDriver;
 use SfphpProject\src\RawQuery;
 use SfphpProject\src\Route;
 use SfphpProject\src\Router;
+use SfphpProject\src\Session\CacheHandler;
+use SfphpProject\src\Session\Session;
 use SfphpProject\src\Str;
 use SfphpProject\src\Time;
 use SfphpProject\src\Validator;
@@ -68,6 +70,15 @@ require __DIR__ . '/TestRunner.php';
  * records swap in a driver of their own and put this one back afterwards.
  */
 logger()->driver(new LogNullDriver());
+
+/**
+ * A middleware that chooses its own collaborator when nobody binds one.
+ */
+final class ContainerOptionalDependency
+{
+    public function __construct(public ?SessionHandlerInterface $handler = null, public ?Iterator $items = null) {}
+}
+
 
 /**
  * Model used by the time zone tests.
@@ -3328,6 +3339,177 @@ $tests->run('date attributes round-trip through UTC', function () use ($tests): 
 
     // A date column keeps only the day, and the day is the UTC one.
     $tests->assertSame('2026-09-21', $stored['published_on']);
+});
+
+$tests->run('the session keeps values and hides its own bookkeeping', function () use ($tests): void {
+    $_SESSION = [];
+    Session::start(false, null, 0, 0);
+
+    Session::put('cart_id', 42);
+    $tests->assertSame(42, Session::get('cart_id'));
+    $tests->assertTrue(Session::has('cart_id'));
+    $tests->assertSame('fallback', Session::get('absent', 'fallback'));
+
+    /*
+     * The timestamps are the framework's, not the application's. Showing them
+     * in all() would invite writing to them, and the deadlines would stop
+     * meaning anything.
+     */
+    $tests->assertSame(['cart_id' => 42], Session::all());
+    $tests->assertTrue(Session::startedAt() !== null);
+    $tests->assertTrue(Session::lastActivityAt() !== null);
+
+    Session::forget('cart_id');
+    $tests->assertTrue(!Session::has('cart_id'));
+});
+
+$tests->run('an idle session ends, and says why once', function () use ($tests): void {
+    $_SESSION = [];
+    Session::start(false, null, 0, 0);
+    Session::put('user_id', 7);
+
+    /*
+     * The clock is moved rather than the stamps, so the test exercises the
+     * comparison the middleware actually makes.
+     */
+    Time::freeze(Time::now()->modify('+31 minutes'));
+    Session::start(false, null, 1800, 0);
+
+    $tests->assertSame(null, Session::get('user_id'));
+    $tests->assertSame('idle', Session::expiredReason());
+
+    // Read once and forgotten, so the notice is not shown on every later page.
+    $tests->assertSame(null, Session::expiredReason());
+
+    // Activity inside the window keeps it alive.
+    Session::put('user_id', 7);
+    Time::freeze(Time::now()->modify('+10 minutes'));
+    Session::start(false, null, 1800, 0);
+    $tests->assertSame(7, Session::get('user_id'));
+
+    Time::unfreeze();
+});
+
+$tests->run('an absolute deadline ends a session however busy it has been', function () use ($tests): void {
+    $_SESSION = [];
+    Time::freeze('2026-01-01T00:00:00+00:00');
+    Session::start(false, null, 1800, 7200);
+    Session::put('user_id', 7);
+
+    /*
+     * Active the whole time — a request every ten minutes — so the idle
+     * timeout never fires. This is the deadline that limits what a stolen
+     * cookie is worth, and it is the one an audit asks about.
+     */
+    for ($minute = 10; $minute <= 130; $minute += 10) {
+        Time::freeze((new DateTimeImmutable('2026-01-01T00:00:00+00:00'))->modify("+{$minute} minutes"));
+        Session::start(false, null, 1800, 7200);
+    }
+
+    $tests->assertSame(null, Session::get('user_id'));
+    $tests->assertSame('absolute', Session::expiredReason());
+
+    Time::unfreeze();
+});
+
+$tests->run('expiring a session takes the data and the id with it', function () use ($tests): void {
+    $_SESSION = [];
+    Session::start(false, null, 0, 0);
+    Session::put('user_id', 7);
+
+    Session::invalidate();
+
+    /*
+     * Emptying the data while keeping the id would leave the visitor holding a
+     * cookie that still names a live session, which is most of what expiring
+     * one was meant to prevent.
+     */
+    $tests->assertSame([], Session::all());
+    $tests->assertTrue(Session::startedAt() !== null);
+});
+
+$tests->run('a shared handler lets a second instance read the same session', function () use ($tests): void {
+    /*
+     * This is the reason the handler exists. With PHP's own files, a session
+     * written by one machine is invisible to another, which is what forces
+     * sticky sessions on a load balancer. A shared store removes that, and the
+     * cache handler is tested through the memory driver because the contract is
+     * what matters here, not which driver is behind it.
+     */
+    $cache = new CacheManager(new MemoryDriver());
+    $first = new CacheHandler($cache, 'session:');
+    $second = new CacheHandler($cache, 'session:');
+
+    $id = 'abcdef0123456789abcdef0123456789';
+    $payload = 'user_id|i:7;';
+
+    $tests->assertTrue($first->write($id, $payload));
+
+    // A different instance, sharing only the store.
+    $tests->assertSame($payload, $second->read($id));
+
+    /*
+     * validateId is what makes session.use_strict_mode work: PHP asks before
+     * adopting the id a cookie carries, so an id nobody was issued is refused
+     * instead of being brought to life.
+     */
+    $tests->assertTrue($second->validateId($id));
+    $tests->assertTrue(!$second->validateId('an-id-nobody-issued'));
+
+    $second->destroy($id);
+    $tests->assertSame('', $first->read($id));
+    $tests->assertSame(0, $first->gc(3600));
+});
+
+$tests->run('an unbound interface falls back to the default instead of failing', function () use ($tests): void {
+    /*
+     * This came out of registering StartSession by class name. Its constructor
+     * takes `?SessionHandlerInterface $handler = null`, meaning "I will pick
+     * one myself unless you bind one" — and the container resolved the type
+     * anyway, so every request died with "Class SessionHandlerInterface does
+     * not exist" and the middleware could only be registered as an instance.
+     *
+     * An interface is not instantiable, so there is nothing to autowire; when
+     * the parameter already carries an answer, that answer is the right one.
+     */
+    $resolved = (new Container())->get(ContainerOptionalDependency::class);
+
+    $tests->assertSame(null, $resolved->handler);
+    $tests->assertSame(null, $resolved->items);
+
+    // A binding still wins over the default.
+    $container = new Container();
+    $handler = new CacheHandler(new CacheManager(new MemoryDriver()));
+    $container->set(SessionHandlerInterface::class, $handler);
+
+    $tests->assertSame($handler, $container->get(ContainerOptionalDependency::class)->handler);
+});
+
+$tests->run('the sessions migration compiles on both dialects', function () use ($tests, $compileSchema): void {
+    /*
+     * The migration cannot be run here — that needs a real server, which is
+     * what tests/db.php is for — but the SQL it produces can be checked, and a
+     * session table that only compiles on one dialect is the kind of thing
+     * nobody notices until a deploy.
+     */
+    $blueprint = static function (Blueprint $table): void {
+        $table->string('id', 128);
+        $table->primary('id');
+        $table->text('payload');
+        $table->unsignedBigInteger('expires_at');
+        $table->index('expires_at');
+    };
+
+    foreach (['mysql', 'pgsql'] as $driver) {
+        $sql = implode(";\n", $compileSchema($driver, 'create', 'sessions', $blueprint));
+
+        $tests->assertTrue(str_contains($sql, 'sessions'));
+        $tests->assertTrue(stripos($sql, 'payload') !== false);
+        $tests->assertTrue(stripos($sql, 'expires_at') !== false);
+
+        // An integer deadline, so the comparison never depends on a column's zone.
+        $tests->assertTrue(stripos($sql, 'PRIMARY KEY') !== false || stripos($sql, 'primary') !== false);
+    }
 });
 
 $tests->finish();

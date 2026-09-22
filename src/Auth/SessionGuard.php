@@ -2,6 +2,8 @@
 
 namespace SfphpProject\src\Auth;
 
+use SfphpProject\src\Session\Session;
+
 use SfphpProject\src\Csrf;
 use SfphpProject\src\Http\Request;
 
@@ -34,7 +36,7 @@ final class SessionGuard implements Guard
     {
         Csrf::startSession();
 
-        $identifier = $_SESSION[self::SESSION_KEY] ?? null;
+        $identifier = Session::get(self::SESSION_KEY);
 
         if ($identifier === null) {
             return null;
@@ -48,7 +50,7 @@ final class SessionGuard implements Guard
          * a half-authenticated state for the life of the cookie.
          */
         if ($user === null) {
-            unset($_SESSION[self::SESSION_KEY]);
+            Session::forget(self::SESSION_KEY);
         }
 
         return $user;
@@ -72,7 +74,7 @@ final class SessionGuard implements Guard
             session_regenerate_id(true);
         }
 
-        $_SESSION[self::SESSION_KEY] = $user->getAuthIdentifier();
+        Session::put(self::SESSION_KEY, $user->getAuthIdentifier());
     }
 
     /**
@@ -84,7 +86,7 @@ final class SessionGuard implements Guard
     {
         Csrf::startSession();
 
-        unset($_SESSION[self::SESSION_KEY]);
+        Session::forget(self::SESSION_KEY);
 
         /*
          * A new id is issued on the way out too: the old one was seen by the

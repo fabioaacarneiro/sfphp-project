@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 95 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 102 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -36,6 +36,7 @@ hoje. Onde algo não existe, está dito que não existe — veja
 - [Strings UTF-8](#strings-utf-8)
 - [Autenticação](#autenticação)
 - [Segurança](#segurança)
+- [Sessões](#sessões)
 - [CSRF](#csrf)
 - [JWT](#jwt)
 - [Tratamento de erros](#tratamento-de-erros)
@@ -488,7 +489,7 @@ dependências no construtor e recebê-las por autowiring.
 | `LogRequests` | Dá um id à requisição e registra o desfecho dela |
 | `SecurityHeaders` | Acrescenta `nosniff`, `X-Frame-Options`, `Referrer-Policy`; CSP e HSTS sob demanda |
 | `SetLocale` | Negocia o idioma a partir do `Accept-Language` |
-| `StartSession` | Inicia a sessão com cookie `httponly` + `samesite=Lax` + `secure` sob HTTPS |
+| `StartSession` | Inicia a sessão e aplica os prazos ocioso e absoluto |
 | `VerifyCsrfToken` | Recusa requisição que altera estado sem token válido |
 | `Authenticate` | Identifica o usuário, e recusa anônimos quando exigido |
 | `RateLimit` | Limita quantas vezes o mesmo cliente bate numa rota |
@@ -2409,6 +2410,12 @@ enviá-lo ali pareceria proteção sem ser.
 - Cookie com `httponly`, `samesite=Lax` e `secure` quando a conexão é HTTPS —
   determinado pela requisição, respeitando os proxies confiáveis
 - Id da sessão **regenerado no login e no logout**, contra *session fixation*
+- `session.use_strict_mode` ligado, então um id que o PHP nunca emitiu é
+  recusado em vez de adotado
+- Um prazo **ocioso** e um **absoluto**, os dois aplicados no pipeline — ver
+  [Sessões](#sessões)
+- Um store que pode ser compartilhado entre instâncias, então a sessão não fica
+  presa a uma máquina
 - Token CSRF de 32 bytes, comparado com `hash_equals`
 - `VerifyCsrfToken` aplica a verificação **por padrão** a toda requisição que
   altera estado; métodos seguros e requisições com Bearer passam
@@ -2445,9 +2452,131 @@ enviá-lo ali pareceria proteção sem ser.
 | Revogação de token | Um JWT vale até expirar; não há lista de revogados |
 | Recuperação de senha, verificação de e-mail, 2FA | Fora de escopo |
 | "Lembrar de mim" | A coluna `remember_token` existe; nada a usa |
-| Timeout de sessão ocioso ou absoluto | O que o `php.ini` disser |
 | Proteção contra upload malicioso | `$_FILES` é exposto cru; validar tipo e destino é da aplicação |
 | Auditoria / log de segurança | Só `error_log()` |
+
+---
+
+## Sessões
+
+```php
+use SfphpProject\src\Session\Session;
+
+Session::put('cart_id', 42);
+Session::get('cart_id');
+Session::get('ausente', 'padrão');
+Session::has('cart_id');
+Session::forget('cart_id');
+Session::all();
+Session::regenerate();     // id novo, mesmos dados
+Session::invalidate();     // id novo, sem dados
+Session::id();
+```
+
+O `$_SESSION` continua existindo e funcionando, mas nada no framework encosta
+nele mais. Passar pelo `Session` é o que torna os dois prazos abaixo
+inescapáveis: um código que iniciasse a sessão de outro jeito teria pulado eles.
+
+### Dois prazos
+
+```ini
+SESSION_LIFETIME=7200             # ocioso: segundos sem requisição
+SESSION_ABSOLUTE_LIFETIME=43200   # absoluto: segundos desde o início da sessão
+```
+
+Antes disso, uma sessão durava o que o `php.ini` dissesse, que num host
+compartilhado é um número que ninguém da aplicação escolheu.
+
+O prazo **ocioso** fecha uma sessão deixada aberta numa máquina de que alguém se
+afastou. O **absoluto** fecha uma sessão viva há tempo demais por mais movimento
+que tenha tido, e é o que uma auditoria pergunta: é ele que limita por quanto
+tempo um cookie roubado vale alguma coisa. Cada um pode ser desligado com `0`, e
+os dois são aplicados pelo `StartSession`, que é o único lugar onde dá para
+aplicá-los uma vez e cobrir todas as rotas.
+
+Quando um prazo estoura, os dados vão embora **e o id muda junto**. Esvaziar os
+dados mantendo o id deixaria o visitante com um cookie que ainda nomeia uma
+sessão viva, que é quase tudo o que expirar uma deveria evitar.
+
+```php
+if (Session::expiredReason() === 'idle') {
+    // mostrar "você foi desconectado após um período de inatividade"
+}
+```
+
+Isso lê uma vez e esquece, então o aviso aparece na requisição seguinte à
+expiração e não em toda requisição dali em diante.
+
+### Onde as sessões ficam
+
+```ini
+SESSION_DRIVER=native      # native, database ou cache
+```
+
+| Driver | Guarda em | Use quando |
+|---|---|---|
+| `native` | Os arquivos do próprio PHP | Uma máquina. O padrão |
+| `cache` | O cache, pelo `CacheManager` | Várias instâncias, com Redis configurado |
+| `database` | Uma tabela `sessions` | Várias instâncias, e você já tem banco |
+
+Arquivos nativos são locais a uma máquina, então duas instâncias da aplicação
+não enxergam as sessões uma da outra. É isso que força sticky session num
+balanceador, e é por isso que um deploy que acrescenta uma segunda máquina
+desconecta todo mundo. Um handler compartilhado resolve, e é a única mudança que
+torna o framework usável atrás de mais de um processo.
+
+O `cache` é mais rápido e não é durável — um cache limpo é todo mundo
+desconectado. O `database` custa uma leitura e uma escrita por requisição na
+conexão que a aplicação já usa, e sobrevive a um restart. Com o driver de cache
+em arquivo, o `cache` se comporta exatamente como o `native`: quem decide isso é
+o driver, não o handler.
+
+O driver de banco precisa da tabela dele:
+
+```bash
+./sfphp migrate
+```
+
+Um handler também pode ser passado direto, que é como um deploy conecta um
+próprio:
+
+```php
+$router->middleware(new StartSession(new CacheHandler(), 1800, 28800));
+```
+
+Qualquer classe que implemente o `SessionHandlerInterface` do próprio PHP
+funciona. Implementar também o `SessionUpdateTimestampHandlerInterface` — os
+dois handlers que vêm no framework implementam — é o que faz a seção seguinte
+funcionar.
+
+### Fixação de sessão
+
+Duas defesas, e elas fecham metades diferentes do mesmo ataque.
+
+O id é **regenerado no login e no logout**, então um id que um atacante tenha
+plantado antes não é o id com que a vítima termina.
+
+E o `session.use_strict_mode` agora está ligado. Sem ele o PHP adota qualquer id
+que o cookie carregue, inclusive um que ele nunca emitiu — que é a porta em que
+o atacante bate antes de mais nada. Com ele, um id desconhecido é recusado e um
+novo é emitido:
+
+```
+GET / com Cookie: PHPSESSID=um-id-que-ninguem-emitiu
+→ Set-Cookie: PHPSESSID=636dbac9b2f1bc09c3d335c16115bc89
+```
+
+É por isso que um handler deve implementar o `validateId()`: é assim que o PHP
+pergunta ao store se um id nomeia uma sessão que existe.
+
+### O que falta
+
+| Ausência | Situação |
+|---|---|
+| Listar ou revogar a sessão de outro dispositivo | A tabela do driver `database` torna possível construir; nada vem pronto |
+| Rotação periódica do id | O id muda no login, no logout e na expiração, não por tempo |
+| Criptografia em repouso | O payload é guardado como o PHP serializa; um banco ou cache com criptografia própria é a resposta |
+| Dados de uma requisição só | Não há helper de "guarde isto por exatamente mais uma requisição" |
 
 ---
 
@@ -2854,7 +2983,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 95 casos unitários
+composer run test        # 102 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve
@@ -2891,7 +3020,6 @@ não faz, e que você deve saber antes de escolhê-lo.
 
 | Ausência | Impacto |
 |---|---|
-| **Timeout de sessão** | Ocioso ou absoluto: o que o `php.ini` disser. Ver [Segurança](#segurança) |
 | **Recuperação de senha e dois fatores** | O login existe; esses fluxos não. Ver [Autenticação](#autenticação) |
 | **Sistema de eventos** | `make:event` e `make:listener` geram classes sem dispatcher |
 | **ORM completo** | Existe uma camada de [Models](#models) com hidratação, tipos de atributo, relacionamentos (incluindo muitos-para-muitos) e `with()`. Não existe identity map, unit of work, proxy de lazy loading, relação polimórfica nem schema derivado da classe — e [ORM ou Query Builder?](#orm-ou-query-builder) explica o motivo de cada um |
@@ -2899,7 +3027,7 @@ não faz, e que você deve saber antes de escolhê-lo.
 | **Datas relativas e localizadas** | "3 horas atrás" e nomes de mês localizados não existem; armazenamento e conversão existem. Ver [Tempo e fusos horários](#tempo-e-fusos-horários) |
 | **Métricas** | Os registros carregam durações; contadores e tempos não são coletados. Ver [Log](#log) |
 | **Cache de rotas** | O despacho é O(n), com uma `preg_match` por rota. Adequado a dezenas, não a centenas |
-| **Sessão plugável** | `$_SESSION` nativa. Múltiplas instâncias exigem sticky sessions |
+| **Revogar sessão de outro lugar** | Encerrar a sessão de outro dispositivo dá para construir sobre a tabela do driver `database`; nada vem pronto. Ver [Sessões](#sessões) |
 | **Distribuição como pacote** | O namespace de controllers já é parâmetro do Router, mas `composer.json` ainda descreve uma aplicação, não uma biblioteca |
 
 O SFHT também não tem variáveis automáticas de laço (`$loop`) nem herança
