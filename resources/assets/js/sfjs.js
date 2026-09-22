@@ -316,6 +316,15 @@ const sf = (() => {
       const target = e.target.closest('[\\@hxGet], [\\@hxPost], [\\@hxPut], [\\@hxDelete], [\\@hxPatch]');
       if (!target) return;
 
+      /*
+       * A form is driven by its submit event, which is the only place the
+       * fields are serialised. Clicking its submit button used to arrive here
+       * first — closest() walks up — and this prevented the default, so the
+       * submit never fired and the bare action was fetched with nothing the
+       * visitor had typed.
+       */
+      if (target.tagName === 'FORM') return;
+
       e.preventDefault();
 
       /*

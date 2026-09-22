@@ -1,6 +1,6 @@
 <?php
 
-namespace SfphpProject\app\components\postcode;
+namespace SfphpProject\app\components\postcode\lookup;
 
 use SfphpProject\src\View\Sfht;
 

@@ -1,6 +1,6 @@
 <?php
 
-namespace SfphpProject\app\components\postcode;
+namespace SfphpProject\app\components\postcode\layout;
 
 use SfphpProject\src\View\Sfht;
 

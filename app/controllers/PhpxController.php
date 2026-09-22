@@ -8,8 +8,8 @@ use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
 use SfphpProject\src\View\Sfht;
 
-use function SfphpProject\app\components\postcode\Address;
-use function SfphpProject\app\components\postcode\Notice;
+use function SfphpProject\app\components\postcode\lookup\Address;
+use function SfphpProject\app\components\postcode\lookup\Notice;
 use function SfphpProject\app\components\postcode\PostcodePage;
 
 /**

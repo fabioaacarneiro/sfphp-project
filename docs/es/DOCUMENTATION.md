@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 150 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 151 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -998,19 +998,25 @@ app/components/
 ├── BulletList.phpx
 └── postcode/
     ├── PostcodePage.phpx
-    ├── PageHeader.phpx
-    ├── PostcodeLookup.phpx
-    ├── Field.phpx
-    ├── HowItWorks.phpx
-    └── PageFooter.phpx
+    ├── layout/
+    │   ├── PageHeader.phpx
+    │   └── PageFooter.phpx
+    ├── lookup/
+    │   ├── PostcodeLookup.phpx
+    │   ├── Address.phpx
+    │   ├── Field.phpx
+    │   └── Notice.phpx
+    └── explain/
+        └── HowItWorks.phpx
 ```
 
-Los componentes de una misma carpeta comparten el espacio de nombres, así que
-una página compone sus partes llamándolas — sin import y sin prefijo. Alcanzar
-uno desde fuera, por ejemplo desde un controlador, es un `use function`:
+Los componentes de una misma carpeta comparten el espacio de nombres, así que se
+componen por su nombre — sin import y sin prefijo. Cruzar una carpeta, o alcanzar
+uno desde un controlador, es un `use function`, igual que para cualquier otra
+función en PHP:
 
 ```php
-use function SfphpProject\app\components\postcode\PostcodePage;
+use function SfphpProject\app\components\postcode\lookup\Address;
 ```
 
 ### Por qué un componente devuelve Sfht
@@ -4364,7 +4370,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 150 casos unitarios
+composer run test        # 151 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve
