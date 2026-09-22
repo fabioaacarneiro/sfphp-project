@@ -52,7 +52,11 @@ if (is_dir($__compiled)) {
     }
 }
 
-require_once __DIR__ . "/../src/routes.php";
+// Load web routes (views/templates)
+require_once __DIR__ . "/../app/routes/web.php";
+
+// Load API routes (JSON/REST endpoints)
+require_once __DIR__ . "/../app/routes/api.php";
 
 $container = new Container();
 
