@@ -94,7 +94,7 @@ Extensões opcionais, declaradas em `suggest`:
 ### Começar um projeto
 
 ```bash
-composer create-project fabioaacarneiro/sfphp meu-app
+composer create-project fabioaacarneiro/sfphp-framework meu-app
 cd meu-app
 ./sfphp serve
 ```
@@ -128,7 +128,7 @@ Tudo ali é **seu**. Apague o controller de exemplo e as views dele; o framework
 ### Acrescentar a um projeto que já existe
 
 ```bash
-composer require fabioaacarneiro/sfphp
+composer require fabioaacarneiro/sfphp-framework
 ./vendor/bin/sfphp init
 ```
 
@@ -3891,7 +3891,7 @@ um config, e o gerador viaja no pacote — uma folha de estilo descrita como
 "gerada a partir de um config" não serve de nada para quem não tem o gerador.
 
 ```bash
-cp vendor/fabioaacarneiro/sfphp/tools/css-builder/sfcss.config.json .
+cp vendor/fabioaacarneiro/sfphp-framework/tools/css-builder/sfcss.config.json .
 # edite: paletas, espaçamento, breakpoints, fontes
 ./vendor/bin/sfphp css:build
 ```
