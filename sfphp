@@ -10,25 +10,41 @@
  * framework, not into the framework's own directory inside vendor/.
  */
 
-$candidates = [
-    // A checkout of this repository.
-    __DIR__ . '/vendor/autoload.php',
-    // Installed, and invoked through vendor/bin/sfphp.
-    __DIR__ . '/../autoload.php',
-    // Installed, and invoked directly at vendor/fabio/sfphp/sfphp.
-    __DIR__ . '/../../autoload.php',
-];
+/*
+ * Composer's own binary proxy sets this, and it is the only answer that is
+ * right by construction: it names the autoloader of the project that installed
+ * the package, whatever the directory layout around it happens to be.
+ */
+$autoloader = $GLOBALS['_composer_autoload_path'] ?? null;
 
-$autoloader = null;
+if ($autoloader === null) {
+    /*
+     * Installed locations come first and the local checkout last, deliberately.
+     * A package can arrive carrying a vendor/ directory of its own — a path
+     * repository copies the working tree, which is how a framework is usually
+     * developed alongside an application — and that inner autoloader belongs to
+     * the framework's own checkout, not to the project being worked on. Trying
+     * it first loaded the wrong one and failed on a dev file that is not even
+     * shipped.
+     */
+    $candidates = [
+        // Installed, invoked at vendor/<vendor>/<package>/sfphp.
+        __DIR__ . '/../../autoload.php',
+        // Installed, invoked through a symlink in vendor/bin.
+        __DIR__ . '/../autoload.php',
+        // A checkout of this repository.
+        __DIR__ . '/vendor/autoload.php',
+    ];
 
-foreach ($candidates as $candidate) {
-    if (is_file($candidate)) {
-        $autoloader = $candidate;
-        break;
+    foreach ($candidates as $candidate) {
+        if (is_file($candidate)) {
+            $autoloader = $candidate;
+            break;
+        }
     }
 }
 
-if ($autoloader === null) {
+if ($autoloader === null || !is_file($autoloader)) {
     fwrite(STDERR, "Composer's autoloader was not found. Run composer install." . PHP_EOL);
 
     exit(1);
@@ -46,6 +62,6 @@ use SfphpProject\src\Console\Application;
  * web request gets — a queue worker that saw different configuration from the
  * application it belongs to would be its own kind of bug.
  */
-Bootstrap::load(dirname($autoloader, 2));
+Bootstrap::load(dirname(realpath($autoloader), 2));
 
 exit((new Application($argv ?? []))->run());
