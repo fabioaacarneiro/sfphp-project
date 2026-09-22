@@ -35,3 +35,4 @@
 use SfphpProject\src\Router;
 
 Router::get("/", "MainController", "index");
+Router::get('/phpx', 'PhpxController', 'index')->name('phpx');

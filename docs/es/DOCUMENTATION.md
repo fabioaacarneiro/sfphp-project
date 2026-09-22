@@ -22,6 +22,7 @@ hace hoy. Donde algo no existe, se dice que no existe — véase
 - [Controladores](#controladores)
 - [Middleware](#middleware)
 - [Vistas y SFHT](#vistas-y-sfht)
+- [Componentes y .phpx](#componentes-y-phpx)
 - [Contenedor e inyección de dependencias](#contenedor-e-inyección-de-dependencias)
 - [Base de datos](#base-de-datos)
 - [Modelos](#modelos)
@@ -935,6 +936,118 @@ Unclosed @if opened on line 12.
 Unclosed "{{" expression on line 3.
 Filter not registered: noexiste
 ```
+
+---
+
+## Componentes y .phpx
+
+Hay dos formas de escribir una página, ambas distribuidas, y cada una es mejor en
+algo. La aplicación de ejemplo usa una en sus páginas y la otra en la
+demostración en `/phpx`.
+
+| | `.sfht` | `.phpx` |
+|---|---|---|
+| Qué es | Un archivo de marcado | Una función PHP cuyo marcado vive dentro de ella |
+| Composición | `@include`, `@extends`, `@block` | Llamar a la función |
+| Qué recibe | Lo que haya en el ámbito, más lo que se le pase | Sus parámetros, y nada más |
+| Editado por | Quien sabe HTML | Quien lee PHP |
+| Mejor para | Páginas y layouts | Piezas reutilizables |
+| Paso de compilación | Ninguno — compila bajo demanda | `./sfphp build --phpx` |
+
+### Escribir un componente
+
+```php
+<?php
+
+namespace App\Components;
+
+use SfphpProject\src\View\Sfht;
+
+function Card(string $titulo, string $cuerpo, string $color = 'blue'): Sfht
+{
+    return sfht(
+        <div class="card border-{{ $color }}-500">
+            <div class="card-header"><h3 class="m-0">{{ $titulo }}</h3></div>
+            <div class="card-body"><p>{{ $cuerpo }}</p></div>
+        </div>
+    );
+}
+```
+
+El `sfht(` abre una región de marcado y el `)` que le corresponde la cierra. Entre
+los dos es SFHT, así que `{{ }}`, `{!! !!}`, `@if` y `@foreach` funcionan y el
+escapado es el mismo que en el resto del framework.
+
+```bash
+./sfphp build --phpx        # compila app/components/*.phpx
+```
+
+La compilación escribe el PHP junto al fuente y ejecuta `php -l` sobre cada
+resultado, así que un error de sintaxis aparece al compilar con el número de línea
+del `.phpx` — el compilador rellena la salida para mantener esa alineación.
+
+### Por qué un componente devuelve Sfht
+
+```php
+{{ Card('Hola', $cuerpo) }}    la tarjeta se renderiza
+{{ $cuerpo }}                   el texto se escapa
+```
+
+Ambos en la misma posición, con lo correcto ocurriendo en cada caso, porque el
+**tipo** dice cuál es cuál. `Sfht` significa "marcado que este framework produjo";
+cualquier otra cosa es texto de origen desconocido.
+
+La alternativa — devolver una cadena y escribir `{!! Card(...) !!}` — le pide al
+autor que recuerde qué valores son de confianza, y ahí es donde alguien acaba
+escribiendo `{!! $comentario !!}` y publica un agujero de cross-site scripting.
+
+> **Envolver una cadena en `Sfht` evita el escapado**, que es justo para lo que
+> sirve y justo por lo que `new Sfht($loQueSea)` merece una segunda mirada. El
+> compilador construye estos objetos a partir de marcado que escribió un autor;
+> uno construido a partir de una petición es la decisión de confiar en ella.
+
+### Cuál elegir
+
+Usa `.sfht` cuando la cosa es una **página**: layout, bloque, algo que un
+diseñador pueda abrir. Usa `.phpx` cuando la cosa es una **pieza**: una tarjeta,
+un campo, una fila de tabla — cualquier cosa que reciba argumentos y aparezca más
+de una vez.
+
+La diferencia práctica es el contrato. Un parcial ve lo que por casualidad estaba
+en el ámbito donde se incluyó, así que lo que necesita se descubre leyendo el
+archivo. Los parámetros de un componente son sus props, así que lo que necesita
+es la firma.
+
+### Cargar los componentes
+
+PHP autocarga clases, no funciones, así que un componente compilado no puede
+encontrarse bajo demanda. El front controller lo incluye una vez:
+
+```php
+foreach (glob(__DIR__ . '/../app/components/compiled/*.php') ?: [] as $component) {
+    require_once $component;
+}
+```
+
+### Soporte del editor
+
+Un `.phpx` es PHP con marcado donde PHP no lo espera, así que hay que avisar al
+editor de tres cosas distintas. El proyecto ya trae la configuración, y un
+proyecto creado la recibe lista:
+
+| Archivo | Cubre |
+|---|---|
+| `.editorconfig` | Espacios en blanco y codificación, en cualquier editor |
+| `.vscode/settings.json` | Asociación de lenguaje, Emmet y la lista de archivos de Intelephense |
+| `.zed/settings.json` | Lo mismo, en el formato de Zed |
+
+Intelephense mantiene una lista de archivos a indexar que es **independiente** de
+la asociación de lenguaje del editor, y por eso el autocompletado parece
+imposible hasta que `intelephense.files.associations` menciona `*.phpx`.
+
+El coste de mapear `.phpx` al lenguaje `php` es que su marcado se lee como error
+de sintaxis, así que el diagnóstico queda apagado también para todo `.php`.
+`./sfphp build --phpx` y `composer run lint` siguen atrapando los de verdad.
 
 ---
 
