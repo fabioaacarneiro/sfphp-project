@@ -3624,9 +3624,19 @@ $tests->run('the package declares only the framework', function () use ($tests):
     // And excluded from what a `composer require` downloads.
     $attributes = (string) file_get_contents(__DIR__ . '/../.gitattributes');
 
-    foreach (['/app', '/database', '/public', '/tests', '/tools', '/docs', '/lang'] as $directory) {
+    foreach (['/app', '/database', '/public', '/tests', '/docs', '/lang'] as $directory) {
         $tests->assertTrue((bool) preg_match('#^' . preg_quote($directory, '#') . '\s+export-ignore#m', $attributes));
     }
+
+    /*
+     * tools/ used to be excluded whole, which made "SFCSS is generated from
+     * sfcss.config.json" untrue for everybody who installed the framework: they
+     * had the stylesheet and no way to build another. The builders travel; the
+     * documentation parity check, which is about this repository's own three
+     * languages, does not.
+     */
+    $tests->assertTrue((bool) preg_match('#^/tools/docs-parity\.php\s+export-ignore#m', $attributes));
+    $tests->assertSame(0, preg_match('#^/tools\s+export-ignore#m', $attributes));
 });
 
 $tests->run('the framework reads no constant it did not define itself', function () use ($tests): void {
@@ -4652,14 +4662,28 @@ $tests->run('the framework ships its stylesheet and script, and can publish them
     $target = sys_get_temp_dir() . '/sfphp-assets-' . bin2hex(random_bytes(4));
 
     try {
-        $written = Assets::publish($target);
+        $written = Assets::publish($target)['written'];
         $tests->assertSame(Assets::files(), $written);
         $tests->assertSame(true, is_file($target . '/css/sfcss.min.css'));
 
         // Publishing twice copies nothing: reporting work that did not happen
         // is how a command stops being believed.
-        $tests->assertSame([], Assets::publish($target));
-        $tests->assertSame(Assets::files(), Assets::publish($target, true));
+        $tests->assertSame([], Assets::publish($target)['written']);
+        $tests->assertSame(Assets::files(), Assets::publish($target, true)['written']);
+
+        /*
+         * A stylesheet somebody built from their own config lives here. The
+         * next composer install runs publish, and overwriting it would throw
+         * their palette away silently — the worst way to lose work.
+         */
+        file_put_contents($target . '/css/sfcss.css', '/* mine */');
+        $again = Assets::publish($target);
+
+        $tests->assertSame(['css/sfcss.css'], $again['kept']);
+        $tests->assertSame('/* mine */', file_get_contents($target . '/css/sfcss.css'));
+
+        // Asking for it explicitly does replace it.
+        $tests->assertSame(true, in_array('css/sfcss.css', Assets::publish($target, true)['written'], true));
 
         /*
          * Copying means the same bytes exist twice: once in the package and
@@ -4736,7 +4760,7 @@ $tests->run('the published package carries the framework and nothing else', func
     sort($top);
 
     $tests->assertSame(
-        ['LICENSE', 'README.md', 'composer.json', 'resources', 'sfphp', 'src'],
+        ['LICENSE', 'README.md', 'composer.json', 'resources', 'sfphp', 'src', 'tools'],
         $top
     );
 
@@ -4750,6 +4774,12 @@ $tests->run('the published package carries the framework and nothing else', func
         'resources/assets/js/sfjs.min.js',
         'resources/starter/public/index.php',
         'resources/starter/resources/views/welcome.sfht',
+        // Without these, "generated from a config" is not true for anybody who
+        // installed the framework rather than cloning it.
+        'tools/css-builder/sfcss-builder.php',
+        'tools/css-builder/sfcss.config.json',
+        'tools/css-builder/sfcss-base.css',
+        'tools/js-builder/sfjs-builder.php',
     ] as $needed) {
         $tests->assertSame(true, in_array($needed, $entries, true));
     }

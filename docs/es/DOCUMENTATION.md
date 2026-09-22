@@ -3855,7 +3855,8 @@ encuentra los mismos archivos no copia nada y lo dice.
 ./sfphp serve          # http://localhost:8000
 ./sfphp routes         # una tabla de las rutas registradas
 ./sfphp env:example    # crea .env a partir de .env-example
-./sfphp css:build      # construye SFCSS desde la configuración
+./sfphp css:build      # construye SFCSS desde la configuración; --config= --output=
+./sfphp js:build       # minifica SFJS
 ./sfphp tinker         # REPL — solo para desarrollo local
 ./sfphp list
 ./sfphp version
@@ -3869,9 +3870,16 @@ local; nunca expongas la CLI a entrada no confiable.
 
 ## SFCSS
 
-Un framework CSS de utilidades generado a partir de
-`tools/css-builder/sfcss.config.json`. Las variantes `hover:` y los puntos de
-ruptura `sm`/`md`/`lg`/`xl` se generan desde esa configuración.
+Un framework CSS de utilidades. **Llega construido** — `composer require`
+entrega la hoja de estilos, y `composer install`, `sfphp init` y `sfphp serve`
+la copian a `public/assets`, así que usarla es una línea de HTML:
+
+```html
+<link rel="stylesheet" href="/assets/css/sfcss.min.css">
+```
+
+No hay que generar nada para usar SFCSS. El generador está para **cambiarlo**,
+que es lo que viene [más abajo](#cambiar-sfcss).
 
 | | |
 |---|---|
@@ -3883,19 +3891,39 @@ ruptura `sm`/`md`/`lg`/`xl` se generan desde esa configuración.
 | Tamaño | 112KB en crudo · 94KB minificado · **16,4KB comprimido** |
 | Dependencias | ninguna |
 
+### Cambiar SFCSS
+
+Los colores, la escala de espaciado, la escala tipográfica y los puntos de
+ruptura vienen de una configuración, y el generador viaja en el paquete — una
+hoja de estilos descrita como "generada a partir de una configuración" no sirve
+de nada a quien no tiene el generador.
+
 ```bash
-./sfphp css:build        # construye resources/assets/css/sfcss.css y .min.css
-./sfphp assets:publish   # lo copia a public/assets
+cp vendor/fabioaacarneiro/sfphp/tools/css-builder/sfcss.config.json .
+# edítala: paletas, espaciado, puntos de ruptura, fuentes
+./vendor/bin/sfphp css:build
 ```
 
-```html
-<link rel="stylesheet" href="/assets/css/sfcss.css">
+`css:build` usa **tu** configuración cuando hay una junto a `composer.json`, y
+escribe en tu `public/assets/css`. Editar la copia dentro de `vendor/`
+funcionaría hasta que el siguiente `composer update` la tirase, y por eso gana
+la tuya y la construcción nunca escribe dentro del paquete.
+
+```bash
+./vendor/bin/sfphp css:build --config=design/sfcss.json --output=web/css
 ```
 
-SFCSS vive en el **paquete**, no en un directorio público, porque es una
-herramienta que el framework distribuye y no un archivo de la aplicación de
-ejemplo — igual que SFJS. `composer require` entrega los dos; `assets:publish`
-los deja donde un navegador los alcanza.
+> **Una hoja de estilos que construiste no se sobrescribe.** `composer install` y
+> `serve` publican los assets del framework, y cuando uno de los tuyos es
+> distinto dicen que lo conservaron en vez de reemplazarlo. `assets:publish
+> --force` recupera la versión del framework.
+
+Para cambiar solo un color, editar la configuración es más de lo que necesitas:
+el tema lee variables CSS, así que sobrescribirlas en tu propia hoja basta.
+
+```css
+:root { --primary: #ff6600; }
+```
 
 ### Lo que usan las pantallas del propio framework
 

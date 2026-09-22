@@ -3793,7 +3793,8 @@ says so.
 ./sfphp serve          # http://localhost:8000
 ./sfphp routes         # a table of the registered routes
 ./sfphp env:example    # creates .env from .env-example
-./sfphp css:build      # builds SFCSS from the config
+./sfphp css:build      # builds SFCSS from the config; --config= --output=
+./sfphp js:build       # minifies SFJS
 ./sfphp tinker         # REPL — local development only
 ./sfphp list
 ./sfphp version
@@ -3807,9 +3808,16 @@ expose the CLI to untrusted input.
 
 ## SFCSS
 
-A utility CSS framework generated from `tools/css-builder/sfcss.config.json`.
-The `hover:` variants and the `sm`/`md`/`lg`/`xl` breakpoints are generated
-from that config.
+A utility CSS framework. **It arrives built** — `composer require` delivers the
+stylesheet, and `composer install`, `sfphp init` and `sfphp serve` each copy it
+into `public/assets`, so using it is one line of HTML:
+
+```html
+<link rel="stylesheet" href="/assets/css/sfcss.min.css">
+```
+
+Nothing has to be generated to use SFCSS. The generator is there for changing
+it, which is [further down](#changing-sfcss).
 
 | | |
 |---|---|
@@ -3821,19 +3829,38 @@ from that config.
 | Size | 112KB raw · 94KB minified · **16.4KB gzipped** |
 | Dependencies | none |
 
+### Changing SFCSS
+
+The colours, the spacing scale, the type scale and the breakpoints come from a
+config, and the generator ships with the package — a stylesheet described as
+"generated from a config" is of no use to somebody who has no generator.
+
 ```bash
-./sfphp css:build        # builds resources/assets/css/sfcss.css and .min.css
-./sfphp assets:publish   # copies it into public/assets
+cp vendor/fabioaacarneiro/sfphp/tools/css-builder/sfcss.config.json .
+# edit it: palettes, spacing, breakpoints, fonts
+./vendor/bin/sfphp css:build
 ```
 
-```html
-<link rel="stylesheet" href="/assets/css/sfcss.css">
+`css:build` uses **your** config when there is one next to `composer.json` and
+writes into your `public/assets/css`. Editing the copy inside `vendor/` would
+work until the next `composer update` threw it away, which is why yours wins and
+why the build never writes into the package.
+
+```bash
+./vendor/bin/sfphp css:build --config=design/sfcss.json --output=web/css
 ```
 
-SFCSS lives in the **package**, not in a public directory, because it is a tool
-the framework ships rather than a file of the example application — the same as
-SFJS. `composer require` delivers both; `assets:publish` puts them where a
-browser can reach them.
+> **A stylesheet you built is not overwritten.** `composer install` and `serve`
+> publish the framework's assets, and when one of yours differs they say they
+> kept it rather than replacing it. `assets:publish --force` takes the
+> framework's version back.
+
+For a change of colour alone, editing the config is more than you need: the
+theme reads CSS variables, so overriding them in your own stylesheet is enough.
+
+```css
+:root { --primary: #ff6600; }
+```
 
 ### What the framework's own screens use
 

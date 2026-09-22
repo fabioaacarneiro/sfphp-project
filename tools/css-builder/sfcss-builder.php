@@ -5,10 +5,19 @@
  * Usage: php sfcss-builder.php > sfcss.css
  */
 
-$configFile = __DIR__ . '/sfcss.config.json';
+/*
+ * The config and the output directory can both be given, because a project that
+ * installed the framework cannot edit the copy inside vendor/ — the next
+ * composer update would throw the edit away. It keeps its own config and builds
+ * into its own public directory; the defaults are what this repository needs.
+ *
+ *   php sfcss-builder.php [config.json] [output directory]
+ */
+$configFile = $argv[1] ?? __DIR__ . '/sfcss.config.json';
+$outputDirectory = rtrim($argv[2] ?? __DIR__ . '/../../resources/assets/css', '/');
 
 if (!is_file($configFile)) {
-    fwrite(STDERR, "Error: sfcss.config.json not found\n");
+    fwrite(STDERR, "Error: config not found at {$configFile}\n");
     exit(1);
 }
 
@@ -23,13 +32,18 @@ $css = generateCss($config);
 
 // Generate both full and minified versions
 /*
- * resources/, not public/. SFCSS is a tool the framework ships, like SFJS, so
- * it has to be inside what a composer require delivers — and public/ is
+ * resources/, not public/, by default. SFCSS is a tool the framework ships, like
+ * SFJS, so it has to be inside what a composer require delivers — and public/ is
  * export-ignored, because a consumer's vendor/ has no business holding a front
  * controller. ./sfphp assets:publish copies it into a project's public/.
  */
-$outputPath = __DIR__ . '/../../resources/assets/css/sfcss.css';
-$minOutputPath = __DIR__ . '/../../resources/assets/css/sfcss.min.css';
+if (!is_dir($outputDirectory) && !mkdir($outputDirectory, 0755, true) && !is_dir($outputDirectory)) {
+    fwrite(STDERR, "Error: could not create {$outputDirectory}\n");
+    exit(1);
+}
+
+$outputPath = $outputDirectory . '/sfcss.css';
+$minOutputPath = $outputDirectory . '/sfcss.min.css';
 
 file_put_contents($outputPath, $css);
 
