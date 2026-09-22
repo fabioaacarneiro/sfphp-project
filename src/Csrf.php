@@ -31,8 +31,8 @@ final class Csrf
         Session::start(
             $secure ?? self::isHttps(),
             null,
-            defined('SESSION_LIFETIME') ? (int) SESSION_LIFETIME : 0,
-            defined('SESSION_ABSOLUTE_LIFETIME') ? (int) SESSION_ABSOLUTE_LIFETIME : 0
+            Config::int('SESSION_LIFETIME', 0),
+            Config::int('SESSION_ABSOLUTE_LIFETIME', 0)
         );
     }
 

@@ -18,6 +18,7 @@ require __DIR__ . '/../vendor/autoload.php';
 require __DIR__ . '/TestRunner.php';
 
 use SfphpProject\src\Migrations\Blueprint;
+use SfphpProject\src\Migrations\MigrationLock;
 use SfphpProject\src\Migrations\MigrationRunner;
 use SfphpProject\src\Migrations\Schema;
 
@@ -242,9 +243,10 @@ function assertDbError(TestRunner $tests, callable $callback): void
  * @param TestRunner $tests The runner
  * @param PDO $pdo The connection
  * @param string $driver The driver name
+ * @param callable(): PDO $connect Opens a second connection to the same server
  * @return void
  */
-function registerSchemaTests(TestRunner $tests, PDO $pdo, string $driver): void
+function registerSchemaTests(TestRunner $tests, PDO $pdo, string $driver, callable $connect): void
 {
     $schema = new Schema($pdo);
     $mysql = $driver === 'mysql';
@@ -971,6 +973,50 @@ PHP);
             rmdir($directory);
         }
     });
+
+    $test('the migration lock is held against a second connection', function () use ($tests, $pdo, $connect): void {
+        /*
+         * The lock is the whole answer to two instances migrating on deploy, and
+         * it is exactly the kind of code that reads correctly and does nothing:
+         * every statement in it is server-side, so nothing but a real server
+         * proves it works. One connection takes it, a second must be refused.
+         */
+        $mine = new MigrationLock($pdo, 60);
+        $tests->assertSame(true, $mine->acquire());
+        $tests->assertSame(true, $mine->isHeld());
+
+        $other = $connect();
+        // A one-second timeout, so being refused costs a second rather than a minute.
+        $theirs = new MigrationLock($other, 1);
+
+        $tests->assertThrows(fn () => $theirs->acquire(), RuntimeException::class);
+        $tests->assertSame(false, $theirs->isHeld());
+
+        $mine->release();
+        $tests->assertSame(false, $mine->isHeld());
+
+        // Released, so the next process gets it.
+        $tests->assertSame(true, $theirs->acquire());
+        $theirs->release();
+    });
+
+    $test('a lock dies with the connection that held it', function () use ($tests, $pdo, $connect): void {
+        /*
+         * The reason an advisory lock was the right tool rather than a row in a
+         * table: a deploy killed mid-migration must not leave a lock nobody can
+         * clear. Dropping the connection has to be enough.
+         */
+        $abandoned = $connect();
+        $lost = new MigrationLock($abandoned, 60);
+        $tests->assertSame(true, $lost->acquire());
+
+        unset($lost, $abandoned);
+        gc_collect_cycles();
+
+        $mine = new MigrationLock($pdo, 5);
+        $tests->assertSame(true, $mine->acquire());
+        $mine->release();
+    });
 }
 
 
@@ -1085,11 +1131,18 @@ foreach ($targets as $driver => [$dsnVariable, $userVariable, $passVariable]) {
         continue;
     }
 
-    $pdo = new PDO($dsn, getenv($userVariable) ?: null, getenv($passVariable) ?: null, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES => false,
-    ]);
+    $connect = static fn (): PDO => new PDO(
+        $dsn,
+        getenv($userVariable) ?: null,
+        getenv($passVariable) ?: null,
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ]
+    );
+
+    $pdo = $connect();
 
     $foreign = array_values(array_filter(
         dbTables($pdo, $driver),
@@ -1104,7 +1157,7 @@ foreach ($targets as $driver => [$dsnVariable, $userVariable, $passVariable]) {
 
     $hadMigrations = in_array('migrations', dbTables($pdo, $driver), true);
     $connections[] = [$pdo, $driver, $hadMigrations];
-    registerSchemaTests($tests, $pdo, $driver);
+    registerSchemaTests($tests, $pdo, $driver, $connect);
 }
 
 /*

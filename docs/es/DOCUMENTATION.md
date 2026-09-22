@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 119 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 126 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -30,6 +30,7 @@ hace hoy. Donde algo no existe, se dice que no existe — véase
 - [Seeders y factories](#seeders-y-factories)
 - [Caché](#caché)
 - [Colas](#colas)
+- [Eventos](#eventos)
 - [Correo](#correo)
 - [Validación](#validación)
 - [Subida de archivos](#subida-de-archivos)
@@ -43,6 +44,7 @@ hace hoy. Donde algo no existe, se dice que no existe — véase
 - [JWT](#jwt)
 - [Manejo de errores](#manejo-de-errores)
 - [Registro](#registro)
+- [Health check y métricas](#health-check-y-métricas)
 - [CLI](#cli)
 - [SFCSS](#sfcss)
 - [SFJS](#sfjs)
@@ -226,6 +228,35 @@ public/index.php
 realmente necesita un valor (la base de datos, JWT) falla por su cuenta, con un
 mensaje concreto.
 
+### Leer un ajuste
+
+`Bootstrap` convierte `.env` en constantes, y el framework las lee a través de
+`Config` en vez de llamar a `constant()` directamente:
+
+```php
+use SfphpProject\src\Config;
+
+Config::get('APP_ENV', 'production');
+Config::int('SESSION_LIFETIME', 7200);
+Config::string('MAIL_FROM_ADDRESS');
+Config::has('JWT_KEY');
+```
+
+Un `set()` explícito gana, luego la constante, luego el valor por defecto que
+pasó quien llamó. Nada que lea `APP_ENV` directamente ha cambiado — las
+constantes siguen definidas y siguen funcionando.
+
+La razón del rodeo es que una constante no se puede quitar. Eso está bien para
+una aplicación, que decide sus ajustes una vez al arrancar, y resulta incómodo
+para un test, que quiere saber qué pasa con otra duración de sesión sin levantar
+un proceso aparte para averiguarlo:
+
+```php
+Config::set('SESSION_LIFETIME', 60);
+// ...
+Config::forget('SESSION_LIFETIME');   // vuelve a la constante
+```
+
 ---
 
 ## Enrutamiento
@@ -294,6 +325,13 @@ La ruta de la petición se decodifica segmento a segmento antes de comparar, de
 modo que `/productos/caf%C3%A9` coincide con `/productos/nombre:alpha`. Los
 separadores codificados (`%2F`, `%5C`) **no** se convierten en separadores
 reales: `/a%2Fb` nunca alcanza la ruta `/a/b`.
+
+Una ruta **sin parámetros** se compara como dos cadenas, nunca ejecutando una
+expresión regular, y una ruta con parámetros compila su patrón una vez y lo
+guarda. La mayoría de las aplicaciones son sobre todo rutas estáticas, así que
+la mayor parte del bucle de despacho cuesta una comparación. Lo que sigue siendo
+lineal es el bucle en sí: el router recorre la tabla hasta que algo coincide, y
+nada se compila de antemano a un archivo.
 
 ### Grupos
 
@@ -1353,6 +1391,20 @@ no puede honrar la semántica que se le pide, en vez de cambiarla en silencio.
 
 ### Crear y ejecutar
 
+Las migraciones toman un bloqueo antes de leer la lista de pendientes, así que
+dos instancias migrando al desplegar no pueden decidir ambas que el mismo
+archivo está pendiente y ejecutarlo las dos. MySQL y PostgreSQL tienen cada uno
+un bloqueo consultivo — un bloqueo con nombre, atado a la conexión, liberado
+cuando la conexión desaparece, así que un despliegue muerto a mitad de la
+migración no deja nada atascado. Un driver sin él no se rechaza: registra que
+está ejecutándose sin bloqueo, porque hacer fallar las migraciones en SQLite
+sería peor que prescindir de una guarda donde un único escritor es la norma de
+todos modos.
+
+Ejecutar las migraciones como un paso del pipeline sigue siendo la mejor forma.
+El bloqueo está porque el framework no debería depender de que todo el mundo lo
+haga.
+
 ```bash
 ./sfphp make:migration create_users_table
 ./sfphp make:migration:create users        # prerrellenada con id + timestamps
@@ -2054,6 +2106,75 @@ direcciones de la base de datos pertenecen a personas reales.
 
 ---
 
+## Eventos
+
+```php
+use SfphpProject\src\Events\Dispatcher;
+
+Dispatcher::listen(OrderPlaced::class, SendReceipt::class);
+Dispatcher::listen(OrderPlaced::class, fn (OrderPlaced $e) => Metrics::count('orders.placed'));
+
+Dispatcher::dispatch(new OrderPlaced($order));
+```
+
+`make:event` y `make:listener` generaron clases durante cuatro versiones sin
+nada que las despachara. Un generador que produce código para una
+infraestructura que no existe es peor que ningún generador, porque parece una
+funcionalidad.
+
+Un evento es **cualquier objeto**. No hay clase base que extender ni interfaz
+que implementar, porque ninguna de las dos aportaría información: lo que hace
+que algo sea un evento es que alguien lo escuche.
+
+### Listeners
+
+Un listener es un callable, o el nombre de una clase con un método `handle()`.
+La forma con nombre de clase se resuelve por el contenedor **cuando el evento se
+dispara**, así que un listener que necesita una conexión a la base de datos no
+abre una al arrancar por un evento que quizá nunca ocurra.
+
+```bash
+./sfphp make:listener SendReceipt
+```
+
+Registrar contra una clase padre o una interfaz alcanza a sus hijas, que es lo
+que hace expresable "registrar todo evento de dominio" sin nombrar cada uno:
+
+```php
+Dispatcher::listen(DomainEvent::class, AuditTrail::class);
+```
+
+### Un listener que lanza
+
+Se registra en el log, con el evento y el listener nombrados, y los demás siguen
+ejecutándose. Despachar es contar, no preguntar: un evento cuyo tercer listener
+falló ha ocurrido igualmente, y hacer fallar la acción que lo disparó pondría el
+error de un listener en el camino de quien llamó.
+
+```php
+Dispatcher::dispatchOrFail($event);   // cuando quien llama sí depende de ellos
+```
+
+Es un método aparte y no una bandera, porque el comportamiento por defecto
+importa más que la excepción: una bandera invita a pasar `true` sin decidir.
+
+### Bajo un runtime persistente
+
+Los listeners viven en un estático y se registran una vez, al arrancar, como las
+rutas. Es la forma correcta para algo que la aplicación declara. Lo que no puede
+ir en un listener es estado por petición capturado en una closure — sobreviviría
+a la petición que lo creó y lo vería la siguiente.
+
+### Qué falta
+
+| Ausente | Situación |
+|---|---|
+| Listener en cola | Un listener se ejecuta en la petición que disparó el evento; despacha un trabajo desde él para mover la carga |
+| Detener la propagación | Se ejecutan todos los listeners; no hay un "atendido, para" |
+| Nombres con comodín | El registro es por clase, y una clase padre ya generaliza |
+
+---
+
 ## Validación
 
 ```php
@@ -2317,7 +2438,7 @@ traducirlas haría más difícil buscar una, no más fácil.
 | Ausente | Situación |
 |---|---|
 | Reglas de plural CLDR incrustadas | Exigiría `ext-intl` o una copia de los datos. `pluralizer()` es el punto de extensión |
-| Formato de fechas y números por idioma | `ext-intl` lo hace bien; el framework no lo intenta |
+| Formato fiel a CLDR sin `ext-intl` | `Time::localised()` y `Time::number()` usan la extensión cuando está y degradan cuando no |
 | Traducción de rutas (`/products` ↔ `/productos`) | No existe |
 | Extracción de cadenas a los catálogos | Ningún comando escanea el código |
 | Dirección del texto (RTL) | Una decisión de plantilla, no del traductor |
@@ -2371,6 +2492,36 @@ APP_TIMEZONE=America/Sao_Paulo
 
 `APP_TIMEZONE` decide cómo se **muestran** las horas. No decide cómo se
 guardan, y cambiarlo no cambia una sola fila.
+
+### En el idioma de quien lee
+
+`Time::display()` recibe un formato de `date()`, que es texto fijo: `d/m/Y` está
+mal para un lector estadounidense, y `F` imprime "September" a quien lee en
+español. Para cualquier cosa que lea un visitante, pide un estilo en vez de un
+formato y deja que el idioma decida el orden y las palabras:
+
+```php
+Time::localised($order->created_at);                         // 21 sept 2026, 10:00
+Time::localised($order->created_at, 'full', 'none');         // lunes, 21 de septiembre de 2026
+Time::localised($order->created_at, 'short', 'short', 'en'); // 9/21/26, 10:00 AM
+Time::number(1234.56, 2);                                    // 1.234,56 — o 1,234.56 en inglés
+```
+
+Ambos leen el idioma activo cuando no se les pasa ninguno, así que una página
+que ya corre bajo `SetLocale` no necesita argumento. Los estilos son `none`,
+`short`, `medium`, `long` y `full`, para la fecha y para la hora de forma
+independiente.
+
+`Time::number()` está aquí y no en el traductor porque los separadores se
+intercambian: 1.234,56 en español frente a 1,234.56 en inglés. Imprimir uno por
+el otro no es una diferencia cosmética — se lee como otro número.
+
+> **Con `ext-intl` esto sale correcto; sin él, degrada.** La extensión es la que
+> lleva los datos de CLDR, así que el framework la usa cuando está y cae a una
+> fecha estilo ISO y a un separador adivinado por el idioma cuando no — el mismo
+> arreglo que `Str` tiene con mbstring. El respaldo falla en la cola larga, pero
+> falla como un número legible en la convención equivocada, nunca como un número
+> equivocado.
 
 ### Lectura de valores
 
@@ -2443,7 +2594,7 @@ recibiría la hora equivocada.
 
 | Ausente | Situación |
 |---|---|
-| Formato de fecha por idioma | `Time::display()` recibe un formato de `date()`; los nombres de mes y día localizados exigen `ext-intl`. Consulta [Internacionalización](#internacionalización) |
+| Datos de CLDR propios | `Time::localised()` los lee de `ext-intl`; sin la extensión el respaldo es estilo ISO, no incorrecto |
 | Tiempo relativo ("hace 3 horas") | No existe; la frase es por idioma y pertenece a la aplicación |
 | Columna de zona por usuario | `Time::in()` acepta una; dónde se guarda la zona del usuario es decisión de la aplicación |
 
@@ -2615,7 +2766,7 @@ credenciales, que no es el formulario de tu aplicación.
 | Prueba | cookie de sesión | `Authorization: Bearer` |
 | Estado | en el servidor | ninguno |
 | Sirve para | páginas | APIs, workers, otro proceso |
-| Revocar antes de expirar | sí, borra la sesión | **no** |
+| Revocar antes de expirar | sí, borra la sesión | sí, por la lista de revocados |
 | `Auth::login()` | sí | no — lanza |
 
 `SessionGuard` guarda **solo el identificador** en la sesión, nunca al usuario.
@@ -2628,9 +2779,78 @@ que detiene la fijación de sesión: quien plantó de antemano un id conocido no
 puede usarlo después, porque el id con el que acaba la víctima es nuevo.
 
 `TokenGuard` no guarda nada en el servidor, que es lo que lo hace utilizable
-fuera de una petición web — y también lo que significa que **un token no se
-puede revocar antes de que expire**. Si necesitas revocación, necesitas una
-lista de tokens invalidados, que el framework no proporciona.
+fuera de una petición web. También es lo que convierte la revocación en una
+decisión en vez de algo dado: un token se acepta porque su firma es válida, así
+que nada del propio token puede echarse atrás.
+
+### Revocar un token
+
+```php
+use SfphpProject\src\Auth\TokenDenylist;
+
+TokenDenylist::revoke($token);            // este token
+TokenDenylist::revokeUser($usuario->id);  // todo token emitido antes de ahora
+```
+
+La única forma de revocar un token sin estado es dejar de ser sin estado
+respecto a los que has revocado, y el intercambio merece verse claro: el guard
+pasa a consultar la caché en cada petición, así que verificar un token ya no es
+gratis.
+
+Lo que mantiene eso barato es que un token revocado solo hay que recordarlo
+hasta el momento en que habría expirado de todos modos. Una lista de todo lo
+revocado alguna vez crecería para siempre; esta son entradas con vencimiento,
+así que se queda del tamaño de "revocado hace poco".
+
+`revokeUser()` es el "cerrar sesión en todas partes". No puede listar los tokens
+del usuario — nada los registró nunca — así que registra el momento, y un token
+cuyo `iat` es anterior a ese momento se rechaza. Un inicio de sesión *posterior*
+sigue funcionando, que es lo que impide que cerrar sesión en todas partes deje a
+alguien fuera de volver a entrar.
+
+Los tokens se guardan con hash, nunca enteros: una caché que alguien pueda leer
+— un Redis compartido, un volcado tomado al depurar — entregaría credenciales
+funcionando para todo token que aún no haya expirado.
+
+> **La lista de revocados tiene que ser compartida entre instancias.** Con el
+> driver de archivo por defecto es local a una máquina, así que un token
+> revocado en una instancia sigue funcionando en otra. En otros sitios una caché
+> por instancia es una decisión de rendimiento; aquí es un agujero.
+
+La comprobación se puede apagar por guard, en un servicio donde los tokens sean
+lo bastante cortos como para que la lectura extra no compense:
+
+```php
+$guard = new TokenGuard($provider, 'id', checkRevocation: false);
+```
+
+### Recordar el inicio de sesión
+
+```php
+use SfphpProject\src\Auth\RememberToken;
+
+$token = RememberToken::issue();
+// ['cookie' => 'selector:verifier', 'selector' => ..., 'hash' => ..., 'expires' => ...]
+```
+
+Una cookie de "recuérdame" es una contraseña que nunca expira y que el usuario
+no sabe que tiene, así que su forma importa. La cookie lleva un **selector** en
+claro, que es la clave de búsqueda, y un **verifier**, guardado solo como hash
+sha256. Una base de datos que alguien lea no le entrega, por tanto, cookies
+funcionando, y encontrar la fila sigue costando una búsqueda por índice en vez
+de un recorrido.
+
+```php
+$partes = RememberToken::parse($_COOKIE['remember'] ?? '');
+
+if ($partes !== null && RememberToken::matches($partes['verifier'], $fila->remember_token)) {
+    // Autentica y emite un token nuevo: una cookie funciona exactamente una vez.
+}
+```
+
+Rotar en cada uso es lo que limita el daño. Si se usa una cookie robada, la
+siguiente petición del usuario real falla y el robo se vuelve visible, en vez de
+dos personas compartiendo una cuenta en silencio durante un mes.
 
 ### Autorización
 
@@ -2701,10 +2921,9 @@ vienen en los tres idiomas que trae el framework. Consulta
 
 | Ausente | Situación |
 |---|---|
-| «Recordarme» | La migración trae la columna `remember_token`; nada la usa |
+| El flujo de «recordarme» | `RememberToken` emite y verifica la cookie; leerla en una petición y reemitirla es de la aplicación |
 | Recuperación de contraseña | Sin tabla de tokens, sin flujo de correo |
 | Verificación de correo | La columna `email_verified_at` existe; el flujo no |
-| Revocación de tokens | Un JWT es válido hasta que expira; no hay lista de revocación |
 | Doble factor | No existe |
 | Roles y permisos | `Gate` decide; almacenar roles es tarea de tu aplicación |
 
@@ -2904,6 +3123,18 @@ insegura, así que enviarla ahí parecería protección sin serlo.
 - Una conexión fallida registra el detalle en el log y lanza una excepción
   genérica: el host, la base de datos y el usuario nunca llegan al visitante
 
+### Subidas
+
+- Un archivo se rechaza salvo que `is_uploaded_file()` confirme que lo es, así
+  que un `$_FILES` falsificado no hace que el framework lea una ruta arbitraria
+- El tipo se lee de los bytes del propio archivo, nunca de la cabecera que envió
+  el cliente
+- El nombre guardado se genera; al nombre del cliente se le quitan las rutas y
+  los bytes nulos y solo sirve para mostrarlo
+
+Consulta [Subida de archivos](#subida-de-archivos), incluido por qué el archivo
+guardado sigue perteneciendo fuera del document root.
+
 ### Salida
 
 - El `{{ }}` de SFHT escapa por defecto; la salida cruda exige `{!! !!}`
@@ -2914,11 +3145,10 @@ insegura, así que enviarla ahí parecería protección sin serlo.
 
 | Ausente | Situación |
 |---|---|
-| Revocación de tokens | Un JWT es válido hasta que expira; no hay lista de revocación |
-| Recuperación de contraseña, verificación de correo, 2FA | Fuera de alcance |
-| «Recordarme» | La columna `remember_token` existe; nada la usa |
+| Recuperación de contraseña, verificación de correo, 2FA | Los flujos son de la aplicación; [Correo](#correo) es la pieza que el framework les debía |
+| Una lista de revocación compartida por defecto | `TokenDenylist` funciona sobre la caché configurada; con el driver de archivo eso es una sola máquina. Consulta [Revocar un token](#revocar-un-token) |
 | Abstracción de almacenamiento para subidas | Los archivos se validan y se guardan localmente; S3 o un volumen compartido es de la aplicación. Consulta [Subida de archivos](#subida-de-archivos) |
-| Registro de auditoría / seguridad | Solo `error_log()` |
+| Registro de auditoría | Los registros son estructurados y llevan id de petición, pero nada escribe un rastro deliberado de "quién cambió qué". Consulta [Registro](#registro) |
 
 ---
 
@@ -3282,10 +3512,99 @@ a un agregador de registros y que no llegue.
 
 | Ausente | Situación |
 |---|---|
-| Métricas | No se recogen contadores ni tiempos; una línea de registro lleva una duración, que no es lo mismo |
+| Trazado | El id de petición ata los registros de una petición; seguir una llamada entre servicios exige un trace id propagado entre ellos |
 | Muestreo | Se escribe todo registro que supera el nivel; no hay "uno de cada cien" |
 | Varios destinos a la vez | Un driver cada vez — sin repartir a un archivo y a un colector juntos |
 | Rotación de registros | El archivo crece; la rotación es de `logrotate` o de la plataforma |
+
+---
+
+## Health check y métricas
+
+### Health check
+
+Un balanceador necesita un sitio donde preguntar si mandar tráfico aquí va a
+funcionar, y "el proceso está corriendo" es la pregunta equivocada: una
+instancia cuya base de datos está inalcanzable sigue aceptando conexiones y
+sigue sirviendo errores a todo el que se enrute hacia ella.
+
+```php
+use SfphpProject\src\Health;
+
+Health::registerDefaults(['database', 'cache']);
+Health::register('pagos', fn (): bool => $gateway->ping());
+
+$report = Health::check();
+// ['healthy' => true, 'checks' => ['database' => ['ok' => true, 'ms' => 1.4], ...]]
+```
+
+El framework trae las comprobaciones y no la ruta, porque dónde vive y quién
+puede verla son decisiones de la aplicación:
+
+```php
+Router::get('/health', 'HealthController', 'show');
+
+public function show(Request $request): Response
+{
+    $report = Health::check();
+
+    return Response::json($report, $report['healthy'] ? HTTP_OK : 503);
+}
+```
+
+Cada comprobación se cronometra, porque "la base de datos respondió" y "la base
+de datos respondió en cuatro segundos" son estados distintos y solo uno de ellos
+se ve en un booleano. Una comprobación que lanza cuenta como fallo y se informa
+su **mensaje** — no su traza, que nombra rutas y clases que no son asunto de
+nadie más.
+
+> **Un endpoint de health describe tu infraestructura.** Dejado público, le
+> cuenta a cualquiera qué dependencias tienes y cuáles están caídas ahora mismo,
+> que es lo primero que conviene saber antes de atacar algo. Ponlo detrás de la
+> red del balanceador, o detrás de un token.
+
+No se registra nada por defecto: un endpoint que informe sobre una base de datos
+que la aplicación no usa estaría respondiendo la pregunta equivocada.
+
+### Métricas
+
+```php
+use SfphpProject\src\Log\Metrics;
+
+Metrics::count('orders.placed');
+Metrics::count('payments.failed', ['gateway' => 'stripe']);
+
+$report = Metrics::time('report.build', fn () => $builder->run());
+```
+
+Una línea de registro lleva una duración, lo que responde "cuánto tardó esta
+petición". No responde "cuánto tardan las peticiones", y la diferencia es la
+razón de que existan las métricas: una es una anécdota, la otra es la forma del
+sistema.
+
+`time()` registra la llamada que **lanzó**, además de la que retornó — algo que
+solo se pone lento cuando está fallando es justamente lo que conviene ver.
+
+El colector es en proceso. `snapshot()` lo lee como arreglo, y `prometheus()`
+renderiza el formato de texto que entiende un scraper, montado aquí y no por una
+biblioteca cliente:
+
+```
+orders_placed 2
+payments_failed{gateway="stripe"} 1
+report_build_ms_count 2
+report_build_ms_sum 41.882
+report_build_ms_min 18.204
+report_build_ms_max 23.678
+```
+
+### Qué falta
+
+| Ausente | Situación |
+|---|---|
+| Agregación entre instancias | Cada proceso guarda sus propias cuentas; un scraper o un push gateway hace la unión |
+| Histogramas y percentiles | Se registran cuenta, suma, mínimo y máximo; un p99 necesita buckets que esto no guarda |
+| Persistencia | Las cuentas se pierden cuando el proceso termina, lo que bajo php-fpm es cada petición. Haz scraping de un runtime persistente, o empuja |
 
 ---
 
@@ -3312,10 +3631,11 @@ a un agregador de registros y que no llegue.
 ./sfphp make:scaffold Post     # controlador + modelo + repositorio + servicio
 ```
 
-> `make:middleware` y `make:policy` ahora generan contra contratos que existen
-> y se ejecutan. `make:event` y `make:listener` siguen produciendo código para
-> una infraestructura ausente: no hay despachador de eventos. Consulta
-> [Limitaciones conocidas](#limitaciones-conocidas).
+> Todo generador produce ya código contra algo que existe y se ejecuta —
+> `make:event` y `make:listener` incluidos, desde que llegó `Dispatcher`. Lo que
+> un archivo generado aún te debe es su registro: un listener hay que entregarlo
+> a `Dispatcher::listen()` donde arranca la aplicación. Consulta
+> [Eventos](#eventos).
 
 ### Base de datos
 
@@ -3452,7 +3772,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 119 casos unitarios
+composer run test        # 126 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve
@@ -3468,11 +3788,16 @@ SFPHP_TEST_REDIS_HOST=127.0.0.1 \
   composer run test:db
 ```
 
-Cubre el constructor de esquemas en los dos dialectos, la cola en base de datos
-y — cuando se indica un host de Redis — la caché, el handler de sesión sobre
-ella y el driver de cola de Redis. Esos tres no tenían ninguna prueba que se
-ejecutara contra un servidor hasta esta versión, y por eso el driver de cola
-perdía el id de cada trabajo.
+Cubre el constructor de esquemas en los dos dialectos, la cola en base de datos,
+el bloqueo de migraciones y — cuando se indica un host de Redis — la caché, el
+handler de sesión sobre ella y el driver de cola de Redis. Esos tres no tenían
+ninguna prueba que se ejecutara contra un servidor hasta esta versión, y por eso
+el driver de cola perdía el id de cada trabajo.
+
+Todo aquello cuyo trabajo ocurre **en el servidor** pertenece aquí y no a la
+suite unitaria, porque ese código se lee bien y aun así no hace nada: el bloqueo
+de migraciones es `GET_LOCK` y `pg_try_advisory_lock`, así que solo una segunda
+conexión real siendo rechazada demuestra que sujeta.
 
 La CI ejecuta dos trabajos: `unit` sobre una matriz de PHP 8.1–8.4 **sin
 `mbstring`**, que es lo que impide que el manejo de UTF-8 dependa de la
@@ -3496,13 +3821,12 @@ hace, y que deberías conocer antes de elegirlo.
 
 | Ausente | Impacto |
 |---|---|
-| **Recuperación de contraseña y doble factor** | El inicio de sesión existe; estos flujos no. Consulta [Autenticación](#autenticación) |
-| **Sistema de eventos** | `make:event` y `make:listener` generan clases sin despachador |
+| **Recuperación de contraseña y doble factor** | El inicio de sesión existe; estos flujos no, y son de la aplicación. Consulta [Autenticación](#autenticación) y [Correo](#correo) |
+| **Un bus de eventos entre procesos** | `Dispatcher` entrega en el mismo proceso, de forma síncrona. Avisar a otro servicio de que algo pasó es un trabajo en cola o un broker de mensajes, no esto |
 | **Un ORM completo** | Hay una capa de [Modelos](#modelos) con hidratación, tipos de atributo, relaciones (incluido muchos a muchos) y `with()`. No hay mapa de identidad, unidad de trabajo, proxy de carga perezosa, relación polimórfica ni esquema derivado de la clase — y [¿ORM o constructor de consultas?](#orm-o-constructor-de-consultas) explica el motivo de cada uno |
-| **Formato por idioma** | Las fechas y los números no se formatean por idioma; `ext-intl` hace eso bien y el framework no lo intenta. Consulta [Internacionalización](#internacionalización) |
-| **Fechas relativas y localizadas** | "hace 3 horas" y los nombres de mes localizados no existen; el almacenamiento y la conversión sí. Consulta [Tiempo y zonas horarias](#tiempo-y-zonas-horarias) |
-| **Métricas** | Los registros llevan duraciones; no se recogen contadores ni tiempos. Consulta [Registro](#registro) |
-| **Caché de rutas** | El despacho es O(n), un `preg_match` por ruta. Bien para decenas, no para centenares |
+| **Fechas relativas** | "hace 3 horas" no existe: la frase es por idioma y pertenece a la aplicación. Las fechas y los números localizados sí, con `Time::localised()` y `Time::number()`. Consulta [Tiempo y zonas horarias](#tiempo-y-zonas-horarias) |
+| **Un backend de métricas** | `Metrics` cuenta y cronometra dentro del proceso e imprime el texto de Prometheus; llevarlo a un colector, y conservarlo entre peticiones, es del despliegue. Consulta [Health y métricas](#health-check-y-métricas) |
+| **Caché de rutas en disco** | Una ruta estática se compara en vez de pasar por `preg_match`, pero una ruta con parámetro sigue costando un match, y nada se compila de antemano. Bien para centenares, no para millares |
 | **Revocar sesión desde otro sitio** | Cerrar la sesión de otro dispositivo se puede construir sobre la tabla del driver `database`; no viene nada hecho. Consulta [Sesiones](#sesiones) |
 
 SFHT tampoco tiene variables automáticas de bucle (`$loop`) ni herencia parcial
@@ -3510,4 +3834,4 @@ de bloques (`@parent`).
 
 ---
 
-*Documentación revisada el 2026-09-21 contra el código en ejecución.*
+*Documentación revisada el 2026-09-22 contra el código en ejecución.*
