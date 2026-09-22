@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 126 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 128 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -1690,15 +1690,52 @@ segunda coisa.
 > compatibilidade** para uma aplicação que traga o próprio driver: uma classe
 > que implementa `Cache` passa a precisar implementar os dois.
 
-Trocar o driver:
+### Escolher o driver
+
+```ini
+CACHE_DRIVER=file          # o padrão
+CACHE_DRIVER=redis         # exige ext-redis
+CACHE_DRIVER=array         # memória, some no fim da requisição
+
+CACHE_PATH=storage/cache   # onde o driver de arquivo escreve
+CACHE_PREFIX=sfphp:cache:  # para duas aplicações dividirem um Redis
+
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+```
+
+> **Essa configuração decide mais do que cache.** Os contadores de rate limit, a
+> lista de tokens revogados e — com `SESSION_DRIVER=cache` — as sessões moram
+> todos aqui. No driver de arquivo cada máquina guarda a sua cópia, então atrás
+> de um balanceador um token revogado continua funcionando nas outras instâncias
+> e um limite de 60 requisições é, na verdade, 60 *por instância*. **Mais de uma
+> instância significa `redis`.**
+
+Escolher `redis` sem o `ext-redis` **falha na subida**, em vez de cair para o
+driver de arquivo. Uma queda silenciosa deixaria quem opera acreditando que
+essas três coisas são compartilhadas enquanto cada máquina guarda a sua — um
+buraco que aparece meses depois e nunca como erro.
+
+Uma conexão é aberta por processo e compartilhada pelo cache, pela fila e pelo
+handler de sessão, em vez de um socket para cada. Uma aplicação que monta a
+própria — socket TLS, cliente de cluster — entrega a dela:
+
+```php
+use SfphpProject\src\RedisConnection;
+
+RedisConnection::use($meuRedis);
+```
+
+Montar um manager na mão continua valendo, e é assim que se tem um segundo cache
+diferente do configurado:
 
 ```php
 use SfphpProject\src\Cache\CacheManager;
 use SfphpProject\src\Cache\MemoryDriver;
-use SfphpProject\src\Cache\RedisDriver;
 
-$cache = new CacheManager(new MemoryDriver());   // só durante a requisição
-$cache = new CacheManager(new RedisDriver());    // exige ext-redis
+$rascunho = new CacheManager(new MemoryDriver());   // só durante a requisição
 ```
 
 ```bash
@@ -1745,6 +1782,26 @@ desligam de forma ordenada.
 
 As tabelas `jobs` e `failed_jobs` são criadas sob demanda, na primeira operação
 que precisa delas — instanciar o driver não abre conexão.
+
+### Escolher o driver
+
+```ini
+QUEUE_DRIVER=database          # o padrão
+QUEUE_DRIVER=redis             # exige ext-redis
+
+QUEUE_RESERVATION_SECONDS=900  # maior que o seu job mais lento
+QUEUE_TABLE=jobs
+QUEUE_FAILED_TABLE=failed_jobs
+```
+
+O `dispatch()` e o `./sfphp queue:work` leem a mesma configuração, e é por isso
+que ela existe em vez de ser argumento de construtor: um worker que montasse o
+próprio driver esvaziaria o banco enquanto as requisições empilhariam no Redis,
+e nenhum dos dois lados acusaria nada errado.
+
+O driver de banco não precisa de serviço extra e sobrevive a um restart, então é
+o padrão. O Redis é mais rápido e tira a tabela de jobs do banco; os dois
+entregam um job a exatamente um worker.
 
 ### Mais de um worker
 
@@ -2762,10 +2819,11 @@ Os tokens são guardados com hash, nunca inteiros: um cache que alguém consiga
 ler — um Redis compartilhado, um dump tirado para depurar — entregaria
 credenciais funcionando para todo token que ainda não expirou.
 
-> **A lista de revogados precisa ser compartilhada entre as instâncias.** Com o
-> driver de arquivo padrão ela é local a uma máquina, então um token revogado
-> numa instância continua funcionando em outra. Em outros lugares um cache por
-> instância é uma escolha de desempenho; aqui é um buraco.
+> **A lista de revogados precisa ser compartilhada entre as instâncias.** Ela
+> mora no cache, então com o `CACHE_DRIVER=file` padrão é local a uma máquina e
+> um token revogado numa instância continua funcionando em outra.
+> `CACHE_DRIVER=redis` resolve inteiro. Em outros lugares um cache por instância
+> é uma escolha de desempenho; aqui é um buraco.
 
 A verificação pode ser desligada por guard, num serviço em que os tokens sejam
 curtos o bastante para a leitura extra não compensar:
@@ -3087,7 +3145,7 @@ guardado ainda pertence a fora do document root.
 | Ausente | Situação |
 |---|---|
 | Recuperação de senha, verificação de e-mail, 2FA | Os fluxos são da aplicação; o [E-mail](#e-mail) é a peça que o framework devia a eles |
-| Uma lista de revogados compartilhada por padrão | O `TokenDenylist` funciona sobre o cache configurado; no driver de arquivo isso é uma máquina só. Ver [Revogar um token](#revogar-um-token) |
+| Um padrão seguro para mais de uma instância | O `CACHE_DRIVER` vem como `file`, o que está certo para uma máquina e errado para várias. O framework não tem como saber qual é o seu caso, então avisa em vez de adivinhar. Ver [Escolher o driver](#escolher-o-driver) |
 | Abstração de armazenamento para upload | Arquivos são validados e guardados localmente; S3 ou volume compartilhado é da aplicação. Ver [Upload de arquivos](#upload-de-arquivos) |
 | Log de auditoria | Os registros são estruturados e carregam id de requisição, mas nada escreve uma trilha deliberada de "quem mudou o quê". Ver [Log](#log) |
 
@@ -3706,7 +3764,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 126 casos unitários
+composer run test        # 128 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve

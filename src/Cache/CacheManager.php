@@ -2,6 +2,9 @@
 
 namespace SfphpProject\src\Cache;
 
+use SfphpProject\src\Config;
+use SfphpProject\src\RedisConnection;
+
 class CacheManager
 {
     protected Cache $driver;
@@ -9,6 +12,45 @@ class CacheManager
     public function __construct(?Cache $driver = null)
     {
         $this->driver = $driver ?? new FileDriver();
+    }
+
+    /**
+     * Build the cache CACHE_DRIVER names.
+     *
+     * The helper cache() keeps one of these for the process. This is separate
+     * from it so the choice can be exercised without the memo in the way, and
+     * so an application that needs a second, differently configured cache can
+     * ask for one.
+     *
+     * @return static The cache
+     */
+    public static function fromConfig(): static
+    {
+        $driver = match (Config::get('CACHE_DRIVER', 'file')) {
+            'redis' => new RedisDriver(
+                RedisConnection::get(),
+                Config::string('CACHE_PREFIX', 'sfphp:cache:')
+            ),
+            /*
+             * Per-process and gone at the end of the request. Useful in tests
+             * and in a console command that only wants memoisation, never in a
+             * deployment — which is why it is the default nowhere.
+             */
+            'array', 'memory' => new MemoryDriver(),
+            default => new FileDriver(Config::get('CACHE_PATH') ?: null),
+        };
+
+        return new static($driver);
+    }
+
+    /**
+     * Which driver this manager is using.
+     *
+     * @return Cache The driver
+     */
+    public function getDriver(): Cache
+    {
+        return $this->driver;
     }
 
     public function driver(Cache $driver): static

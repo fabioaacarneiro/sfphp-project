@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 126 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 128 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -1722,15 +1722,52 @@ que crea el contador, o en todas — el limitador de peticiones hace lo segundo.
 > rompe** para una aplicación que traiga su propio driver: una clase que
 > implementa `Cache` pasa a tener que implementar ambos.
 
-Cambiar el driver:
+### Elegir el driver
+
+```ini
+CACHE_DRIVER=file          # el valor por defecto
+CACHE_DRIVER=redis         # necesita ext-redis
+CACHE_DRIVER=array         # memoria, se pierde al acabar la petición
+
+CACHE_PATH=storage/cache   # dónde escribe el driver de archivo
+CACHE_PREFIX=sfphp:cache:  # para que dos aplicaciones compartan un Redis
+
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+```
+
+> **Este ajuste decide más que la caché.** Los contadores de limitación de
+> peticiones, la lista de tokens revocados y — con `SESSION_DRIVER=cache` — las
+> sesiones viven todos aquí. Con el driver de archivo cada máquina guarda su
+> propia copia, así que detrás de un balanceador un token revocado sigue
+> funcionando en las demás instancias y un límite de 60 peticiones es en
+> realidad 60 *por instancia*. **Más de una instancia significa `redis`.**
+
+Elegir `redis` sin `ext-redis` **falla al arrancar** en vez de caer al driver de
+archivo. Una caída silenciosa dejaría a quien opera creyendo que esas tres cosas
+están compartidas mientras cada máquina guarda la suya — un agujero que aparece
+meses después y nunca como error.
+
+Se abre una conexión por proceso, compartida por la caché, la cola y el handler
+de sesión, en lugar de un socket para cada uno. Una aplicación que construye la
+suya — un socket TLS, un cliente de clúster — la entrega:
+
+```php
+use SfphpProject\src\RedisConnection;
+
+RedisConnection::use($miRedis);
+```
+
+Construir un manager a mano sigue valiendo, y es como se obtiene una segunda
+caché distinta de la configurada:
 
 ```php
 use SfphpProject\src\Cache\CacheManager;
 use SfphpProject\src\Cache\MemoryDriver;
-use SfphpProject\src\Cache\RedisDriver;
 
-$cache = new CacheManager(new MemoryDriver());   // solo para esta petición
-$cache = new CacheManager(new RedisDriver());    // necesita ext-redis
+$borrador = new CacheManager(new MemoryDriver());   // solo para esta petición
 ```
 
 ```bash
@@ -1777,6 +1814,27 @@ mueve el trabajo a `failed_jobs` cuando se le acaban los intentos. Con
 
 Las tablas `jobs` y `failed_jobs` se crean bajo demanda, en la primera operación
 que las necesita — instanciar el driver no abre ninguna conexión.
+
+### Elegir el driver
+
+```ini
+QUEUE_DRIVER=database          # el valor por defecto
+QUEUE_DRIVER=redis             # necesita ext-redis
+
+QUEUE_RESERVATION_SECONDS=900  # más largo que tu trabajo más lento
+QUEUE_TABLE=jobs
+QUEUE_FAILED_TABLE=failed_jobs
+```
+
+`dispatch()` y `./sfphp queue:work` leen el mismo ajuste, que es la razón de que
+exista en vez de ser un argumento del constructor: un worker que construyera su
+propio driver vaciaría la base de datos mientras las peticiones encolaban en
+Redis, y ninguno de los dos lados avisaría de nada.
+
+El driver de base de datos no necesita ningún servicio extra y sobrevive a un
+reinicio, así que es el valor por defecto. Redis es más rápido y saca la tabla
+de trabajos de la base de datos; los dos entregan un trabajo a exactamente un
+worker.
 
 ### Más de un worker
 
@@ -2812,10 +2870,11 @@ Los tokens se guardan con hash, nunca enteros: una caché que alguien pueda leer
 — un Redis compartido, un volcado tomado al depurar — entregaría credenciales
 funcionando para todo token que aún no haya expirado.
 
-> **La lista de revocados tiene que ser compartida entre instancias.** Con el
-> driver de archivo por defecto es local a una máquina, así que un token
-> revocado en una instancia sigue funcionando en otra. En otros sitios una caché
-> por instancia es una decisión de rendimiento; aquí es un agujero.
+> **La lista de revocados tiene que ser compartida entre instancias.** Vive en
+> la caché, así que con el `CACHE_DRIVER=file` por defecto es local a una
+> máquina y un token revocado en una instancia sigue funcionando en otra.
+> `CACHE_DRIVER=redis` lo arregla por completo. En otros sitios una caché por
+> instancia es una decisión de rendimiento; aquí es un agujero.
 
 La comprobación se puede apagar por guard, en un servicio donde los tokens sean
 lo bastante cortos como para que la lectura extra no compense:
@@ -3146,7 +3205,7 @@ guardado sigue perteneciendo fuera del document root.
 | Ausente | Situación |
 |---|---|
 | Recuperación de contraseña, verificación de correo, 2FA | Los flujos son de la aplicación; [Correo](#correo) es la pieza que el framework les debía |
-| Una lista de revocación compartida por defecto | `TokenDenylist` funciona sobre la caché configurada; con el driver de archivo eso es una sola máquina. Consulta [Revocar un token](#revocar-un-token) |
+| Un valor por defecto seguro para más de una instancia | `CACHE_DRIVER` viene como `file`, que está bien para una máquina y mal para varias. El framework no puede saber cuál es tu caso, así que lo dice en vez de adivinar. Consulta [Elegir el driver](#elegir-el-driver) |
 | Abstracción de almacenamiento para subidas | Los archivos se validan y se guardan localmente; S3 o un volumen compartido es de la aplicación. Consulta [Subida de archivos](#subida-de-archivos) |
 | Registro de auditoría | Los registros son estructurados y llevan id de petición, pero nada escribe un rastro deliberado de "quién cambió qué". Consulta [Registro](#registro) |
 
@@ -3772,7 +3831,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 126 casos unitarios
+composer run test        # 128 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve
