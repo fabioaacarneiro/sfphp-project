@@ -4,6 +4,7 @@ namespace SfphpProject\src;
 
 use InvalidArgumentException;
 use PDO;
+use PDOException;
 use PDOStatement;
 use RuntimeException;
 
@@ -360,7 +361,19 @@ class QueryBuilder
 
         $this->execute($sql, $bindings);
 
-        return $this->pdo->lastInsertId();
+        /*
+         * A table whose key the application supplies has no sequence for the
+         * driver to report, and PostgreSQL answers that with an error rather
+         * than an empty value: "lastval is not yet defined in this session".
+         * The row is already written at this point, so turning that into a
+         * failed insert would be wrong — the caller gets an empty string, which
+         * is what a driver without a sequence has to say.
+         */
+        try {
+            return (string) $this->pdo->lastInsertId();
+        } catch (PDOException) {
+            return '';
+        }
     }
 
     /**
