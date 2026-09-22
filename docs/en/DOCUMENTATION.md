@@ -1678,7 +1678,9 @@ final class SendEmailJob extends Job
 
     public function handle(): void
     {
-        mail($this->to, 'Hello', 'Body');
+        mailer()->send(
+            (new Message())->to($this->to)->subject('Hello')->text('Body')
+        );
     }
 }
 ```
@@ -1702,6 +1704,43 @@ and `SIGINT` shut it down gracefully.
 
 The `jobs` and `failed_jobs` tables are created on demand, on the first
 operation that needs them — instantiating the driver opens no connection.
+
+### More than one worker
+
+A job is handed to exactly one worker. That is worth stating because it was not
+true until this version, and because the failure was invisible with a single
+worker: `pop()` selected a row and then updated it, so two workers read the same
+job, both marked it reserved, and **both ran it**. For a queue that is not a
+slowdown, it is a duplicated side effect — the same e-mail twice, the same card
+charged twice.
+
+The reservation is now a claim. The `UPDATE` carries the condition that the job
+is still unreserved, and only the worker whose statement affects one row has it;
+a worker that loses looks for the next job instead of running someone else's. A
+conditional update rather than `SELECT … FOR UPDATE SKIP LOCKED`, because the
+framework supports seven drivers and not all of them have it.
+
+```php
+new DatabaseDriver(reservationSeconds: 900);
+```
+
+**A job reserved by a worker that died comes back.** A worker killed between
+reserving a job and finishing it leaves the job marked as taken with nobody
+working on it. Any job reserved longer than `reservationSeconds` — fifteen
+minutes by default — is released for another worker to claim. Set it above the
+longest a job can legitimately take, or a slow job will be picked up twice.
+
+The Redis driver had the same flaw for the same reason: `zRem` reports how many
+members it removed and nothing checked the answer. It does now.
+
+### What is missing
+
+| Missing | Situation |
+|---|---|
+| Several named queues | Everything goes to `default`; the column exists and nothing reads it |
+| Retrying a failed job | `failed_jobs` records them; putting one back is manual |
+| Backoff between attempts | A retry waits a fixed 60 seconds |
+| A supervisor | Keeping the worker alive is `systemd`, `supervisor` or the platform's job |
 
 ---
 

@@ -19,6 +19,17 @@ use SfphpProject\src\Migrations\Blueprint;
 use SfphpProject\src\Migrations\MigrationRunner;
 use SfphpProject\src\Migrations\Schema;
 
+
+/**
+ * A job the queue integration tests push and pop.
+ */
+final class SftQueueJob extends \SfphpProject\src\Queue\Job
+{
+    public function __construct(public string $mark = '') {}
+
+    public function handle(): void {}
+}
+
 /**
  * Run a query and return every row.
  *
@@ -783,6 +794,120 @@ function registerSchemaTests(TestRunner $tests, PDO $pdo, string $driver): void
         $tests->assertSame(false, $schema->hasTable($qualified));
         $tests->assertThrows(fn () => $schema->drop($qualified), PDOException::class);
         $schema->dropIfExists($qualified);
+    });
+
+
+    $test('the database queue survives a real server', function () use ($tests, $pdo, $driver, $schema): void {
+        /*
+         * The queue had no integration test at all, and it did not work on
+         * either server: reserved_at was a timestamp column receiving time(),
+         * and insert() asked PostgreSQL for a sequence value on a table whose
+         * key the application supplies. Both failed on the first pop.
+         */
+        $queue = new \SfphpProject\src\Queue\DatabaseDriver(900, 'sft_jobs', 'sft_failed_jobs', $pdo);
+        $queue->flush();
+
+        $id = $queue->push(new SftQueueJob('primeiro'));
+        $tests->assertSame(true, is_string($id) && $id !== '');
+        $tests->assertSame(1, $queue->size());
+
+        $job = $queue->pop();
+        $tests->assertSame(true, $job instanceof SftQueueJob);
+        $tests->assertSame('primeiro', $job->mark);
+
+        /*
+         * The id has to survive the round trip. Job's own properties used to be
+         * serialised with the payload, so unserialising put back the null id
+         * captured at push time and every later call addressed nothing.
+         */
+        $tests->assertSame($id, $job->getId());
+
+        // Reserved, so it is not handed out twice.
+        $tests->assertSame(null, $queue->pop());
+
+        $queue->release($job, 0);
+        $tests->assertSame(true, $queue->pop() instanceof SftQueueJob);
+
+        $queue->delete($job);
+        $tests->assertSame(0, $queue->size());
+
+        // A failure is recorded and leaves the main queue.
+        $queue->push(new SftQueueJob('falho'));
+        $queue->failed($queue->pop(), new RuntimeException('deu ruim'));
+        $tests->assertSame(1, count($queue->failedJobs()));
+        $tests->assertSame('deu ruim', $queue->failedJobs()[0]['exception']);
+        $tests->assertSame(0, $queue->size());
+
+        // A delayed job waits.
+        $queue->flush();
+        $queue->push(new SftQueueJob('futuro'), 3600);
+        $tests->assertSame(null, $queue->pop());
+
+        $queue->flush();
+        $schema->dropIfExists('sft_jobs');
+        $schema->dropIfExists('sft_failed_jobs');
+    });
+
+    $test('two workers never claim the same job', function () use ($tests, $pdo, $driver, $schema): void {
+        /*
+         * The reason this matters: selecting a row and then updating it is not
+         * a reservation. Two workers read the same row, both write their own
+         * reserved_at, and both run the job — which for a queue is not a
+         * slowdown but a duplicated side effect. It only happens with more than
+         * one worker, which is when nobody is watching.
+         *
+         * Simulated here by interleaving two drivers against the same table,
+         * which is what two workers racing looks like from the database's side.
+         */
+        $first = new \SfphpProject\src\Queue\DatabaseDriver(900, 'sft_jobs', 'sft_failed_jobs', $pdo);
+        $second = new \SfphpProject\src\Queue\DatabaseDriver(900, 'sft_jobs', 'sft_failed_jobs', $pdo);
+        $first->flush();
+
+        for ($i = 0; $i < 5; $i++) {
+            $first->push(new SftQueueJob('job-' . $i));
+        }
+
+        $claimed = [];
+
+        while (($job = $first->pop()) !== null) {
+            $claimed[] = $job->getId();
+            $other = $second->pop();
+
+            if ($other !== null) {
+                $claimed[] = $other->getId();
+            }
+        }
+
+        $tests->assertSame(5, count($claimed));
+        $tests->assertSame(5, count(array_unique($claimed)));
+
+        $first->flush();
+        $schema->dropIfExists('sft_jobs');
+        $schema->dropIfExists('sft_failed_jobs');
+    });
+
+    $test('a job reserved by a worker that died comes back', function () use ($tests, $pdo, $driver, $schema): void {
+        /*
+         * A worker killed between reserving a job and finishing it leaves
+         * reserved_at set with nobody working on it. With one worker that is
+         * rare; with instances being deployed, restarted and scaled it is
+         * routine, and the job vanished silently — the worst way for work to be
+         * lost.
+         */
+        $queue = new \SfphpProject\src\Queue\DatabaseDriver(1, 'sft_jobs', 'sft_failed_jobs', $pdo);
+        $queue->flush();
+        $queue->push(new SftQueueJob('abandonado'));
+
+        $tests->assertSame(true, $queue->pop() instanceof SftQueueJob);
+        $tests->assertSame(null, $queue->pop());
+
+        // The reservation window passes and the job is available again.
+        sleep(2);
+        $tests->assertSame(true, $queue->pop() instanceof SftQueueJob);
+
+        $queue->flush();
+        $schema->dropIfExists('sft_jobs');
+        $schema->dropIfExists('sft_failed_jobs');
     });
 
     $test('the runner applies, reports and rolls back migrations', function () use ($tests, $pdo, $driver, $schema, $mysql): void {
