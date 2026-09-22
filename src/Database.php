@@ -80,14 +80,14 @@ class Database
        * The .env file is already loaded by app/config/config.php, which runs
        * from Composer's autoloader before any application code.
        */
-      $driver = $_ENV['DB_DRIVER'] ?? 'mysql';
-      $customDsn = $_ENV['DB_DSN'] ?? null;
-      $host   = $_ENV['DB_HOST'] ?? 'localhost';
-      $port   = $_ENV['DB_PORT'] ?? null;
-      $dbname = $_ENV['DB_NAME'] ?? '';
-      $user   = $_ENV['DB_USER'] ?? '';
-      $pass   = $_ENV['DB_PASS'] ?? '';
-      $charset = $_ENV['DB_CHARSET'] ?? 'utf8mb4';
+      $driver = Env::get('DB_DRIVER') ?? 'mysql';
+      $customDsn = Env::get('DB_DSN') ?? null;
+      $host   = Env::get('DB_HOST') ?? 'localhost';
+      $port   = Env::get('DB_PORT') ?? null;
+      $dbname = Env::get('DB_NAME') ?? '';
+      $user   = Env::get('DB_USER') ?? '';
+      $pass   = Env::get('DB_PASS') ?? '';
+      $charset = Env::get('DB_CHARSET') ?? 'utf8mb4';
 
       try {
         $dsn = $customDsn ?: self::buildDsn(
