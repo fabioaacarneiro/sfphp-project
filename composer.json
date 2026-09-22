@@ -37,12 +37,6 @@
             "@test",
             "@test:db"
         ],
-        "post-install-cmd": [
-            "@php sfphp assets:publish"
-        ],
-        "post-update-cmd": [
-            "@php sfphp assets:publish"
-        ],
         "assets": "@php sfphp assets:publish",
         "post-create-project-cmd": [
             "@php sfphp env:example",
