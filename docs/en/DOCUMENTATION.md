@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 140 tests, 0 failures
+> Verified against PHP 8.4 · suite: 141 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -401,11 +401,11 @@ namespace SfphpProject\app\controllers;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
 
-final class PostController extends BaseController
+final class PostController
 {
     public function show(Request $request, string $id): Response
     {
-        return $this->view('posts/show', ['id' => (int) $id]);
+        return Response::view('posts/show', ['id' => (int) $id]);
     }
 
     public function store(Request $request): Response
@@ -504,37 +504,64 @@ $response->status();  $response->body();  $response->header('Content-Type');
 touches the output buffer. Turning it into bytes is the `Emitter`'s job, and
 that separation is what lets the whole path be tested without output buffering.
 
-### BaseController
+### Controller
+
+An optional base class, in the package:
 
 ```php
-$this->view('posts/index', ['posts' => $posts]);   // an HTML Response
-$this->redirect('/posts');                          // a redirect Response
+use SfphpProject\src\Http\Controller;
+
+final class PostController extends Controller
+{
+    public function index(Request $request): Response
+    {
+        return $this->view('posts/index', ['posts' => $posts]);
+    }
+}
 ```
 
-> **A controller does not need a base class.** Both methods are one line each,
-> forwarding to `Response::view()` and `Response::redirect()`, and those are
-> what `make:controller` generates against. `BaseController` belongs to this
-> repository's example application and is **not** in the package, so a project
-> that installed the framework calls the `Response` methods directly:
->
-> ```php
-> return Response::view('posts/index', ['posts' => $posts]);
-> return Response::redirect('/posts');
-> ```
->
-> Both forms are current and produce the same response. Extending a base class
-> is a convenience when several controllers share helpers of your own, not a
-> requirement of the framework.
+| | |
+|---|---|
+| `$this->view($view, $data, $status)` | An HTML response |
+| `$this->redirect($url, $status)` | A redirect |
+| `$this->route($name, $parameters, $query)` | A redirect to a named route |
+| `$this->back($request, $fallback)` | A redirect to where the visitor came from |
 
-### BaseAPIController
+**Optional** is the word that matters: the framework asks a controller for an
+action that returns a `Response` and nothing else — no interface, no class to
+extend. `Response::view()` and `Response::redirect()` do the same thing from
+anywhere, and `make:controller` extends `Controller` only because it is the
+friendlier default.
+
+> **`back()` will not leave your site.** The referer is a header, so the visitor
+> chooses it, which makes it a redirect destination an attacker can pick.
+> Following one to another origin is an open redirect — how a phishing link
+> borrows your domain's good name. A referer naming a different host falls back,
+> and so does one that is not a path.
+
+This class used to live in the example application, where a `composer require`
+never reached it, so `$this->view()` was a line the documentation taught and an
+installed project could not run.
+
+### ApiController
+
+The same idea for endpoints that answer JSON:
 
 ```php
-$this->json(['ok' => true], HTTP_CREATED);
+use SfphpProject\src\Http\ApiController;
 
-// Decodes the body, or hands back the error response ready to return
-$data = $this->payload($request);
-if ($data instanceof Response) {
-    return $data;
+final class PostApiController extends ApiController
+{
+    public function store(Request $request): Response
+    {
+        $data = $this->payload($request);
+
+        if ($data instanceof Response) {
+            return $data;   // 415 or 400, ready to return
+        }
+
+        return $this->json(['id' => 1], HTTP_CREATED);
+    }
 }
 ```
 
@@ -900,7 +927,7 @@ parameter.
 Reflection-based autowiring resolves controllers and their dependencies:
 
 ```php
-final class PostController extends BaseController
+final class PostController
 {
     public function __construct(private PDO $pdo) {}
 }
@@ -2739,7 +2766,7 @@ if (Auth::attempt(['email' => $email, 'password' => $password])) {
     return $this->redirect('/dashboard');
 }
 
-return $this->view('login', ['error' => __('auth.failed')]);
+return Response::view('login', ['error' => __('auth.failed')]);
 ```
 
 ```php
@@ -2756,7 +2783,7 @@ Inside a controller the user also arrives on the request:
 ```php
 public function dashboard(Request $request): Response
 {
-    return $this->view('dashboard', ['user' => $request->user()]);
+    return Response::view('dashboard', ['user' => $request->user()]);
 }
 ```
 
@@ -3983,7 +4010,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 140 unit cases
+composer run test        # 141 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
