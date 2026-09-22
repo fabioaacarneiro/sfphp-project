@@ -91,41 +91,55 @@ Optional extensions, declared under `suggest`:
 - Composer 2
 - PDO with your database's driver (optional — only if you use a database)
 
-### As a dependency
+### Starting a project
+
+```bash
+composer create-project fabioaacarneiro/sfphp my-app
+cd my-app
+./sfphp serve
+```
+
+That is the whole setup. <http://localhost:8000> answers, the console is at
+`./sfphp` in the project root rather than buried in `vendor/bin`, and what you
+are looking at is a working application you can edit:
+
+```
+my-app/
+  app/controllers/        a controller, answering the home page
+  app/models/             a model
+  app/resources/views/    the templates that page is made of
+  src/routes.php          the routes
+  src/                    the framework
+  database/migrations/    users and sessions, ready to run
+  public/index.php        the front controller
+  resources/assets/       SFCSS and SFJS
+  sfphp                   the console
+  .env                    written for you, with a JWT key generated
+```
+
+Creating the project also copies `.env-example` to `.env` — **with a real
+`JWT_KEY`**, because the placeholder is refused on purpose and generating a key
+should not be the first thing you have to read about — and publishes SFCSS and
+SFJS into `public/assets`.
+
+Everything there is **yours**. Delete the example controller and its views; the
+framework is `src/` and does not mind.
+
+### Adding it to a project you already have
 
 ```bash
 composer require fabioaacarneiro/sfphp
-```
-
-The package carries the framework and nothing else: no example application, no
-test suite, no `app/` directory appearing inside your `vendor/`. What arrives is
-`src/`, the console, the licence, the readme and `resources/assets/` — SFCSS and
-SFJS, which travel with the framework rather than being left behind in a public
-directory you never receive. A test asserts that list, because what a consumer
-gets is the archive rather than the repository and the two drift silently.
-
-```bash
 ./vendor/bin/sfphp init
 ```
 
-`init` writes what a project needs before it can answer anything: a front
-controller, a route file, a controller, a view, the router script the built-in
-server uses, and SFCSS and SFJS copied into `public/assets`. It prints the
-`autoload` line to paste into your `composer.json`, and then `./vendor/bin/sfphp
-serve` answers on <http://localhost:8000> with a page saying where everything
-is.
+`init` writes only what is missing — a front controller, a route file, a
+controller, a view, the router script the built-in server uses — and publishes
+the assets. A file that is already there is kept and reported rather than
+overwritten; `--force` overrides that and `--namespace=Acme\Shop` changes the
+namespace the generated classes use.
 
-A file that is already there is kept: running `init` twice reports what it left
-alone rather than overwriting your front controller. `--force` overrides that,
-and `--namespace=Acme\Shop` changes the namespace the generated classes use.
-
-Everything it writes is **yours**. Nothing there is updated by a later
-`composer update`, and deleting the welcome controller and its view is the
-expected next step.
-
-Doing it by hand is fine too — the front controller is the only part the
-framework has an opinion about. One call wires your project to it, at the top of
-that file and of any console entry point:
+The only part the framework has an opinion about is one call, at the top of your
+front controller and of any console entry point:
 
 ```php
 require __DIR__ . '/../vendor/autoload.php';
@@ -147,28 +161,20 @@ Bootstrap::load(dirname(__DIR__), [
 ]);
 ```
 
-The console arrives as `vendor/bin/sfphp`, and generates files into **your**
-project rather than into the package.
+### From a clone
 
-### As a starting point
-
-To begin from the example application instead — routes, controllers, views and
-migrations already in place:
+To work on the framework itself, rather than with it:
 
 ```bash
 git clone https://github.com/fabioaacarneiro/sfphp-project.git
 cd sfphp-project
 composer install
 cp .env-example .env
-
-# Generate the JWT key (required to issue or validate tokens)
-php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
+./sfphp serve
 ```
 
-```bash
-./sfphp serve                                   # http://localhost:8000
-php -S localhost:8000 -t public server.php      # equivalent
-```
+A clone adds what a created project leaves behind: the test suite, the
+documentation in three languages, and the CI definition.
 
 In production, point the `DocumentRoot` at `public/`.
 
@@ -3816,7 +3822,7 @@ nothing.
 ```
 
 For a project that installed the framework and has nothing to run yet. See
-[As a dependency](#as-a-dependency).
+[Adding it to a project you already have](#adding-it-to-a-project-you-already-have).
 
 ### Assets
 
