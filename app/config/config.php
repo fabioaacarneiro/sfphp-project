@@ -73,6 +73,31 @@ date_default_timezone_set("UTC");
 define("APP_TIMEZONE", $_ENV["APP_TIMEZONE"] ?? "UTC");
 
 /**
+ * Where sessions are stored: "native" (PHP's files), "database" or "cache".
+ *
+ * Native files are local to one machine, so two application instances cannot
+ * see each other's sessions — which is what forces sticky sessions on a load
+ * balancer. "cache" with a shared driver, or "database", removes that.
+ */
+define("SESSION_DRIVER", $_ENV["SESSION_DRIVER"] ?? "native");
+
+/**
+ * Seconds of inactivity before a session ends. 0 disables the idle timeout.
+ */
+define("SESSION_LIFETIME", (int) ($_ENV["SESSION_LIFETIME"] ?? 7200));
+
+/**
+ * Seconds since creation before a session ends, however busy it has been.
+ * 0 disables the absolute timeout.
+ */
+define("SESSION_ABSOLUTE_LIFETIME", (int) ($_ENV["SESSION_ABSOLUTE_LIFETIME"] ?? 43200));
+
+/**
+ * The table the "database" session driver writes to.
+ */
+define("SESSION_TABLE", $_ENV["SESSION_TABLE"] ?? "sessions");
+
+/**
  * Where log records go: "stream", "error_log" or "null".
  */
 define("LOG_CHANNEL", $_ENV["LOG_CHANNEL"] ?? "stream");

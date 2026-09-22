@@ -58,6 +58,7 @@ Em produção, aponte o `DocumentRoot` para `public/`.
 | **SFHT** | Template engine com escape automático, herança de layout e cache compatível com OPcache |
 | **Log** | Linhas JSON em UTC, um id de requisição unindo todas as linhas de uma requisição, segredos redigidos |
 | **Tempo** | UTC em tudo, inclusive na sessão do banco; fuso é decisão de exibição |
+| **Sessões** | Prazos ocioso e absoluto, validação estrita de id, e store compartilhável entre instâncias |
 | **Cache** | Drivers de arquivo, memória e Redis |
 | **Queue** | Workers com retry, drivers de banco e Redis |
 | **SFCSS** | 2.337 classes utilitárias com variantes `hover:` e responsivas, 16,1KB gzipped |
@@ -102,7 +103,8 @@ trans_choice('app.items', 5);   // formas de plural por faixa ou regra do idioma
 - **Senhas** — `password_hash` com `PASSWORD_DEFAULT`, e `Auth::attempt()`
   equaliza o tempo de resposta para que uma conta inexistente não se distinga
   de uma senha errada
-- **Sessão** — o id é regenerado no login e no logout, contra *session fixation*
+- **Sessão** — o id é regenerado no login e no logout, o `use_strict_mode`
+  recusa um id que o PHP nunca emitiu, e há prazos ocioso e absoluto
 - **Middleware** — `VerifyCsrfToken` aplica a verificação de CSRF por padrão a toda
   requisição que altera estado
 
@@ -114,7 +116,7 @@ dado no banco sem proteger o destino real.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 95 casos unitários
+composer run test        # 102 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run docs        # os três idiomas da documentação concordam
 ```

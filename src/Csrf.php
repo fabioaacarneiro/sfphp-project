@@ -2,6 +2,8 @@
 
 namespace SfphpProject\src;
 
+use SfphpProject\src\Session\Session;
+
 use InvalidArgumentException;
 
 /**
@@ -20,28 +22,18 @@ final class Csrf
      */
     public static function startSession(?bool $secure = null): void
     {
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            return;
-        }
-
-        if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
-            /*
-             * The caller may know better than this class does. Behind a
-             * TLS-terminating proxy the PHP process sees plain HTTP, so
-             * isHttps() answers false and the cookie would lose its "secure"
-             * flag — the StartSession middleware passes the request's answer,
-             * which consults the trusted-proxy configuration.
-             */
-            session_set_cookie_params([
-                'httponly' => true,
-                'secure' => $secure ?? self::isHttps(),
-                'samesite' => 'Lax',
-            ]);
-        }
-
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
-        }
+        /*
+         * Kept as the name the framework has always used, now delegating to
+         * the class that owns sessions. Going through Session is what makes the
+         * idle and absolute deadlines unavoidable: a caller that started the
+         * session some other way would have skipped them.
+         */
+        Session::start(
+            $secure ?? self::isHttps(),
+            null,
+            defined('SESSION_LIFETIME') ? (int) SESSION_LIFETIME : 0,
+            defined('SESSION_ABSOLUTE_LIFETIME') ? (int) SESSION_ABSOLUTE_LIFETIME : 0
+        );
     }
 
     /**
@@ -53,11 +45,14 @@ final class Csrf
     {
         self::startSession();
 
-        if (!isset($_SESSION[self::SESSION_KEY]) || !is_string($_SESSION[self::SESSION_KEY])) {
-            $_SESSION[self::SESSION_KEY] = self::generateToken();
+        $token = Session::get(self::SESSION_KEY);
+
+        if (!is_string($token)) {
+            $token = self::generateToken();
+            Session::put(self::SESSION_KEY, $token);
         }
 
-        return $_SESSION[self::SESSION_KEY];
+        return $token;
     }
 
     /**
@@ -111,7 +106,7 @@ final class Csrf
         }
 
         self::startSession();
-        $sessionToken = $_SESSION[self::SESSION_KEY] ?? null;
+        $sessionToken = Session::get(self::SESSION_KEY);
 
         if (!is_string($sessionToken) || $sessionToken === '') {
             return false;

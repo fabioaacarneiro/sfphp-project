@@ -144,7 +144,36 @@ class Container
             }
 
             if ($type instanceof ReflectionNamedType && !$type->isBuiltin()) {
-                $dependencies[] = $this->get($type->getName());
+                $name = $type->getName();
+
+                if ($this->has($name)) {
+                    $dependencies[] = $this->get($name);
+
+                    continue;
+                }
+
+                /*
+                 * An unbound interface whose parameter already carries an
+                 * answer. A middleware declaring `?SessionHandlerInterface
+                 * $handler = null` is saying it will choose one itself when
+                 * nobody binds it; resolving the type regardless turned that
+                 * into "Class SessionHandlerInterface does not exist" and made
+                 * the class impossible to register by name.
+                 */
+                if ($param->isDefaultValueAvailable()) {
+                    $dependencies[] = $param->getDefaultValue();
+
+                    continue;
+                }
+
+                if ($type->allowsNull()) {
+                    $dependencies[] = null;
+
+                    continue;
+                }
+
+                // Nothing to fall back on: let get() raise its own message.
+                $dependencies[] = $this->get($name);
 
                 continue;
             }
