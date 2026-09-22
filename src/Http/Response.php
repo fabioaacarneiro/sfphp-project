@@ -5,6 +5,7 @@ namespace SfphpProject\src\Http;
 use JsonException;
 use JsonSerializable;
 use LogicException;
+use SfphpProject\src\Router;
 use SfphpProject\src\View;
 
 /**
@@ -109,6 +110,70 @@ final class Response
      *
      * @return self The response
      */
+    /**
+     * Redirect to a named route.
+     *
+     * @param string $name The route name
+     * @param array<string, string|int> $parameters The route parameters
+     * @param array<string, string|int> $query Query string values
+     * @return self The response
+     */
+    public static function route(string $name, array $parameters = [], array $query = []): self
+    {
+        return self::redirect(Router::url($name, $parameters, $query));
+    }
+
+    /**
+     * Send the visitor back where they came from.
+     *
+     * The referer is a header, which means the visitor chooses it, which makes
+     * it a redirect destination an attacker can pick. Following one to another
+     * origin is an open redirect — how a phishing link borrows a domain's good
+     * name. Only a path on this site is followed; anything else falls back.
+     *
+     * @param Request $request The current request
+     * @param string $fallback Where to go when there is no usable referer
+     * @return self The response
+     */
+    public static function back(Request $request, string $fallback = '/'): self
+    {
+        $referer = trim((string) $request->header('Referer'));
+
+        if ($referer === '' || str_starts_with($referer, '//')) {
+            // "//evil.example/x" has no scheme and is still another origin to a
+            // browser, which is why it is refused before anything is parsed.
+            return self::redirect($fallback);
+        }
+
+        $parts = parse_url($referer);
+
+        if ($parts === false) {
+            return self::redirect($fallback);
+        }
+
+        $host = $parts['host'] ?? null;
+
+        /*
+         * A referer naming another host is not somewhere "back" should go, even
+         * though only its path would be used: a visitor arriving from a search
+         * engine would be sent to whatever that engine's path happens to spell
+         * on this site.
+         */
+        if ($host !== null && strcasecmp($host, (string) $request->header('Host')) !== 0) {
+            return self::redirect($fallback);
+        }
+
+        $path = $parts['path'] ?? '';
+
+        if ($path === '' || !str_starts_with($path, '/')) {
+            return self::redirect($fallback);
+        }
+
+        $query = $parts['query'] ?? '';
+
+        return self::redirect($path . ($query !== '' ? '?' . $query : ''));
+    }
+
     public static function noContent(): self
     {
         return new self('', HTTP_NO_CONTENT);

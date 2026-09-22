@@ -5,7 +5,13 @@ namespace SfphpProject\app\controllers;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
 
-class MainController extends BaseController
+/*
+ * No base class, and none to be had: an action returns a Response, and that is
+ * the whole contract. Response is a factory — view(), json(), redirect(),
+ * route(), back() — so inheriting a class to shorten those calls would be
+ * inheritance paying for nothing.
+ */
+final class MainController
 {
     /**
      * Show the home page.
@@ -15,7 +21,7 @@ class MainController extends BaseController
      */
     public function index(Request $request): Response
     {
-        return $this->view('home', [
+        return Response::view('home', [
             'title' => 'SFPHP - Modern PHP Framework',
         ]);
     }
