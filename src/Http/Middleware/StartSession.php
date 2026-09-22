@@ -2,6 +2,7 @@
 
 namespace SfphpProject\src\Http\Middleware;
 
+use SfphpProject\src\Config;
 use SessionHandlerInterface;
 use SfphpProject\src\Http\Middleware;
 use SfphpProject\src\Http\Request;
@@ -62,8 +63,8 @@ final class StartSession implements Middleware
         Session::start(
             $request->isSecure(),
             $this->handler,
-            $this->idleSeconds ?? (defined('SESSION_LIFETIME') ? (int) SESSION_LIFETIME : 0),
-            $this->absoluteSeconds ?? (defined('SESSION_ABSOLUTE_LIFETIME') ? (int) SESSION_ABSOLUTE_LIFETIME : 0)
+            $this->idleSeconds ?? (Config::int('SESSION_LIFETIME', 0)),
+            $this->absoluteSeconds ?? (Config::int('SESSION_ABSOLUTE_LIFETIME', 0))
         );
 
         return $next($request);
@@ -76,10 +77,10 @@ final class StartSession implements Middleware
      */
     private static function configuredHandler(): ?SessionHandlerInterface
     {
-        $driver = defined('SESSION_DRIVER') ? SESSION_DRIVER : 'native';
+        $driver = Config::get('SESSION_DRIVER', 'native');
 
         return match ($driver) {
-            'database' => new DatabaseHandler(defined('SESSION_TABLE') ? SESSION_TABLE : 'sessions'),
+            'database' => new DatabaseHandler(Config::get('SESSION_TABLE', 'sessions')),
             'cache' => new CacheHandler(),
             default => null,
         };

@@ -2,6 +2,7 @@
 
 namespace SfphpProject\src\Session;
 
+use SfphpProject\src\Config;
 use SessionHandlerInterface;
 use SessionUpdateTimestampHandlerInterface;
 use SfphpProject\src\Cache\CacheManager;
@@ -133,7 +134,7 @@ final class CacheHandler implements SessionHandlerInterface, SessionUpdateTimest
      */
     private function lifetime(): int
     {
-        $configured = defined('SESSION_LIFETIME') ? (int) SESSION_LIFETIME : 0;
+        $configured = Config::int('SESSION_LIFETIME', 0);
 
         /*
          * A session with no idle timeout still needs a lifetime here, or the
