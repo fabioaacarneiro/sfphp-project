@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 139 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 140 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -514,6 +514,22 @@ es lo que permite probar todo el camino sin búfer de salida.
 $this->view('posts/index', ['posts' => $posts]);   // un Response de HTML
 $this->redirect('/posts');                          // un Response de redirección
 ```
+
+> **Un controlador no necesita clase base.** Los dos métodos tienen una línea
+> cada uno y reenvían a `Response::view()` y `Response::redirect()`, que es
+> contra lo que genera `make:controller`. `BaseController` pertenece a la
+> aplicación de ejemplo de este repositorio y **no** está en el paquete, así que
+> un proyecto que instaló el framework llama a los métodos de `Response`
+> directamente:
+>
+> ```php
+> return Response::view('posts/index', ['posts' => $posts]);
+> return Response::redirect('/posts');
+> ```
+>
+> Ambas formas son actuales y producen la misma respuesta. Extender una clase
+> base es una comodidad cuando varios controladores comparten ayudantes
+> **tuyos**, no un requisito del framework.
 
 ### BaseAPIController
 
@@ -4031,7 +4047,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 139 casos unitarios
+composer run test        # 140 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve

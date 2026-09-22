@@ -9,7 +9,12 @@ use InvalidArgumentException;
  */
 abstract class GeneratorBase
 {
+    /** The namespace this repository's own example application uses. */
+    private const EXAMPLE_NAMESPACE = 'SfphpProject\\app\\';
+
     protected string $projectRoot;
+
+    private ?string $applicationNamespace = null;
 
     public function __construct(string $projectRoot)
     {
@@ -41,12 +46,81 @@ abstract class GeneratorBase
      */
     protected function getFilePath(string $directory, string $name, string $suffix = ''): string
     {
-        $dir = rtrim($this->projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . ltrim($directory, DIRECTORY_SEPARATOR);
+        $dir = rtrim($this->projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR
+            . ltrim($this->directoryFor($directory), DIRECTORY_SEPARATOR);
         if (!is_dir($dir)) {
             mkdir($dir, 0755, true);
         }
 
         return $dir . DIRECTORY_SEPARATOR . $name . $suffix . '.php';
+    }
+
+    /**
+     * The namespace the project's own classes live in.
+     *
+     * This was the string "SfphpProject\app", hardcoded — the namespace of the
+     * example application inside this repository. Every generator therefore
+     * wrote a class into the framework's namespace, which is unusable in any
+     * project that installed the framework rather than cloning it: the class
+     * could not be autoloaded, and a generated controller extended a base class
+     * the package does not even ship.
+     *
+     * It comes from the project's own composer.json now: the PSR-4 prefix that
+     * maps to app/, or the first one there is.
+     *
+     * @return string The prefix, with a trailing separator
+     */
+    protected function applicationNamespace(): string
+    {
+        if ($this->applicationNamespace !== null) {
+            return $this->applicationNamespace;
+        }
+
+        $composer = rtrim($this->projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'composer.json';
+        $decoded = is_file($composer)
+            ? json_decode((string) file_get_contents($composer), true)
+            : null;
+
+        $maps = [];
+
+        foreach (['autoload', 'autoload-dev'] as $section) {
+            foreach ((array) ($decoded[$section]['psr-4'] ?? []) as $prefix => $path) {
+                $maps[$prefix] = is_array($path) ? ($path[0] ?? '') : $path;
+            }
+        }
+
+        foreach ($maps as $prefix => $path) {
+            if (rtrim((string) $path, '/\\') === 'app') {
+                return $this->applicationNamespace = rtrim($prefix, '\\') . '\\';
+            }
+        }
+
+        // Nothing maps to app/. "App\" is what `sfphp init` writes and what
+        // the advice it prints tells you to add.
+        return $this->applicationNamespace = 'App\\';
+    }
+
+    /**
+     * Where a file goes, spelled the way the namespace needs.
+     *
+     * @param string $directory The directory this generator was written against
+     * @return string The directory to use
+     */
+    protected function directoryFor(string $directory): string
+    {
+        if ($this->applicationNamespace() === self::EXAMPLE_NAMESPACE) {
+            // This repository's example application, whose directories are
+            // lower case and whose namespace matches them exactly.
+            return $directory;
+        }
+
+        $parts = explode('/', trim(str_replace('\\', '/', $directory), '/'));
+
+        return implode('/', array_map(
+            static fn (string $part, int $index): string => $index === 0 ? $part : ucfirst($part),
+            $parts,
+            array_keys($parts)
+        ));
     }
 
     /**
@@ -74,7 +148,26 @@ abstract class GeneratorBase
          * "SfphpProject\app\controllers\" in lower case and would never have
          * matched a generated controller.
          */
-        $namespace = 'SfphpProject\\app';
+        $prefix = $this->applicationNamespace();
+
+        if ($prefix !== self::EXAMPLE_NAMESPACE) {
+            /*
+             * Somebody else's project. Their prefix maps to app/ under PSR-4,
+             * so the segment has to be spelled the way PSR-4 expects — App\
+             * plus Controllers, matching app/Controllers.
+             */
+            $namespace = rtrim($prefix, '\\');
+
+            foreach ($parts as $part) {
+                if ($part !== '') {
+                    $namespace .= '\\' . ucfirst($part);
+                }
+            }
+
+            return $namespace;
+        }
+
+        $namespace = rtrim($prefix, '\\');
         foreach ($parts as $part) {
             if ($part !== '') {
                 $namespace .= '\\' . $part;
