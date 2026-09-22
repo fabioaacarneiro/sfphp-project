@@ -367,9 +367,23 @@ necesita ninguna clase:
 
 ### Superficies y el tema oscuro
 
-Ocho variables llevan los neutros, y un bloque `prefers-color-scheme: dark`
-redefine esas ocho y nada más — un color de paleta significa lo mismo en ambos
-temas; lo que cambia es el papel sobre el que se apoya.
+Ocho variables llevan los neutros, y la página dice qué tema quiere:
+
+```html
+<html data-theme="light">   <!-- el valor por defecto; no decir nada es igual -->
+<html data-theme="dark">
+<html data-theme="auto">    <!-- sigue el ajuste de quien lee -->
+```
+
+Solo esas ocho cambian — un color de paleta significa lo mismo en ambos temas;
+lo que cambia es el papel sobre el que se apoya.
+
+> **Es opt-in a propósito.** Una versión anterior aplicaba
+> `prefers-color-scheme` directamente a `:root`, así que una página que nunca
+> había pedido tema oscuro obtenía tarjetas oscuras — mientras `bg-blue-50` y
+> `text-slate-600`, al ser valores fijos de paleta, seguían tan claros como
+> estaban. Un titular claro sobre una tarjeta oscura no es un tema, es una
+> colisión.
 
 | Variable | Sirve para |
 |---|---|

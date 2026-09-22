@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 138 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 139 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -3761,11 +3761,25 @@ Para um projeto que instalou o framework e ainda não tem o que rodar. Veja
 ./sfphp assets:publish                     # para public/assets
 ./sfphp assets:publish --path=web/static   # para outro lugar
 ./sfphp assets:publish --force             # sobrescreve o que estiver lá
+./sfphp assets:publish --symlink           # link em vez de cópia
 ```
 
 Copia o SFCSS e o SFJS de dentro do pacote para um diretório que o projeto
-serve. Rode depois de instalar e depois de atualizar; uma segunda execução que
-encontra os mesmos arquivos não copia nada e avisa.
+serve. O `composer install` e o `./sfphp serve` já rodam isso, então o comando
+serve para uma atualização ou um layout fora do comum; uma execução que encontra
+os mesmos arquivos não copia nada e avisa.
+
+> **Por que os arquivos existem duas vezes.** O pacote os guarda onde eles são
+> versionados e onde uma atualização os substitui; o navegador só consegue ler o
+> que está sob o document root, e nenhum pacote pode escrever no seu `public/`
+> na hora da instalação. Então um é a fonte e o outro é cópia publicada — o
+> `public/assets/css` e o `public/assets/js` pertencem ao `.gitignore`, como o
+> `vendor/`.
+>
+> O `--symlink` faz virar um arquivo só onde link simbólico funciona. Não é o
+> padrão porque link é decisão de deploy: quebra quando o deploy copia em vez de
+> mover, exige cuidado no Windows, e uma atualização passa a mudar o que um site
+> no ar está servindo em vez de esperar você publicar.
 
 ### Servidor e utilitários
 
@@ -3826,9 +3840,11 @@ família, e as superfícies neutras são variáveis em vez de hex fixo:
 --body-color  --body-color-muted  --code-color
 ```
 
-Um bloco `prefers-color-scheme: dark` redefine essas oito e nada mais. Cores de
-marca e de paleta mantêm o significado nos dois temas; o que precisa mudar é o
-papel em que elas se apoiam.
+A página escolhe o tema com `data-theme` no elemento raiz — `light` (o padrão),
+`dark`, ou `auto` para seguir a configuração de quem lê. Só essas oito mudam.
+Cores de marca e de paleta mantêm o significado nos dois temas; o que precisa
+mudar é o papel em que elas se apoiam, e uma página que não diz nada continua
+clara.
 
 Esse conjunto existe porque a página de erro e a tela de dump são feitas com
 SFCSS e o embutem — um framework que tem a própria folha de estilo não deveria
@@ -3919,7 +3935,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 138 casos unitários
+composer run test        # 139 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve
