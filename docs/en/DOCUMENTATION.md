@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 151 tests, 0 failures
+> Verified against PHP 8.4 · suite: 152 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -61,7 +61,7 @@ code does today. Where something does not exist, it says so — see
 **It is** a lean framework for web applications and APIs, with routing,
 Request/Response objects, a middleware pipeline, a DI container, a query
 builder, a schema builder with MySQL/PostgreSQL parity, a template engine,
-cache, queues, and a CLI with 34 commands.
+cache, queues, and a CLI with 35 commands.
 
 **It is not** a replacement for Laravel or Symfony. There is no full ORM and no
 event system, and authentication covers login, guards and authorization but not
@@ -4039,7 +4039,7 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` exposes **34 commands**.
+`./sfphp` exposes **35 commands**.
 
 ### Generation (12 generators)
 
@@ -4124,6 +4124,8 @@ says so.
 ./sfphp env:example    # creates .env from .env-example
 ./sfphp css:build      # builds SFCSS from the config; --config= --output=
 ./sfphp js:build       # minifies SFJS
+./sfphp build --phpx   # compiles the .phpx components
+./sfphp reset          # removes the example application; --force skips the question
 ./sfphp tinker         # REPL — local development only
 ./sfphp list
 ./sfphp version
@@ -4132,6 +4134,33 @@ says so.
 
 `tinker` evaluates input with `eval()`. It is a local development tool; never
 expose the CLI to untrusted input.
+
+### Starting from zero
+
+The package ships an application: a home page, controllers, components, a model,
+a seeder. It is there to be read and run, and it is in the way the moment you
+start writing your own.
+
+```bash
+./sfphp reset            # asks first
+./sfphp reset --force    # for a script
+```
+
+It empties `app/components`, `app/controllers`, `app/models`, `app/Jobs`,
+`app/resources/views`, `database/seeders` and `database/factories`, and rewrites
+the routes file with no routes — otherwise the application would boot into a
+controller that is no longer there. The directories stay, because they are where
+the next thing goes.
+
+**Migrations are kept.** The users and sessions tables are what the
+authentication guard and the database session driver are written against, and a
+project that dropped them would find out at its first login rather than here.
+Delete them yourself if you want them gone.
+
+Before deleting anything it prints what it is about to delete, with a count per
+directory, and waits for you to type the word `reset`. With no terminal to
+answer at — a pipe, a CI job — it refuses instead of proceeding on silence.
+There is no undo and nothing goes to a trash bin.
 
 ---
 
@@ -4302,7 +4331,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 151 unit cases
+composer run test        # 152 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves

@@ -5110,6 +5110,118 @@ $tests->run('a declarative form sends the fields a visitor typed', function () u
     }
 });
 
+$tests->run('reset removes the example application and refuses to do it in silence', function () use ($tests): void {
+    /*
+     * This deletes a project's application, so it is tested against a project
+     * of its own: a directory with an autoloader shim and a copy of the binary,
+     * which is what the command reads the root from. Pointing it at anything
+     * else would be a test that can destroy the thing it is testing.
+     */
+    $root = sys_get_temp_dir() . '/sfphp-reset-' . bin2hex(random_bytes(6));
+
+    foreach ([
+        'vendor', 'src', 'app/config', 'app/components/page', 'app/controllers',
+        'app/models', 'app/Jobs', 'app/resources/views/partials',
+        'database/seeders', 'database/factories', 'database/migrations',
+    ] as $directory) {
+        mkdir($root . '/' . $directory, 0755, true);
+    }
+
+    file_put_contents(
+        $root . '/vendor/autoload.php',
+        '<?php require ' . var_export(dirname(__DIR__) . '/vendor/autoload.php', true) . ';'
+    );
+    copy(dirname(__DIR__) . '/sfphp', $root . '/sfphp');
+    chmod($root . '/sfphp', 0755);
+
+    $removed = [
+        'app/components/page/Card.phpx',
+        'app/controllers/MainController.php',
+        'app/models/User.php',
+        'app/Jobs/SendEmailJob.php',
+        'app/resources/views/home.sfht',
+        'app/resources/views/partials/header.sfht',
+        'database/seeders/DatabaseSeeder.php',
+        'database/factories/UserFactory.php',
+    ];
+
+    $kept = [
+        'app/config/config.php',
+        'database/migrations/2026_01_01_000001_create_users_table.php',
+    ];
+
+    foreach ([...$removed, ...$kept] as $file) {
+        file_put_contents($root . '/' . $file, '<?php // example');
+    }
+
+    file_put_contents($root . '/src/routes.php', "<?php\n\nRouter::get('/', 'MainController', 'index');\n");
+
+    $binary = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/sfphp');
+
+    try {
+        /*
+         * With no terminal to answer at, it has to refuse. A command that
+         * deletes an application must not proceed on silence, which is exactly
+         * what a pipe or a CI job gives it.
+         */
+        $output = [];
+        $status = 0;
+        exec($binary . ' reset < /dev/null 2>&1', $output, $status);
+
+        $tests->assertSame(1, $status);
+        $tests->assertTrue(is_file($root . '/app/controllers/MainController.php'));
+
+        // It still says what it would have done, so the warning is readable.
+        $printed = implode("\n", $output);
+        $tests->assertTrue(str_contains($printed, 'cannot be undone'));
+
+        $output = [];
+        $status = 0;
+        exec($binary . ' reset --force 2>&1', $output, $status);
+
+        /*
+         * is_file() above filled the stat cache, so without this the file that
+         * was checked before the deletion still reports as present — a test
+         * that fails while the command is correct.
+         */
+        clearstatcache(true);
+
+        $tests->assertSame(0, $status);
+
+        foreach ($removed as $file) {
+            $tests->assertSame(false, is_file($root . '/' . $file));
+        }
+
+        // The directories stay, because they are where the next thing goes.
+        $tests->assertTrue(is_dir($root . '/app/controllers'));
+        $tests->assertTrue(is_dir($root . '/app/resources/views'));
+
+        /*
+         * Migrations survive. The users and sessions tables are what the
+         * authentication guard and the database session driver are written
+         * against, and a project that lost them would find out at a login.
+         */
+        foreach ($kept as $file) {
+            $tests->assertTrue(is_file($root . '/' . $file));
+        }
+
+        // The routes file is rewritten, or the application boots into a
+        // controller that is no longer there.
+        $routes = (string) file_get_contents($root . '/src/routes.php');
+        $tests->assertSame(false, str_contains($routes, 'MainController'));
+
+        // Running it again has nothing left to do, and says so.
+        $output = [];
+        $status = 0;
+        exec($binary . ' reset < /dev/null 2>&1', $output, $status);
+
+        $tests->assertSame(0, $status);
+        $tests->assertTrue(str_contains(implode("\n", $output), 'already gone'));
+    } finally {
+        exec('rm -rf ' . escapeshellarg($root) . ' 2>/dev/null');
+    }
+});
+
 $tests->run('the dark theme changes nothing a page did not ask for', function () use ($tests): void {
     /*
      * This shipped applying prefers-color-scheme to :root directly, so a page

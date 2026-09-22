@@ -100,7 +100,7 @@ In production, point `DocumentRoot` at `public/`.
 | **Queue** | Workers with retries, database and Redis drivers |
 | **SFCSS** | 2,337 utility classes with `hover:` and responsive variants, 16.1KB gzipped |
 | **SFJS** | AJAX, DOM, validation and declarative attributes — 3.0KB gzipped |
-| **CLI** | 32 commands, 12 code generators |
+| **CLI** | 35 commands, 12 code generators |
 
 ## Built for any language
 
@@ -162,7 +162,7 @@ data in the database without protecting its real destination.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 151 unit cases
+composer run test        # 152 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run docs        # the three documentation languages agree
 ```

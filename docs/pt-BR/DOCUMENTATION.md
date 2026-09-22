@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 151 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 152 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -61,7 +61,7 @@ hoje. Onde algo não existe, está dito que não existe — veja
 **É** um framework enxuto para aplicações web e APIs, com roteamento,
 objetos Request/Response, pipeline de middleware, container de DI, query
 builder, schema builder com paridade MySQL/PostgreSQL, template engine, cache,
-filas, e um CLI com 34 comandos.
+filas, e um CLI com 35 comandos.
 
 **Não é** um substituto de Laravel ou Symfony. Não há ORM completo nem sistema
 de eventos, e a autenticação cobre login, guards e autorização, mas não
@@ -4031,7 +4031,7 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` expõe **34 comandos**.
+`./sfphp` expõe **35 comandos**.
 
 ### Geração (12 geradores)
 
@@ -4116,6 +4116,8 @@ os mesmos arquivos não copia nada e avisa.
 ./sfphp env:example    # cria .env a partir de .env-example
 ./sfphp css:build      # gera o SFCSS a partir do config; --config= --output=
 ./sfphp js:build       # minifica o SFJS
+./sfphp build --phpx   # compila os componentes .phpx
+./sfphp reset          # remove a aplicação de exemplo; --force pula a pergunta
 ./sfphp tinker         # REPL — só para desenvolvimento local
 ./sfphp list
 ./sfphp version
@@ -4124,6 +4126,33 @@ os mesmos arquivos não copia nada e avisa.
 
 `tinker` avalia entrada com `eval()`. É uma ferramenta de desenvolvimento
 local; nunca exponha o CLI a entrada não confiável.
+
+### Começar do zero
+
+O pacote traz uma aplicação: uma home, controllers, componentes, um model, um
+seeder. Ela existe para ser lida e rodada, e passa a atrapalhar no instante em
+que você começa a escrever a sua.
+
+```bash
+./sfphp reset            # pergunta antes
+./sfphp reset --force    # para script
+```
+
+Ele esvazia `app/components`, `app/controllers`, `app/models`, `app/Jobs`,
+`app/resources/views`, `database/seeders` e `database/factories`, e reescreve o
+arquivo de rotas sem rota nenhuma — do contrário a aplicação subiria apontando
+para um controller que não existe mais. As pastas ficam, porque é nelas que a
+próxima coisa vai.
+
+**As migrations são preservadas.** As tabelas de usuários e de sessões são
+contra o que o guard de autenticação e o driver de sessão em banco foram
+escritos, e um projeto que as apagasse descobriria isso no primeiro login, não
+aqui. Se quiser removê-las, remova você.
+
+Antes de apagar qualquer coisa ele imprime o que vai apagar, com a contagem por
+pasta, e espera você digitar a palavra `reset`. Sem terminal para responder —
+um pipe, um job de CI — ele recusa em vez de seguir no silêncio. Não há desfazer
+e nada vai para uma lixeira.
 
 ---
 
@@ -4294,7 +4323,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 151 casos unitários
+composer run test        # 152 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve

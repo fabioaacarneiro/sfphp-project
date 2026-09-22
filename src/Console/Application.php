@@ -24,6 +24,7 @@ use FilesystemIterator;
 use RecursiveCallbackFilterIterator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use RuntimeException;
 use SplFileInfo;
 use Throwable;
 
@@ -37,6 +38,45 @@ final class Application
      *
      * @param array<int, string> $argv The raw CLI arguments
      */
+    /**
+     * The example application's directories, whose contents `reset` removes.
+     *
+     * Migrations are deliberately absent: the users and sessions tables are
+     * what the authentication guard and the database session driver are
+     * written against, so a project that dropped them would discover it at the
+     * first login rather than here.
+     *
+     * @var list<string>
+     */
+    private const RESET_DIRECTORIES = [
+        'app/components',
+        'app/controllers',
+        'app/models',
+        'app/Jobs',
+        'app/resources/views',
+        'database/seeders',
+        'database/factories',
+    ];
+
+    /** What the routes file becomes once the example application is gone. */
+    private const EMPTY_ROUTES = <<<'PHP'
+        <?php
+
+        /**
+         * The application's routes.
+         *
+         * Example:
+         *   Router::get('/', 'HomeController', 'index')->name('home');
+         *   Router::post('/users', 'UserController', 'store');
+         *   Router::get('/users/id:number', 'UserController', 'show');
+         *
+         * @package SfphpProject
+         */
+
+        use SfphpProject\src\Router;
+
+        PHP;
+
     public function __construct(private array $argv) {}
 
     /**
@@ -61,6 +101,7 @@ final class Application
                 'env:example' => $this->envExample(),
                 'routes' => $this->routes($arguments),
                 'build' => $this->build($arguments),
+                'reset' => $this->reset($arguments),
                 'css:build' => $this->cssBuild($arguments),
                 'js:build' => $this->jsBuild($arguments),
                 'make:migration' => $this->makeMigration($arguments),
@@ -146,6 +187,7 @@ final class Application
             $this->writeLine('  env:example           Create .env from .env-example');
             $this->writeLine('  routes                List all registered routes');
             $this->writeLine('  build --phpx          Compile .phpx components into PHP');
+            $this->writeLine('  reset                 Remove the example application [--force]');
             $this->writeLine('  css:build             Build SFCSS from config.json');
             $this->writeLine('  js:build              Minify SFJS');
             $this->writeLine('');
@@ -199,6 +241,22 @@ final class Application
                 $this->writeLine('');
                 $this->writeLine('Edit tools/css-builder/sfcss.config.json to customize colors and spacing.');
                 break;
+            case 'reset':
+                $this->writeLine('Usage: ./sfphp reset [--force]');
+                $this->writeLine('');
+                $this->writeLine('Remove the example application, so the project starts from its own code.');
+                $this->writeLine('');
+                $this->writeLine('Emptied: app/components, app/controllers, app/models, app/Jobs,');
+                $this->writeLine('         app/resources/views, database/seeders, database/factories.');
+                $this->writeLine('The routes file is rewritten with no routes.');
+                $this->writeLine('');
+                $this->writeLine('Kept: app/config, database/migrations, lang, public, and the framework.');
+                $this->writeLine('Migrations stay because the authentication guard and the database');
+                $this->writeLine('session driver are written against the users and sessions tables.');
+                $this->writeLine('');
+                $this->writeLine('It lists what it will delete and asks you to type "reset" first.');
+                $this->writeLine('--force skips the question, for a script. There is no undo.');
+                break;
             default:
                 $this->writeLine("Help for command '$command' not available");
                 $this->writeLine("Run './sfphp help' to see all commands");
@@ -247,6 +305,8 @@ final class Application
         $this->writeLine('  serve                      Start development server (localhost:8000)');
         $this->writeLine('  env:example                Create .env from .env-example');
         $this->writeLine('  routes                     List all registered routes');
+        $this->writeLine('  build --phpx               Compile .phpx components into PHP');
+        $this->writeLine('  reset                      Remove the example application [--force]');
         $this->writeLine('  tinker                     Interactive PHP shell');
         $this->writeLine('');
         $this->writeLine('Utility Commands:');
@@ -1518,6 +1578,218 @@ PHP;
         sort($files);
 
         return $files;
+    }
+
+    /**
+     * Remove the example application, so a project starts from its own code.
+     *
+     * The package ships an application: a home page, a controller, components,
+     * a model, a seeder. It is there to be read and run, and it is in the way
+     * the moment somebody starts writing their own — so this takes it out.
+     *
+     * Migrations are kept. The users and sessions tables are what the database
+     * session driver and the authentication guard are written against, and a
+     * project that deleted them would find out at the first login rather than
+     * here.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function reset(array $arguments): int
+    {
+        try {
+            $plan = [];
+            $total = 0;
+
+            foreach (self::RESET_DIRECTORIES as $relative) {
+                $files = $this->filesUnder($this->projectPath($relative));
+
+                if ($files === []) {
+                    continue;
+                }
+
+                $plan[$relative] = $files;
+                $total += count($files);
+            }
+
+            $routes = $this->routesFile();
+
+            /*
+             * A routes file already reduced to the stub is nothing to do, so
+             * running this twice says so rather than announcing a deletion it
+             * is not going to make.
+             */
+            if ($routes !== null && file_get_contents($routes) === self::EMPTY_ROUTES) {
+                $routes = null;
+            }
+
+            if ($total === 0 && $routes === null) {
+                $this->writeLine('Nothing to reset. The example application is already gone.');
+
+                return 0;
+            }
+
+            $this->writeLine('');
+            $this->writeLine('  RESET — this removes the example application from this project.');
+            $this->writeLine('');
+
+            foreach ($plan as $relative => $files) {
+                $this->writeLine(sprintf('    %-24s %d file(s), emptied', $relative . '/', count($files)));
+            }
+
+            if ($routes !== null) {
+                $this->writeLine(sprintf('    %-24s rewritten with no routes', $this->relativePath($routes)));
+            }
+
+            $this->writeLine('');
+            $this->writeLine('  Kept: app/config, database/migrations, lang, public, and the framework.');
+            $this->writeLine('  Not kept: anything of your own already living in the directories above.');
+            $this->writeLine('');
+            $this->writeLine('  This cannot be undone. Nothing is backed up and nothing goes to a trash bin.');
+            $this->writeLine('');
+
+            if (!in_array('--force', $arguments, true)) {
+                /*
+                 * A pipe or a CI job has nobody to answer, and a command that
+                 * deletes a project's application must not proceed on silence.
+                 */
+                if (!stream_isatty(STDIN)) {
+                    fwrite(STDERR, 'Refusing to reset with no terminal to confirm at. Pass --force if that is what you mean.' . PHP_EOL);
+
+                    return 1;
+                }
+
+                fwrite(STDOUT, '  Type "reset" to confirm: ');
+                $answer = strtolower(trim((string) fgets(STDIN)));
+
+                if ($answer !== 'reset') {
+                    $this->writeLine('');
+                    $this->writeLine('Nothing was removed.');
+
+                    return 0;
+                }
+
+                $this->writeLine('');
+            }
+
+            foreach ($plan as $relative => $files) {
+                $this->emptyDirectory($this->projectPath($relative));
+                $this->writeLine('  emptied  ' . $relative . '/');
+            }
+
+            if ($routes !== null && file_put_contents($routes, self::EMPTY_ROUTES) === false) {
+                fwrite(STDERR, 'Error: could not rewrite ' . $this->relativePath($routes) . PHP_EOL);
+
+                return 1;
+            }
+
+            if ($routes !== null) {
+                $this->writeLine('  rewrote  ' . $this->relativePath($routes));
+            }
+
+            $this->writeLine('');
+            $this->writeLine('Reset. ' . $total . ' file(s) removed.');
+            $this->writeLine('');
+            $this->writeLine('Next: ./sfphp make:controller Home, then add a route and a view.');
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+
+            return 1;
+        }
+    }
+
+    /**
+     * Every file under a directory, deepest first.
+     *
+     * @param string $directory The directory
+     * @return list<string> The absolute paths
+     */
+    private function filesUnder(string $directory): array
+    {
+        if (!is_dir($directory)) {
+            return [];
+        }
+
+        $files = [];
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $files[] = $file->getPathname();
+            }
+        }
+
+        sort($files);
+
+        return $files;
+    }
+
+    /**
+     * Remove everything inside a directory, and leave the directory.
+     *
+     * The directory stays because it is where the next thing goes, and an
+     * application that has to guess which directories to recreate is one that
+     * fails on the first `make:` command.
+     *
+     * @param string $directory The directory
+     * @return void
+     */
+    private function emptyDirectory(string $directory): void
+    {
+        if (!is_dir($directory)) {
+            return;
+        }
+
+        /*
+         * Under the project and nowhere else. This deletes recursively, so a
+         * path that resolved somewhere unexpected — a symlink, a bad option —
+         * is the one mistake worth refusing outright.
+         */
+        $resolved = realpath($directory);
+        $root = realpath($this->rootPath());
+
+        if ($resolved === false || $root === false || !str_starts_with($resolved, $root . DIRECTORY_SEPARATOR)) {
+            throw new RuntimeException('Refusing to empty ' . $directory . ', which is not inside the project.');
+        }
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($resolved, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($iterator as $entry) {
+            if ($entry->isDir()) {
+                rmdir($entry->getPathname());
+
+                continue;
+            }
+
+            unlink($entry->getPathname());
+        }
+    }
+
+    /**
+     * The project's routes file, wherever it keeps it.
+     *
+     * @return string|null The absolute path, or null when there is none
+     */
+    private function routesFile(): ?string
+    {
+        foreach (['routes.php', 'src/routes.php', 'routes/web.php'] as $candidate) {
+            $path = $this->projectPath($candidate);
+
+            if (is_file($path)) {
+                return $path;
+            }
+        }
+
+        return null;
     }
 
     /**
