@@ -4670,4 +4670,55 @@ $tests->run('the framework ships its stylesheet and script, and can publish them
     }
 });
 
+$tests->run('the published package carries the framework and nothing else', function () use ($tests): void {
+    /*
+     * What a consumer receives is the git archive, which honours the
+     * export-ignore rules in .gitattributes — not what is in the repository.
+     * The two drift silently: a directory added here appears in everybody's
+     * vendor/ until somebody notices, and a rule that stops matching removes
+     * something the package needs.
+     */
+    $root = dirname(__DIR__);
+
+    if (!is_dir($root . '/.git')) {
+        // An exported copy has no history to archive. Nothing to check.
+        return;
+    }
+
+    $command = 'git -C ' . escapeshellarg($root) . ' archive --format=tar HEAD 2>/dev/null | tar -t 2>/dev/null';
+    $listing = shell_exec($command);
+
+    if (!is_string($listing) || trim($listing) === '') {
+        // No git or no tar on this machine; the CI job has both.
+        return;
+    }
+
+    $entries = array_filter(explode("\n", trim($listing)));
+    $top = array_values(array_unique(array_map(
+        static fn (string $path): string => explode('/', $path)[0],
+        $entries
+    )));
+    sort($top);
+
+    $tests->assertSame(
+        ['LICENSE', 'README.md', 'composer.json', 'resources', 'sfphp', 'src'],
+        $top
+    );
+
+    // The pieces a consumer actually needs, named rather than assumed.
+    foreach ([
+        'src/Bootstrap.php',
+        'src/helpers.php',
+        'src/I18n/lang/en/http.php',
+        'resources/assets/css/sfcss.min.css',
+        'resources/assets/js/sfjs.js',
+    ] as $needed) {
+        $tests->assertSame(true, in_array($needed, $entries, true));
+    }
+
+    // The console is run as a command, so it has to arrive executable.
+    $mode = shell_exec('git -C ' . escapeshellarg($root) . ' ls-files -s sfphp 2>/dev/null');
+    $tests->assertSame(true, is_string($mode) && str_starts_with(trim((string) $mode), '100755'));
+});
+
 $tests->finish();

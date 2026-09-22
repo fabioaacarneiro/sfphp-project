@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 134 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 136 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -98,7 +98,13 @@ composer require fabioaacarneiro/sfphp
 ```
 
 O pacote carrega o framework e nada além disso: sem aplicação de exemplo, sem
-suíte de testes, sem um diretório `app/` aparecendo dentro do seu `vendor/`.
+suíte de testes, sem um diretório `app/` aparecendo dentro do seu `vendor/`. O
+que chega é `src/`, o console, a licença, o readme e `resources/assets/` — o
+SFCSS e o SFJS, que viajam com o framework em vez de ficarem para trás num
+diretório público que você nunca recebe. Um teste afirma essa lista, porque o
+que o consumidor recebe é o arquivo gerado e não o repositório, e os dois se
+afastam em silêncio.
+
 Uma chamada liga o seu projeto a ele, no topo do front controller e de qualquer
 ponto de entrada de console:
 
@@ -3869,7 +3875,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 134 casos unitários
+composer run test        # 136 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve
