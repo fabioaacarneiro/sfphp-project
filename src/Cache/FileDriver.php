@@ -8,7 +8,7 @@ class FileDriver implements Cache
 {
     protected string $directory;
 
-    public function __construct(string $directory = null)
+    public function __construct(?string $directory = null)
     {
         $this->directory = $directory ?? sys_get_temp_dir() . '/sfphp-cache';
 

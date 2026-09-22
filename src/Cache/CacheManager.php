@@ -6,7 +6,7 @@ class CacheManager
 {
     protected Cache $driver;
 
-    public function __construct(Cache $driver = null)
+    public function __construct(?Cache $driver = null)
     {
         $this->driver = $driver ?? new FileDriver();
     }

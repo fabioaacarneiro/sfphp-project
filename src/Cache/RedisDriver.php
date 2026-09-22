@@ -8,7 +8,7 @@ class RedisDriver implements Cache
     protected string $prefix;
 
     public function __construct(
-        \Redis $redis = null,
+        ?\Redis $redis = null,
         string $prefix = 'sfphp:cache:'
     ) {
         if ($redis === null) {
