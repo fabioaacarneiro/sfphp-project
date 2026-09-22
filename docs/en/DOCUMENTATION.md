@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 139 tests, 0 failures
+> Verified against PHP 8.4 · suite: 140 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -510,6 +510,21 @@ that separation is what lets the whole path be tested without output buffering.
 $this->view('posts/index', ['posts' => $posts]);   // an HTML Response
 $this->redirect('/posts');                          // a redirect Response
 ```
+
+> **A controller does not need a base class.** Both methods are one line each,
+> forwarding to `Response::view()` and `Response::redirect()`, and those are
+> what `make:controller` generates against. `BaseController` belongs to this
+> repository's example application and is **not** in the package, so a project
+> that installed the framework calls the `Response` methods directly:
+>
+> ```php
+> return Response::view('posts/index', ['posts' => $posts]);
+> return Response::redirect('/posts');
+> ```
+>
+> Both forms are current and produce the same response. Extending a base class
+> is a convenience when several controllers share helpers of your own, not a
+> requirement of the framework.
 
 ### BaseAPIController
 
@@ -3968,7 +3983,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 139 unit cases
+composer run test        # 140 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves

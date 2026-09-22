@@ -24,8 +24,6 @@ final class WelcomeController
          * An action returns a Response rather than echoing. That is what lets a
          * middleware wrap it, and what makes this testable without a browser.
          */
-        return Response::view('welcome', [
-            'version' => \SfphpProject\src\Bootstrap::class,
-        ]);
+        return Response::view('welcome');
     }
 }

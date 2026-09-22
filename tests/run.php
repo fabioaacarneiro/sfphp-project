@@ -4918,4 +4918,57 @@ $tests->run('the dark theme changes nothing a page did not ask for', function ()
     $tests->assertSame(true, str_contains(HtmlDump::render([1]), 'data-theme="auto"'));
 });
 
+$tests->run('generators write into the project that ran them', function () use ($tests): void {
+    /*
+     * The namespace was the literal string "SfphpProject\app", which is this
+     * repository's example application. Every generator therefore wrote a class
+     * into the framework's own namespace: unusable in any project that
+     * installed the framework, because nothing there could autoload it — and
+     * make:controller extended a base class the package does not even ship.
+     */
+    $project = sys_get_temp_dir() . '/sfphp-generators-' . bin2hex(random_bytes(4));
+    mkdir($project, 0755, true);
+
+    try {
+        file_put_contents($project . '/composer.json', json_encode([
+            'autoload' => ['psr-4' => ['Acme\\Shop\\' => 'app/']],
+        ], JSON_THROW_ON_ERROR));
+
+        $generator = new SfphpProject\src\Console\Generators\ControllerGenerator($project);
+        $path = $generator->generate('Post');
+
+        // The project's prefix, and the directory PSR-4 expects for it.
+        $tests->assertSame(true, str_ends_with($path, 'app/Controllers/PostController.php'));
+
+        $source = (string) file_get_contents($path);
+        $tests->assertSame(true, str_contains($source, 'namespace Acme\\Shop\\Controllers;'));
+
+        // Nothing from the example application, which a consumer never receives.
+        $tests->assertSame(false, str_contains($source, 'SfphpProject\\app'));
+        $tests->assertSame(false, str_contains($source, 'extends'));
+
+        // And it is a real action: a Response, not a string.
+        $tests->assertSame(true, str_contains($source, 'public function index(Request $request): Response'));
+
+        $status = 0;
+        $output = [];
+        exec('php -l ' . escapeshellarg($path) . ' 2>&1', $output, $status);
+        $tests->assertSame(0, $status);
+
+        // A project that declares nothing gets App\, which is what init writes.
+        file_put_contents($project . '/composer.json', '{}');
+        $bare = new SfphpProject\src\Console\Generators\ControllerGenerator($project);
+        $tests->assertSame(true, str_contains((string) file_get_contents($bare->generate('Bare')), 'namespace App\\Controllers;'));
+    } finally {
+        foreach (glob($project . '/app/Controllers/*.php') ?: [] as $file) {
+            @unlink($file);
+        }
+
+        @unlink($project . '/composer.json');
+        @rmdir($project . '/app/Controllers');
+        @rmdir($project . '/app');
+        @rmdir($project);
+    }
+});
+
 $tests->finish();
