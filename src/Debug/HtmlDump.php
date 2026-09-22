@@ -322,7 +322,12 @@ final class HtmlDump
             : '<code>' . self::e(self::shorten($caller['file'])) . ':' . $caller['line'] . '</code>';
 
         return '<!DOCTYPE html>' . "\n"
-            . '<html lang="' . self::e(self::locale()) . '">' . "\n"
+            /*
+              * The framework's own screens follow the reader's system setting,
+              * because they are the framework's pages rather than somebody's.
+              * An application page opts in for itself, or stays light.
+              */
+            . '<html lang="' . self::e(self::locale()) . '" data-theme="auto">' . "\n"
             . '<head>' . "\n"
             . '<meta charset="utf-8">' . "\n"
             . '<meta name="viewport" content="width=device-width, initial-scale=1">' . "\n"

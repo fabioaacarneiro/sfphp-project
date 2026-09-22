@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 138 tests, 0 failures
+> Verified against PHP 8.4 · suite: 139 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -3767,11 +3767,25 @@ For a project that installed the framework and has nothing to run yet. See
 ./sfphp assets:publish                     # into public/assets
 ./sfphp assets:publish --path=web/static   # somewhere else
 ./sfphp assets:publish --force             # overwrite what is there
+./sfphp assets:publish --symlink           # link instead of copying
 ```
 
 Copies SFCSS and SFJS out of the package and into a directory the project
-serves. Run it after installing and after upgrading; a second run that finds
-the same files copies nothing and says so.
+serves. `composer install` and `./sfphp serve` both run it, so this is for an
+upgrade or an unusual layout; a run that finds the same files copies nothing and
+says so.
+
+> **Why the files exist twice.** The package keeps them where they are
+> version-controlled and where an upgrade replaces them; the browser can only
+> read what is under the document root, and no package can write into your
+> `public/` at install time. So one is the source and the other is a published
+> copy — `public/assets/css` and `public/assets/js` belong in `.gitignore`,
+> like `vendor/`.
+>
+> `--symlink` makes it one file where symbolic links work. It is not the
+> default because a link is a deployment decision: it breaks when a deploy
+> copies rather than moves, it needs care on Windows, and an upgrade then
+> changes what a running site serves instead of waiting for you to publish.
 
 ### Server and utilities
 
@@ -3832,9 +3846,11 @@ and the neutral surfaces are variables rather than fixed hex values:
 --body-color  --body-color-muted  --code-color
 ```
 
-A `prefers-color-scheme: dark` block redefines those eight and nothing else.
-Brand and palette colours keep their meaning in both themes; what has to change
-is the paper they sit on.
+A page opts into a theme with `data-theme` on its root element — `light` (the
+default), `dark`, or `auto` to follow the reader's system setting. Only those
+eight change. Brand and palette colours keep their meaning in both themes; what
+has to change is the paper they sit on, and a page that says nothing stays
+light.
 
 That set exists because the error page and the dump screen are built from SFCSS
 and inline it — a framework with its own stylesheet should not have its own
@@ -3925,7 +3941,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 138 unit cases
+composer run test        # 139 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves

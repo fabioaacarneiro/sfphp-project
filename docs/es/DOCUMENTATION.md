@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 138 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 139 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -3828,11 +3828,26 @@ Consulta [Como dependencia](#como-dependencia).
 ./sfphp assets:publish                     # a public/assets
 ./sfphp assets:publish --path=web/static   # a otro sitio
 ./sfphp assets:publish --force             # sobrescribe lo que haya
+./sfphp assets:publish --symlink           # enlaza en vez de copiar
 ```
 
 Copia SFCSS y SFJS desde dentro del paquete a un directorio que el proyecto
-sirva. Ejecútalo tras instalar y tras actualizar; una segunda ejecución que
+sirva. `composer install` y `./sfphp serve` ya lo ejecutan, así que el comando
+es para una actualización o una disposición poco común; una ejecución que
 encuentra los mismos archivos no copia nada y lo dice.
+
+> **Por qué los archivos existen dos veces.** El paquete los guarda donde están
+> versionados y donde una actualización los reemplaza; el navegador solo puede
+> leer lo que está bajo el document root, y ningún paquete puede escribir en tu
+> `public/` al instalarse. Así que uno es la fuente y el otro una copia
+> publicada — `public/assets/css` y `public/assets/js` van en `.gitignore`, como
+> `vendor/`.
+>
+> `--symlink` lo convierte en un solo archivo donde los enlaces simbólicos
+> funcionan. No es el valor por defecto porque un enlace es una decisión de
+> despliegue: se rompe cuando el despliegue copia en vez de mover, exige cuidado
+> en Windows, y entonces una actualización cambia lo que sirve un sitio en
+> marcha en lugar de esperar a que publiques.
 
 ### Servidor y utilidades
 
@@ -3893,9 +3908,11 @@ y las superficies neutras son variables en vez de hex fijo:
 --body-color  --body-color-muted  --code-color
 ```
 
-Un bloque `prefers-color-scheme: dark` redefine esas ocho y nada más. Los
-colores de marca y de paleta conservan su significado en ambos temas; lo que
-tiene que cambiar es el papel sobre el que se apoyan.
+La página elige el tema con `data-theme` en el elemento raíz — `light` (el
+valor por defecto), `dark`, o `auto` para seguir el ajuste de quien lee. Solo
+esas ocho cambian. Los colores de marca y de paleta conservan su significado en
+ambos temas; lo que tiene que cambiar es el papel sobre el que se apoyan, y una
+página que no dice nada se queda clara.
 
 Ese conjunto existe porque la página de error y la pantalla de volcado están
 hechas con SFCSS y lo incrustan — un framework con su propia hoja de estilos no
@@ -3986,7 +4003,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 138 casos unitarios
+composer run test        # 139 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve

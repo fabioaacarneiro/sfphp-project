@@ -173,7 +173,7 @@ final class ErrorHandler
         $escapedTitle = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
         return Response::html(
-            '<!doctype html><html lang="' . $language . '">'
+            '<!doctype html><html lang="' . $language . '" data-theme="auto">'
             . '<head><meta charset="UTF-8">'
             . '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
             . '<title>' . $escapedTitle . '</title>'

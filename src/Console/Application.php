@@ -1144,6 +1144,26 @@ PHP;
             $force = in_array('--force', $arguments, true);
             $target = $this->option($arguments, 'path') ?? $this->projectPath(Assets::PUBLIC_PATH);
 
+            if (in_array('--symlink', $arguments, true)) {
+                $linked = Assets::link($target, $force);
+
+                if ($linked === []) {
+                    $this->writeLine('Already linked to ' . $this->relativePath(Assets::path()) . '.');
+
+                    return 0;
+                }
+
+                foreach ($linked as $directory) {
+                    $this->writeLine('  ' . $this->relativePath($target . '/' . $directory)
+                        . ' -> ' . $this->relativePath(Assets::path() . '/' . $directory));
+                }
+
+                $this->writeLine('');
+                $this->writeLine('Linked. There is now one copy on disk, and an upgrade changes it immediately.');
+
+                return 0;
+            }
+
             $written = Assets::publish($target, $force);
 
             if ($written === []) {

@@ -2572,7 +2572,7 @@ $tests->run('a 404 is rendered in the visitor language', function () use ($tests
     $tests->assertSame('en', $ingles->header('Content-Language'));
 
     // E o atributo lang do documento acompanha.
-    $tests->assertTrue(str_contains($portugues->body(), '<html lang="pt-BR">'));
+    $tests->assertTrue(str_contains($portugues->body(), '<html lang="pt-BR"'));
 
     Translator::setLocale(APP_LOCALE);
 });
@@ -4660,7 +4660,31 @@ $tests->run('the framework ships its stylesheet and script, and can publish them
         // is how a command stops being believed.
         $tests->assertSame([], Assets::publish($target));
         $tests->assertSame(Assets::files(), Assets::publish($target, true));
+
+        /*
+         * Copying means the same bytes exist twice: once in the package and
+         * once under a document root a browser can reach. Where symbolic links
+         * work, that can be one file instead — which is the answer to why there
+         * appear to be two.
+         */
+        $tests->assertThrows(fn () => Assets::link($target), RuntimeException::class);
+
+        $tests->assertSame(['css', 'js'], Assets::link($target, true));
+        $tests->assertSame(true, is_link($target . '/css'));
+        $tests->assertSame(
+            md5_file(Assets::path() . '/css/sfcss.min.css'),
+            md5_file($target . '/css/sfcss.min.css')
+        );
+
+        // Linking twice is not an error and not work.
+        $tests->assertSame([], Assets::link($target));
     } finally {
+        foreach (['css', 'js'] as $directory) {
+            if (is_link($target . '/' . $directory)) {
+                @unlink($target . '/' . $directory);
+            }
+        }
+
         foreach (Assets::files() as $relative) {
             @unlink($target . '/' . $relative);
         }
@@ -4826,6 +4850,42 @@ $tests->run('a new project gets something that answers a request', function () u
 
         @rmdir($target);
     }
+});
+
+$tests->run('the dark theme changes nothing a page did not ask for', function () use ($tests): void {
+    /*
+     * This shipped applying prefers-color-scheme to :root directly, so a page
+     * that had never asked for a dark theme got dark cards — while bg-blue-50
+     * and text-slate-600, being fixed palette values, stayed as light as they
+     * were. A light heading on a dark card is not a theme, it is a collision.
+     */
+    $css = Assets::css(false);
+
+    // No bare prefers-color-scheme block: the media query only applies to a
+    // root that opted in.
+    $tests->assertSame(0, preg_match('/@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{/', $css));
+
+    $tests->assertSame(true, str_contains($css, ':root[data-theme="dark"]'));
+    $tests->assertSame(true, str_contains($css, ':root[data-theme="auto"]'));
+
+    /*
+     * The light values sit on a bare :root, so a page that says nothing is
+     * light — and the dark ones only ever appear under a [data-theme] selector.
+     */
+    $tests->assertSame(1, preg_match('/^:root \{[^}]*--surface: #ffffff/m', $css));
+
+    // Every dark definition sits inside a data-theme block, never on its own.
+    $parts = explode('--surface: #17181c', $css);
+
+    for ($index = 1; $index < count($parts); $index++) {
+        $tests->assertSame(true, str_contains(substr($parts[$index - 1], -400), 'data-theme'));
+    }
+
+    /*
+     * The framework's own screens are the framework's pages, not somebody's, so
+     * they do follow the reader's setting.
+     */
+    $tests->assertSame(true, str_contains(HtmlDump::render([1]), 'data-theme="auto"'));
 });
 
 $tests->finish();
