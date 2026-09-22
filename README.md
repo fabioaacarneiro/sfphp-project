@@ -78,6 +78,19 @@ php -S localhost:8000 -t public server.php      # equivalent
 
 In production, point `DocumentRoot` at `public/`.
 
+The home page is an example application, and so is `/phpx`, which looks an
+address up without a line of JavaScript of its own. When you have read enough of
+them:
+
+```bash
+./sfphp reset     # removes the example application; asks before it deletes
+```
+
+It empties the controllers, views, components, models, seeders, factories and
+the migrations you wrote, and rewrites the routes file. The framework's own
+migrations stay. There is no undo, so it lists what it will delete and waits for
+you to type the word.
+
 ## What is in it
 
 | | |
@@ -91,6 +104,7 @@ In production, point `DocumentRoot` at `public/`.
 | **Models** | Hydration into objects, attribute types, relations (including many-to-many) and `with()` against N+1 |
 | **Schema builder** | 30+ column types with real MySQL 8 ↔ PostgreSQL 12 parity |
 | **SFHT** | Template engine with automatic escaping, layout inheritance and an OPcache-friendly cache |
+| **.phpx** | Components as PHP functions with the markup inside them, compiled by `build --phpx`; a type decides what `{{ }}` escapes |
 | **Logging** | JSON lines in UTC, a request id joining every line of one request, secrets redacted |
 | **Time** | UTC everywhere, including the database session; zones are a display decision |
 | **Sessions** | Idle and absolute deadlines, strict id validation, and a store shareable between instances |

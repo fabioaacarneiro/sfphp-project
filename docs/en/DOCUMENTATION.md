@@ -61,12 +61,13 @@ code does today. Where something does not exist, it says so — see
 **It is** a lean framework for web applications and APIs, with routing,
 Request/Response objects, a middleware pipeline, a DI container, a query
 builder, a schema builder with MySQL/PostgreSQL parity, a template engine,
-cache, queues, and a CLI with 35 commands.
+components in `.phpx`, an HTTP client, events, cache, queues, and a CLI with 35
+commands.
 
-**It is not** a replacement for Laravel or Symfony. There is no full ORM and no
-event system, and authentication covers login, guards and authorization but not
-password recovery or two-factor. What exists is small enough to read end to
-end.
+**It is not** a replacement for Laravel or Symfony. There is no full ORM,
+events are dispatched in-process and synchronously with no message broker, and
+authentication covers login, guards and authorization but not password recovery
+or two-factor. What exists is small enough to read end to end.
 
 ### Zero dependencies, literally
 
@@ -756,6 +757,13 @@ echo $engine->render('home', ['title' => 'Hello']);
 **`{{ }}` escapes by default** (`ENT_QUOTES | ENT_SUBSTITUTE`, UTF-8). The safe
 form is the short one; bypassing it takes more typing.
 
+There is exactly one exception, and it is carried by a type rather than by a
+syntax: a value that is an `Sfht` is printed as it stands, because `Sfht` means
+markup this framework produced. That is what lets a component be composed with
+`{{ }}` while a string in the same position is still escaped — see
+[Components and .phpx](#components-and-phpx). Anything that is not an `Sfht` is
+escaped, including a string you are certain about.
+
 The expression is real PHP — function calls, operators and indexes all work:
 
 ```sfht
@@ -969,7 +977,9 @@ SFHT, so `{{ }}`, `{!! !!}`, `@if` and `@foreach` all work and escaping is the
 same as everywhere else in the framework.
 
 ```bash
-./sfphp build --phpx        # compiles every .phpx under app/components
+./sfphp build --phpx                       # every .phpx under app/components
+./sfphp build --phpx --from=src/ui         # somewhere else
+./sfphp build --phpx --to=build/components # output somewhere else
 ```
 
 The build writes PHP next to the source and runs `php -l` over each result, so a
@@ -4388,6 +4398,7 @@ does not do, and you should know before choosing it.
 | **Relative dates** | "3 hours ago" is not provided: the phrasing is per language and belongs to the application. Localised dates and numbers are, through `Time::localised()` and `Time::number()`. See [Time and time zones](#time-and-time-zones) |
 | **A metrics backend** | `Metrics` counts and times in the process and prints Prometheus text; shipping it to a collector, and keeping it across requests, is the deployment's. See [Health and metrics](#health-and-metrics) |
 | **Route caching to disk** | A static path is matched by comparison rather than by `preg_match`, but a parameterised route still costs one match, and nothing is compiled ahead of time. Fine for hundreds, not thousands |
+| **A language server for `.phpx`** | The editor gets highlighting, Emmet and completion through the configuration the package ships, but a `.phpx` is not valid PHP, so diagnostics are turned off — and turned off for every `.php` alongside it. `./sfphp build --phpx` and `composer run lint` are what catch a real error. See [Components and .phpx](#components-and-phpx) |
 | **Session revocation from elsewhere** | Ending another device's session is buildable on the `database` driver's table; nothing ships. See [Sessions](#sessions) |
 
 SFHT also has no automatic loop variables (`$loop`) and no partial block

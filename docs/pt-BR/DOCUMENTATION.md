@@ -60,13 +60,14 @@ hoje. Onde algo não existe, está dito que não existe — veja
 
 **É** um framework enxuto para aplicações web e APIs, com roteamento,
 objetos Request/Response, pipeline de middleware, container de DI, query
-builder, schema builder com paridade MySQL/PostgreSQL, template engine, cache,
-filas, e um CLI com 35 comandos.
+builder, schema builder com paridade MySQL/PostgreSQL, template engine,
+componentes em `.phpx`, cliente HTTP, eventos, cache, filas, e um CLI com 35
+comandos.
 
-**Não é** um substituto de Laravel ou Symfony. Não há ORM completo nem sistema
-de eventos, e a autenticação cobre login, guards e autorização, mas não
-recuperação de senha nem dois fatores. O que existe é pequeno o suficiente
-para ser lido inteiro.
+**Não é** um substituto de Laravel ou Symfony. Não há ORM completo, os eventos
+são despachados no processo e de forma síncrona, sem broker de mensagens, e a
+autenticação cobre login, guards e autorização, mas não recuperação de senha nem
+dois fatores. O que existe é pequeno o suficiente para ser lido inteiro.
 
 ### Zero dependências, literalmente
 
@@ -748,6 +749,13 @@ echo $engine->render('home', ['title' => 'Olá']);
 **`{{ }}` escapa por padrão** (`ENT_QUOTES | ENT_SUBSTITUTE`, UTF-8). A forma
 segura é a curta; contorná-la exige escrever mais.
 
+Há exatamente uma exceção, e ela é carregada por um tipo, não por uma sintaxe:
+um valor que seja `Sfht` é impresso como está, porque `Sfht` quer dizer markup
+que este framework produziu. É isso que permite compor um componente com
+`{{ }}` enquanto uma string na mesma posição continua escapada — veja
+[Componentes e .phpx](#componentes-e-phpx). Tudo que não for `Sfht` é escapado,
+inclusive uma string sobre a qual você tem certeza.
+
 A expressão é PHP real — chamadas de função, operadores e índices funcionam:
 
 ```sfht
@@ -962,7 +970,9 @@ SFHT, então `{{ }}`, `{!! !!}`, `@if` e `@foreach` funcionam e o escape é o me
 do resto do framework.
 
 ```bash
-./sfphp build --phpx        # compila todo .phpx sob app/components
+./sfphp build --phpx                       # todo .phpx sob app/components
+./sfphp build --phpx --from=src/ui         # a partir de outra pasta
+./sfphp build --phpx --to=build/components # saída em outra pasta
 ```
 
 O build escreve o PHP ao lado do fonte e roda `php -l` em cada resultado, então
@@ -4379,6 +4389,7 @@ não faz, e que você deve saber antes de escolhê-lo.
 | **Datas relativas** | "3 horas atrás" não existe: a frase é por idioma e pertence à aplicação. Data e número localizados existem, pelo `Time::localised()` e pelo `Time::number()`. Ver [Tempo e fusos horários](#tempo-e-fusos-horários) |
 | **Backend de métricas** | O `Metrics` conta e cronometra dentro do processo e imprime o texto do Prometheus; levar isso a um coletor, e mantê-lo entre requisições, é do deploy. Ver [Health e métricas](#health-check-e-métricas) |
 | **Cache de rotas em disco** | Um caminho estático é casado por comparação e não por `preg_match`, mas uma rota com parâmetro ainda custa um match, e nada é compilado de antemão. Adequado a centenas, não a milhares |
+| **Um language server para `.phpx`** | O editor ganha coloração, Emmet e autocomplete pela configuração que o pacote distribui, mas um `.phpx` não é PHP válido, então o diagnóstico fica desligado — e desligado para todo `.php` ao lado dele. Quem pega erro de verdade é o `./sfphp build --phpx` e o `composer run lint`. Veja [Componentes e .phpx](#componentes-e-phpx) |
 | **Revogar sessão de outro lugar** | Encerrar a sessão de outro dispositivo dá para construir sobre a tabela do driver `database`; nada vem pronto. Ver [Sessões](#sessões) |
 
 O SFHT também não tem variáveis automáticas de laço (`$loop`) nem herança
