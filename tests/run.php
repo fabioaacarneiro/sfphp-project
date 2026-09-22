@@ -4806,7 +4806,14 @@ $tests->run('the published package is a project that runs out of the box', funct
 
     $tests->assertSame(
         [
-            '.env-example', 'LICENSE', 'README.md', 'app', 'composer.json', 'database',
+            /*
+             * The editor settings travel too. Language associations for .phpx
+             * and .sfht are the project's rather than a person's — without them
+             * a contributor opens a component and sees uncoloured text and
+             * false syntax errors.
+             */
+            '.editorconfig', '.env-example', '.vscode', '.zed',
+            'LICENSE', 'README.md', 'app', 'composer.json', 'database',
             'lang', 'public', 'resources', 'server.php', 'sfphp', 'src', 'tools',
         ],
         $top

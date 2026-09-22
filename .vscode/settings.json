@@ -1,0 +1,32 @@
+{
+    // .phpx is PHP with markup inside sfht( … ). The editor needs to be told
+    // three things, and they are independent of each other.
+
+    // 1. Which language mode the file gets. This is what gives colour.
+    "files.associations": {
+        "*.phpx": "php",
+        "*.sfht": "html"
+    },
+
+    // 2. Emmet is configured per language mode, not per extension.
+    "emmet.includeLanguages": {
+        "php": "html"
+    },
+
+    // 3. Intelephense keeps its own list of files to index, separate from the
+    //    one above. Without this it colours the file but offers no completion.
+    "intelephense.files.associations": ["*.php", "*.phtml", "*.phpx"],
+
+    /*
+     * The markup inside sfht( … ) is not PHP, so both syntax checkers report it
+     * as an error. They are false: `./sfphp build --phpx` compiles each
+     * component and runs php -l on what it produced, so a real syntax error is
+     * still caught — at build time, with the line number of the .phpx.
+     *
+     * This does turn Intelephense's diagnostics off for every .php as well,
+     * which is the cost of mapping .phpx onto the php language. Giving .phpx a
+     * language id of its own removes the need for it.
+     */
+    "intelephense.diagnostics.enable": false,
+    "php.validate.enable": false
+}
