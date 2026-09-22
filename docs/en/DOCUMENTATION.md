@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 108 tests, 0 failures
+> Verified against PHP 8.4 · suite: 114 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -30,6 +30,7 @@ code does today. Where something does not exist, it says so — see
 - [Seeders and factories](#seeders-and-factories)
 - [Cache](#cache)
 - [Queue](#queue)
+- [Mail](#mail)
 - [Validation](#validation)
 - [Internationalisation](#internationalisation)
 - [Time and time zones](#time-and-time-zones)
@@ -205,7 +206,7 @@ public/index.php
  │   └─ runtime.php→ date_default_timezone_set('UTC')
  │      utils.php  → global helpers: e(), asset(), csrf_*()
  │      http.php   → HTTP_OK, GET, POST, ... constants
- │      helpers.php→ cache(), logger(), now(), dispatch(), __(), trans_choice(), locale()
+ │      helpers.php→ cache(), logger(), mailer(), now(), dispatch(), __(), ...
  │      config.php → Bootstrap::load(): .env, constants, view and lang paths
  ├─ ErrorHandler::register()  safety net for fatals and bootstrap failures
  ├─ require src/routes.php    fills the static route registry
@@ -481,6 +482,7 @@ And by `src/helpers.php`:
 ```php
 cache();                      // a CacheManager with the file driver
 logger();                     // a LogManager, configured from LOG_*
+mailer();                     // a MailManager, configured from MAIL_*
 now();                        // the current instant, in UTC
 dispatch(new MyJob());        // queues a job
 __('app.welcome', ['name' => 'Ana']);
@@ -1700,6 +1702,172 @@ and `SIGINT` shut it down gracefully.
 
 The `jobs` and `failed_jobs` tables are created on demand, on the first
 operation that needs them — instantiating the driver opens no connection.
+
+---
+
+## Mail
+
+```php
+use SfphpProject\src\Mail\Message;
+
+mailer()->send(
+    (new Message())
+        ->to('ana@example.com', 'Ana')
+        ->subject('Your order')
+        ->text('Thank you for your purchase.')
+        ->html('<p>Thank you for your purchase.</p>')
+);
+```
+
+The framework knows how to put bytes on a mail server. It does not know why you
+are sending them: there is no welcome e-mail here and no password reset, because
+those are decisions about what an application is for. What is here is the
+transport, in the same shape as the cache and the queue — a contract, a manager
+and drivers.
+
+### Configuration
+
+```ini
+MAIL_DRIVER=smtp
+MAIL_HOST=smtp.provider.com
+MAIL_PORT=587
+MAIL_USERNAME=...
+MAIL_PASSWORD=...
+MAIL_ENCRYPTION=tls              # tls for STARTTLS, ssl for implicit TLS
+MAIL_FROM_ADDRESS=no-reply@yourdomain.com
+MAIL_FROM_NAME="Your Product"
+```
+
+| Driver | Sends through | Use it for |
+|---|---|---|
+| `smtp` | A mail server | Production, with a contracted service |
+| `mail` | PHP's `mail()` | A development machine, and nothing else |
+| `log` | The logger | The default; shows what would have gone out |
+| `array` | Memory | Tests, through `ArrayDriver::messages()` |
+
+The default is `log`, not `mail`. A framework whose out-of-the-box behaviour is
+to hand messages to an unconfigured local MTA sends nothing and says nothing;
+writing them to the log at least tells you what would have left, and cannot
+reach a real person by accident.
+
+### One driver, every provider
+
+`smtp` is the only transport the framework needs, and that is not a compromise.
+Every service anyone contracts — SES, Postmark, SendGrid, Mailgun, Resend,
+Brevo — accepts SMTP, so changing provider is four values in the environment
+rather than a new driver. An HTTP client per vendor would be more code reaching
+fewer of them.
+
+Both routes to TLS work, because providers are split between them:
+
+| `MAIL_ENCRYPTION` | Port, usually | What happens |
+|---|---|---|
+| `tls` | 587 | Plain connection, upgraded with `STARTTLS` |
+| `ssl` | 465 | Encrypted from the first byte |
+| `none` | 25, 1025 | Neither — a local server only |
+
+`AUTH PLAIN` and `AUTH LOGIN` are both supported; the server's own announcement
+decides which is used. The certificate is verified by default.
+
+### Sending is not arriving
+
+Configure the credentials and messages leave correctly. Whether they reach an
+inbox depends on three things that are DNS and a provider's control panel, not
+code:
+
+- **SPF, DKIM and DMARC** records on your sending domain. The provider gives
+  you the values. Without them a message is scored as spam or refused outright.
+- **A verified sender.** Almost every service refuses a `From` you have not
+  proved is yours.
+- **Bounces and complaints**, which the provider reports by webhook. Nothing
+  here consumes them, and ignoring them burns your sending reputation.
+
+No framework can do those on an application's behalf. They are configured once
+per project.
+
+### Writing a message
+
+```php
+(new Message())
+    ->from('no-reply@yourdomain.com', 'Your Product')   // usually left to MAIL_FROM_*
+    ->to('ana@example.com', 'Ana')
+    ->cc('records@yourdomain.com')
+    ->bcc('audit@yourdomain.com')
+    ->replyTo('support@yourdomain.com', 'Support')
+    ->subject('Your order')
+    ->text('The plain text version.')
+    ->html('<p>The HTML version.</p>')
+    ->attach('invoice.pdf', $bytes, 'application/pdf')
+    ->attachFile('/tmp/report.csv', 'report.csv', 'text/csv')
+    ->header('X-Campaign', 'october');
+```
+
+Setting both `text()` and `html()` sends a `multipart/alternative` and lets the
+reader's client choose. HTML with no text alternative is one of the things that
+gets a message scored as spam, so it is worth filling in.
+
+A **Bcc address reaches the server and never reaches a header**. Writing one
+would show every blind recipient to everyone else, which is the one thing Bcc
+promises not to do.
+
+### Two things that are not conveniences
+
+**A line break in a header is refused.** A newline in a name, an address or a
+subject lets whoever supplied it append headers of their own — `Bcc:` to an
+address you never intended is the classic one, and the value usually comes from
+a form. `Message` throws instead of stripping it, because quietly sending a
+different message than the one asked for is the wrong answer to both an attack
+and a mistake.
+
+**Everything is UTF-8 all the way out.** A subject with an accent is encoded per
+RFC 2047 and a body per RFC 2045, so "Confirmação de inscrição" arrives as
+itself rather than as mojibake. Pure ASCII is left alone, which keeps a raw
+message readable.
+
+### Sending in the background
+
+The queue is already there, and a request should not wait on a mail server:
+
+```php
+final class SendInvoice extends Job
+{
+    public function __construct(private int $orderId) {}
+
+    public function handle(): void
+    {
+        mailer()->send(/* ... */);
+    }
+}
+
+dispatch(new SendInvoice($order->id));
+```
+
+### Testing
+
+```php
+$sent = new ArrayDriver();
+mailer()->driver($sent);
+
+// ... exercise the code under test
+
+$sent->last()->recipients();      // ['ana@example.com']
+$sent->last()->subjectLine();
+```
+
+`MAIL_ALWAYS_TO` redirects every message to one address while keeping the
+intended recipient in an `X-Intended-For` header. It is for a staging
+environment working from a copy of production data, where the addresses in the
+database belong to real people.
+
+### What is missing
+
+| Missing | Situation |
+|---|---|
+| Delivery feedback | Bounces and complaints arrive by webhook at the provider; nothing consumes them |
+| Inline images (`cid:`) | Attachments are sent as attachments, not referenced from the HTML |
+| Templates | Render a view and pass the result to `html()`; the mailer takes a string |
+| DKIM signing in the client | Done by the provider, from the DNS records you publish |
+| A pooled connection | One connection per message. Sending in bulk belongs on the queue |
 
 ---
 
@@ -3075,7 +3243,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 108 unit cases
+composer run test        # 114 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves

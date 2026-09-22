@@ -1,6 +1,11 @@
 <?php
 
 use SfphpProject\src\Cache\CacheManager;
+use SfphpProject\src\Mail\ArrayDriver as MailArrayDriver;
+use SfphpProject\src\Mail\LogDriver as MailLogDriver;
+use SfphpProject\src\Mail\MailDriver;
+use SfphpProject\src\Mail\MailManager;
+use SfphpProject\src\Mail\SmtpDriver;
 use SfphpProject\src\Time;
 use SfphpProject\src\Log\ErrorLogDriver;
 use SfphpProject\src\Log\Level;
@@ -72,6 +77,53 @@ if (!function_exists('logger')) {
         );
 
         return $log = new LogManager($driver, $minimum);
+    }
+}
+
+if (!function_exists('mailer')) {
+    /**
+     * The application's mailer.
+     *
+     * Named mailer() rather than mail(), which is a function PHP already
+     * defines and the SMTP driver still relies on for its own fallback.
+     *
+     * @return MailManager The shared mailer
+     */
+    function mailer(): MailManager
+    {
+        static $mailer = null;
+
+        if ($mailer !== null) {
+            return $mailer;
+        }
+
+        $driver = defined('MAIL_DRIVER') ? MAIL_DRIVER : 'log';
+
+        $transport = match ($driver) {
+            'smtp' => new SmtpDriver(
+                defined('MAIL_HOST') ? MAIL_HOST : 'localhost',
+                defined('MAIL_PORT') ? (int) MAIL_PORT : 25,
+                defined('MAIL_USERNAME') ? (MAIL_USERNAME ?: null) : null,
+                defined('MAIL_PASSWORD') ? (MAIL_PASSWORD ?: null) : null,
+                defined('MAIL_ENCRYPTION') ? MAIL_ENCRYPTION : 'none',
+                defined('MAIL_TIMEOUT') ? (int) MAIL_TIMEOUT : 30
+            ),
+            'mail' => new MailDriver(),
+            'array' => new MailArrayDriver(),
+            default => new MailLogDriver(),
+        };
+
+        $mailer = new MailManager(
+            $transport,
+            defined('MAIL_FROM_ADDRESS') ? (MAIL_FROM_ADDRESS ?: null) : null,
+            defined('MAIL_FROM_NAME') ? MAIL_FROM_NAME : ''
+        );
+
+        if (defined('MAIL_ALWAYS_TO') && MAIL_ALWAYS_TO !== '') {
+            $mailer->alwaysTo(MAIL_ALWAYS_TO);
+        }
+
+        return $mailer;
     }
 }
 

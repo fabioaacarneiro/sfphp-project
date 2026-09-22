@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 108 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 114 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -30,6 +30,7 @@ hoje. Onde algo não existe, está dito que não existe — veja
 - [Seeders e Factories](#seeders-e-factories)
 - [Cache](#cache)
 - [Queue](#queue)
+- [E-mail](#e-mail)
 - [Validação](#validação)
 - [Internacionalização](#internacionalização)
 - [Tempo e fusos horários](#tempo-e-fusos-horários)
@@ -205,7 +206,7 @@ public/index.php
  │   └─ runtime.php→ date_default_timezone_set('UTC')
  │      utils.php  → helpers globais: e(), asset(), csrf_*()
  │      http.php   → constantes HTTP_OK, GET, POST, ...
- │      helpers.php→ cache(), logger(), now(), dispatch(), __(), trans_choice(), locale()
+ │      helpers.php→ cache(), logger(), mailer(), now(), dispatch(), __(), ...
  │      config.php → Bootstrap::load(): .env, constantes, caminhos de view e lang
  ├─ ErrorHandler::register()  rede de segurança para fatais e bootstrap
  ├─ require src/routes.php    popula o registro estático de rotas
@@ -475,6 +476,7 @@ E por `src/helpers.php`:
 ```php
 cache();                      // CacheManager com driver de arquivo
 logger();                     // LogManager, configurado por LOG_*
+mailer();                     // MailManager, configurado por MAIL_*
 now();                        // o instante atual, em UTC
 dispatch(new MeuJob());       // enfileira um job
 __('app.welcome', ['name' => 'Ana']);
@@ -1690,6 +1692,171 @@ e `SIGINT` encerram graciosamente.
 
 As tabelas `jobs` e `failed_jobs` são criadas sob demanda, na primeira
 operação que precisa delas — instanciar o driver não abre conexão.
+
+---
+
+## E-mail
+
+```php
+use SfphpProject\src\Mail\Message;
+
+mailer()->send(
+    (new Message())
+        ->to('ana@exemplo.com', 'Ana')
+        ->subject('Seu pedido')
+        ->text('Obrigado pela compra.')
+        ->html('<p>Obrigado pela compra.</p>')
+);
+```
+
+O framework sabe pôr bytes num servidor de e-mail. Ele não sabe por que você
+está mandando: não há e-mail de boas-vindas aqui nem recuperação de senha,
+porque isso é decisão sobre para que serve uma aplicação. O que há é o
+transporte, na mesma forma do cache e da fila — um contrato, um manager e
+drivers.
+
+### Configuração
+
+```ini
+MAIL_DRIVER=smtp
+MAIL_HOST=smtp.provedor.com
+MAIL_PORT=587
+MAIL_USERNAME=...
+MAIL_PASSWORD=...
+MAIL_ENCRYPTION=tls              # tls para STARTTLS, ssl para TLS implícito
+MAIL_FROM_ADDRESS=nao-responda@seudominio.com
+MAIL_FROM_NAME="Seu Produto"
+```
+
+| Driver | Envia por | Use para |
+|---|---|---|
+| `smtp` | Um servidor de e-mail | Produção, com um serviço contratado |
+| `mail` | O `mail()` do PHP | Máquina de desenvolvimento, e nada além |
+| `log` | O logger | O padrão; mostra o que teria saído |
+| `array` | Memória | Testes, via `ArrayDriver::messages()` |
+
+O padrão é `log`, não `mail`. Um framework cujo comportamento de fábrica é
+entregar mensagens a um MTA local não configurado não envia nada e não avisa
+nada; escrever no log pelo menos diz o que teria saído, e não alcança uma pessoa
+real por acidente.
+
+### Um driver, todos os provedores
+
+O `smtp` é o único transporte de que o framework precisa, e isso não é
+concessão. Todo serviço que alguém contrata — SES, Postmark, SendGrid, Mailgun,
+Resend, Brevo — aceita SMTP, então trocar de fornecedor é mudar quatro valores
+no ambiente, não escrever driver. Um cliente HTTP por fornecedor seria mais
+código alcançando menos deles.
+
+Os dois caminhos até o TLS funcionam, porque os provedores se dividem entre
+eles:
+
+| `MAIL_ENCRYPTION` | Porta, em geral | O que acontece |
+|---|---|---|
+| `tls` | 587 | Conexão limpa, elevada com `STARTTLS` |
+| `ssl` | 465 | Criptografada desde o primeiro byte |
+| `none` | 25, 1025 | Nenhum dos dois — só servidor local |
+
+`AUTH PLAIN` e `AUTH LOGIN` são os dois suportados; o que o servidor anuncia
+decide qual é usado. O certificado é verificado por padrão.
+
+### Enviar não é chegar
+
+Configure as credenciais e as mensagens saem certas. Se elas chegam à caixa de
+entrada depende de três coisas que são DNS e painel do fornecedor, não código:
+
+- **Registros SPF, DKIM e DMARC** no seu domínio de envio. O provedor te dá os
+  valores. Sem eles a mensagem é pontuada como spam ou recusada de saída.
+- **Remetente verificado.** Quase todo serviço recusa um `From` que você não
+  provou ser seu.
+- **Bounces e reclamações**, que o provedor reporta por webhook. Nada aqui os
+  consome, e ignorá-los queima sua reputação de envio.
+
+Nenhum framework faz isso pela aplicação. É configurado uma vez por projeto.
+
+### Escrevendo uma mensagem
+
+```php
+(new Message())
+    ->from('nao-responda@seudominio.com', 'Seu Produto')   // em geral fica com MAIL_FROM_*
+    ->to('ana@exemplo.com', 'Ana')
+    ->cc('registros@seudominio.com')
+    ->bcc('auditoria@seudominio.com')
+    ->replyTo('suporte@seudominio.com', 'Suporte')
+    ->subject('Seu pedido')
+    ->text('A versão em texto.')
+    ->html('<p>A versão em HTML.</p>')
+    ->attach('nota.pdf', $bytes, 'application/pdf')
+    ->attachFile('/tmp/relatorio.csv', 'relatorio.csv', 'text/csv')
+    ->header('X-Campanha', 'outubro');
+```
+
+Definir `text()` e `html()` envia um `multipart/alternative` e deixa o cliente
+de quem lê escolher. HTML sem alternativa em texto é uma das coisas que fazem
+uma mensagem ser pontuada como spam, então vale preencher.
+
+Um **endereço em Bcc chega ao servidor e nunca chega a um cabeçalho**. Escrever
+um mostraria cada destinatário oculto para todos os outros, que é justamente o
+que o Bcc promete não fazer.
+
+### Duas coisas que não são conveniência
+
+**Uma quebra de linha num cabeçalho é recusada.** Um newline num nome, num
+endereço ou num assunto permite a quem o forneceu acrescentar cabeçalhos
+próprios — `Bcc:` para um endereço que você nunca quis é o clássico, e o valor
+costuma vir de um formulário. A `Message` lança em vez de remover, porque enviar
+em silêncio uma mensagem diferente da pedida é a resposta errada tanto para um
+ataque quanto para um engano.
+
+**Tudo é UTF-8 até o fim.** Um assunto com acento é codificado conforme a RFC
+2047 e um corpo conforme a RFC 2045, então "Confirmação de inscrição" chega como
+ele mesmo e não como mojibake. ASCII puro fica intocado, o que mantém uma
+mensagem crua legível.
+
+### Enviando em segundo plano
+
+A fila já existe, e uma requisição não deveria esperar um servidor de e-mail:
+
+```php
+final class SendInvoice extends Job
+{
+    public function __construct(private int $orderId) {}
+
+    public function handle(): void
+    {
+        mailer()->send(/* ... */);
+    }
+}
+
+dispatch(new SendInvoice($order->id));
+```
+
+### Testando
+
+```php
+$sent = new ArrayDriver();
+mailer()->driver($sent);
+
+// ... exercite o código sob teste
+
+$sent->last()->recipients();      // ['ana@exemplo.com']
+$sent->last()->subjectLine();
+```
+
+O `MAIL_ALWAYS_TO` redireciona toda mensagem para um endereço, mantendo o
+destinatário pretendido num cabeçalho `X-Intended-For`. É para um ambiente de
+homologação trabalhando sobre cópia de dados de produção, onde os endereços no
+banco pertencem a pessoas reais.
+
+### O que falta
+
+| Ausência | Situação |
+|---|---|
+| Retorno de entrega | Bounces e reclamações chegam por webhook no provedor; nada os consome |
+| Imagens embutidas (`cid:`) | Anexos são enviados como anexos, sem referência a partir do HTML |
+| Templates | Renderize uma view e passe o resultado para `html()`; o mailer recebe string |
+| Assinatura DKIM no cliente | Feita pelo provedor, a partir dos registros DNS que você publica |
+| Conexão reaproveitada | Uma conexão por mensagem. Envio em massa pertence à fila |
 
 ---
 
@@ -3066,7 +3233,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 108 casos unitários
+composer run test        # 114 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve
