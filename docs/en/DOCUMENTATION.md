@@ -3294,12 +3294,18 @@ are none:
 ```bash
 SFPHP_TEST_MYSQL_DSN='mysql:host=127.0.0.1;port=3306;dbname=sf' \
 SFPHP_TEST_MYSQL_USER=root SFPHP_TEST_MYSQL_PASS=secret \
+SFPHP_TEST_REDIS_HOST=127.0.0.1 \
   composer run test:db
 ```
 
+It covers the schema builder against both dialects, the database queue, and —
+when a Redis host is given — the cache, the session handler over it and the
+Redis queue driver. Those three had no test that ran against a server until
+this version, and the queue driver was losing every job id because of it.
+
 CI runs two jobs: `unit` on a PHP 8.1–8.4 matrix **without `mbstring`**, which
 is what keeps the UTF-8 handling from depending on the extension; and
-`integration` with MySQL 8 and PostgreSQL 16 as services.
+`integration` with MySQL 8, PostgreSQL 16 and Redis 7 as services.
 
 `composer run docs` runs in the unit job too. The documentation exists in three
 languages, and prose cannot be compared mechanically — but structure can. It

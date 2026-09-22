@@ -72,7 +72,7 @@ class DatabaseDriver implements Queue
             'queue' => 'default',
             'payload' => json_encode([
                 'class' => get_class($job),
-                'data' => $this->serializeJob($job),
+                'data' => $job->payload(),
             ]),
             'attempts' => 0,
             'reserved_at' => null,
@@ -143,7 +143,7 @@ class DatabaseDriver implements Queue
             $instance = new $payload['class']();
             $instance->setId($job['id']);
             $instance->setAttempts($job['attempts']);
-            $this->unserializeJob($instance, $payload['data']);
+            $instance->restore($payload['data']);
 
             return $instance;
         }
@@ -180,7 +180,7 @@ class DatabaseDriver implements Queue
             'queue' => 'default',
             'payload' => json_encode([
                 'class' => get_class($job),
-                'data' => $this->serializeJob($job),
+                'data' => $job->payload(),
             ]),
             'exception' => $exception->getMessage(),
             'failed_at' => time(),
@@ -241,67 +241,7 @@ class DatabaseDriver implements Queue
         return $this->query($this->table)->count();
     }
 
-    /**
-     * Capture the job's own data, not the queue's bookkeeping about it.
-     *
-     * Job declares id, attempts, tries, timeout and delay, and reflecting over
-     * every property swept those into the payload too. They were captured at
-     * push time — when the id is still null — so restoring them at pop time
-     * overwrote the id the driver had just assigned, and every later call that
-     * identifies the job by it silently addressed nothing: release() put
-     * nothing back, delete() removed nothing, and failed() tried to record a
-     * row with a null uuid.
-     *
-     * @param Job $job The job being stored
-     * @return array<string, mixed> The subclass's own properties
-     */
-    protected function serializeJob(Job $job): array
-    {
-        $reflection = new \ReflectionClass($job);
-        $bookkeeping = array_map(
-            static fn (\ReflectionProperty $property): string => $property->getName(),
-            (new \ReflectionClass(Job::class))->getProperties()
-        );
 
-        $data = [];
-
-        foreach ($reflection->getProperties() as $property) {
-            if (in_array($property->getName(), $bookkeeping, true)) {
-                continue;
-            }
-
-            $property->setAccessible(true);
-
-            if ($property->isInitialized($job)) {
-                $data[$property->getName()] = $property->getValue($job);
-            }
-        }
-
-        return $data;
-    }
-
-    protected function unserializeJob(Job $job, array $data): void
-    {
-        $reflection = new \ReflectionClass($job);
-
-        $bookkeeping = array_map(
-            static fn (\ReflectionProperty $property): string => $property->getName(),
-            (new \ReflectionClass(Job::class))->getProperties()
-        );
-
-        foreach ($data as $name => $value) {
-            // Belt and braces: a payload written by an older version may carry them.
-            if (in_array($name, $bookkeeping, true)) {
-                continue;
-            }
-
-            if ($reflection->hasProperty($name)) {
-                $property = $reflection->getProperty($name);
-                $property->setAccessible(true);
-                $property->setValue($job, $value);
-            }
-        }
-    }
 
     protected function ensureTables(): void
     {
