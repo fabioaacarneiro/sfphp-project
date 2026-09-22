@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 140 tests, 0 failures
+> Verified against PHP 8.4 · suite: 142 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -401,11 +401,11 @@ namespace SfphpProject\app\controllers;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
 
-final class PostController extends BaseController
+final class PostController
 {
     public function show(Request $request, string $id): Response
     {
-        return $this->view('posts/show', ['id' => (int) $id]);
+        return Response::view('posts/show', ['id' => (int) $id]);
     }
 
     public function store(Request $request): Response
@@ -504,42 +504,83 @@ $response->status();  $response->body();  $response->header('Content-Type');
 touches the output buffer. Turning it into bytes is the `Emitter`'s job, and
 that separation is what lets the whole path be tested without output buffering.
 
-### BaseController
+### No base class
+
+A controller inherits nothing. The framework asks for an action that returns a
+`Response`, and `Response` is a factory, so every kind of response is reachable
+from any class:
 
 ```php
-$this->view('posts/index', ['posts' => $posts]);   // an HTML Response
-$this->redirect('/posts');                          // a redirect Response
-```
-
-> **A controller does not need a base class.** Both methods are one line each,
-> forwarding to `Response::view()` and `Response::redirect()`, and those are
-> what `make:controller` generates against. `BaseController` belongs to this
-> repository's example application and is **not** in the package, so a project
-> that installed the framework calls the `Response` methods directly:
->
-> ```php
-> return Response::view('posts/index', ['posts' => $posts]);
-> return Response::redirect('/posts');
-> ```
->
-> Both forms are current and produce the same response. Extending a base class
-> is a convenience when several controllers share helpers of your own, not a
-> requirement of the framework.
-
-### BaseAPIController
-
-```php
-$this->json(['ok' => true], HTTP_CREATED);
-
-// Decodes the body, or hands back the error response ready to return
-$data = $this->payload($request);
-if ($data instanceof Response) {
-    return $data;
+final class PostController
+{
+    public function index(Request $request): Response
+    {
+        return Response::view('posts/index', ['posts' => $posts]);
+    }
 }
 ```
 
-`payload()` answers **415** when the `Content-Type` is not `application/json`
-and **400** when the body does not decode.
+| | |
+|---|---|
+| `Response::view($view, $data, $status)` | An HTML page |
+| `Response::json($data, $status)` | JSON |
+| `Response::html($html, $status)` · `Response::text()` | A body you built |
+| `Response::redirect($url, $status)` | A redirect |
+| `Response::route($name, $parameters, $query)` | A redirect to a named route |
+| `Response::back($request, $fallback)` | A redirect to where the visitor came from |
+| `Response::noContent()` | 204 |
+
+> **`back()` will not leave your site.** The referer is a header, so the visitor
+> chooses it, which makes it a redirect destination an attacker can pick.
+> Following one to another origin is an open redirect — how a phishing link
+> borrows your domain's good name. A referer naming a different host falls back,
+> and so does one that is not a path.
+
+There was a `BaseController` here offering `$this->view()` and
+`$this->redirect()`. It asked you to inherit a class in order to shorten two
+calls that already existed, which is inheritance paying for nothing, and it
+lived in the example application where a `composer require` never reached it —
+so the line it taught threw a fatal in an installed project. `route()` and
+`back()` were the only things on it that were not already somewhere else, and
+they are on `Response` now.
+
+### JSON endpoints
+
+An endpoint that answers JSON needs no base class either. What it does need is
+for a body that is not JSON to be refused **before** the action runs, which is
+what the pipeline is for:
+
+```php
+use SfphpProject\src\Http\Middleware\RequireJson;
+
+Router::group('/api', function (): void {
+    Router::post('/posts', 'PostController', 'store');
+}, 'api.', [new RequireJson()]);
+```
+
+```php
+public function store(Request $request): Response
+{
+    $data = $request->attribute('json');   // already decoded, already valid
+
+    return Response::json(['id' => 1], HTTP_CREATED);
+}
+```
+
+`RequireJson` answers **415** when the `Content-Type` is not
+`application/json` and **400** when the body does not decode, and puts what it
+decoded on the request. Those two codes are worth telling apart: a client
+debugging "I do not speak that" is looking somewhere very different from one
+debugging "that was not valid JSON".
+
+`GET`, `HEAD`, `OPTIONS` and `DELETE` pass straight through, since they carry no
+body — otherwise the middleware would be unusable on a group that both reads and
+writes, which is most groups. Pass `new RequireJson(required: true)` to refuse a
+write that arrives with no `Content-Type` at all.
+
+This replaced an `ApiController` you had to extend. The check then ran only
+where somebody remembered to call it, and it put a class between the framework
+and every endpoint to do a job the pipeline already existed for.
 
 ### Global helpers
 
@@ -647,6 +688,7 @@ dependencies in its constructor and have them autowired.
 | `VerifyCsrfToken` | Refuses a state-changing request with no valid token |
 | `Authenticate` | Identifies the user, and refuses anonymous requests when required |
 | `RateLimit` | Limits how often the same client may hit a route |
+| `RequireJson` | Refuses a body that is not JSON with 415, one that does not decode with 400 |
 
 `VerifyCsrfToken` lets safe methods and bearer-token requests through — a
 browser never attaches a bearer token by itself, so there is no cross-site
@@ -900,7 +942,7 @@ parameter.
 Reflection-based autowiring resolves controllers and their dependencies:
 
 ```php
-final class PostController extends BaseController
+final class PostController
 {
     public function __construct(private PDO $pdo) {}
 }
@@ -2736,10 +2778,10 @@ Auth::setDefaultGuard('web');
 
 ```php
 if (Auth::attempt(['email' => $email, 'password' => $password])) {
-    return $this->redirect('/dashboard');
+    return Response::redirect('/dashboard');
 }
 
-return $this->view('login', ['error' => __('auth.failed')]);
+return Response::view('login', ['error' => __('auth.failed')]);
 ```
 
 ```php
@@ -2756,7 +2798,7 @@ Inside a controller the user also arrives on the request:
 ```php
 public function dashboard(Request $request): Response
 {
-    return $this->view('dashboard', ['user' => $request->user()]);
+    return Response::view('dashboard', ['user' => $request->user()]);
 }
 ```
 
@@ -3983,7 +4025,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 140 unit cases
+composer run test        # 142 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves

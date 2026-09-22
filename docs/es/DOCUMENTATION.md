@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 140 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 142 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -404,11 +404,11 @@ namespace SfphpProject\app\controllers;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
 
-final class PostController extends BaseController
+final class PostController
 {
     public function show(Request $request, string $id): Response
     {
-        return $this->view('posts/show', ['id' => (int) $id]);
+        return Response::view('posts/show', ['id' => (int) $id]);
     }
 
     public function store(Request $request): Response
@@ -508,43 +508,83 @@ $response->status();  $response->body();  $response->header('Content-Type');
 búfer de salida. Convertirlo en bytes es tarea del `Emitter`, y esa separación
 es lo que permite probar todo el camino sin búfer de salida.
 
-### BaseController
+### Sin clase base
+
+Un controlador no hereda nada. El framework pide una acción que devuelva un
+`Response`, y `Response` es una fábrica, así que cualquier tipo de respuesta se
+alcanza desde cualquier clase:
 
 ```php
-$this->view('posts/index', ['posts' => $posts]);   // un Response de HTML
-$this->redirect('/posts');                          // un Response de redirección
-```
-
-> **Un controlador no necesita clase base.** Los dos métodos tienen una línea
-> cada uno y reenvían a `Response::view()` y `Response::redirect()`, que es
-> contra lo que genera `make:controller`. `BaseController` pertenece a la
-> aplicación de ejemplo de este repositorio y **no** está en el paquete, así que
-> un proyecto que instaló el framework llama a los métodos de `Response`
-> directamente:
->
-> ```php
-> return Response::view('posts/index', ['posts' => $posts]);
-> return Response::redirect('/posts');
-> ```
->
-> Ambas formas son actuales y producen la misma respuesta. Extender una clase
-> base es una comodidad cuando varios controladores comparten ayudantes
-> **tuyos**, no un requisito del framework.
-
-### BaseAPIController
-
-```php
-$this->json(['ok' => true], HTTP_CREATED);
-
-// Decodifica el cuerpo, o devuelve la respuesta de error ya lista
-$data = $this->payload($request);
-if ($data instanceof Response) {
-    return $data;
+final class PostController
+{
+    public function index(Request $request): Response
+    {
+        return Response::view('posts/index', ['posts' => $posts]);
+    }
 }
 ```
 
-`payload()` responde **415** si el `Content-Type` no es `application/json` y
-**400** si el cuerpo no decodifica.
+| | |
+|---|---|
+| `Response::view($view, $data, $status)` | Una página HTML |
+| `Response::json($data, $status)` | JSON |
+| `Response::html($html, $status)` · `Response::text()` | Un cuerpo que construiste |
+| `Response::redirect($url, $status)` | Una redirección |
+| `Response::route($nombre, $parametros, $query)` | Una redirección a una ruta con nombre |
+| `Response::back($request, $fallback)` | Una redirección a donde venía el visitante |
+| `Response::noContent()` | 204 |
+
+> **`back()` no sale de tu sitio.** El referer es una cabecera, así que lo elige
+> el visitante, lo que lo convierte en un destino de redirección que un atacante
+> puede dictar. Seguirlo a otro origen es una redirección abierta — la forma
+> clásica en que un enlace de phishing toma prestado el buen nombre de tu
+> dominio. Un referer que nombra otro host cae al valor de respaldo, y lo que no
+> sea una ruta, también.
+
+Aquí había un `BaseController` que ofrecía `$this->view()` y
+`$this->redirect()`. Pedía heredar una clase para acortar dos llamadas que ya
+existían, que es herencia sin pagar nada, y vivía en la aplicación de ejemplo,
+donde un `composer require` nunca llegaba — así que la línea que enseñaba
+lanzaba un fatal en un proyecto instalado. `route()` y `back()` eran lo único
+suyo que no estaba ya en otro sitio, y ahora están en `Response`.
+
+### Endpoints JSON
+
+Un endpoint que responde JSON tampoco necesita clase base. Lo que necesita es
+que un cuerpo que no sea JSON se rechace **antes** de que corra la acción, y
+para eso está el pipeline:
+
+```php
+use SfphpProject\src\Http\Middleware\RequireJson;
+
+Router::group('/api', function (): void {
+    Router::post('/posts', 'PostController', 'store');
+}, 'api.', [new RequireJson()]);
+```
+
+```php
+public function store(Request $request): Response
+{
+    $data = $request->attribute('json');   // ya decodificado, ya válido
+
+    return Response::json(['id' => 1], HTTP_CREATED);
+}
+```
+
+`RequireJson` responde **415** cuando el `Content-Type` no es
+`application/json` y **400** cuando el cuerpo no decodifica, y deja lo que
+decodificó en la petición. Vale la pena distinguir esos dos códigos: quien
+depura "no hablo ese formato" mira en un sitio muy distinto de quien depura "eso
+no era JSON válido".
+
+`GET`, `HEAD`, `OPTIONS` y `DELETE` pasan de largo, porque no llevan cuerpo — si
+no, el middleware sería inservible en un grupo que lee y escribe, que es la
+mayoría. Pasa `new RequireJson(required: true)` para rechazar una escritura que
+llegue sin `Content-Type` alguno.
+
+Esto sustituyó a un `ApiController` que había que extender. La comprobación
+corría solo donde alguien se acordaba de llamarla, y ponía una clase entre el
+framework y cada endpoint para hacer un trabajo que el pipeline ya hacía.
 
 ### Helpers globales
 
@@ -654,6 +694,7 @@ declarar dependencias en su constructor y recibirlas por autowiring.
 | `VerifyCsrfToken` | Rechaza una petición que cambia estado sin un token válido |
 | `Authenticate` | Identifica al usuario, y rechaza anónimos cuando se exige |
 | `RateLimit` | Limita cuántas veces el mismo cliente golpea una ruta |
+| `RequireJson` | Rechaza con 415 un cuerpo que no es JSON, y con 400 uno que no decodifica |
 
 `VerifyCsrfToken` deja pasar los métodos seguros y las peticiones con token
 Bearer — un navegador nunca adjunta un Bearer por su cuenta, así que no hay
@@ -911,7 +952,7 @@ al rellenar un parámetro del constructor.
 La autoconexión por reflexión resuelve los controladores y sus dependencias:
 
 ```php
-final class PostController extends BaseController
+final class PostController
 {
     public function __construct(private PDO $pdo) {}
 }
@@ -2779,10 +2820,10 @@ Auth::setDefaultGuard('web');
 
 ```php
 if (Auth::attempt(['email' => $email, 'password' => $password])) {
-    return $this->redirect('/dashboard');
+    return Response::redirect('/dashboard');
 }
 
-return $this->view('login', ['error' => __('auth.failed')]);
+return Response::view('login', ['error' => __('auth.failed')]);
 ```
 
 ```php
@@ -2799,7 +2840,7 @@ Dentro de un controlador el usuario llega también en la petición:
 ```php
 public function dashboard(Request $request): Response
 {
-    return $this->view('dashboard', ['user' => $request->user()]);
+    return Response::view('dashboard', ['user' => $request->user()]);
 }
 ```
 
@@ -4047,7 +4088,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 140 casos unitarios
+composer run test        # 142 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve

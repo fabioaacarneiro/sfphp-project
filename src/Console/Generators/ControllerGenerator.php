@@ -14,14 +14,12 @@ final class ControllerGenerator extends GeneratorBase
         $filePath = $this->getFilePath('app/controllers', $name, 'Controller');
 
         /*
-         * No base class. This extended SfphpProject\app\controllers\
-         * BaseController, which belongs to this repository's example
-         * application and is not in the package — so every controller this
-         * generated in somebody else's project referenced a class that does not
-         * exist there.
-         *
-         * Nothing is lost: that base class was two methods that forwarded to
-         * Response::view() and Response::redirect(), which any class can call.
+         * No base class, because there is nothing to inherit: Response is a
+         * factory, so view(), redirect(), route() and back() are all reachable
+         * from any class. This used to extend a BaseController that lived in
+         * the example application and was not shipped, so every controller
+         * generated in somebody else's project named a class that did not exist
+         * there.
          */
         $content = <<<'PHP'
 <?php
@@ -48,10 +46,10 @@ final class {CLASS}Controller
      */
     public function index(Request $request): Response
     {
-        return Response::json(['message' => 'It works.']);
+        return Response::view('{ROUTE}/index', ['title' => '{CLASS}']);
 
-        // A page instead:
-        // return Response::view('{ROUTE}/index', ['title' => '{CLASS}']);
+        // JSON instead:
+        // return Response::json(['message' => 'It works.']);
     }
 }
 PHP;
