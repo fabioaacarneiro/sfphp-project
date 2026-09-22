@@ -1,8 +1,51 @@
 #!/usr/bin/env php
 <?php
 
-require __DIR__ . '/vendor/autoload.php';
+/**
+ * The SFPHP command line.
+ *
+ * Runs both from a checkout of this repository and from an installed package,
+ * where Composer puts it at vendor/bin/sfphp. The difference matters: the
+ * commands that generate files must write into the project that is using the
+ * framework, not into the framework's own directory inside vendor/.
+ */
 
+$candidates = [
+    // A checkout of this repository.
+    __DIR__ . '/vendor/autoload.php',
+    // Installed, and invoked through vendor/bin/sfphp.
+    __DIR__ . '/../autoload.php',
+    // Installed, and invoked directly at vendor/fabio/sfphp/sfphp.
+    __DIR__ . '/../../autoload.php',
+];
+
+$autoloader = null;
+
+foreach ($candidates as $candidate) {
+    if (is_file($candidate)) {
+        $autoloader = $candidate;
+        break;
+    }
+}
+
+if ($autoloader === null) {
+    fwrite(STDERR, "Composer's autoloader was not found. Run composer install." . PHP_EOL);
+
+    exit(1);
+}
+
+require $autoloader;
+
+use SfphpProject\src\Bootstrap;
 use SfphpProject\src\Console\Application;
+
+/*
+ * The project root is the directory holding vendor/, which is the application
+ * when the framework is installed and this repository when it is not. Loading
+ * it here is what gives a console command the same .env, constants and paths a
+ * web request gets — a queue worker that saw different configuration from the
+ * application it belongs to would be its own kind of bug.
+ */
+Bootstrap::load(dirname($autoloader, 2));
 
 exit((new Application($argv ?? []))->run());

@@ -19,6 +19,21 @@ from a CDN.
 
 ## Installing
 
+As a dependency:
+
+```bash
+composer require fabio/sfphp
+```
+
+```php
+require __DIR__ . '/../vendor/autoload.php';
+
+SfphpProject\src\Bootstrap::load(dirname(__DIR__));
+```
+
+Or start from the example application, with routes, views and migrations
+already in place:
+
 ```bash
 git clone https://github.com/fabioaacarneiro/sfphp-project.git
 cd sfphp-project
@@ -117,7 +132,7 @@ data in the database without protecting its real destination.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 102 unit cases
+composer run test        # 105 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run docs        # the three documentation languages agree
 ```

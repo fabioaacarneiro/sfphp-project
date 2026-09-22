@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 102 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 105 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -83,9 +83,48 @@ Extensiones opcionales, declaradas en `suggest`:
 
 ## Requisitos e instalación
 
-- PHP 8.1 o superior
+- PHP 8.1 o posterior
 - Composer 2
-- PDO con el driver de tu base de datos (opcional — solo si usas una)
+- PDO con el driver de tu base de datos (opcional — solo si usas base de datos)
+
+### Como dependencia
+
+```bash
+composer require fabio/sfphp
+```
+
+El paquete lleva el framework y nada más: sin aplicación de ejemplo, sin suite
+de pruebas, sin un directorio `app/` apareciendo dentro de tu `vendor/`. Una
+llamada conecta tu proyecto con él, al principio de tu front controller y de
+cualquier punto de entrada de consola:
+
+```php
+require __DIR__ . '/../vendor/autoload.php';
+
+use SfphpProject\src\Bootstrap;
+
+Bootstrap::load(dirname(__DIR__));
+```
+
+Eso carga tu `.env` si lo tienes, define los ajustes que el framework lee salvo
+que ya los hayas definido, y registra dónde viven tus vistas y tus catálogos de
+mensajes. Un proyecto con una disposición distinta lo dice:
+
+```php
+Bootstrap::load(dirname(__DIR__), [
+    'views' => 'resources/views',
+    'lang' => 'resources/lang',
+    'env' => null,               // la configuración viene del entorno
+]);
+```
+
+La consola llega como `vendor/bin/sfphp`, y genera archivos en **tu** proyecto,
+no dentro del paquete.
+
+### Como punto de partida
+
+Para empezar desde la aplicación de ejemplo — rutas, controladores, vistas y
+migraciones ya puestas:
 
 ```bash
 git clone https://github.com/fabioaacarneiro/sfphp-project.git
@@ -93,7 +132,7 @@ cd sfphp-project
 composer install
 cp .env-example .env
 
-# Genera la clave JWT (necesaria para emitir o validar tokens)
+# Genera la clave JWT (obligatoria para emitir o validar tokens)
 php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 ```
 
@@ -103,6 +142,26 @@ php -S localhost:8000 -t public server.php      # equivalente
 ```
 
 En producción, apunta el `DocumentRoot` a `public/`.
+
+### Qué es de quién
+
+La línea pasa entre el framework y la aplicación, y conviene conocerla porque
+todo lo anterior depende de ella.
+
+| | |
+|---|---|
+| El paquete autocarga | Solo `src/`, más cuatro archivos dentro de él |
+| La aplicación es dueña de | `.env`, sus constantes, sus vistas, sus catálogos, sus rutas |
+| `Bootstrap::load()` | Es cómo la segunda le cuenta de sí al primero |
+
+Todo ajuste que el framework lee pasa por `defined()`, así que un proyecto que
+nunca llame a `Bootstrap::load()` arranca igualmente con los valores por
+defecto — y una prueba afirma que ningún archivo del framework lee uno sin esa
+guarda.
+
+La zona horaria del runtime es la excepción: se pone en UTC cuando carga el
+paquete, antes de que nada pueda preguntar, porque es una regla de corrección y
+no un ajuste. Consulta [Tiempo y zonas horarias](#tiempo-y-zonas-horarias).
 
 ---
 
@@ -129,8 +188,14 @@ Autocarga PSR-4:
 | `Database\Seeders\` | `database/seeders/` |
 | `Database\Factories\` | `database/factories/` |
 
-Y cuatro archivos cargados siempre (`autoload.files`): `app/config/config.php`,
-`src/utils.php`, `src/http.php`, `src/helpers.php`.
+El primer mapeo es del paquete; los otros tres son de este repositorio,
+declarados bajo `autoload-dev` para que nunca lleguen a un proyecto que instala
+el framework.
+
+Cuatro archivos se cargan siempre (`autoload.files`), y los cuatro viven en
+`src/`: `runtime.php`, `utils.php`, `http.php` y `helpers.php`. El
+`app/config/config.php` de la aplicación de ejemplo también se carga, mediante
+`autoload-dev`, y lo único que hace es llamar a `Bootstrap::load()`.
 
 ---
 
@@ -139,10 +204,11 @@ Y cuatro archivos cargados siempre (`autoload.files`): `app/config/config.php`,
 ```
 public/index.php
  ├─ vendor/autoload.php
- │   └─ config.php → carga .env (opcional), define APP_NAME/VERSION/ENV/LOCALE
+ │   └─ runtime.php→ date_default_timezone_set('UTC')
  │      utils.php  → helpers globales: e(), asset(), csrf_*()
  │      http.php   → constantes HTTP_OK, GET, POST, ...
  │      helpers.php→ cache(), logger(), now(), dispatch(), __(), trans_choice(), locale()
+ │      config.php → Bootstrap::load(): .env, constantes, rutas de vista y lang
  ├─ ErrorHandler::register()  red de seguridad para fatales y arranque
  ├─ require src/routes.php    llena el registro estático de rutas
  ├─ new Container()
@@ -1861,9 +1927,9 @@ APP_LOCALES=en,pt_BR,es
 que ofrece la aplicación; `APP_LOCALES` son los que ofrece, en orden de
 preferencia. Sin configuración, ambos son inglés por defecto.
 
-La ruta `lang/` de la aplicación se registra en `app/config/config.php`, que se
-ejecuta desde el autoloader — así que la CLI, un worker de cola y la suite de
-pruebas ven los mismos mensajes que vería una petición web.
+La ruta `lang/` de la aplicación la registra `Bootstrap::load()`, que llama todo
+punto de entrada — así que la CLI, un worker de cola y la suite de pruebas ven
+los mismos mensajes que vería una petición web.
 
 ### Validación
 
@@ -3037,7 +3103,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 102 casos unitarios
+composer run test        # 105 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve
@@ -3082,7 +3148,6 @@ hace, y que deberías conocer antes de elegirlo.
 | **Métricas** | Los registros llevan duraciones; no se recogen contadores ni tiempos. Consulta [Registro](#registro) |
 | **Caché de rutas** | El despacho es O(n), un `preg_match` por ruta. Bien para decenas, no para centenares |
 | **Revocar sesión desde otro sitio** | Cerrar la sesión de otro dispositivo se puede construir sobre la tabla del driver `database`; no viene nada hecho. Consulta [Sesiones](#sesiones) |
-| **Distribución como paquete** | El espacio de nombres de los controladores ya es un parámetro del Router, pero `composer.json` sigue describiendo una aplicación en vez de una biblioteca |
 
 SFHT tampoco tiene variables automáticas de bucle (`$loop`) ni herencia parcial
 de bloques (`@parent`).

@@ -18,6 +18,20 @@ framework — nem as de erro — carrega CSS, fontes ou JavaScript de um CDN.
 
 ## Instalação
 
+Como dependência:
+
+```bash
+composer require fabio/sfphp
+```
+
+```php
+require __DIR__ . '/../vendor/autoload.php';
+
+SfphpProject\src\Bootstrap::load(dirname(__DIR__));
+```
+
+Ou comece pela aplicação de exemplo, com rotas, views e migrations já prontas:
+
 ```bash
 git clone https://github.com/fabioaacarneiro/sfphp-project.git
 cd sfphp-project
@@ -116,7 +130,7 @@ dado no banco sem proteger o destino real.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 102 casos unitários
+composer run test        # 105 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run docs        # os três idiomas da documentação concordam
 ```
