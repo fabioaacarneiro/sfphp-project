@@ -20,7 +20,7 @@ from a CDN.
 ## Installing
 
 ```bash
-composer create-project fabioaacarneiro/sfphp my-app
+composer create-project fabioaacarneiro/sfphp-framework my-app
 cd my-app
 ./sfphp serve
 ```
@@ -37,7 +37,7 @@ delete.
 Adding it to a project you already have instead:
 
 ```bash
-composer require fabioaacarneiro/sfphp
+composer require fabioaacarneiro/sfphp-framework
 ./vendor/bin/sfphp init
 ```
 
