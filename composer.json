@@ -1,6 +1,6 @@
 {
-    "name": "fabio/sfphp-project",
-    "description": "Simple Framework writed in PHP",
+    "name": "fabio/sfphp",
+    "description": "A full-stack PHP framework with zero runtime dependencies, built to be used in any language and any script.",
     "license": "MIT",
     "require": {
         "php": "^8.1",
@@ -9,13 +9,10 @@
     },
     "autoload": {
         "psr-4": {
-            "SfphpProject\\src\\": "src/",
-            "SfphpProject\\app\\": "app/",
-            "Database\\Seeders\\": "database/seeders/",
-            "Database\\Factories\\": "database/factories/"
+            "SfphpProject\\src\\": "src/"
         },
         "files": [
-            "app/config/config.php",
+            "src/runtime.php",
             "src/utils.php",
             "src/http.php",
             "src/helpers.php"
@@ -42,5 +39,31 @@
         "ext-mbstring": "Improves Unicode case conversion; the framework falls back to ASCII folding without it.",
         "ext-redis": "Enables the Redis cache and queue drivers.",
         "ext-pcntl": "Enables graceful shutdown of the queue worker."
-    }
+    },
+    "type": "library",
+    "keywords": [
+        "framework",
+        "router",
+        "orm",
+        "query-builder",
+        "template-engine",
+        "i18n",
+        "zero-dependencies"
+    ],
+    "autoload-dev": {
+        "psr-4": {
+            "SfphpProject\\app\\": "app/",
+            "Database\\Seeders\\": "database/seeders/",
+            "Database\\Factories\\": "database/factories/"
+        },
+        "files": [
+            "app/config/config.php"
+        ]
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "bin": [
+        "sfphp"
+    ]
 }

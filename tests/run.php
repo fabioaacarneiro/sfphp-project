@@ -12,6 +12,7 @@ use SfphpProject\src\Migrations\Identifier;
 use SfphpProject\src\Migrations\MigrationCreator;
 use SfphpProject\src\Migrations\MigrationRunner;
 use SfphpProject\src\Migrations\Schema;
+use SfphpProject\src\Bootstrap;
 use SfphpProject\src\Cache\CacheManager;
 use SfphpProject\src\Log\ErrorLogDriver;
 use SfphpProject\src\Log\Level;
@@ -3510,6 +3511,102 @@ $tests->run('the sessions migration compiles on both dialects', function () use 
         // An integer deadline, so the comparison never depends on a column's zone.
         $tests->assertTrue(stripos($sql, 'PRIMARY KEY') !== false || stripos($sql, 'primary') !== false);
     }
+});
+
+$tests->run('the package declares only the framework', function () use ($tests): void {
+    /*
+     * The framework became something you install rather than something you
+     * clone, and the two halves of this repository had to come apart for that.
+     * A package that autoloads app/config/config.php defines APP_NAME inside
+     * whatever installed it; a package that ships app/ puts an application
+     * inside the consumer's vendor/.
+     */
+    $composer = json_decode((string) file_get_contents(__DIR__ . '/../composer.json'), true);
+
+    $tests->assertSame('library', $composer['type']);
+    $tests->assertSame(['SfphpProject\\src\\' => 'src/'], $composer['autoload']['psr-4']);
+
+    // Nothing the package loads may live outside src/.
+    foreach ($composer['autoload']['files'] as $file) {
+        $tests->assertTrue(str_starts_with($file, 'src/'));
+        $tests->assertTrue(is_file(__DIR__ . '/../' . $file));
+    }
+
+    // The example application is still autoloaded here, and only here.
+    $tests->assertTrue(isset($composer['autoload-dev']['psr-4']['SfphpProject\\app\\']));
+    $tests->assertTrue(in_array('app/config/config.php', $composer['autoload-dev']['files'], true));
+
+    // And excluded from what a `composer require` downloads.
+    $attributes = (string) file_get_contents(__DIR__ . '/../.gitattributes');
+
+    foreach (['/app', '/database', '/public', '/tests', '/tools', '/docs', '/lang'] as $directory) {
+        $tests->assertTrue((bool) preg_match('#^' . preg_quote($directory, '#') . '\s+export-ignore#m', $attributes));
+    }
+});
+
+$tests->run('the framework reads no constant it did not define itself', function () use ($tests): void {
+    /*
+     * Every setting the framework consults has to survive being absent, because
+     * an application that installs the package may never call Bootstrap::load()
+     * — or may call it after something has already asked. A bare `defined()`
+     * check is the whole contract, and this asserts nobody added a read without
+     * one.
+     */
+    $unguarded = [];
+    $names = 'APP_NAME|APP_VERSION|APP_ENV|APP_LOCALE|APP_LOCALES|APP_TIMEZONE'
+        . '|LOG_CHANNEL|LOG_PATH|LOG_LEVEL'
+        . '|SESSION_DRIVER|SESSION_LIFETIME|SESSION_ABSOLUTE_LIFETIME|SESSION_TABLE';
+
+    $directory = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(__DIR__ . '/../src'));
+
+    foreach ($directory as $file) {
+        if ($file->getExtension() !== 'php' || $file->getFilename() === 'Bootstrap.php') {
+            continue;
+        }
+
+        foreach (file($file->getPathname()) as $number => $line) {
+            // Comments and docblocks name these constants while explaining them.
+            $code = trim($line);
+
+            if ($code === '' || str_starts_with($code, '*') || str_starts_with($code, '//') || str_starts_with($code, '/*')) {
+                continue;
+            }
+
+            if (preg_match('/\b(' . $names . ')\b/', $line) === 1 && !str_contains($line, 'defined(')) {
+                $unguarded[] = basename($file->getPathname()) . ':' . ($number + 1);
+            }
+        }
+    }
+
+    $tests->assertSame([], $unguarded);
+});
+
+$tests->run('bootstrap registers the application paths without owning them', function () use ($tests): void {
+    $base = sys_get_temp_dir() . '/sfphp-bootstrap-' . bin2hex(random_bytes(6));
+    mkdir($base . '/views', 0777, true);
+    file_put_contents($base . '/views/greeting.sfht', 'hello {{ $name }}');
+
+    Bootstrap::load($base, ['env' => null, 'views' => 'views', 'lang' => null]);
+
+    $tests->assertSame($base, Bootstrap::basePath());
+    $tests->assertSame($base . DIRECTORY_SEPARATOR . 'views', Bootstrap::basePath('views'));
+
+    // An absolute path is left alone rather than joined to the root twice.
+    $tests->assertSame('/etc/sfphp', Bootstrap::basePath('/etc/sfphp'));
+
+    /*
+     * The view layer used to reach into "../app/resources/views" from inside
+     * src/, which only worked while the framework and the application were the
+     * same checkout.
+     */
+    $tests->assertSame('hello Ana', View::make('greeting', ['name' => 'Ana']));
+
+    // Put this checkout back, for anything running after.
+    Bootstrap::load(dirname(__DIR__), ['env' => null]);
+
+    unlink($base . '/views/greeting.sfht');
+    rmdir($base . '/views');
+    rmdir($base);
 });
 
 $tests->finish();
