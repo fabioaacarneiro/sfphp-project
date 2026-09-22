@@ -22,7 +22,7 @@ JavaScript desde un CDN.
 Como dependencia:
 
 ```bash
-composer require fabio/sfphp
+composer require fabioaacarneiro/sfphp
 ```
 
 ```php

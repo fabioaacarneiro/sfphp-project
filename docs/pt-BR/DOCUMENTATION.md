@@ -94,7 +94,7 @@ Extensões opcionais, declaradas em `suggest`:
 ### Como dependência
 
 ```bash
-composer require fabio/sfphp
+composer require fabioaacarneiro/sfphp
 ```
 
 O pacote carrega o framework e nada além disso: sem aplicação de exemplo, sem
