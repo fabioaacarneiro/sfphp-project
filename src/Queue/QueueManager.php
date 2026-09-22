@@ -2,6 +2,9 @@
 
 namespace SfphpProject\src\Queue;
 
+use SfphpProject\src\Config;
+use SfphpProject\src\RedisConnection;
+
 class QueueManager
 {
     protected Queue $driver;
@@ -9,6 +12,40 @@ class QueueManager
     public function __construct(?Queue $driver = null)
     {
         $this->driver = $driver ?? new DatabaseDriver();
+    }
+
+    /**
+     * Build the queue QUEUE_DRIVER names.
+     *
+     * The worker command and dispatch() both go through the helper queue(),
+     * which keeps one of these. That is the point: a job pushed by a request
+     * and a job taken by a worker cannot land on different queues because one
+     * side was constructed by hand.
+     *
+     * @return static The queue
+     */
+    public static function fromConfig(): static
+    {
+        $driver = match (Config::get('QUEUE_DRIVER', 'database')) {
+            'redis' => new RedisDriver(RedisConnection::get()),
+            default => new DatabaseDriver(
+                Config::int('QUEUE_RESERVATION_SECONDS', 900),
+                Config::get('QUEUE_TABLE') ?: null,
+                Config::get('QUEUE_FAILED_TABLE') ?: null
+            ),
+        };
+
+        return new static($driver);
+    }
+
+    /**
+     * Which driver this manager is using.
+     *
+     * @return Queue The driver
+     */
+    public function getDriver(): Queue
+    {
+        return $this->driver;
     }
 
     public function driver(Queue $driver): static

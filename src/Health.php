@@ -143,7 +143,7 @@ final class Health
                     return $read === 'ok';
                 }),
                 'queue' => self::register('queue', static function (): bool {
-                    (new Queue\QueueManager())->size();
+                    queue()->size();
 
                     return true;
                 }),

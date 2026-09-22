@@ -136,6 +136,18 @@ final class Bootstrap
             'MAIL_ALWAYS_TO' => $_ENV['MAIL_ALWAYS_TO'] ?? '',
             'LOG_CHANNEL' => $_ENV['LOG_CHANNEL'] ?? 'stream',
             'LOG_PATH' => $_ENV['LOG_PATH'] ?? 'php://stderr',
+            'CACHE_DRIVER' => $_ENV['CACHE_DRIVER'] ?? 'file',
+            'CACHE_PATH' => $_ENV['CACHE_PATH'] ?? '',
+            'CACHE_PREFIX' => $_ENV['CACHE_PREFIX'] ?? 'sfphp:cache:',
+            'QUEUE_DRIVER' => $_ENV['QUEUE_DRIVER'] ?? 'database',
+            'QUEUE_TABLE' => $_ENV['QUEUE_TABLE'] ?? '',
+            'QUEUE_FAILED_TABLE' => $_ENV['QUEUE_FAILED_TABLE'] ?? '',
+            'QUEUE_RESERVATION_SECONDS' => (int) ($_ENV['QUEUE_RESERVATION_SECONDS'] ?? 900),
+            'REDIS_HOST' => $_ENV['REDIS_HOST'] ?? '127.0.0.1',
+            'REDIS_PORT' => (int) ($_ENV['REDIS_PORT'] ?? 6379),
+            'REDIS_PASSWORD' => $_ENV['REDIS_PASSWORD'] ?? '',
+            'REDIS_DB' => (int) ($_ENV['REDIS_DB'] ?? 0),
+            'REDIS_TIMEOUT' => (int) ($_ENV['REDIS_TIMEOUT'] ?? 2),
         ];
 
         foreach ($constants as $name => $value) {

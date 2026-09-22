@@ -30,6 +30,8 @@ use SfphpProject\src\Log\StreamDriver;
 use SfphpProject\src\Http\Middleware\LogRequests;
 use SfphpProject\src\Console\Application;
 use SfphpProject\src\Cache\FileDriver;
+use SfphpProject\src\Cache\RedisDriver as CacheRedisDriver;
+use SfphpProject\src\RedisConnection;
 use SfphpProject\src\Cache\MemoryDriver;
 use SfphpProject\src\Auth\Auth;
 use SfphpProject\src\Auth\Authenticatable;
@@ -4396,6 +4398,64 @@ $tests->run('the error handler redacts in production and explains in development
     $tests->assertSame(0, preg_match('#(src|href)=["\']https?://#', $shown->body()));
 
     Config::forget('APP_ENV');
+});
+
+$tests->run('the cache and the queue read the driver they are told to use', function () use ($tests): void {
+    /*
+     * Both used to hardcode their driver, and neither read any setting. The
+     * consequence was not a missing feature: it was that the token denylist,
+     * the rate limit counters and cache-backed sessions were all kept per
+     * machine, silently, with no way to change it short of writing code.
+     */
+    Config::set('CACHE_DRIVER', 'array');
+    $tests->assertSame(MemoryDriver::class, get_class(CacheManager::fromConfig()->getDriver()));
+
+    Config::set('CACHE_DRIVER', 'file');
+    $tests->assertSame(FileDriver::class, get_class(CacheManager::fromConfig()->getDriver()));
+
+    // An unknown name falls back to the file driver rather than failing: a
+    // typo in .env should not take an application down.
+    Config::set('CACHE_DRIVER', 'nosuchdriver');
+    $tests->assertSame(FileDriver::class, get_class(CacheManager::fromConfig()->getDriver()));
+
+    Config::set('QUEUE_DRIVER', 'database');
+    $tests->assertSame(DatabaseDriver::class, get_class(QueueManager::fromConfig()->getDriver()));
+
+    Config::forget('CACHE_DRIVER');
+    Config::forget('QUEUE_DRIVER');
+
+    // The defaults are what an application gets when it says nothing.
+    $tests->assertSame(FileDriver::class, get_class(CacheManager::fromConfig()->getDriver()));
+    $tests->assertSame(DatabaseDriver::class, get_class(QueueManager::fromConfig()->getDriver()));
+});
+
+$tests->run('redis is selected through the shared connection, or refused out loud', function () use ($tests): void {
+    if (!extension_loaded('redis')) {
+        /*
+         * Selecting redis without the extension must fail rather than quietly
+         * handing back a file driver. An operator who believes revocation is
+         * shared between instances when it is not has a security hole that
+         * shows up months later and never as an error.
+         */
+        Config::set('CACHE_DRIVER', 'redis');
+        $tests->assertThrows(fn () => CacheManager::fromConfig(), RuntimeException::class);
+        Config::forget('CACHE_DRIVER');
+
+        return;
+    }
+
+    // With the extension present, a connection the application supplies is
+    // used as it is — no second socket to the same server.
+    $fake = new \Redis();
+    RedisConnection::use($fake);
+    $tests->assertSame(true, RedisConnection::isConnected());
+    $tests->assertSame($fake, RedisConnection::get());
+
+    Config::set('CACHE_DRIVER', 'redis');
+    $tests->assertSame(CacheRedisDriver::class, get_class(CacheManager::fromConfig()->getDriver()));
+
+    Config::forget('CACHE_DRIVER');
+    RedisConnection::use(null);
 });
 
 $tests->finish();
