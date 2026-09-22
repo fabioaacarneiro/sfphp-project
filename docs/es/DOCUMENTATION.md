@@ -95,7 +95,7 @@ Extensiones opcionales, declaradas en `suggest`:
 ### Empezar un proyecto
 
 ```bash
-composer create-project fabioaacarneiro/sfphp mi-app
+composer create-project fabioaacarneiro/sfphp-framework mi-app
 cd mi-app
 ./sfphp serve
 ```
@@ -129,7 +129,7 @@ es `src/` y no se inmuta.
 ### Añadirlo a un proyecto que ya tienes
 
 ```bash
-composer require fabioaacarneiro/sfphp
+composer require fabioaacarneiro/sfphp-framework
 ./vendor/bin/sfphp init
 ```
 
@@ -3961,7 +3961,7 @@ hoja de estilos descrita como "generada a partir de una configuración" no sirve
 de nada a quien no tiene el generador.
 
 ```bash
-cp vendor/fabioaacarneiro/sfphp/tools/css-builder/sfcss.config.json .
+cp vendor/fabioaacarneiro/sfphp-framework/tools/css-builder/sfcss.config.json .
 # edítala: paletas, espaciado, puntos de ruptura, fuentes
 ./vendor/bin/sfphp css:build
 ```
