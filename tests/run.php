@@ -938,12 +938,20 @@ $tests->run('schema builder creates tables and alters columns', function () use 
         [
             'CREATE TABLE `users` (`id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, `email` VARCHAR(255) NOT NULL, `name` VARCHAR(255) NULL, `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)',
             'CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`)',
+            /*
+             * Declaration order, not all columns and then all operations.
+             *
+             * The grouping this used to assert put CREATE INDEX on `nickname`
+             * after the statement renaming that column away, and put a
+             * modification of a renamed column before the rename that created
+             * it. Both are statements a server refuses.
+             */
             'ALTER TABLE `users` ADD COLUMN `nickname` VARCHAR(255) NULL',
-            'ALTER TABLE `users` ADD COLUMN `company_id` BIGINT UNSIGNED NOT NULL',
-            'ALTER TABLE `users` MODIFY COLUMN `email` VARCHAR(320) NULL AFTER `name`',
             'CREATE INDEX `users_nickname_index` ON `users` (`nickname`)',
+            'ALTER TABLE `users` ADD COLUMN `company_id` BIGINT UNSIGNED NOT NULL',
             'ALTER TABLE `users` ADD CONSTRAINT `users_company_id_foreign` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`) ON DELETE CASCADE ON UPDATE CASCADE',
             'ALTER TABLE `users` RENAME COLUMN `nickname` TO `display_name`',
+            'ALTER TABLE `users` MODIFY COLUMN `email` VARCHAR(320) NULL AFTER `name`',
             'ALTER TABLE `users` DROP COLUMN `obsolete_field`',
             'DROP INDEX `users_email_unique` ON `users`',
             'DROP INDEX `users_display_name_index` ON `users`',
@@ -3667,6 +3675,94 @@ $tests->run('the console finds the project autoloader, not its own', function ()
     // The package must not carry a vendor/ of its own into a consumer.
     $attributes = (string) file_get_contents(__DIR__ . '/../.gitattributes');
     $tests->assertTrue((bool) preg_match('#^/vendor\s+export-ignore#m', $attributes));
+});
+
+$tests->run('an alter runs in the order it was written', function () use ($tests, $compileSchema): void {
+    /*
+     * Renaming a column and then modifying it under its new name is how anyone
+     * would write it, and how the documentation shows it. The builder used to
+     * emit every column statement before every operation, so the modification
+     * came first and the server answered "unknown column".
+     *
+     * No fixed grouping can be right: a rename changes what later statements
+     * must call the column, so putting renames first breaks the opposite order
+     * just as surely. Declaration order is the only rule that holds both ways.
+     */
+    $renameThenChange = $compileSchema('mysql', 'alter', 'posts', function (Blueprint $table): void {
+        $table->renameColumn('code', 'sku');
+        $table->string('sku', 10)->change();
+    });
+
+    $tests->assertSame(
+        [
+            'ALTER TABLE `posts` RENAME COLUMN `code` TO `sku`',
+            'ALTER TABLE `posts` MODIFY COLUMN `sku` VARCHAR(10) NOT NULL',
+        ],
+        $renameThenChange
+    );
+
+    // Written the other way round, it comes out the other way round.
+    $changeThenRename = $compileSchema('mysql', 'alter', 'posts', function (Blueprint $table): void {
+        $table->string('code', 10)->change();
+        $table->renameColumn('code', 'sku');
+    });
+
+    $tests->assertSame(
+        [
+            'ALTER TABLE `posts` MODIFY COLUMN `code` VARCHAR(10) NOT NULL',
+            'ALTER TABLE `posts` RENAME COLUMN `code` TO `sku`',
+        ],
+        $changeThenRename
+    );
+
+    // An index declared on a column is created before a rename moves it.
+    $indexed = $compileSchema('pgsql', 'alter', 'posts', function (Blueprint $table): void {
+        $table->string('slug')->index();
+        $table->renameColumn('slug', 'handle');
+    });
+
+    $tests->assertSame(
+        [
+            'ALTER TABLE "posts" ADD COLUMN "slug" VARCHAR(255) NOT NULL',
+            'CREATE INDEX "posts_slug_index" ON "posts" ("slug")',
+            'ALTER TABLE "posts" RENAME COLUMN "slug" TO "handle"',
+        ],
+        $indexed
+    );
+});
+
+$tests->run('unique takes its columns like every other index helper', function () use ($tests, $compileSchema): void {
+    /*
+     * unique() was the one that did not: it took a name as its only argument
+     * and always applied to the column being defined, so the composite form
+     * the documentation shows was a type error. index(), primary() and
+     * fullText() had all taken columns first the whole time.
+     */
+    $statements = $compileSchema('mysql', 'create', 'users', function (Blueprint $table): void {
+        $table->string('email');
+        $table->string('tenant_id');
+        $table->unique(['email', 'tenant_id']);
+    });
+
+    $tests->assertSame(
+        'CREATE UNIQUE INDEX `users_email_tenant_id_unique` ON `users` (`email`, `tenant_id`)',
+        $statements[1]
+    );
+
+    // A name can still be given, now as the second argument.
+    $named = $compileSchema('mysql', 'create', 'users', function (Blueprint $table): void {
+        $table->string('email');
+        $table->unique(['email'], 'by_email');
+    });
+
+    $tests->assertSame('CREATE UNIQUE INDEX `by_email` ON `users` (`email`)', $named[1]);
+
+    // And the fluent form on the current column is untouched.
+    $fluent = $compileSchema('mysql', 'create', 'users', function (Blueprint $table): void {
+        $table->string('email')->unique();
+    });
+
+    $tests->assertSame('CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`)', $fluent[1]);
 });
 
 $tests->finish();

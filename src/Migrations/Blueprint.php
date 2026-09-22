@@ -913,12 +913,19 @@ final class Blueprint
     /**
      * Add a unique index.
      *
+     * Takes its columns the same way index(), primary() and fullText() do. It
+     * used to take a name as its only argument and always apply to the column
+     * being defined, which made the composite form everyone reaches for —
+     * `unique(['email', 'tenant_id'])` — a type error. That form was in the
+     * documentation and in the integration tests before it was in the code.
+     *
+     * @param string|array<int, string>|null $columns The columns or null for the current column
      * @param string|null $name The optional index name
      * @return self
      */
-    public function unique(?string $name = null): self
+    public function unique(string|array|null $columns = null, ?string $name = null): self
     {
-        $this->pushConstraint('unique', null, $name);
+        $this->pushConstraint('unique', $this->normalizeColumns($columns), $name);
 
         return $this;
     }
@@ -1543,6 +1550,13 @@ final class Blueprint
         $this->columns[] = array_merge([
             'name' => $name,
             'type' => $type,
+            /*
+             * How many operations were already declared when this column was.
+             * It is what lets an alter be emitted in the order it was written
+             * — see compileAlterStatements(). Columns are appended here and
+             * nowhere else, so recording it once is enough.
+             */
+            'afterOperation' => array_key_last($this->operations) ?? -1,
             'nullable' => false,
             'default' => null,
             'unsigned' => false,
@@ -1677,8 +1691,28 @@ final class Blueprint
     private function compileAlterStatements(): array
     {
         $statements = [];
+        $operationsEmitted = 0;
 
+        /*
+         * Emitted in the order the blueprint was written, rather than all
+         * columns and then all operations.
+         *
+         * Grouping them looked harmless and was not: renaming a column and then
+         * modifying it under its new name — which is how anyone would write it,
+         * and how the documentation shows it — produced the modification first
+         * and failed with "unknown column". Any fixed grouping is wrong for
+         * somebody, because a rename changes what every later statement has to
+         * call the column. Declaration order is the only rule that is right in
+         * both directions.
+         */
         foreach ($this->columns as $column) {
+            $declaredAfter = ($column['afterOperation'] ?? -1) + 1;
+
+            while ($operationsEmitted < $declaredAfter) {
+                $statements[] = $this->compileOperation($this->operations[$operationsEmitted]);
+                $operationsEmitted++;
+            }
+
             $changing = !empty($column['change']);
 
             $statements = array_merge(
@@ -1688,13 +1722,12 @@ final class Blueprint
             );
         }
 
-        $statements = array_merge($statements, $this->compileAlterTableOptions());
-
-        foreach ($this->operations as $operation) {
-            $statements[] = $this->compileOperation($operation);
+        while ($operationsEmitted < count($this->operations)) {
+            $statements[] = $this->compileOperation($this->operations[$operationsEmitted]);
+            $operationsEmitted++;
         }
 
-        return $statements;
+        return array_merge($statements, $this->compileAlterTableOptions());
     }
 
     /**

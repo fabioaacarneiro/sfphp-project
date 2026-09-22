@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 106 tests, 0 failures
+> Verified against PHP 8.4 · suite: 108 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -1482,6 +1482,23 @@ $schema->table('posts', function (Blueprint $table): void {
 Generated names respect the driver's identifier limit (63 on PostgreSQL, 64 on
 MySQL) and are **deterministic**: the name `create` generates is the one `drop`
 looks for.
+
+#### Statements run in the order you wrote them
+
+That matters as soon as a rename is involved, because a rename changes what
+every later statement has to call the column:
+
+```php
+$schema->table('posts', function (Blueprint $table): void {
+    $table->renameColumn('code', 'sku');
+    $table->string('sku', 10)->change();     // the new name, and it works
+});
+```
+
+The builder used to emit every column statement before every operation, which
+put that modification before the rename that created the name it uses. No fixed
+grouping can be right — putting renames first breaks the opposite order just as
+surely — so the statements come out in the order the blueprint declares them.
 
 ### Dialect parity
 
@@ -3058,7 +3075,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 106 unit cases
+composer run test        # 108 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
