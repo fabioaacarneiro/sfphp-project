@@ -5081,4 +5081,62 @@ $tests->run('a request whose body is not the json it claims is refused before th
     $tests->assertSame(HTTP_UNSUPPORTED_MEDIA_TYPE, $strict->status());
 });
 
+$tests->run('the console finds a project laid out like a project, not like this repository', function () use ($tests): void {
+    /*
+     * Both of these were found only by running the commands from an installed
+     * project. `routes` looked for src/routes.php, which is this repository's
+     * layout and nobody else's, so it failed everywhere it was installed. And
+     * the generators capitalised every directory segment for a foreign project,
+     * which sent a seeder to database/Seeders while `db:seed` kept reading
+     * database/seeders.
+     */
+    $source = (string) file_get_contents(__DIR__ . '/../src/Console/Application.php');
+
+    $tests->assertSame(false, str_contains($source, "rootPath() . '/src/routes.php'"));
+    $tests->assertSame(true, str_contains($source, "projectPath('routes.php')"));
+    $tests->assertSame(true, str_contains($source, "projectPath('routes/web.php')"));
+
+    $project = sys_get_temp_dir() . '/sfphp-paths-' . bin2hex(random_bytes(4));
+    mkdir($project, 0755, true);
+
+    try {
+        file_put_contents($project . '/composer.json', json_encode([
+            'autoload' => ['psr-4' => ['Acme\\Shop\\' => 'app/']],
+        ], JSON_THROW_ON_ERROR));
+
+        // app/ follows the project's PSR-4 prefix, so its spelling follows too.
+        $controller = (new SfphpProject\src\Console\Generators\ControllerGenerator($project))->generate('Post');
+        $tests->assertSame(true, str_ends_with($controller, 'app/Controllers/PostController.php'));
+
+        /*
+         * database/ does not: those paths are read back by db:seed and by the
+         * factory loader, at names this framework decides.
+         */
+        $seeder = (new SfphpProject\src\Console\Generators\SeederGenerator($project))->generate('Post');
+        $factory = (new SfphpProject\src\Console\Generators\FactoryGenerator($project))->generate('Post');
+
+        $tests->assertSame(true, str_contains($seeder, '/database/seeders/'));
+        $tests->assertSame(true, str_contains($factory, '/database/factories/'));
+
+        // And they return a path, like every other generator, rather than a
+        // sentence the command then prints inside its own sentence.
+        $tests->assertSame(true, is_file($seeder));
+        $tests->assertSame(true, is_file($factory));
+    } finally {
+        foreach (['app/Controllers', 'database/seeders', 'database/factories'] as $directory) {
+            foreach (glob($project . '/' . $directory . '/*') ?: [] as $file) {
+                @unlink($file);
+            }
+        }
+
+        @unlink($project . '/composer.json');
+
+        foreach (['app/Controllers', 'app', 'database/seeders', 'database/factories', 'database'] as $directory) {
+            @rmdir($project . '/' . $directory);
+        }
+
+        @rmdir($project);
+    }
+});
+
 $tests->finish();

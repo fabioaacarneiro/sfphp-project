@@ -584,12 +584,36 @@ final class Application
     private function routes(array $arguments): int
     {
         try {
-            $file = $this->rootPath() . '/src/routes.php';
+            /*
+             * Where the route file is depends on whose project this is. This
+             * repository keeps it in src/, `sfphp init` writes it at the root,
+             * and an application may well have chosen routes/web.php — so all
+             * three are looked for rather than one being assumed. Guessing
+             * src/routes.php made `routes` fail in every installed project.
+             */
+            $file = $this->firstExisting([
+                $this->projectPath('routes.php'),
+                $this->projectPath('src/routes.php'),
+                $this->projectPath('routes/web.php'),
+            ]);
 
-            if (!file_exists($file)) {
-                $this->writeLine('Error: src/routes.php not found');
+            if ($file === null) {
+                $this->writeLine('No route file found. Looked for routes.php, src/routes.php and routes/web.php.');
+                $this->writeLine('Pass one with --path=, or run ./sfphp init to scaffold a project.');
 
                 return 1;
+            }
+
+            $custom = $this->option($arguments, 'path');
+
+            if ($custom !== null) {
+                $file = str_starts_with($custom, '/') ? $custom : $this->projectPath($custom);
+
+                if (!is_file($file)) {
+                    fwrite(STDERR, 'Error: ' . $file . ' not found' . PHP_EOL);
+
+                    return 1;
+                }
             }
 
             // Load routes to populate the static Router::$routes

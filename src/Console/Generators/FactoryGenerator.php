@@ -39,6 +39,6 @@ PHP;
 
         file_put_contents($filePath, $content);
 
-        return "Factory created: {$filePath}";
+        return $filePath;
     }
 }

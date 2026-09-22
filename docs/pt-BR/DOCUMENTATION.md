@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 142 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 143 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -3841,7 +3841,7 @@ os mesmos arquivos não copia nada e avisa.
 
 ```bash
 ./sfphp serve          # http://localhost:8000
-./sfphp routes         # tabela de rotas registradas
+./sfphp routes         # tabela de rotas registradas; --path= para layout fora do comum
 ./sfphp env:example    # cria .env a partir de .env-example
 ./sfphp css:build      # gera o SFCSS a partir do config; --config= --output=
 ./sfphp js:build       # minifica o SFJS
@@ -4018,7 +4018,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 142 casos unitários
+composer run test        # 143 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve
