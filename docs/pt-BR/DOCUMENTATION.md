@@ -91,42 +91,55 @@ Extensões opcionais, declaradas em `suggest`:
 - Composer 2
 - PDO com o driver do seu banco (opcional — só se usar banco)
 
-### Como dependência
+### Começar um projeto
+
+```bash
+composer create-project fabioaacarneiro/sfphp meu-app
+cd meu-app
+./sfphp serve
+```
+
+É toda a configuração. O <http://localhost:8000> responde, o console fica em
+`./sfphp` na raiz do projeto em vez de enterrado no `vendor/bin`, e o que você
+tem na frente é uma aplicação funcionando, para editar:
+
+```
+meu-app/
+  app/controllers/        um controller, respondendo a home
+  app/models/             um model
+  app/resources/views/    os templates de que essa página é feita
+  src/routes.php          as rotas
+  src/                    o framework
+  database/migrations/    users e sessions, prontas para rodar
+  public/index.php        o front controller
+  resources/assets/       o SFCSS e o SFJS
+  sfphp                   o console
+  .env                    escrito para você, com a chave JWT gerada
+```
+
+Criar o projeto também copia o `.env-example` para `.env` — **com um `JWT_KEY`
+de verdade**, porque o placeholder é recusado de propósito e gerar chave não
+deveria ser a primeira coisa sobre a qual você precisa ler — e publica o SFCSS e
+o SFJS em `public/assets`.
+
+Tudo ali é **seu**. Apague o controller de exemplo e as views dele; o framework
+é o `src/` e não se importa.
+
+### Acrescentar a um projeto que já existe
 
 ```bash
 composer require fabioaacarneiro/sfphp
-```
-
-O pacote carrega o framework e nada além disso: sem aplicação de exemplo, sem
-suíte de testes, sem um diretório `app/` aparecendo dentro do seu `vendor/`. O
-que chega é `src/`, o console, a licença, o readme e `resources/assets/` — o
-SFCSS e o SFJS, que viajam com o framework em vez de ficarem para trás num
-diretório público que você nunca recebe. Um teste afirma essa lista, porque o
-que o consumidor recebe é o arquivo gerado e não o repositório, e os dois se
-afastam em silêncio.
-
-```bash
 ./vendor/bin/sfphp init
 ```
 
-O `init` escreve o que um projeto precisa para conseguir responder qualquer
-coisa: front controller, arquivo de rotas, um controller, uma view, o script de
-roteamento que o servidor embutido usa, e o SFCSS e o SFJS copiados para
-`public/assets`. Ele imprime a linha de `autoload` para você colar no seu
-`composer.json`, e aí o `./vendor/bin/sfphp serve` responde em
-<http://localhost:8000> com uma página dizendo onde cada coisa fica.
+O `init` escreve só o que falta — front controller, arquivo de rotas, um
+controller, uma view, o script de roteamento que o servidor embutido usa — e
+publica os assets. Um arquivo que já existe é mantido e relatado, não
+sobrescrito; o `--force` muda isso e o `--namespace=Acme\Shop` troca o namespace
+das classes geradas.
 
-Um arquivo que já existe é mantido: rodar o `init` duas vezes relata o que ele
-deixou em paz, em vez de sobrescrever o seu front controller. O `--force` muda
-isso, e o `--namespace=Acme\Shop` troca o namespace das classes geradas.
-
-Tudo o que ele escreve é **seu**. Nada ali é atualizado por um `composer update`
-posterior, e apagar o controller de boas-vindas e a view dele é o passo seguinte
-esperado.
-
-Fazer à mão também serve — o front controller é a única parte sobre a qual o
-framework tem opinião. Uma chamada liga o seu projeto a ele, no topo desse
-arquivo e de qualquer ponto de entrada de console:
+A única parte sobre a qual o framework tem opinião é uma chamada, no topo do
+front controller e de qualquer ponto de entrada de console:
 
 ```php
 require __DIR__ . '/../vendor/autoload.php';
@@ -136,9 +149,9 @@ use SfphpProject\src\Bootstrap;
 Bootstrap::load(dirname(__DIR__));
 ```
 
-Isso carrega o seu `.env` se houver, define as configurações que o framework lê
-a menos que você já as tenha definido, e registra onde ficam suas views e seus
-catálogos de mensagens. Um projeto com layout diferente diz isso:
+Ela carrega o seu `.env` se existir, define as configurações que o framework lê
+a menos que você já as tenha definido, e registra onde ficam as suas views e
+catálogos. Um projeto com layout fora do comum diz isso:
 
 ```php
 Bootstrap::load(dirname(__DIR__), [
@@ -148,28 +161,20 @@ Bootstrap::load(dirname(__DIR__), [
 ]);
 ```
 
-O console chega como `vendor/bin/sfphp`, e gera arquivos no **seu** projeto, não
-dentro do pacote.
+### A partir de um clone
 
-### Como ponto de partida
-
-Para começar da aplicação de exemplo — rotas, controllers, views e migrations já
-prontos:
+Para trabalhar **no** framework, e não com ele:
 
 ```bash
 git clone https://github.com/fabioaacarneiro/sfphp-project.git
 cd sfphp-project
 composer install
 cp .env-example .env
-
-# Gere a chave JWT (obrigatória para emitir ou validar tokens)
-php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
+./sfphp serve
 ```
 
-```bash
-./sfphp serve                                   # http://localhost:8000
-php -S localhost:8000 -t public server.php      # equivalente
-```
+Um clone acrescenta o que um projeto criado deixa para trás: a suíte de testes,
+a documentação nos três idiomas e a definição do CI.
 
 Em produção, aponte o `DocumentRoot` para `public/`.
 
@@ -3809,7 +3814,7 @@ e não teria mudado nada.
 ```
 
 Para um projeto que instalou o framework e ainda não tem o que rodar. Veja
-[Como dependência](#como-dependência).
+[Acrescentar a um projeto que já existe](#acrescentar-a-um-projeto-que-já-existe).
 
 ### Assets
 

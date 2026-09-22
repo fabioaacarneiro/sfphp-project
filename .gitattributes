@@ -1,10 +1,12 @@
-# What a `composer require` does not need.
+# What a `composer create-project` delivers, and what it leaves behind.
 #
-# Everything here is part of this repository and none of it is part of the
-# framework: the example application, its database files, the test suite, the
-# documentation in three languages and the CSS builder. Shipping them would put
-# an app/ directory inside every consumer's vendor/ — confusing at best, and at
-# worst something a stray autoload rule picks up.
+# This package is a project skeleton, not a library: somebody who installs it
+# receives a working application to develop, not a framework to wire up. So the
+# example application, its views, its routes, its database directory and the
+# front controller all travel — they are the project.
+#
+# What stays behind is what belongs to developing the framework itself rather
+# than to developing with it.
 
 # vendor/ is gitignored, so `git archive` never sees it — but a path repository
 # copies the working tree, and an inner vendor/ inside the package made the
@@ -12,26 +14,19 @@
 /vendor             export-ignore
 /composer.lock      export-ignore
 
-/app                export-ignore
-/database           export-ignore
-/docs               export-ignore
-/public             export-ignore
+# The framework's own suite and its CI. A project developing against SFPHP
+# writes its own tests; these test SFPHP.
 /tests              export-ignore
-# The builders travel: SFCSS is "generated from a config", and that is only
-# true for somebody who has the generator. docs-parity checks this repository's
-# own three languages and is nobody else's business.
-/tools/docs-parity.php  export-ignore
 /.github            export-ignore
-/lang               export-ignore
-/server.php         export-ignore
-/.env-example       export-ignore
-/.gitattributes     export-ignore
-/.gitignore         export-ignore
+
+# The documentation lives on GitHub in three languages, and shipping twelve
+# thousand lines of it into every project is not a service to anybody.
+/docs               export-ignore
 /README.pt-BR.md    export-ignore
 /README.es.md       export-ignore
 
-# Keep: composer.json, README.md, LICENSE, sfphp, src/ — which includes
-# src/I18n/lang/, the framework's own message catalogs — and resources/assets/,
-# which holds SFCSS and SFJS. Those two are tools the framework ships rather
-# than files of the example application, so a consumer has to receive them;
-# ./sfphp assets:publish copies them into whatever directory a project serves.
+# Checks this repository's own three languages against each other.
+/tools/docs-parity.php  export-ignore
+
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
