@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 157 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 160 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -4443,7 +4443,7 @@ Referência completa: [SFCSS](SFCSS.md) e
 
 ## SFJS
 
-Biblioteca JavaScript sem dependências — 11KB crus, 8KB minificados, **2,4KB
+Biblioteca JavaScript sem dependências — 20KB crus, 12KB minificados, **3,6KB
 gzipped**. Exposta como `window.sf`.
 
 ```html
@@ -4495,10 +4495,10 @@ sf.util.debounce(fn, 300);  sf.util.throttle(fn, 300);  sf.util.wait(500);
 ### Atributos declarativos
 
 ```html
-<button @hxGet="/api/data" @hxTarget="#conteudo">Carregar</button>
-<button @hxDelete="/api/item/1" @hxTarget="#item" @hxSwap="outerHTML">Excluir</button>
+<button @get="/api/dados" @target="#conteudo">Carregar</button>
+<button @delete="/api/item/1" @target="#item" @swap="outerHTML">Excluir</button>
 
-<form @hxPost="/users" @hxTarget="#lista">
+<form @post="/usuarios" @target="#lista">
   <input name="email" @validate="email">
   <button type="submit">Criar</button>
 </form>
@@ -4507,15 +4507,74 @@ sf.util.debounce(fn, 300);  sf.util.throttle(fn, 300);  sf.util.wait(500);
 <div id="menu">...</div>
 ```
 
-Um formulário funciona com qualquer um deles: `@hxGet` e `@hxDelete` mandam os
-campos como query string, os outros mandam no corpo. O que volta é trocado como
-markup, então quem responde a um desses é um fragmento — renderizado pelo mesmo
-componente que o renderiza dentro da página inteira, e não JSON para o
-JavaScript remontar em HTML. A página em `/phpx` faz exatamente isso, e por isso
-não tem script próprio.
+Os cinco verbos são `@get`, `@post`, `@put`, `@patch` e `@delete`, com o
+`@target` (um seletor CSS) e o `@swap` ao lado. Um formulário manda os campos
+dele: `@get` e `@delete` como query string, os outros no corpo. Um input com
+`name` manda o próprio valor do mesmo jeito.
 
-`@hxSwap` aceita `innerHTML` (padrão), `outerHTML`, `beforebegin`,
-`afterbegin`, `beforeend` e `afterend`.
+O que volta é trocado como markup, então quem responde a um desses é um
+fragmento — renderizado pelo mesmo componente que o renderiza dentro da página
+inteira, e não JSON para o JavaScript remontar em HTML.
+
+> As grafias antigas `@hxGet`, `@hxTarget` e `@hxSwap` continuam funcionando e
+> querem dizer a mesma coisa. Elas foram distribuídas, então são lidas como
+> alias em vez de removidas; estão depreciadas e saem num release futuro.
+
+### Dizer quando dispara
+
+Sem `@trigger`, um clique dispara o elemento e um submit dispara o formulário.
+Com ele, o elemento diz por si:
+
+```html
+<div @get="/painel/vendas" @trigger="load, every 10s"></div>
+
+<input name="q" @get="/busca" @trigger="input delay:300ms" @target="#resultados">
+```
+
+| | |
+|---|---|
+| `load` | assim que o elemento está na página |
+| `every 10s` | de tempos em tempos — `ms`, `s` e `m` funcionam |
+| `input`, `change`, `click`, `submit` | naquele evento |
+| `delay:300ms` | somado a qualquer um, para digitar não afogar o servidor |
+
+Vários separados por vírgula. Um fragmento que chega por uma troca também é
+ligado, então um painel que se atualiza continua se atualizando depois da
+primeira vez.
+
+### Estratégias de troca
+
+O `@swap` aceita `innerHTML` (o padrão), `outerHTML`, `beforebegin`,
+`afterbegin`, `beforeend`, `afterend` e `morph`.
+
+**O `morph` é o que vale conhecer.** Os outros substituem markup, e substituir
+markup joga fora o foco, o cursor e o que foi digitado em um campo e ainda não
+enviado — então um painel que se atualiza a cada dez segundos torna inutilizável
+um formulário dentro dele. O `morph` percorre a árvore antiga e a nova juntas e
+muda só o que difere: o mesmo nó continua o mesmo nó, e um campo em que a pessoa
+está digitando fica em paz.
+
+```html
+<div id="carrinho" @get="/carrinho" @trigger="every 5s" @target="#carrinho" @swap="morph"></div>
+```
+
+### Responder com um fragmento
+
+Uma action serve tanto a troca quanto um navegador sem JavaScript:
+
+```php
+public function vendas(Request $request): Response
+{
+    $painel = SalesPanel(await(Http::getAsync($url))->json());
+
+    return Response::fragment($request, $painel, page: fn (Sfht $dentro) => Dashboard($dentro));
+}
+```
+
+O SFJS manda o `X-Requested-With`, então recebe o pedaço que mudou; um
+formulário enviado sem JavaScript recebe a página inteira com o fragmento já no
+lugar. O `$request->isFragment()` é a mesma pergunta, se você precisar dela
+direto.
 
 `@validate` roda no `blur` e aceita `required`, `email`, `number`, `url`,
 `minLength:N`, `maxLength:N` e `pattern:regex`.
@@ -4528,7 +4587,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 157 casos unitários
+composer run test        # 160 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve

@@ -5064,6 +5064,213 @@ $tests->run('the minified script is still a program, and still the same one', fu
     }
 });
 
+$tests->run('one action answers a fragment and a whole page', function () use ($tests): void {
+    /*
+     * The pattern the example application had written by hand: SFJS asks for
+     * the piece that changed, a browser with no JavaScript submits the same
+     * form and needs the page around it. Written twice, the two answers drift
+     * apart — so this is one call with the page as a wrapper.
+     */
+    $panel = new SfphpProject\src\View\Sfht('<p>inner</p>');
+    $page = static fn (SfphpProject\src\View\Sfht $inner): string => '<html>' . $inner . '</html>';
+
+    $xhr = Request::create('GET', '/panel', ['headers' => ['X-Requested-With' => 'XMLHttpRequest']]);
+    $plain = Request::create('GET', '/panel');
+
+    $tests->assertSame(true, $xhr->isFragment());
+    $tests->assertSame(false, $plain->isFragment());
+
+    $tests->assertSame('<p>inner</p>', Response::fragment($xhr, $panel, page: $page)->body());
+    $tests->assertSame('<html><p>inner</p></html>', Response::fragment($plain, $panel, page: $page)->body());
+
+    // With no page to fall back on, both get the fragment.
+    $tests->assertSame('<p>inner</p>', Response::fragment($plain, $panel)->body());
+});
+
+$tests->run('morph updates a panel without throwing away what is being typed', function () use ($tests): void {
+    /*
+     * The reason to have a swap strategy other than innerHTML at all. A panel
+     * that refreshes on a period contains a form somebody is filling in;
+     * replacing the markup throws away the focus, the caret and anything typed
+     * and not yet sent. Measured against innerHTML by hand, the same swap loses
+     * the focus, the caret and the text; here the strategy is asserted on its
+     * own, because two panels in one page end up with duplicate ids and the
+     * assertions start reading the wrong element.
+     */
+    $browser = '';
+
+    foreach (['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'] as $candidate) {
+        $found = trim((string) shell_exec('command -v ' . escapeshellarg($candidate) . ' 2>/dev/null'));
+
+        if ($found !== '') {
+            $browser = $found;
+            break;
+        }
+    }
+
+    if ($browser === '') {
+        return;
+    }
+
+    $directory = sys_get_temp_dir() . '/sfphp-morph-' . bin2hex(random_bytes(6));
+    mkdir($directory . '/profile', 0755, true);
+
+    $page = $directory . '/harness.html';
+    $script = Assets::path() . '/js/sfjs.min.js';
+
+    file_put_contents($page, <<<HTML
+    <!DOCTYPE html>
+    <html><head><meta charset="utf-8"></head>
+    <body>
+    <div id="morphed"><h2 id="heading">Count: 1</h2><input id="field" name="note" value=""></div>
+    <div id="log">nothing happened</div>
+    <script>
+      window.fetch = () => Promise.resolve({
+        ok: true, status: 200,
+        text: () => Promise.resolve('<h2 id="heading">Count: 2</h2><input id="field" name="note" value="">')
+      });
+    </script>
+    <script src="file://{$script}"></script>
+    <script>
+      window.addEventListener('load', async () => {
+        const headingBefore = document.getElementById('heading');
+        const field = document.getElementById('field');
+        field.focus(); field.value = 'typing'; field.setSelectionRange(3, 3);
+
+        await sf.ajax.get('/x', { target: '#morphed', swap: 'morph' });
+
+        document.getElementById('log').textContent = [
+          'text=' + document.getElementById('heading').textContent,
+          'sameNode=' + (headingBefore === document.getElementById('heading')),
+          'focus=' + ((document.activeElement || {}).id || 'lost'),
+          'typed=' + document.getElementById('field').value,
+          'caret=' + document.getElementById('field').selectionStart
+        ].join(' | ');
+      });
+    </script>
+    </body></html>
+    HTML);
+
+    try {
+        $command = escapeshellarg($browser)
+            . ' --headless --disable-gpu --no-sandbox --disable-dev-shm-usage'
+            . ' --no-first-run --no-default-browser-check --virtual-time-budget=3000'
+            . ' --user-data-dir=' . escapeshellarg($directory . '/profile')
+            . ' --dump-dom ' . escapeshellarg('file://' . $page) . ' 2>/dev/null';
+
+        $dom = (string) shell_exec($command);
+
+        if (!str_contains($dom, 'id="log"')) {
+            return;
+        }
+
+        preg_match('/<div id="log">([^<]*)</', $dom, $matches);
+        $log = $matches[1] ?? '';
+
+        // What the server sent did arrive.
+        $tests->assertTrue(str_contains($log, 'text=Count: 2'));
+
+        // And the node itself was kept rather than rebuilt.
+        $tests->assertTrue(str_contains($log, 'sameNode=true'));
+
+        // Which is why the visitor keeps the focus, the text and the caret.
+        $tests->assertTrue(str_contains($log, 'focus=field'));
+        $tests->assertTrue(str_contains($log, 'typed=typing'));
+        $tests->assertTrue(str_contains($log, 'caret=3'));
+    } finally {
+        exec('rm -rf ' . escapeshellarg($directory) . ' 2>/dev/null');
+    }
+});
+
+$tests->run('an element can say when it fires, and a field sends itself', function () use ($tests): void {
+    /*
+     * @trigger is what turns "click this" into "keep this current": a panel
+     * that loads itself and refreshes on a period, a search box that asks as
+     * somebody types. None of it is observable from PHP, so this drives a real
+     * browser and steps aside where there is not one.
+     */
+    $browser = '';
+
+    foreach (['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'] as $candidate) {
+        $found = trim((string) shell_exec('command -v ' . escapeshellarg($candidate) . ' 2>/dev/null'));
+
+        if ($found !== '') {
+            $browser = $found;
+            break;
+        }
+    }
+
+    if ($browser === '') {
+        return;
+    }
+
+    $directory = sys_get_temp_dir() . '/sfphp-trigger-' . bin2hex(random_bytes(6));
+    mkdir($directory . '/profile', 0755, true);
+
+    $page = $directory . '/harness.html';
+    $script = Assets::path() . '/js/sfjs.min.js';
+
+    file_put_contents($page, <<<HTML
+    <!DOCTYPE html>
+    <html><head><meta charset="utf-8"></head>
+    <body>
+    <div id="panel" \x40get="/tick" \x40trigger="load, every 200ms"></div>
+    <input id="search" name="q" value="abc" \x40get="/search" \x40target="#out" \x40trigger="input delay:50ms">
+    <form id="form" \x40post="/save" \x40target="#out" \x40trigger="submit">
+      <input name="title" value="hello"><button type="submit">go</button>
+    </form>
+    <div id="out"></div>
+    <div id="log">nothing happened</div>
+    <script>
+      const calls = [];
+      window.fetch = (url, init) => {
+        calls.push(((init && init.method) || 'GET') + ' ' + url);
+        return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve('<b>swapped</b>') });
+      };
+    </script>
+    <script src="file://{$script}"></script>
+    <script>
+      window.addEventListener('load', () => {
+        document.querySelector('#form button').click();
+        const field = document.getElementById('search');
+        field.value = 'xyz';
+        field.dispatchEvent(new Event('input'));
+        setTimeout(() => { document.getElementById('log').textContent = calls.join(' | '); }, 700);
+      });
+    </script>
+    </body></html>
+    HTML);
+
+    try {
+        $command = escapeshellarg($browser)
+            . ' --headless --disable-gpu --no-sandbox --disable-dev-shm-usage'
+            . ' --no-first-run --no-default-browser-check --virtual-time-budget=4000'
+            . ' --user-data-dir=' . escapeshellarg($directory . '/profile')
+            . ' --dump-dom ' . escapeshellarg('file://' . $page) . ' 2>/dev/null';
+
+        $dom = (string) shell_exec($command);
+
+        if (!str_contains($dom, 'id="log"')) {
+            return;
+        }
+
+        preg_match('/<div id="log">([^<]*)</', $dom, $matches);
+        $log = $matches[1] ?? '';
+
+        // load fired once, and the period kept firing after it.
+        $tests->assertTrue(substr_count($log, 'GET /tick') >= 3);
+
+        // The form sent its fields through the new attribute name.
+        $tests->assertTrue(str_contains($log, 'POST /save'));
+
+        // The field sent what was typed, debounced into one request.
+        $tests->assertTrue(str_contains($log, 'GET /search?q=xyz'));
+        $tests->assertSame(1, substr_count($log, 'GET /search'));
+    } finally {
+        exec('rm -rf ' . escapeshellarg($directory) . ' 2>/dev/null');
+    }
+});
+
 $tests->run('a declarative form sends the fields a visitor typed', function () use ($tests): void {
     /*
      * Two bugs lived here, and neither was visible from PHP. The click handler

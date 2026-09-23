@@ -588,6 +588,22 @@ final class Request
     }
 
     /**
+     * Whether this request wants a fragment rather than a whole page.
+     *
+     * SFJS sends `X-Requested-With: XMLHttpRequest` when it is going to swap
+     * the answer into the page, so what it needs is the piece that changed.
+     * A browser that submitted the same form with no JavaScript running sends
+     * nothing of the sort and needs the page around it — which is how one
+     * action serves both without the author writing the answer twice.
+     *
+     * @return bool True when only the fragment is wanted
+     */
+    public function isFragment(): bool
+    {
+        return strtolower($this->header('X-Requested-With') ?? '') === 'xmlhttprequest';
+    }
+
+    /**
      * Determine whether the client wants a JSON response.
      *
      * @return bool True when JSON is requested or submitted

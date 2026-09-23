@@ -90,10 +90,10 @@ final class PhpxController
      */
     private function answer(Request $request, Sfht $result): Response
     {
-        if ($request->header('X-Requested-With') === 'XMLHttpRequest') {
-            return Response::html((string) $result);
-        }
-
-        return Response::html((string) PostcodePage($result));
+        return Response::fragment(
+            $request,
+            $result,
+            page: static fn (Sfht $inner): Sfht => PostcodePage($inner)
+        );
     }
 }
