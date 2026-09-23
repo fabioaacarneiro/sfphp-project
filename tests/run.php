@@ -5163,6 +5163,97 @@ $tests->run('a declarative form sends the fields a visitor typed', function () u
     }
 });
 
+$tests->run('upgrade replaces the framework and leaves the application alone', function () use ($tests): void {
+    /*
+     * Tested against a project of its own, for the same reason reset is: this
+     * deletes and overwrites, and a test that can destroy the checkout it runs
+     * in is not a test anybody should have to trust.
+     *
+     * What it has to get right is the division. A file under src/ is the
+     * framework's and is replaced; a language file a project added sits beside
+     * the framework's and stays; a controller is never touched; and
+     * public/index.php is the project's even though releases change it, so the
+     * new one is written next to it rather than over it.
+     */
+    $root = sys_get_temp_dir() . '/sfphp-upgrade-test-' . bin2hex(random_bytes(6));
+    $source = sys_get_temp_dir() . '/sfphp-upgrade-src-' . bin2hex(random_bytes(6));
+
+    foreach ([$root, $source] as $directory) {
+        foreach (['vendor', 'src/Console', 'app/controllers', 'lang', 'public', 'resources'] as $part) {
+            mkdir($directory . '/' . $part, 0755, true);
+        }
+    }
+
+    // The project: an autoloader shim and a copy of the binary, as reset does.
+    file_put_contents(
+        $root . '/vendor/autoload.php',
+        '<?php require ' . var_export(dirname(__DIR__) . '/vendor/autoload.php', true) . ';'
+    );
+    copy(dirname(__DIR__) . '/sfphp', $root . '/sfphp');
+    chmod($root . '/sfphp', 0755);
+
+    file_put_contents($root . '/src/Bootstrap.php', '<?php // the old framework');
+    file_put_contents($root . '/src/Leftover.php', '<?php // a file the new release removed');
+    file_put_contents($root . '/app/controllers/MineController.php', '<?php // mine');
+    file_put_contents($root . '/lang/mine.json', '{"mine": true}');
+    file_put_contents($root . '/lang/en.json', '{"old": true}');
+    file_put_contents($root . '/public/index.php', '<?php // my front controller');
+    file_put_contents($root . '/server.php', '<?php // old');
+
+    // The release being upgraded to.
+    file_put_contents($source . '/src/Bootstrap.php', '<?php // the new framework');
+    file_put_contents($source . '/sfphp', '#!/usr/bin/env php' . PHP_EOL . '<?php // new binary');
+    file_put_contents($source . '/server.php', '<?php // new');
+    file_put_contents($source . '/lang/en.json', '{"new": true}');
+    file_put_contents($source . '/public/index.php', '<?php // the new front controller');
+
+    $binary = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/sfphp');
+    $from = ' --from=' . escapeshellarg($source);
+
+    try {
+        // A dry run says what it would do and does none of it.
+        $output = [];
+        $status = 0;
+        exec($binary . ' upgrade' . $from . ' --dry-run 2>&1', $output, $status);
+
+        $tests->assertSame(0, $status);
+        $tests->assertTrue(str_contains(implode("\n", $output), 'nothing was changed'));
+        $tests->assertSame('<?php // the old framework', file_get_contents($root . '/src/Bootstrap.php'));
+
+        // With no terminal to answer at, it refuses rather than proceeding.
+        $output = [];
+        $status = 0;
+        exec($binary . ' upgrade' . $from . ' < /dev/null 2>&1', $output, $status);
+
+        $tests->assertSame(1, $status);
+
+        $output = [];
+        $status = 0;
+        exec($binary . ' upgrade' . $from . ' --force 2>&1', $output, $status);
+        clearstatcache(true);
+
+        $tests->assertSame(0, $status);
+
+        // The framework is the new one, and what the release dropped is gone.
+        $tests->assertSame('<?php // the new framework', file_get_contents($root . '/src/Bootstrap.php'));
+        $tests->assertSame(false, is_file($root . '/src/Leftover.php'));
+        $tests->assertSame('<?php // new', file_get_contents($root . '/server.php'));
+
+        // The application is untouched.
+        $tests->assertSame('<?php // mine', file_get_contents($root . '/app/controllers/MineController.php'));
+
+        // A merged directory keeps what is only yours and takes what is theirs.
+        $tests->assertSame('{"mine": true}', file_get_contents($root . '/lang/mine.json'));
+        $tests->assertSame('{"new": true}', file_get_contents($root . '/lang/en.json'));
+
+        // The front controller is yours; the new one arrives beside it.
+        $tests->assertSame('<?php // my front controller', file_get_contents($root . '/public/index.php'));
+        $tests->assertSame('<?php // the new front controller', file_get_contents($root . '/public/index.php.new'));
+    } finally {
+        exec('rm -rf ' . escapeshellarg($root) . ' ' . escapeshellarg($source) . ' 2>/dev/null');
+    }
+});
+
 $tests->run('reset removes the example application and refuses to do it in silence', function () use ($tests): void {
     /*
      * This deletes a project's application, so it is tested against a project

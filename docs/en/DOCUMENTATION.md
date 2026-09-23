@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 156 tests, 0 failures
+> Verified against PHP 8.4 · suite: 157 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -4191,7 +4191,7 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` exposes **35 commands**.
+`./sfphp` exposes **36 commands**.
 
 ### Generation (12 generators)
 
@@ -4278,6 +4278,7 @@ says so.
 ./sfphp js:build       # minifies SFJS
 ./sfphp build --phpx   # compiles the .phpx components
 ./sfphp reset          # removes the example application; --force skips the question
+./sfphp upgrade        # replaces the framework, keeps the application
 ./sfphp tinker         # REPL — local development only
 ./sfphp list
 ./sfphp version
@@ -4286,6 +4287,49 @@ says so.
 
 `tinker` evaluates input with `eval()`. It is a local development tool; never
 expose the CLI to untrusted input.
+
+### Upgrading
+
+**`composer update` does not upgrade SFPHP, and cannot.** A project created with
+`composer create-project` does not have the framework as a dependency — the
+framework's files *are* the project, and its `require` names only PHP and a
+couple of extensions. There is nothing in `vendor/` for Composer to replace.
+
+So upgrading means replacing those files, and knowing which ones they are:
+
+```bash
+./sfphp upgrade --dry-run          # what it would do, changing nothing
+./sfphp upgrade --to=v0.13.0       # fetches that tag with git
+./sfphp upgrade --from=../sfphp    # a copy you already have
+```
+
+| | |
+|---|---|
+| Replaced whole | `src/`, `sfphp`, `server.php` — entirely the framework |
+| Merged in | `resources/`, `lang/`, `tools/` — the framework's files land on top, yours stay |
+| Written beside | `public/index.php` and `composer.json` become `<file>.new` for you to read |
+| Never touched | `app/`, `database/`, the rest of `public/`, `.env`, `vendor/` |
+
+It lists all of that, waits for you to type `upgrade`, and refuses when there is
+no terminal to answer at. `--force` is for a script.
+
+**Commit first.** A change you made under `src/` is lost — it was going to be
+lost at the next release anyway, and silently. `public/index.php` and
+`composer.json` are the two files releases change that are also yours, which is
+why they are never overwritten: compare the `.new` and take what you want.
+
+Afterwards:
+
+```bash
+composer dump-autoload
+./sfphp assets:publish --force
+./sfphp build --phpx        # if the project has components
+```
+
+> **The command lives in the version you are upgrading to, not the one you have.**
+> Coming from a release before this one, do that first upgrade by hand — replace
+> `src/`, the binary and `server.php`, merge `resources/`, `lang/` and `tools/`,
+> and diff `public/index.php`. From then on this command does it.
 
 ### Starting from zero
 
@@ -4485,7 +4529,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 156 unit cases
+composer run test        # 157 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves

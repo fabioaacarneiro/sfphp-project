@@ -72,6 +72,53 @@ final class Application
         'create_sessions_table',
     ];
 
+    /** Where a release is fetched from, when no local copy is given. */
+    private const REPOSITORY = 'https://github.com/fabioaacarneiro/sfphp-project';
+
+    /**
+     * What `upgrade` replaces wholesale, because it is entirely the framework.
+     *
+     * Nothing under here is meant to be edited by a project: a change made to
+     * it would be lost at the next release anyway, and silently.
+     *
+     * @var list<string>
+     */
+    private const UPGRADE_REPLACE = [
+        'src',
+        'sfphp',
+        'server.php',
+    ];
+
+    /**
+     * What `upgrade` copies over without deleting what it does not recognise.
+     *
+     * A project adds its own language files and its own assets beside the
+     * framework's, so emptying these directories first would take those with
+     * them. The framework's files win; anything else is left alone.
+     *
+     * @var list<string>
+     */
+    private const UPGRADE_MERGE = [
+        'resources',
+        'lang',
+        'tools',
+    ];
+
+    /**
+     * What `upgrade` refuses to touch, and writes beside instead.
+     *
+     * The front controller and the composer manifest are the project's, and
+     * they are also where releases change things. Overwriting them would take
+     * a project's own middleware, its bindings and its dependencies with it, so
+     * the new version is written as `<file>.new` for a person to read.
+     *
+     * @var list<string>
+     */
+    private const UPGRADE_COMPARE = [
+        'public/index.php',
+        'composer.json',
+    ];
+
     /** What the routes file becomes once the example application is gone. */
     private const EMPTY_ROUTES = <<<'PHP'
         <?php
@@ -116,6 +163,7 @@ final class Application
                 'routes' => $this->routes($arguments),
                 'build' => $this->build($arguments),
                 'reset' => $this->reset($arguments),
+                'upgrade' => $this->upgrade($arguments),
                 'css:build' => $this->cssBuild($arguments),
                 'js:build' => $this->jsBuild($arguments),
                 'make:migration' => $this->makeMigration($arguments),
@@ -202,6 +250,7 @@ final class Application
             $this->writeLine('  routes                List all registered routes');
             $this->writeLine('  build --phpx          Compile .phpx components into PHP');
             $this->writeLine('  reset                 Remove the example application [--force]');
+            $this->writeLine('  upgrade               Replace the framework, keep the application [--to=]');
             $this->writeLine('  css:build             Build SFCSS from config.json');
             $this->writeLine('  js:build              Minify SFJS');
             $this->writeLine('');
@@ -254,6 +303,26 @@ final class Application
                 $this->writeLine('Output: public/assets/css/sfcss.css');
                 $this->writeLine('');
                 $this->writeLine('Edit tools/css-builder/sfcss.config.json to customize colors and spacing.');
+                break;
+            case 'upgrade':
+                $this->writeLine('Usage: ./sfphp upgrade [--to=v0.13.0] [--from=dir] [--dry-run] [--force]');
+                $this->writeLine('');
+                $this->writeLine('Replace the framework inside this project, keeping the application.');
+                $this->writeLine('');
+                $this->writeLine('A project created from this package does not have the framework as a');
+                $this->writeLine('dependency — the framework\'s files are the project — so composer update');
+                $this->writeLine('has nothing to update. This is what upgrading means instead.');
+                $this->writeLine('');
+                $this->writeLine('Replaced whole: src/, sfphp, server.php.');
+                $this->writeLine('Merged in:      resources/, lang/, tools/ — your files there stay.');
+                $this->writeLine('Compared:       public/index.php and composer.json are written as');
+                $this->writeLine('                <file>.new for you to read, never applied.');
+                $this->writeLine('Untouched:      app/, database/, the rest of public/, .env, vendor/.');
+                $this->writeLine('');
+                $this->writeLine('--to= is a tag or branch to fetch with git; --from= is a copy you');
+                $this->writeLine('already have. --dry-run prints the plan and changes nothing.');
+                $this->writeLine('');
+                $this->writeLine('Commit before running it: a change you made under src/ is lost.');
                 break;
             case 'reset':
                 $this->writeLine('Usage: ./sfphp reset [--force]');
@@ -323,6 +392,7 @@ final class Application
         $this->writeLine('  routes                     List all registered routes');
         $this->writeLine('  build --phpx               Compile .phpx components into PHP');
         $this->writeLine('  reset                      Remove the example application [--force]');
+        $this->writeLine('  upgrade                    Replace the framework, keep the application [--to=]');
         $this->writeLine('  tinker                     Interactive PHP shell');
         $this->writeLine('');
         $this->writeLine('Utility Commands:');
@@ -1808,8 +1878,18 @@ PHP;
      */
     private function assertInsideProject(string $directory): void
     {
-        $resolved = realpath($directory);
         $root = realpath($this->rootPath());
+        $resolved = realpath($directory);
+
+        if ($resolved === false) {
+            /*
+             * A path that does not exist yet — the destination of a copy — is
+             * resolved through its parent, so that it can still be checked
+             * rather than waved through.
+             */
+            $parent = realpath(dirname($directory));
+            $resolved = $parent === false ? false : $parent . DIRECTORY_SEPARATOR . basename($directory);
+        }
 
         if ($resolved === false || $root === false || !str_starts_with($resolved, $root . DIRECTORY_SEPARATOR)) {
             throw new RuntimeException('Refusing to touch ' . $directory . ', which is not inside the project.');
@@ -1846,6 +1926,323 @@ PHP;
             if (!(new FilesystemIterator($entry->getPathname(), FilesystemIterator::SKIP_DOTS))->valid()) {
                 rmdir($entry->getPathname());
             }
+        }
+    }
+
+    /**
+     * Replace the framework in place, keeping the application around it.
+     *
+     * A project created from this package does not have the framework as a
+     * dependency — the framework's files *are* the project — so `composer
+     * update` has nothing to update. Upgrading means replacing those files,
+     * which is a job of knowing which ones they are.
+     *
+     * Three kinds of path, and the difference is the whole command:
+     *
+     * - **Replaced** — `src/`, the binary, the dev server. Entirely the
+     *   framework. A change made there was going to be lost at the next
+     *   release anyway.
+     * - **Merged** — `resources/`, `lang/`, `tools/`. The framework's files
+     *   land on top; a language file or an asset a project added beside them
+     *   stays.
+     * - **Compared** — `public/index.php` and `composer.json`. The project's,
+     *   and also where releases change things, so the new version is written as
+     *   `<file>.new` for a person to read rather than applied.
+     *
+     * Everything else — `app/`, `database/`, the rest of `public/`, `.env` —
+     * is never touched.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function upgrade(array $arguments): int
+    {
+        try {
+            $source = $this->option($arguments, 'from');
+            $temporary = null;
+
+            if ($source === null) {
+                $reference = $this->option($arguments, 'to') ?? 'master';
+                $temporary = $this->fetchFramework($reference);
+
+                if ($temporary === null) {
+                    return 1;
+                }
+
+                $source = $temporary;
+            }
+
+            $source = rtrim($source, DIRECTORY_SEPARATOR);
+
+            if (!is_file($source . '/src/Bootstrap.php') || !is_file($source . '/sfphp')) {
+                fwrite(STDERR, 'Error: ' . $source . ' does not look like SFPHP.' . PHP_EOL);
+
+                return 1;
+            }
+
+            $status = $this->applyUpgrade($source, $arguments);
+
+            if ($temporary !== null) {
+                exec('rm -rf ' . escapeshellarg($temporary) . ' 2>/dev/null');
+            }
+
+            return $status;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+
+            return 1;
+        }
+    }
+
+    /**
+     * Get a copy of the framework at some version.
+     *
+     * @param string $reference A tag or a branch
+     * @return string|null The directory, or null when it could not be fetched
+     */
+    private function fetchFramework(string $reference): ?string
+    {
+        if (trim((string) shell_exec('command -v git 2>/dev/null')) === '') {
+            fwrite(STDERR, 'Error: git is needed to fetch a release. Pass --from=<directory> instead.' . PHP_EOL);
+
+            return null;
+        }
+
+        $directory = sys_get_temp_dir() . '/sfphp-upgrade-' . bin2hex(random_bytes(6));
+
+        $this->writeLine('  fetching ' . $reference . ' …');
+
+        $command = sprintf(
+            'git clone --quiet --depth 1 --branch %s %s %s 2>&1',
+            escapeshellarg($reference),
+            escapeshellarg(self::REPOSITORY),
+            escapeshellarg($directory)
+        );
+
+        $output = [];
+        $status = 0;
+        exec($command, $output, $status);
+
+        if ($status !== 0) {
+            fwrite(STDERR, 'Error: could not fetch ' . $reference . ':' . PHP_EOL);
+            fwrite(STDERR, implode(PHP_EOL, $output) . PHP_EOL);
+
+            return null;
+        }
+
+        return $directory;
+    }
+
+    /**
+     * Show what an upgrade would do, ask, and then do it.
+     *
+     * @param string $source A copy of the framework to upgrade to
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function applyUpgrade(string $source, array $arguments): int
+    {
+        $replace = [];
+        $merge = [];
+        $compare = [];
+
+        foreach (self::UPGRADE_REPLACE as $relative) {
+            if (file_exists($source . '/' . $relative)) {
+                $replace[$relative] = is_dir($source . '/' . $relative)
+                    ? count($this->filesUnder($source . '/' . $relative))
+                    : 1;
+            }
+        }
+
+        foreach (self::UPGRADE_MERGE as $relative) {
+            if (is_dir($source . '/' . $relative)) {
+                $merge[$relative] = count($this->filesUnder($source . '/' . $relative));
+            }
+        }
+
+        foreach (self::UPGRADE_COMPARE as $relative) {
+            $theirs = $source . '/' . $relative;
+            $ours = $this->projectPath($relative);
+
+            if (is_file($theirs) && is_file($ours) && file_get_contents($theirs) !== file_get_contents($ours)) {
+                $compare[] = $relative;
+            }
+        }
+
+        $this->writeLine('');
+        $this->writeLine('  UPGRADE — this replaces the framework inside this project.');
+        $this->writeLine('');
+
+        foreach ($replace as $relative => $count) {
+            $this->writeLine(sprintf('    %-22s %4d file(s), replaced', $relative, $count));
+        }
+
+        foreach ($merge as $relative => $count) {
+            $this->writeLine(sprintf('    %-22s %4d file(s), merged in', $relative . '/', $count));
+        }
+
+        foreach ($compare as $relative) {
+            $this->writeLine(sprintf('    %-22s differs — written as %s.new, not applied', $relative, $relative));
+        }
+
+        $this->writeLine('');
+        $this->writeLine('  Untouched: app/, database/, the rest of public/, .env, vendor/.');
+        $this->writeLine('  Anything you changed under the replaced paths is lost. Commit first.');
+        $this->writeLine('');
+
+        if (in_array('--dry-run', $arguments, true)) {
+            $this->writeLine('Dry run: nothing was changed.');
+
+            return 0;
+        }
+
+        if (!in_array('--force', $arguments, true)) {
+            if (!stream_isatty(STDIN)) {
+                fwrite(STDERR, 'Refusing to upgrade with no terminal to confirm at. Pass --force if that is what you mean.' . PHP_EOL);
+
+                return 1;
+            }
+
+            fwrite(STDOUT, '  Type "upgrade" to confirm: ');
+
+            if (strtolower(trim((string) fgets(STDIN))) !== 'upgrade') {
+                $this->writeLine('');
+                $this->writeLine('Nothing was changed.');
+
+                return 0;
+            }
+
+            $this->writeLine('');
+        }
+
+        foreach (array_keys($replace) as $relative) {
+            $target = $this->projectPath($relative);
+            $this->assertInsideProject($target);
+
+            if (is_dir($target)) {
+                $this->emptyTree($target);
+                rmdir($target);
+            } elseif (is_file($target)) {
+                unlink($target);
+            }
+
+            $this->copyTree($source . '/' . $relative, $target);
+            $this->writeLine('  replaced  ' . $relative);
+        }
+
+        foreach (array_keys($merge) as $relative) {
+            $this->copyTree($source . '/' . $relative, $this->projectPath($relative));
+            $this->writeLine('  merged    ' . $relative . '/');
+        }
+
+        foreach ($compare as $relative) {
+            copy($source . '/' . $relative, $this->projectPath($relative . '.new'));
+            $this->writeLine('  wrote     ' . $relative . '.new — compare it with yours');
+        }
+
+        if (is_file($this->projectPath('sfphp'))) {
+            chmod($this->projectPath('sfphp'), 0755);
+        }
+
+        $this->writeLine('');
+        $this->writeLine('Upgraded. Next:');
+        $this->writeLine('  composer dump-autoload');
+        $this->writeLine('  ./sfphp assets:publish --force');
+
+        if (is_dir($this->projectPath('app/components'))) {
+            $this->writeLine('  ./sfphp build --phpx');
+        }
+
+        $this->upgradeNotes();
+
+        return 0;
+    }
+
+    /**
+     * Say what a release moved, where a project would otherwise not notice.
+     *
+     * A file that changed place is the one thing this command cannot do for
+     * you: your routes are yours, and putting them where the new front
+     * controller looks is a decision about your application.
+     *
+     * @return void
+     */
+    private function upgradeNotes(): void
+    {
+        $notes = [];
+
+        if (is_file($this->projectPath('src/routes.php')) && !is_file($this->projectPath('app/routes/web.php'))) {
+            $notes[] = 'Routes moved from src/routes.php to app/routes/web.php and app/routes/api.php.'
+                . ' Copy yours across: the new public/index.php loads the new location.';
+        }
+
+        if ($notes === []) {
+            return;
+        }
+
+        $this->writeLine('');
+        $this->writeLine('Worth knowing:');
+
+        foreach ($notes as $note) {
+            $this->writeLine('  - ' . $note);
+        }
+    }
+
+    /**
+     * Copy a file, or a directory and everything under it.
+     *
+     * @param string $from The source
+     * @param string $to The destination
+     * @return void
+     */
+    private function copyTree(string $from, string $to): void
+    {
+        if (is_file($from)) {
+            if (!is_dir(dirname($to))) {
+                mkdir(dirname($to), 0755, true);
+            }
+
+            copy($from, $to);
+
+            return;
+        }
+
+        if (!is_dir($from)) {
+            return;
+        }
+
+        if (!is_dir($to) && !mkdir($to, 0755, true) && !is_dir($to)) {
+            throw new RuntimeException('Could not create ' . $to);
+        }
+
+        foreach (new FilesystemIterator($from, FilesystemIterator::SKIP_DOTS) as $entry) {
+            $this->copyTree($entry->getPathname(), $to . '/' . $entry->getFilename());
+        }
+    }
+
+    /**
+     * Remove everything under a directory, leaving the directory.
+     *
+     * @param string $directory The directory
+     * @return void
+     */
+    private function emptyTree(string $directory): void
+    {
+        $this->assertInsideProject($directory);
+
+        $entries = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($entries as $entry) {
+            if ($entry->isDir()) {
+                rmdir($entry->getPathname());
+
+                continue;
+            }
+
+            unlink($entry->getPathname());
         }
     }
 

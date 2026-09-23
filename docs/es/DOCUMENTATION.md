@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 156 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 157 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -63,7 +63,7 @@ hace hoy. Donde algo no existe, se dice que no existe — véase
 objetos Request/Response, una tubería de middleware, un contenedor de
 inyección de dependencias, un constructor de consultas, un constructor de
 esquemas con paridad MySQL/PostgreSQL, un motor de plantillas, componentes en
-`.phpx`, un cliente HTTP, eventos, caché, colas y un CLI con 35 comandos.
+`.phpx`, un cliente HTTP, eventos, caché, colas y un CLI con 36 comandos.
 
 **No es** un sustituto de Laravel o Symfony. No hay un ORM completo, los
 eventos se despachan en el proceso y de forma síncrona, sin broker de mensajes,
@@ -4256,7 +4256,7 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` expone **35 comandos**.
+`./sfphp` expone **36 comandos**.
 
 ### Generación (12 generadores)
 
@@ -4345,6 +4345,7 @@ encuentra los mismos archivos no copia nada y lo dice.
 ./sfphp js:build       # minifica SFJS
 ./sfphp build --phpx   # compila los componentes .phpx
 ./sfphp reset          # elimina la aplicación de ejemplo; --force omite la pregunta
+./sfphp upgrade        # sustituye el framework, mantiene la aplicación
 ./sfphp tinker         # REPL — solo para desarrollo local
 ./sfphp list
 ./sfphp version
@@ -4353,6 +4354,49 @@ encuentra los mismos archivos no copia nada y lo dice.
 
 `tinker` evalúa la entrada con `eval()`. Es una herramienta de desarrollo
 local; nunca expongas la CLI a entrada no confiable.
+
+### Actualizar
+
+**`composer update` no actualiza SFPHP, y no puede.** Un proyecto creado con
+`composer create-project` no tiene el framework como dependencia — sus archivos
+*son* el proyecto, y su `require` nombra solo PHP y un par de extensiones. No hay
+nada en `vendor/` que Composer pueda reemplazar.
+
+Actualizar, entonces, es reemplazar esos archivos sabiendo cuáles son:
+
+```bash
+./sfphp upgrade --dry-run          # lo que haría, sin cambiar nada
+./sfphp upgrade --to=v0.13.0       # trae esa etiqueta con git
+./sfphp upgrade --from=../sfphp    # una copia que ya tienes
+```
+
+| | |
+|---|---|
+| Reemplazado entero | `src/`, `sfphp`, `server.php` — todo del framework |
+| Mezclado | `resources/`, `lang/`, `tools/` — los archivos del framework entran encima, los tuyos se quedan |
+| Escrito al lado | `public/index.php` y `composer.json` pasan a `<archivo>.new` para que los leas |
+| Nunca tocado | `app/`, `database/`, el resto de `public/`, `.env`, `vendor/` |
+
+Lista todo eso, espera a que escribas `upgrade` y se niega cuando no hay terminal
+donde responder. `--force` es para un script.
+
+**Haz commit antes.** Un cambio tuyo dentro de `src/` se pierde — se iba a perder
+en la próxima versión de todos modos, y en silencio. `public/index.php` y
+`composer.json` son los dos archivos que las versiones cambian y que además son
+tuyos, y por eso nunca se sobrescriben: compara el `.new` y toma lo que quieras.
+
+Después:
+
+```bash
+composer dump-autoload
+./sfphp assets:publish --force
+./sfphp build --phpx        # si el proyecto tiene componentes
+```
+
+> **El comando vive en la versión a la que vas, no en la que tienes.** Si vienes
+> de una versión anterior a esta, haz esa primera actualización a mano —
+> reemplaza `src/`, el binario y `server.php`, mezcla `resources/`, `lang/` y
+> `tools/`, y compara `public/index.php`. A partir de ahí lo hace el comando.
 
 ### Empezar desde cero
 
@@ -4554,7 +4598,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 156 casos unitarios
+composer run test        # 157 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve

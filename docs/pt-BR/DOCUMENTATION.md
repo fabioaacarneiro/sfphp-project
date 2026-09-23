@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 156 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 157 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -4183,7 +4183,7 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` expõe **35 comandos**.
+`./sfphp` expõe **36 comandos**.
 
 ### Geração (12 geradores)
 
@@ -4270,6 +4270,7 @@ os mesmos arquivos não copia nada e avisa.
 ./sfphp js:build       # minifica o SFJS
 ./sfphp build --phpx   # compila os componentes .phpx
 ./sfphp reset          # remove a aplicação de exemplo; --force pula a pergunta
+./sfphp upgrade        # troca o framework, mantém a aplicação
 ./sfphp tinker         # REPL — só para desenvolvimento local
 ./sfphp list
 ./sfphp version
@@ -4278,6 +4279,50 @@ os mesmos arquivos não copia nada e avisa.
 
 `tinker` avalia entrada com `eval()`. É uma ferramenta de desenvolvimento
 local; nunca exponha o CLI a entrada não confiável.
+
+### Atualizar
+
+**O `composer update` não atualiza o SFPHP, e não tem como.** Um projeto criado
+com `composer create-project` não tem o framework como dependência — os arquivos
+dele *são* o projeto, e o `require` nomeia só o PHP e algumas extensões. Não há
+nada no `vendor/` para o Composer substituir.
+
+Atualizar, então, é substituir esses arquivos sabendo quais são:
+
+```bash
+./sfphp upgrade --dry-run          # o que faria, sem mudar nada
+./sfphp upgrade --to=v0.13.0       # busca essa tag com o git
+./sfphp upgrade --from=../sfphp    # uma cópia que você já tem
+```
+
+| | |
+|---|---|
+| Substituído inteiro | `src/`, `sfphp`, `server.php` — tudo do framework |
+| Mesclado | `resources/`, `lang/`, `tools/` — os arquivos do framework entram por cima, os seus ficam |
+| Escrito ao lado | `public/index.php` e `composer.json` viram `<arquivo>.new` para você ler |
+| Nunca tocado | `app/`, `database/`, o resto de `public/`, `.env`, `vendor/` |
+
+Ele lista tudo isso, espera você digitar `upgrade` e recusa quando não há
+terminal para responder. O `--force` é para script.
+
+**Faça commit antes.** Uma alteração sua dentro de `src/` é perdida — ela seria
+perdida no próximo release de qualquer forma, e em silêncio. O
+`public/index.php` e o `composer.json` são os dois arquivos que os releases
+mudam e que também são seus, e por isso nunca são sobrescritos: compare o `.new`
+e pegue o que quiser.
+
+Depois:
+
+```bash
+composer dump-autoload
+./sfphp assets:publish --force
+./sfphp build --phpx        # se o projeto tiver componentes
+```
+
+> **O comando está na versão para a qual você vai, não na que você tem.** Vindo
+> de um release anterior a este, faça a primeira atualização à mão — substitua
+> `src/`, o binário e o `server.php`, mescle `resources/`, `lang/` e `tools/`, e
+> compare o `public/index.php`. Daí em diante o comando faz isso.
 
 ### Começar do zero
 
@@ -4477,7 +4522,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 156 casos unitários
+composer run test        # 157 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve
