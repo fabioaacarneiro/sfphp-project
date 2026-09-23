@@ -253,12 +253,23 @@ class WebSocketFuture implements Future
     }
 
     /**
-     * Static factory method
+     * Open a connection.
+     *
+     * Named open() rather than connect() because a class cannot have both an
+     * instance method and a static method of the same name, and it had both:
+     * the file raised a fatal error the moment PHP parsed it, so the class had
+     * never been loaded by anything — it shipped in the package as a file that
+     * could not be used.
+     *
+     * @param string $url The endpoint
+     * @param array<string, string> $headers Handshake headers
+     * @return self The future
      */
-    public static function connect(string $url, array $headers = []): self
+    public static function open(string $url, array $headers = []): self
     {
         $future = new self($url, $headers);
         $future->connect();
+
         return $future;
     }
 }
