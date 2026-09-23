@@ -56,5 +56,10 @@
 # Checks this repository's own three languages against each other.
 /tools/docs-parity.php  export-ignore
 
+# The framework's own security policy: where to report a vulnerability in
+# SFPHP, which is a question about this repository rather than about the
+# application somebody builds with it.
+/SECURITY.md        export-ignore
+
 /.gitattributes     export-ignore
 /.gitignore         export-ignore
