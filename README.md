@@ -12,7 +12,7 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 
 ### ⚡ **Lightning-Fast Performance**
 - **No dependencies bloat** — only the PHP standard library and your database driver
-- **Built-in async/await system** — Ready for 3-5x I/O improvements with RoadRunner/Swoole
+- **Concurrent HTTP, measured** — three outbound requests cost what one costs; `benchmarks/` has the command and the numbers
 - **Optimized queries** — automatic N+1 detection, efficient relations, smart caching
 - **Minimal framework overhead** — your code runs immediately, not buried in layers
 
@@ -75,7 +75,7 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 
 | Feature | What You Get |
 |---------|-------------|
-| **Async/Await System** | Native PHP Fibers, parallel queries, real-time WebSocket, stream processing |
+| **Async/Await System** | PHP Fibers over a real event loop: HTTP requests overlap, timers and timeouts are the loop's. Queries are scheduled, not overlapped — see [the audit](ASYNC_RUNTIME_AUDIT.md) |
 | **Event Broadcasting** | Pub/sub with wildcards, event history, async dispatch |
 | **Caching** | File, memory, Redis drivers with smart invalidation |
 | **Job Queues** | Background workers with retries, database or Redis drivers |
@@ -90,9 +90,9 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 ## Perfect For These Scenarios
 
 ### 📱 **High-Traffic APIs**
-Why SFPHP wins: Built-in async/await for parallel requests, intelligent caching, optimized query builder, zero-dependency footprint means minimal memory per request.
+Why SFPHP wins: outbound calls that overlap, intelligent caching, optimized query builder, zero-dependency footprint means minimal memory per request.
 
-**Example:** Your API needs to fetch user data, posts, and stats in parallel. SFPHP does this 3x faster with native Fibers.
+**Example:** your endpoint calls three services. Measured against a local origin answering in 100 ms, an endpoint making three calls has the same latency and throughput as one making a single call — 80 RPS, p50 208 ms, under `ab -n 200 -c 20`.
 
 ### 🌐 **Multilingual Platforms**
 Why SFPHP wins: First-class i18n support with language negotiation, UTF-8 handling that doesn't need `mbstring`, framework messages in visitor's language.
@@ -168,43 +168,28 @@ Router::get('/products', 'ProductController', 'index');
 Router::get('/products/:id', 'ProductController', 'show');
 ```
 
-### Write Queries (with async!)
+### Call three services at once
 
 ```php
-// Sequential (normal)
-$products = Product::query()->getAsync();
+$a = Http::getAsync('https://billing.internal/invoices/7');
+$b = Http::getAsync('https://catalog.internal/products/42');
+$c = Http::getAsync('https://ratings.internal/products/42');
 
-// Parallel (3x faster!)
-[$products, $categories, $tags] = await(CompositeFuture::all(
-    async(fn() => Product::query()->getAsync()),
-    async(fn() => Category::query()->getAsync()),
-    async(fn() => Tag::query()->getAsync())
-));
+[$invoice, $product, $ratings] = [await($a), await($b), await($c)];
 ```
 
----
+The three requests are on the wire before the first `await`, so this costs
+about as long as the slowest one rather than the three added together.
+Measured: 301 ms for three 300 ms requests, 309 ms for fifty.
 
-## The Numbers
+> **Queries do not work this way.** `await(User::query()->getAsync())` schedules
+> the query — it does not overlap it, because PDO has no asynchronous API and no
+> Fiber changes that. Three queries awaited together take as long as three
+> queries: 609 ms against 603 ms, measured. The difference between *async
+> scheduling* and *non-blocking I/O*, and what it would take to close it, is in
+> [ASYNC_RUNTIME_AUDIT.md](ASYNC_RUNTIME_AUDIT.md).
 
-| Metric | SFPHP |
-|--------|-------|
-| **Dependencies** | 0 (just PHP + PDO) |
-| **Framework size** | ~2MB (src/) |
-| **Vendor directory** | Autoloader only |
-| **Setup time** | <1 minute |
-| **Built-in commands** | 35 |
-| **Code generators** | 12 |
-| **Security features** | 150+ |
-| **Test coverage** | 154+ unit tests |
-| **Async operations/sec** | 286,000+ |
-| **Parallel speedup** | 3-5x for I/O operations |
-| **Documentation** | 3 languages |
-
----
-
-## Built For Every Language
-
-UTF-8 isn't an afterthought—it's how the framework works:
+### Built for any language
 
 ```php
 Str::length('日本語');           // 3 (not 9 bytes)
@@ -270,7 +255,7 @@ No extensions required except what your database driver needs. No `mbstring`. No
 ## Testing
 
 ```bash
-composer run test       # 154 unit tests
+composer run test       # 156 unit tests
 composer run test:db    # Integration tests on real MySQL & PostgreSQL
 composer run lint       # PHP syntax check
 composer run docs       # Verify documentation consistency
