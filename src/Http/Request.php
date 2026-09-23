@@ -3,6 +3,8 @@
 namespace SfphpProject\src\Http;
 
 use JsonException;
+use SfphpProject\src\ValidationResult;
+use SfphpProject\src\Validator;
 
 /**
  * An incoming HTTP request.
@@ -585,6 +587,40 @@ final class Request
         $mask = ~((1 << (8 - $remainder)) - 1) & 0xFF;
 
         return (ord($addressBinary[$bytes]) & $mask) === (ord($subnetBinary[$bytes]) & $mask);
+    }
+
+    /**
+     * Validate what arrived with this request.
+     *
+     * The data is the request's own — query string, body, JSON, whatever this
+     * request actually carried — so nothing reaches into `$_POST`. That
+     * matters beyond taste: a superglobal is process-wide state, so a test
+     * has to fake it, a second request in the same worker inherits it, and a
+     * controller written against it cannot be called twice with different
+     * input.
+     *
+     *     $result = $request->validate([
+     *         'name'  => 'required|min:3|max:255',
+     *         'email' => 'required|email',
+     *     ]);
+     *
+     *     if ($result->fails()) {
+     *         return Response::json(['errors' => $result->errors()], HTTP_UNPROCESSABLE_ENTITY);
+     *     }
+     *
+     *     $clean = $result->validated();
+     *
+     * Returns the result rather than throwing, the same way a 404 from the
+     * HTTP client comes back to be inspected: a form that does not validate is
+     * an ordinary outcome of a form, not an exceptional one.
+     *
+     * @param array<string, string> $rules The rules, by field
+     * @param array<string, string> $messages Messages to use instead of the defaults
+     * @return ValidationResult What passed, and what did not
+     */
+    public function validate(array $rules, array $messages = []): ValidationResult
+    {
+        return Validator::validate($this->all(), $rules, $messages);
     }
 
     /**

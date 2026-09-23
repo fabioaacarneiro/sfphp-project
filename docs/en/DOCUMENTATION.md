@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 164 tests, 0 failures
+> Verified against PHP 8.4 · suite: 166 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -1681,6 +1681,39 @@ after it are modifiers:
 | `author_id:foreignId:constrained` | `$table->foreignId('author_id')->constrained()` |
 | `timestamps` | `$table->timestamps()` — a bare word takes no column name |
 
+
+#### Every type, and every modifier
+
+Nothing to guess at — this is the whole vocabulary the command accepts, and a
+name outside it is refused with this list before any file is written.
+
+**Types that take no argument**
+
+`id` · `increments` · `smallIncrements` · `mediumIncrements` · `bigIncrements` ·
+`foreignId` · `foreignUuid` · `foreignUlid` · `tinyInteger` · `smallInteger` ·
+`mediumInteger` · `integer` · `bigInteger` · `unsignedTinyInteger` ·
+`unsignedSmallInteger` · `unsignedMediumInteger` · `unsignedInteger` ·
+`unsignedBigInteger` · `text` · `mediumText` · `longText` · `binary` ·
+`boolean` · `date` · `time` · `timeTz` · `dateTime` · `dateTimeTz` ·
+`timestamp` · `timestampTz` · `json` · `jsonb` · `uuid` · `ulid` ·
+`ipAddress` · `macAddress` · `year` · `float` · `double`
+
+**Types that take a length** — `string`, `char`. `title:string:120`.
+
+**Types that take precision and scale** — `decimal`, `unsignedDecimal`.
+`price:decimal:8,2`.
+
+**Modifiers with no value** — `nullable`, `unique`, `index`, `unsigned`,
+`primary`, `autoIncrement`, `useCurrent`, `useCurrentOnUpdate`, `constrained`,
+`first`. As many as you like: `slug:string:120:unique:index`.
+
+**Modifiers that take a value** — `default=`, `comment=`, `after=`. A value of
+`true`, `false`, `null` or a number is written as that literal; anything else
+becomes a quoted string. `role:string:default=editor`, `active:boolean:default=true`.
+
+**Bare words, which take no column name** — `id`, `timestamps`, `timestampsTz`,
+`softDeletes`, `softDeletesTz`, `rememberToken`.
+
 Colons rather than parentheses on purpose: `surname:varchar(255)` is a syntax
 error in a shell unless it is quoted, and an argument that only works in quotes
 is an argument people get wrong.
@@ -2633,21 +2666,37 @@ request that created it and be seen by the next one.
 ## Validation
 
 ```php
+public function store(Request $request): Response
+{
+    $result = $request->validate([
+        'name'  => 'required|min:3|max:255',
+        'email' => 'required|email',
+        'age'   => 'required|number',
+    ]);
+
+    if ($result->fails()) {
+        return Response::json(['errors' => $result->errors()], HTTP_UNPROCESSABLE_ENTITY);
+    }
+
+    $clean = $result->validated();
+
+    // ...
+}
+```
+
+The data is the request's own — query string, body, JSON, whatever this request
+actually carried. **Nothing reaches into `$_POST`**, and that matters beyond
+taste: a superglobal is process-wide state, so a test has to fake it, a second
+request in the same worker inherits it, and a controller written against it
+cannot be called twice with different input.
+
+Outside a request — a console command, a queue job, a value you built yourself —
+the validator takes any array:
+
+```php
 use SfphpProject\src\Validator;
 
-$result = Validator::validate($_POST, [
-    'name'  => 'required|min:3|max:255',
-    'email' => 'required|email',
-    'age'   => 'required|number',
-]);
-
-if ($result->fails()) {
-    foreach ($result->errors() as $field => $messages) {
-        echo $field . ': ' . implode(', ', $messages);
-    }
-}
-
-$clean = $result->validated();
+$result = Validator::validate($row, ['email' => 'required|email']);
 ```
 
 Rules are a **pipe-separated string**, not an array. Arguments follow a colon.
@@ -4772,7 +4821,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 164 unit cases
+composer run test        # 166 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
