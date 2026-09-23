@@ -25,9 +25,9 @@ function PostcodeLookup(?Sfht $result = null): Sfht
 
             <div class="card-body">
                 <form method="get" action="/phpx/postcode" ';
-echo '@hxGet';
+echo '@get';
 echo '="/phpx/postcode" ';
-echo '@hxTarget';
+echo '@target';
 echo '="#result">
                     <div class="form-group">
                         <label class="form-label" for="postcode">Brazilian postcode</label>

@@ -5,6 +5,7 @@ namespace SfphpProject\src\Http;
 use JsonException;
 use JsonSerializable;
 use LogicException;
+use Stringable;
 use SfphpProject\src\Router;
 use SfphpProject\src\View;
 
@@ -43,6 +44,37 @@ final class Response
     public static function html(string $html, int $status = HTTP_OK): self
     {
         return new self($html, $status, ['Content-Type' => 'text/html; charset=utf-8']);
+    }
+
+    /**
+     * Answer with a fragment, or with the page it belongs to.
+     *
+     * The same action serves both: SFJS asked for the piece that changed and
+     * gets it; a browser with no JavaScript running submitted the same form
+     * and gets the whole page, with the fragment already in place. Without
+     * this the choice is written by hand in every action, and the two answers
+     * drift apart — which is exactly what happened in the example application
+     * before this existed.
+     *
+     *     return Response::fragment($request, $panel, page: fn ($inner) => Dashboard($inner));
+     *
+     * @param Request $request The incoming request
+     * @param Stringable|string $fragment The piece that changed
+     * @param callable(Stringable|string): (Stringable|string)|null $page Wraps the fragment in its page
+     * @param int $status The HTTP status code
+     * @return self The response
+     */
+    public static function fragment(
+        Request $request,
+        Stringable|string $fragment,
+        ?callable $page = null,
+        int $status = HTTP_OK
+    ): self {
+        if ($page === null || $request->isFragment()) {
+            return self::html((string) $fragment, $status);
+        }
+
+        return self::html((string) $page($fragment), $status);
     }
 
     /**

@@ -255,7 +255,7 @@ No extensions required except what your database driver needs. No `mbstring`. No
 ## Testing
 
 ```bash
-composer run test       # 157 unit tests
+composer run test       # 160 unit tests
 composer run test:db    # Integration tests on real MySQL & PostgreSQL
 composer run lint       # PHP syntax check
 composer run docs       # Verify documentation consistency

@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 157 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 160 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -4519,8 +4519,8 @@ Referencia completa: [SFCSS](SFCSS.md) y
 
 ## SFJS
 
-Una biblioteca JavaScript sin dependencias — 11KB en crudo, 8KB minificada,
-**2,4KB comprimida**. Expuesta como `window.sf`.
+Una biblioteca JavaScript sin dependencias — 20KB en crudo, 12KB minificada,
+**3,6KB comprimida**. Expuesta como `window.sf`.
 
 ```html
 <script src="/assets/js/sfjs.min.js"></script>
@@ -4571,10 +4571,10 @@ sf.util.debounce(fn, 300);  sf.util.throttle(fn, 300);  sf.util.wait(500);
 ### Atributos declarativos
 
 ```html
-<button @hxGet="/api/data" @hxTarget="#content">Cargar</button>
-<button @hxDelete="/api/item/1" @hxTarget="#item" @hxSwap="outerHTML">Borrar</button>
+<button @get="/api/datos" @target="#contenido">Cargar</button>
+<button @delete="/api/item/1" @target="#item" @swap="outerHTML">Eliminar</button>
 
-<form @hxPost="/users" @hxTarget="#list">
+<form @post="/usuarios" @target="#lista">
   <input name="email" @validate="email">
   <button type="submit">Crear</button>
 </form>
@@ -4583,15 +4583,74 @@ sf.util.debounce(fn, 300);  sf.util.throttle(fn, 300);  sf.util.wait(500);
 <div id="menu">...</div>
 ```
 
-Un formulario funciona con cualquiera de ellos: `@hxGet` y `@hxDelete` envían
-sus campos como query string, los demás los envían en el cuerpo. Lo que vuelve se
-intercambia como marcado, así que lo que responde a uno de estos es un fragmento
-— renderizado por el mismo componente que lo renderiza dentro de la página
-entera, y no JSON que JavaScript tenga que reconstruir en HTML. La página en
-`/phpx` hace exactamente eso, y por eso no tiene script propio.
+Los cinco verbos son `@get`, `@post`, `@put`, `@patch` y `@delete`, con
+`@target` (un selector CSS) y `@swap` al lado. Un formulario envía sus campos:
+`@get` y `@delete` como query string, los demás en el cuerpo. Un input con
+`name` envía su propio valor de la misma forma.
 
-`@hxSwap` acepta `innerHTML` (el valor por defecto), `outerHTML`,
-`beforebegin`, `afterbegin`, `beforeend` y `afterend`.
+Lo que vuelve se intercambia como marcado, así que lo que responde a uno de
+estos es un fragmento — renderizado por el mismo componente que lo renderiza
+dentro de la página entera, y no JSON que JavaScript tenga que reconstruir en
+HTML.
+
+> Las grafías anteriores `@hxGet`, `@hxTarget` y `@hxSwap` siguen funcionando y
+> significan lo mismo. Se publicaron, así que se leen como alias en lugar de
+> eliminarse; están obsoletas y se van en una versión posterior.
+
+### Decir cuándo se dispara
+
+Sin `@trigger`, un clic dispara el elemento y un submit dispara el formulario.
+Con él, el elemento lo dice por sí mismo:
+
+```html
+<div @get="/panel/ventas" @trigger="load, every 10s"></div>
+
+<input name="q" @get="/buscar" @trigger="input delay:300ms" @target="#resultados">
+```
+
+| | |
+|---|---|
+| `load` | en cuanto el elemento está en la página |
+| `every 10s` | cada cierto tiempo — `ms`, `s` y `m` funcionan |
+| `input`, `change`, `click`, `submit` | en ese evento |
+| `delay:300ms` | añadido a cualquiera, para que teclear no inunde el servidor |
+
+Varios separados por comas. Un fragmento que llega por un intercambio también
+queda conectado, así que un panel que se actualiza sigue haciéndolo después de
+la primera vez.
+
+### Estrategias de intercambio
+
+`@swap` acepta `innerHTML` (el valor por defecto), `outerHTML`, `beforebegin`,
+`afterbegin`, `beforeend`, `afterend` y `morph`.
+
+**`morph` es el que vale la pena conocer.** Los demás reemplazan marcado, y
+reemplazar marcado tira el foco, el cursor y lo escrito en un campo que aún no
+se ha enviado — así que un panel que se actualiza cada diez segundos vuelve
+inutilizable un formulario dentro de él. `morph` recorre el árbol viejo y el
+nuevo a la vez y cambia solo lo que difiere: el mismo nodo sigue siendo el mismo
+nodo, y un campo en el que se está escribiendo se deja en paz.
+
+```html
+<div id="carrito" @get="/carrito" @trigger="every 5s" @target="#carrito" @swap="morph"></div>
+```
+
+### Responder con un fragmento
+
+Una acción sirve tanto al intercambio como a un navegador sin JavaScript:
+
+```php
+public function ventas(Request $request): Response
+{
+    $panel = SalesPanel(await(Http::getAsync($url))->json());
+
+    return Response::fragment($request, $panel, page: fn (Sfht $dentro) => Dashboard($dentro));
+}
+```
+
+SFJS envía `X-Requested-With`, así que recibe la pieza que cambió; un formulario
+enviado sin JavaScript recibe la página entera con el fragmento ya en su sitio.
+`$request->isFragment()` es la misma pregunta, si la necesitas directamente.
 
 `@validate` se ejecuta en `blur` y acepta `required`, `email`, `number`, `url`,
 `minLength:N`, `maxLength:N` y `pattern:regex`.
@@ -4604,7 +4663,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 157 casos unitarios
+composer run test        # 160 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve
