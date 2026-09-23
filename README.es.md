@@ -1,5 +1,7 @@
 # 🚀 SFPHP — Simple Framework PHP
 
+> **¿Amas SFPHP?** ⭐ [Dale una estrella en GitHub](https://github.com/fabioaacarneiro/sfphp-framework) — ¡eso nos ayuda a crecer y mantiene el framework próspero!
+
 > **Lee esto en:** [English](README.md) · [Português](README.pt-BR.md) · [Español](README.es.md)
 
 **El framework PHP para desarrolladores que se preocupan por el rendimiento, la seguridad y la simplicidad.**

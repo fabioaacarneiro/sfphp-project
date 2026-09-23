@@ -2,6 +2,8 @@
 
 **Get started with async/await in 5 minutes**
 
+> **Love SFPHP?** ⭐ [Give us a star on GitHub](https://github.com/fabioaacarneiro/sfphp-framework) — it helps us grow and keeps the framework thriving!
+
 ---
 
 ## Installation
