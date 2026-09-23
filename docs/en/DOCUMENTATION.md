@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> **Love SFPHP?** ⭐ [Give us a star on GitHub](https://github.com/fabioaacarneiro/sfphp-framework) — it helps us grow and keeps the framework thriving!
+> **Love SFPHP?** ⭐ [Give us a star on GitHub](https://github.com/fabioaacarneiro/sfphp-project) — it helps us grow and keeps the framework thriving!
 >
 > Verified against PHP 8.4 · suite: 169 tests, 0 failures
 >

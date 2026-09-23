@@ -2,7 +2,7 @@
 
 **A comprehensive guide to asynchronous and reactive programming in SFPHP**
 
-> **Love SFPHP?** ⭐ [Give us a star on GitHub](https://github.com/fabioaacarneiro/sfphp-framework) — it helps us grow and keeps the framework thriving!
+> **Love SFPHP?** ⭐ [Give us a star on GitHub](https://github.com/fabioaacarneiro/sfphp-project) — it helps us grow and keeps the framework thriving!
 
 ---
 

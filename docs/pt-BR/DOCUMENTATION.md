@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> **Ama SFPHP?** ⭐ [Dê uma estrela no GitHub](https://github.com/fabioaacarneiro/sfphp-framework) — isso nos ajuda a crescer e mantém o framework prospering!
+> **Ama SFPHP?** ⭐ [Dê uma estrela no GitHub](https://github.com/fabioaacarneiro/sfphp-project) — isso nos ajuda a crescer e mantém o framework prospering!
 >
 > Verificado contra PHP 8.4 · suíte: 169 testes, 0 falhas
 >
