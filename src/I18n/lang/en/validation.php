@@ -15,5 +15,9 @@ return [
     'max' => '{1} :field must be at most one character long.|[2,*] :field must be at most :max characters long.',
     'alpha' => ':field must contain only letters.',
     'alphanum' => ':field must contain only letters and numbers.',
+    'url' => ':field must be a valid URL.',
+    'pattern' => ':field is not in the expected format.',
+    'minValue' => ':field must be at least :min.',
+    'maxValue' => ':field must be at most :max.',
     'number' => ':field must contain only numbers.',
 ];

@@ -274,13 +274,34 @@ const sf = (() => {
 
   // ========== VALIDATION ==========
 
+  /*
+   * The same rule names the server validates with, so a form says one thing
+   * once. The browser's answer is a convenience — anybody can skip it with a
+   * request of their own — and the server's is the one that counts, which is
+   * why the two lists have to agree: a field the browser accepts and the
+   * server rejects is a form that fails after it looked fine.
+   */
   const validate = {
+    required: (value) => String(value).trim().length > 0,
     email: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
-    required: (value) => value.trim().length > 0,
-    minLength: (value, min) => value.length >= min,
-    maxLength: (value, max) => value.length <= max,
-    pattern: (value, regex) => new RegExp(regex).test(value),
     number: (value) => /^[0-9]+$/.test(value),
+    alpha: (value) => /^\p{L}+$/u.test(value),
+    alphanum: (value) => /^[\p{L}\p{N}]+$/u.test(value),
+    minLength: (value, min) => [...String(value)].length >= Number(min),
+    maxLength: (value, max) => [...String(value)].length <= Number(max),
+    /*
+     * min and max follow the value, as they do on the server: a number is
+     * compared, anything else is counted. "age must be at least 18" and "name
+     * must be at least 3 characters" are both what somebody meant when they
+     * wrote it.
+     */
+    min: (value, bound) => (isNumeric(value)
+      ? Number(value) >= Number(bound)
+      : [...String(value)].length >= Number(bound)),
+    max: (value, bound) => (isNumeric(value)
+      ? Number(value) <= Number(bound)
+      : [...String(value)].length <= Number(bound)),
+    pattern: (value, regex) => new RegExp(regex, 'u').test(value),
     url: (value) => {
       try {
         new URL(value);
@@ -291,14 +312,42 @@ const sf = (() => {
     },
   };
 
+  /**
+   * Whether a value is a number, the way the server decides it.
+   *
+   * @param {*} value The value
+   * @returns {boolean}
+   */
+  function isNumeric(value) {
+    return String(value).trim() !== '' && !Number.isNaN(Number(value));
+  }
+
   const form_validation = {
     validate: (element) => {
-      const rule = element.getAttribute('@validate');
+      const spec = element.getAttribute('@validate');
       const value = element.value;
 
-      if (!rule || !validate[rule]) return true;
+      if (!spec) return true;
 
-      return validate[rule](value);
+      /*
+       * Rules are pipe separated and an argument comes after a colon, the
+       * same as on the server. The argument used to be dropped: the whole
+       * "minLength:5" was looked up as a rule name, not found, and the field
+       * passed — so three of the documented rules never did anything.
+       */
+      return spec.split('|').every((one) => {
+        const at = one.indexOf(':');
+        const name = (at === -1 ? one : one.slice(0, at)).trim();
+        const argument = at === -1 ? null : one.slice(at + 1);
+
+        if (!validate[name]) {
+          console.error('SFJS: @validate does not know "' + name + '"');
+
+          return true;
+        }
+
+        return validate[name](value, argument);
+      });
     },
 
     showError: (element, message) => {
