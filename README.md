@@ -12,7 +12,7 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 
 ### ⚡ **Lightning-Fast Performance**
 - **No dependencies bloat** — only the PHP standard library and your database driver
-- **Built-in async/await system** — 3-5x faster for I/O with native PHP Fibers
+- **Built-in async/await system** — Ready for 3-5x I/O improvements with RoadRunner/Swoole
 - **Optimized queries** — automatic N+1 detection, efficient relations, smart caching
 - **Minimal framework overhead** — your code runs immediately, not buried in layers
 

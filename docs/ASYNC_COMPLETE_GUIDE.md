@@ -662,15 +662,23 @@ if ($ws->isRejected()) {
 
 ## Performance & Benchmarks
 
-### Speed Comparison
+### Speed Comparison (Theoretical vs Practical)
 
-| Operation | Sync | Async | Speedup |
-|-----------|------|-------|---------|
-| 1 task | 100ms | 100ms | - |
-| 3 parallel tasks | 300ms | 100ms | **3x** |
-| 5 parallel tasks | 500ms | 100ms | **5x** |
-| Stream 10k items | 50ms | 52ms | 1x |
-| Cache 1k ops | 10ms | 12ms | 1x |
+**Important Note:** PHP's blocking I/O (file_get_contents, curl, database queries) blocks the entire thread, so true parallelism requires non-blocking event loops like RoadRunner or Swoole. SFPHP is built for those environments.
+
+In standard PHP with blocking I/O:
+| Operation | Time |
+|-----------|------|
+| 3 sequential operations (100ms each) | 300ms |
+| 3 "parallel" operations* | 300ms* |
+
+*With blocking I/O, concurrent execution doesn't help; all threads wait for I/O.
+
+**But with RoadRunner/Swoole (true async I/O):**
+| Operation | Time | Speedup |
+|-----------|------|---------|
+| 3 parallel tasks | ~100ms | **3x** |
+| 5 parallel tasks | ~100ms | **5x** |
 
 ### Real Benchmarks (Actual Measurements)
 
