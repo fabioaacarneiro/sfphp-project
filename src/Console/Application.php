@@ -19,6 +19,7 @@ use SfphpProject\src\Console\Generators\TestGenerator;
 use SfphpProject\src\Database;
 use SfphpProject\src\Database\Seeder;
 use SfphpProject\src\Migrations\MigrationCreator;
+use SfphpProject\src\Migrations\MigrationDraft;
 use SfphpProject\src\Migrations\MigrationRunner;
 use FilesystemIterator;
 use RecursiveCallbackFilterIterator;
@@ -285,6 +286,28 @@ final class Application
                 $this->writeLine('');
                 $this->writeLine('Example: ./sfphp make:scaffold Post');
                 break;
+            case 'make:migration':
+                $this->writeLine('Usage: ./sfphp make:migration <name> [field ...] [--path=dir]');
+                $this->writeLine('');
+                $this->writeLine('The name says what the migration does:');
+                $this->writeLine('  create_users            creates the table');
+                $this->writeLine('  add_phone_to_users      alters it');
+                $this->writeLine('  drop_users_table        drops it');
+                $this->writeLine('Anything else gets an empty migration to fill in.');
+                $this->writeLine('');
+                $this->writeLine('A field is name:type, numbers after it are the type\'s arguments,');
+                $this->writeLine('words after it are modifiers:');
+                $this->writeLine('  surname:string:255           $table->string(\'surname\', 255)');
+                $this->writeLine('  email:string:unique          $table->string(\'email\')->unique()');
+                $this->writeLine('  price:decimal:8,2            $table->decimal(\'price\', 8, 2)');
+                $this->writeLine('  active:boolean:default=true  $table->boolean(\'active\')->default(true)');
+                $this->writeLine('');
+                $this->writeLine('A bare word takes no column name: timestamps, softDeletes,');
+                $this->writeLine('rememberToken, id.');
+                $this->writeLine('');
+                $this->writeLine('Example:');
+                $this->writeLine('  ./sfphp make:migration create_users name:string email:string:unique timestamps');
+                break;
             case 'make:migration:create':
                 $this->writeLine('Usage: ./sfphp make:migration:create <table> [--path=dir]');
                 $this->writeLine('');
@@ -477,15 +500,56 @@ final class Application
     private function makeMigration(array $arguments): int
     {
         $name = $this->firstArgument($arguments);
+
         if ($name === null) {
             throw new \InvalidArgumentException('Migration name is required.');
         }
+
+        /*
+         * Everything after the name that is not an option is a field. The name
+         * is the instruction — create_users, add_phone_to_users,
+         * drop_sessions_table — so there is nothing else to ask for.
+         */
+        $fields = [];
+        $seenName = false;
+
+        foreach ($arguments as $argument) {
+            if (str_starts_with($argument, '--')) {
+                continue;
+            }
+
+            if (!$seenName) {
+                $seenName = true;
+
+                continue;
+            }
+
+            $fields[] = $argument;
+        }
+
+        $draft = new MigrationDraft($name, $fields);
+
+        /*
+         * The file is written only once the fields have all been read. A typo
+         * in the fourth column used to leave a half-written migration behind
+         * for somebody to find later.
+         */
+        $body = $draft->body();
 
         $directory = $this->option($arguments, 'path') ?? 'database/migrations';
         $creator = new MigrationCreator($this->projectPath($directory));
         $file = $creator->create($name);
 
+        file_put_contents($file, $body);
+
         $this->writeLine('Created migration: ' . $this->relativePath($file));
+
+        if ($draft->action() === 'plain' && $fields !== []) {
+            $this->writeLine('');
+            $this->writeLine('  The name does not say which table this is about, so the fields were');
+            $this->writeLine('  not used. Name it create_<table>, add_<what>_to_<table> or');
+            $this->writeLine('  drop_<table> and they will be.');
+        }
 
         return 0;
     }
@@ -907,6 +971,40 @@ final class Application
     private function makeMigrationCreate(array $arguments): int
     {
         $table = $this->firstArgument($arguments);
+
+        if ($table === null) {
+            throw new \InvalidArgumentException('Table name is required.');
+        }
+
+        /*
+         * Superseded by `make:migration create_<table> [fields]`, which reads
+         * the name instead of taking the table as a separate argument — and
+         * which can also alter and drop. Kept because it shipped, forwarding
+         * so there is one code path rather than two that drift.
+         */
+        $this->writeLine('  make:migration:create is deprecated. Use:');
+        $this->writeLine('    ./sfphp make:migration create_' . $table . ' name:string email:string:unique timestamps');
+        $this->writeLine('');
+
+        $forwarded = ['create_' . $table];
+
+        foreach (array_slice($arguments, 1) as $argument) {
+            $forwarded[] = $argument;
+        }
+
+        return $this->makeMigration($forwarded);
+    }
+
+    /**
+     * The previous implementation, no longer reached.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makeMigrationCreateLegacy(array $arguments): int
+    {
+        $table = $this->firstArgument($arguments);
+
         if ($table === null) {
             throw new \InvalidArgumentException('Table name is required.');
         }

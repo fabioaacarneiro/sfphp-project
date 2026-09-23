@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 163 tests, 0 failures
+> Verified against PHP 8.4 · suite: 164 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -1651,8 +1651,9 @@ Running migrations as one step of a pipeline is still the better shape. The lock
 is there because the framework should not depend on everyone having it.
 
 ```bash
-./sfphp make:migration create_users_table
-./sfphp make:migration:create users        # pre-filled with id + timestamps
+./sfphp make:migration create_users name:string email:string:unique timestamps
+./sfphp make:migration add_phone_to_users phone:string:nullable
+./sfphp make:migration drop_sessions_table
 
 ./sfphp migrate
 ./sfphp migrate --step=2
@@ -1661,6 +1662,45 @@ is there because the framework should not depend on everyone having it.
 ./sfphp status
 ./sfphp db:fresh                           # drops everything and rebuilds
 ```
+
+**The name is the instruction.** `create_users` creates a table,
+`add_phone_to_users` alters one, `drop_sessions_table` drops one — the same
+words you would use to say what the change is. A name that says none of those
+gets an empty migration to fill in.
+
+**A field is `name:type`.** Numbers after it are the type's arguments, words
+after it are modifiers:
+
+| | |
+|---|---|
+| `surname:string:255` | `$table->string('surname', 255)` |
+| `email:string:unique` | `$table->string('email')->unique()` |
+| `price:decimal:8,2` | `$table->decimal('price', 8, 2)` |
+| `active:boolean:default=true` | `$table->boolean('active')->default(true)` |
+| `bio:text:nullable` | `$table->text('bio')->nullable()` |
+| `author_id:foreignId:constrained` | `$table->foreignId('author_id')->constrained()` |
+| `timestamps` | `$table->timestamps()` — a bare word takes no column name |
+
+Colons rather than parentheses on purpose: `surname:varchar(255)` is a syntax
+error in a shell unless it is quoted, and an argument that only works in quotes
+is an argument people get wrong.
+
+The types are the schema builder's own names, not SQL's — `string`, not
+`varchar`; `boolean`, not `bool`. What you type is what appears in the file, so
+you are learning the API you are about to edit rather than a second vocabulary.
+A name it does not know is refused with the list of the ones it does, **before**
+anything is written: a typo in the fourth column does not leave half a migration
+behind.
+
+A table being created gets `id()` whether or not you asked, and an alter writes
+its own `down()` that drops what it added.
+
+> This covers the common columns. Foreign keys with their own `onDelete`,
+> composite indexes, check constraints and generated columns are not here: on a
+> command line they are longer and harder to read than the PHP they produce, and
+> the file is open in front of you. The point is to save typing, not to become a
+> second schema language.
+
 
 Migrations are anonymous classes returned by the file:
 
@@ -4220,8 +4260,7 @@ report_build_ms_max 23.678
 ### Database
 
 ```bash
-./sfphp make:migration create_users_table
-./sfphp make:migration:create users
+./sfphp make:migration create_users name:string email:string:unique timestamps
 ./sfphp migrate [--step=N] [--path=dir]
 ./sfphp rollback [--step=N]
 ./sfphp status
@@ -4733,7 +4772,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 163 unit cases
+composer run test        # 164 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves

@@ -230,11 +230,15 @@ __('http.not_found');  // Message in visitor's language
 
 Complete in three languages—not translations, but full documentation in each:
 
-| Language | Framework | Async System | Styling | Components |
-|----------|-----------|-------------|---------|-----------|
-| 🇬🇧 **English** | [Docs](docs/en/DOCUMENTATION.md) | [Async/Await](docs/ASYNC_COMPLETE_GUIDE.md) | [SFCSS](docs/en/SFCSS.md) | [SFHT](docs/en/DOCUMENTATION.md) |
-| 🇧🇷 **Português** | [Docs](docs/pt-BR/DOCUMENTATION.md) | [Async/Await](docs/ASYNC_COMPLETE_GUIDE.md) | [SFCSS](docs/pt-BR/SFCSS.md) | [SFHT](docs/pt-BR/DOCUMENTATION.md) |
-| 🇪🇸 **Español** | [Docs](docs/es/DOCUMENTATION.md) | [Async/Await](docs/ASYNC_COMPLETE_GUIDE.md) | [SFCSS](docs/es/SFCSS.md) | [SFHT](docs/es/DOCUMENTATION.md) |
+| Language | Framework | Async | Styling | Templates | Components |
+|----------|-----------|-------|---------|-----------|------------|
+| 🇬🇧 **English** | [Docs](docs/en/DOCUMENTATION.md) | [Async/Await](docs/en/DOCUMENTATION.md#async) | [SFCSS](docs/en/SFCSS.md) | [SFHT](docs/en/DOCUMENTATION.md#views-and-sfht) | [.phpx](docs/en/DOCUMENTATION.md#components-and-phpx) |
+| 🇧🇷 **Português** | [Docs](docs/pt-BR/DOCUMENTATION.md) | [Async/Await](docs/pt-BR/DOCUMENTATION.md#async) | [SFCSS](docs/pt-BR/SFCSS.md) | [SFHT](docs/pt-BR/DOCUMENTATION.md#views-e-sfht) | [.phpx](docs/pt-BR/DOCUMENTATION.md#componentes-e-phpx) |
+| 🇪🇸 **Español** | [Docs](docs/es/DOCUMENTATION.md) | [Async/Await](docs/es/DOCUMENTATION.md#async) | [SFCSS](docs/es/SFCSS.md) | [SFHT](docs/es/DOCUMENTATION.md#vistas-y-sfht) | [.phpx](docs/es/DOCUMENTATION.md#componentes-y-phpx) |
+
+**SFHT** is markup in a file; **.phpx** is a component written as a PHP function
+with its markup inside it. Both ship, and the documentation says when each one
+is the right shape.
 
 **Quick start?** → [5-minute async guide](ASYNC_QUICK_START.md)
 
@@ -255,7 +259,7 @@ No extensions required except what your database driver needs. No `mbstring`. No
 ## Testing
 
 ```bash
-composer run test       # 163 unit tests
+composer run test       # 164 unit tests
 composer run test:db    # Integration tests on real MySQL & PostgreSQL
 composer run lint       # PHP syntax check
 composer run docs       # Verify documentation consistency

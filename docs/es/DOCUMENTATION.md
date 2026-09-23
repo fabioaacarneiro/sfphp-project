@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 163 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 164 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -1674,8 +1674,9 @@ El bloqueo está porque el framework no debería depender de que todo el mundo l
 haga.
 
 ```bash
-./sfphp make:migration create_users_table
-./sfphp make:migration:create users        # prerrellenada con id + timestamps
+./sfphp make:migration create_users name:string email:string:unique timestamps
+./sfphp make:migration add_phone_to_users phone:string:nullable
+./sfphp make:migration drop_sessions_table
 
 ./sfphp migrate
 ./sfphp migrate --step=2
@@ -1684,6 +1685,45 @@ haga.
 ./sfphp status
 ./sfphp db:fresh                           # borra todo y reconstruye
 ```
+
+**El nombre es la instrucción.** `create_users` crea una tabla,
+`add_phone_to_users` altera una, `drop_sessions_table` elimina una — las mismas
+palabras que usarías para decir cuál es el cambio. Un nombre que no dice ninguna
+de esas cosas genera una migración vacía para rellenar.
+
+**Un campo es `nombre:tipo`.** Los números que siguen son argumentos del tipo;
+las palabras, modificadores:
+
+| | |
+|---|---|
+| `surname:string:255` | `$table->string('surname', 255)` |
+| `email:string:unique` | `$table->string('email')->unique()` |
+| `price:decimal:8,2` | `$table->decimal('price', 8, 2)` |
+| `active:boolean:default=true` | `$table->boolean('active')->default(true)` |
+| `bio:text:nullable` | `$table->text('bio')->nullable()` |
+| `author_id:foreignId:constrained` | `$table->foreignId('author_id')->constrained()` |
+| `timestamps` | `$table->timestamps()` — una palabra suelta no lleva nombre de columna |
+
+Dos puntos en lugar de paréntesis a propósito: `surname:varchar(255)` es un
+error de sintaxis en el shell salvo entre comillas, y un argumento que solo
+funciona entre comillas es un argumento que la gente escribe mal.
+
+Los tipos son los nombres del constructor de esquemas, no los de SQL — `string`,
+no `varchar`; `boolean`, no `bool`. Lo que escribes es lo que aparece en el
+archivo, así que estás aprendiendo la API que vas a editar, no un segundo
+vocabulario. Un nombre que no conoce se rechaza con la lista de los que existen,
+**antes** de escribir nada: una errata en la cuarta columna no deja media
+migración atrás.
+
+Una tabla que se crea recibe `id()` aunque no lo pidas, y una alteración escribe
+su propio `down()` que quita lo que añadió.
+
+> Esto cubre las columnas comunes. Las claves foráneas con su propio `onDelete`,
+> los índices compuestos, las restricciones `check` y las columnas generadas no
+> están aquí: en una línea de comandos son más largas y menos legibles que el PHP
+> que producen, y el archivo está abierto delante de ti. La idea es ahorrar
+> tecleo, no convertirse en un segundo lenguaje de esquema.
+
 
 Las migraciones son clases anónimas devueltas por el archivo:
 
@@ -4286,8 +4326,7 @@ report_build_ms_max 23.678
 ### Base de datos
 
 ```bash
-./sfphp make:migration create_users_table
-./sfphp make:migration:create users
+./sfphp make:migration create_users name:string email:string:unique timestamps
 ./sfphp migrate [--step=N] [--path=dir]
 ./sfphp rollback [--step=N]
 ./sfphp status
@@ -4804,7 +4843,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 163 casos unitarios
+composer run test        # 164 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve
