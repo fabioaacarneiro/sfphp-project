@@ -5107,6 +5107,114 @@ $tests->run('the state helper encodes values an attribute can carry', function (
     );
 });
 
+$tests->run('client state survives a refresh that came from the server', function () use ($tests): void {
+    /*
+     * The two halves of the feature meet here, and they disagreed. A panel
+     * that refreshes itself is morphed against the markup the server sent,
+     * which replaces the nodes the bindings pointed at — so afterwards the
+     * state said "closed" while the page showed "open", silently, which is
+     * worse than either failing.
+     *
+     * The scope now collects its bindings again, keeping the state it had,
+     * and an element that survived the swap does not end up listening twice.
+     */
+    $browser = '';
+
+    foreach (['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'] as $candidate) {
+        $found = trim((string) shell_exec('command -v ' . escapeshellarg($candidate) . ' 2>/dev/null'));
+
+        if ($found !== '') {
+            $browser = $found;
+            break;
+        }
+    }
+
+    if ($browser === '') {
+        return;
+    }
+
+    $directory = sys_get_temp_dir() . '/sfphp-state-swap-' . bin2hex(random_bytes(6));
+    mkdir($directory . '/profile', 0755, true);
+
+    $page = $directory . '/harness.html';
+    $script = Assets::path() . '/js/sfjs.min.js';
+
+    file_put_contents($page, <<<HTML
+    <!DOCTYPE html>
+    <html><head><meta charset="utf-8"></head>
+    <body>
+    <div id="panel" \x40state="{ open: true, n: 0 }" \x40get="/fragment" \x40trigger="load"
+         \x40target="#panel" \x40swap="morph">
+      <span id="mark">old</span>
+      <p id="body" \x40show="open">visible</p>
+      <button id="plus" \x40on:click="n = n + 1">+</button>
+      <span id="count" \x40text="n"></span>
+    </div>
+    <div id="log">nothing happened</div>
+    <script>
+      window.fetch = () => Promise.resolve({
+        ok: true, status: 200,
+        text: () => Promise.resolve(
+          '<span id="mark">new</span>'
+          + '<p id="body" \x40show="open">visible</p>'
+          + '<button id="plus" \x40on:click="n = n + 1">+</button>'
+          + '<span id="count" \x40text="n"></span>'
+        )
+      });
+    </script>
+    <script src="file://{$script}"></script>
+    <script>
+      window.addEventListener('load', async () => {
+        const q = (id) => document.getElementById(id);
+
+        // Close it before the server's answer arrives.
+        q('panel').__sfState.open = false;
+
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        q('plus').click();
+
+        q('log').textContent = [
+          'mark=' + q('mark').textContent,
+          'hidden=' + (q('body').style.display === 'none'),
+          'state=' + q('panel').__sfState.open,
+          'clicks=' + q('count').textContent
+        ].join(' | ');
+      });
+    </script>
+    </body></html>
+    HTML);
+
+    try {
+        $command = escapeshellarg($browser)
+            . ' --headless --disable-gpu --no-sandbox --disable-dev-shm-usage'
+            . ' --no-first-run --no-default-browser-check --virtual-time-budget=4000'
+            . ' --user-data-dir=' . escapeshellarg($directory . '/profile')
+            . ' --dump-dom ' . escapeshellarg('file://' . $page) . ' 2>/dev/null';
+
+        $dom = (string) shell_exec($command);
+
+        if (!str_contains($dom, 'id="log"')) {
+            return;
+        }
+
+        preg_match('/<div id="log">([^<]*)</', $dom, $matches);
+        $log = $matches[1] ?? '';
+
+        // The server's markup did arrive.
+        $tests->assertTrue(str_contains($log, 'mark=new'));
+
+        // And the state the visitor had set is still in force afterwards.
+        $tests->assertTrue(str_contains($log, 'hidden=true'));
+        $tests->assertTrue(str_contains($log, 'state=false'));
+
+        // One click counts once: the swap did not leave a second listener.
+        $tests->assertTrue(str_contains($log, 'clicks=1'));
+    } finally {
+        exec('rm -rf ' . escapeshellarg($directory) . ' 2>/dev/null');
+    }
+});
+
 $tests->run('a scope holds state in the browser, and the page follows it', function () use ($tests): void {
     /*
      * Interface state — open, selected, half-typed — belongs in the page:

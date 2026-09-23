@@ -814,7 +814,18 @@ const sf = (() => {
     if (root.querySelectorAll) root.querySelectorAll('[\\@state]').forEach((one) => scopes.push(one));
 
     scopes.forEach((element) => {
-      if (element.__sfState) return;
+      if (element.__sfState) {
+        /*
+         * A scope that already exists has just been through a swap, and its
+         * bindings point at nodes the swap replaced. Keeping the state and
+         * collecting again is what lets client state survive a server-driven
+         * refresh — without it the state says one thing and the page shows
+         * another, silently, which is the worst of both.
+         */
+        if (element.__sfRebind) element.__sfRebind();
+
+        return;
+      }
 
       let state;
       const bindings = [];
@@ -829,9 +840,13 @@ const sf = (() => {
       }
 
       element.__sfState = state;
+      element.__sfRebind = () => {
+        bindings.length = 0;
+        collect(element, element, bindings, state);
+        apply();
+      };
 
-      collect(element, element, bindings, state);
-      apply();
+      element.__sfRebind();
     });
   }
 
@@ -891,9 +906,19 @@ const sf = (() => {
         if (name === '@model') {
           const path = source.trim();
 
-          element.addEventListener('input', () => {
-            write(path, element.type === 'checkbox' ? element.checked : element.value, state);
-          });
+          /*
+           * A scope re-collects its bindings after a swap, and a node the
+           * swap kept would otherwise end up with the listener twice — so
+           * each element remembers what it is already listening for.
+           */
+          element.__sfOn = element.__sfOn || {};
+
+          if (!element.__sfOn[name]) {
+            element.__sfOn[name] = true;
+            element.addEventListener('input', () => {
+              write(path, element.type === 'checkbox' ? element.checked : element.value, state);
+            });
+          }
 
           bindings.push(() => {
             const value = read(path, state);
@@ -912,6 +937,11 @@ const sf = (() => {
         }
 
         if (name.startsWith('@on:')) {
+          element.__sfOn = element.__sfOn || {};
+
+          if (element.__sfOn[name]) return;
+
+          element.__sfOn[name] = true;
           element.addEventListener(name.slice('@on:'.length), (event) => {
             if (element.tagName === 'FORM' || element.type === 'submit') event.preventDefault();
 
