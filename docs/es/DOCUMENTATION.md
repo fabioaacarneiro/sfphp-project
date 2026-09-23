@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 162 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 163 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -4647,6 +4647,12 @@ Un elemento con `@state` abre un ámbito. Todo lo que está debajo lee y escribe
 ese estado hasta que otro `@state` abra el suyo, y una escritura actualiza solo
 los enlaces que la mencionan.
 
+**Un ámbito sobrevive a una actualización del servidor.** Cuando un panel con
+`@state` se actualiza por `@trigger` y `morph`, se conserva el estado que ya
+tenía y sus enlaces se recogen de nuevo contra el marcado nuevo — así que una
+sección que el visitante cerró sigue cerrada mientras los números de dentro
+cambian.
+
 | | |
 |---|---|
 | `@text` | el texto del elemento pasa a ser el valor de la expresión |
@@ -4752,7 +4758,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 162 casos unitarios
+composer run test        # 163 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve

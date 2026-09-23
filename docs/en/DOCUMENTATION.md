@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 162 tests, 0 failures
+> Verified against PHP 8.4 · suite: 163 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -4576,6 +4576,11 @@ An element carrying `@state` opens a scope. Everything under it reads and
 writes that state until another `@state` starts a scope of its own, and a write
 updates only the bindings that mention it.
 
+**A scope survives a refresh from the server.** When a panel with `@state` is
+updated through `@trigger` and `morph`, the state it already had is kept and its
+bindings are collected again against the new markup — so a section the visitor
+closed stays closed while the numbers inside it change.
+
 | | |
 |---|---|
 | `@text` | the element's text becomes the expression's value |
@@ -4681,7 +4686,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 162 unit cases
+composer run test        # 163 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
