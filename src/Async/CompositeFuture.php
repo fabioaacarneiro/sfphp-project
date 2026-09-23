@@ -2,157 +2,128 @@
 
 namespace SfphpProject\src\Async;
 
+use Throwable;
+
 /**
- * A Future that combines multiple other Futures
+ * One Future over several.
  *
- * CompositeFuture::all() waits for ALL Futures to resolve.
- * CompositeFuture::race() waits for the FIRST Future to resolve.
+ * `all()` settles when every part has, with the values in the order they were
+ * given. `race()` settles with the first one to finish.
+ *
+ * Whether the parts progress together is decided by the parts, not here: this
+ * listens, it does not drive. An {@see Adapters\HttpFuture} is already in
+ * flight when it is created, so three of them genuinely overlap. A Future whose
+ * work only happens when somebody reads it cannot be made concurrent by being
+ * put in this list, which is worth saying plainly because the shape of the call
+ * suggests otherwise.
+ *
+ *     [$a, $b, $c] = await(CompositeFuture::all(
+ *         Http::getAsync($first),
+ *         Http::getAsync($second),
+ *         Http::getAsync($third),
+ *     ));
  */
-class CompositeFuture implements Future
+final class CompositeFuture extends Pending implements Cancellable
 {
-    private array $futures = [];
+    /** @var list<Future> */
+    private array $futures;
+
+    private string $mode;
+
+    /** @var array<int, mixed> */
     private array $results = [];
-    private ?\Throwable $exception = null;
-    private bool $resolved = false;
-    private array $callbacks = [];
-    private int $completedCount = 0;
-    private string $mode; // 'all' or 'race'
+
+    private int $settledCount = 0;
 
     /**
-     * Create a composite Future
+     * Combine several Futures.
      *
      * @param string $mode Either 'all' or 'race'
-     * @param Future ...$futures The Futures to combine
+     * @param Future ...$futures The parts
      */
     public function __construct(string $mode = 'all', Future ...$futures)
     {
-        $this->futures = $futures;
         $this->mode = $mode;
+        $this->futures = $futures;
+        $this->state = self::RUNNING;
 
-        // Initialize results array
-        foreach ($this->futures as $i => $future) {
-            $this->results[$i] = null;
+        if ($futures === []) {
+            $this->resolveWith([]);
+
+            return;
         }
 
-        // Register callbacks for each Future
-        foreach ($this->futures as $i => $future) {
-            $this->attachCallback($i, $future);
-        }
+        foreach ($futures as $index => $future) {
+            $this->results[$index] = null;
 
-        // If no futures, resolve immediately
-        if (empty($this->futures)) {
-            $this->resolved = true;
-            $this->notifyCallbacks();
+            $future->onResolve(function (Future $settled) use ($index): void {
+                $this->absorb($index, $settled);
+            });
         }
     }
 
     /**
-     * Attach a callback to a Future
+     * Take one part's outcome.
      *
-     * @param int $index The index in the futures array
-     * @param Future $future The future to monitor
+     * @param int $index Which part
+     * @param Future $settled The part
+     * @return void
      */
-    private function attachCallback(int $index, Future $future): void
+    private function absorb(int $index, Future $settled): void
     {
-        $future->onResolve(function ($resolvedFuture) use ($index) {
-            if ($this->resolved) {
-                // Already resolved, ignore
-                return;
-            }
-
-            try {
-                // Store the result
-                $this->results[$index] = $resolvedFuture->getValue();
-                $this->completedCount++;
-
-                // Check completion based on mode
-                if ($this->mode === 'race') {
-                    // Race mode: resolve on first completion
-                    $this->resolved = true;
-                    $this->notifyCallbacks();
-                } elseif ($this->completedCount === count($this->futures)) {
-                    // All mode: resolve when all complete
-                    $this->resolved = true;
-                    $this->notifyCallbacks();
-                }
-            } catch (\Throwable $e) {
-                // Future was rejected
-                if (!$this->resolved) {
-                    $this->exception = $e;
-                    $this->resolved = true;
-                    $this->notifyCallbacks();
-                }
-            }
-        });
-    }
-
-    public function isPending(): bool
-    {
-        return !$this->resolved && $this->exception === null;
-    }
-
-    public function isResolved(): bool
-    {
-        return $this->resolved && $this->exception === null;
-    }
-
-    public function isRejected(): bool
-    {
-        return $this->exception !== null;
-    }
-
-    public function getValue()
-    {
-        if ($this->exception) {
-            throw $this->exception;
+        if ($this->isSettled()) {
+            return;
         }
 
-        if (!$this->resolved) {
-            throw new AsyncException("CompositeFuture is still pending");
+        if (!$settled->isResolved()) {
+            /*
+             * The first failure settles the whole thing. The others are left to
+             * finish on their own rather than cancelled: this does not own
+             * them, and a caller that also holds one would be surprised to find
+             * it stopped.
+             */
+            $this->rejectWith($settled->getException() ?? new AsyncException('An awaited operation failed.'));
+
+            return;
         }
 
-        // Return results in order
-        ksort($this->results);
-        return array_values($this->results);
-    }
+        $this->results[$index] = $settled->getValue();
+        $this->settledCount++;
 
-    public function getException(): ?\Throwable
-    {
-        return $this->exception;
-    }
+        if ($this->mode === 'race') {
+            $this->resolveWith($settled->getValue());
 
-    public function onResolve(callable $callback): void
-    {
-        if ($this->resolved || $this->exception) {
-            $callback($this);
-        } else {
-            $this->callbacks[] = $callback;
+            return;
+        }
+
+        if ($this->settledCount === count($this->futures)) {
+            ksort($this->results);
+            $this->resolveWith(array_values($this->results));
         }
     }
 
     /**
-     * Notify all registered callbacks
+     * Give up, and give up on every part that can be.
+     *
+     * @param Throwable|null $reason Why
+     * @return void
      */
-    private function notifyCallbacks(): void
+    public function cancel(?Throwable $reason = null): void
     {
-        foreach ($this->callbacks as $callback) {
-            try {
-                $callback($this);
-            } catch (\Throwable $e) {
-                // Ignore callback errors
+        foreach ($this->futures as $future) {
+            if ($future instanceof Cancellable && $future->isPending()) {
+                $future->cancel($reason);
             }
         }
-        $this->callbacks = [];
+
+        $this->cancelWith($reason);
     }
 
     /**
-     * Create a Future that waits for ALL Futures to resolve
+     * A Future that settles when all of these have.
      *
-     * @param Future ...$futures The Futures to combine
-     * @return Future A Future that resolves when all input Futures are done
-     *
-     * @example
-     *   [$user, $posts] = await(Future::all($task1, $task2));
+     * @param Future ...$futures The parts
+     * @return Future The composite
      */
     public static function all(Future ...$futures): Future
     {
@@ -160,16 +131,10 @@ class CompositeFuture implements Future
     }
 
     /**
-     * Create a Future that waits for the FIRST Future to resolve
+     * A Future that settles with the first of these to finish.
      *
-     * @param Future ...$futures The Futures to combine
-     * @return Future A Future that resolves when the first input Future is done
-     *
-     * @example
-     *   $result = await(Future::race(
-     *       async(fn () => slow_operation()),
-     *       delay(5000)->then(fn () => throw new TimeoutException())
-     *   ));
+     * @param Future ...$futures The parts
+     * @return Future The composite
      */
     public static function race(Future ...$futures): Future
     {

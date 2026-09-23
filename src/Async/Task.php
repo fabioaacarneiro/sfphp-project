@@ -2,188 +2,125 @@
 
 namespace SfphpProject\src\Async;
 
-/**
- * Represents an async task wrapping a PHP Fiber
- *
- * A Task can be in one of these states:
- * - Pending: not started or started but not finished
- * - Resolved: completed successfully with a value
- * - Rejected: failed with an exception
- */
-class Task implements Future
-{
-    private ?\Fiber $fiber = null;
-    private mixed $result = null;
-    private ?\Throwable $exception = null;
-    private bool $started = false;
-    private bool $cancelled = false;
-    private array $callbacks = [];
+use Fiber;
+use Throwable;
 
+/**
+ * A unit of work the scheduler runs, wrapped around a Fiber.
+ *
+ * A Task moves through the states its Future contract describes: PENDING until
+ * the scheduler first reaches it, RUNNING while its Fiber is alive, and then
+ * RESOLVED, REJECTED or CANCELLED. The scheduler advances it one slice at a
+ * time through `step()`, which starts the Fiber the first time and resumes it
+ * afterwards.
+ *
+ * The Task never resumes itself. When it awaits something it asks the scheduler
+ * to park it and suspends; the scheduler resumes it only once what it waited
+ * for has settled. The previous version passed the Fiber into a callback that
+ * resumed it from inside whatever call stack happened to settle the Future —
+ * which, when that stack was the Fiber's own, meant resuming a Fiber that was
+ * not suspended.
+ */
+final class Task extends Pending implements Cancellable
+{
+    private ?Fiber $fiber = null;
+
+    /** @var callable */
     private $executor;
 
     /**
-     * Create a new Task from an executor function
+     * Create a Task.
      *
-     * @param mixed $executor The function to execute in the Task
+     * @param callable $executor The work to run
      */
-    public function __construct($executor)
+    public function __construct(callable $executor)
     {
         $this->executor = $executor;
     }
 
     /**
-     * Start the Task's Fiber
+     * Advance this Task by one slice.
      *
-     * This should be called by the Scheduler when the Task first needs to run
+     * @return void
      */
-    public function start(): void
+    public function step(): void
     {
-        if ($this->started) {
+        if ($this->isSettled()) {
             return;
         }
 
-        $this->started = true;
-
-        // Create the Fiber that will execute the task
-        $this->fiber = new \Fiber(function () {
-            try {
-                // Execute the task's function
-                $this->result = ($this->executor)();
-                $this->notifyCallbacks();
-            } catch (\Throwable $e) {
-                $this->exception = $e;
-                $this->notifyCallbacks();
-            }
-        });
-
-        // Start the Fiber (executes until first Fiber::suspend())
-        $this->fiber->start();
-    }
-
-    /**
-     * Resume a suspended Fiber
-     *
-     * This is called by the Scheduler when a Task that was waiting
-     * on an await() is ready to continue
-     */
-    public function resume(): void
-    {
-        if (!$this->fiber || !$this->started) {
-            return;
-        }
-
-        // Check if Fiber is still running
-        if ($this->fiber->isStarted() && !$this->fiber->isTerminated()) {
-            try {
+        try {
+            if ($this->fiber === null) {
+                $this->state = self::RUNNING;
+                $this->fiber = new Fiber($this->executor);
+                $this->fiber->start();
+            } elseif ($this->fiber->isSuspended()) {
                 $this->fiber->resume();
-            } catch (\Throwable $e) {
-                $this->exception = $e;
-                $this->notifyCallbacks();
+            } elseif ($this->fiber->isTerminated()) {
+                $this->resolveWith($this->fiber->getReturn());
+
+                return;
             }
+        } catch (Throwable $exception) {
+            $this->rejectWith($exception);
+
+            return;
+        }
+
+        if ($this->fiber->isTerminated()) {
+            $this->resolveWith($this->fiber->getReturn());
         }
     }
 
     /**
-     * Check if the Fiber has terminated
+     * Whether the Fiber has finished.
+     *
+     * Kept because it reads well from outside, and because code written against
+     * the previous runtime asks this question.
+     *
+     * @return bool True when there is nothing left to run
      */
     public function isTerminated(): bool
     {
-        return $this->fiber === null || $this->fiber->isTerminated();
-    }
-
-    public function isPending(): bool
-    {
-        // Still running
-        if ($this->started && !$this->isTerminated()) {
-            return $this->exception === null;
-        }
-
-        // Not started yet
-        if (!$this->started) {
-            return true;
-        }
-
-        // Finished with error
-        if ($this->exception !== null) {
-            return false;
-        }
-
-        // Finished with result
-        return false;
-    }
-
-    public function isResolved(): bool
-    {
-        return $this->isTerminated() && $this->exception === null;
-    }
-
-    public function isRejected(): bool
-    {
-        return $this->exception !== null;
-    }
-
-    public function getValue()
-    {
-        if ($this->exception) {
-            throw $this->exception;
-        }
-
-        if (!$this->isTerminated()) {
-            throw new AsyncException("Task is still pending");
-        }
-
-        return $this->result;
-    }
-
-    public function getException(): ?\Throwable
-    {
-        return $this->exception;
-    }
-
-    public function onResolve(callable $callback): void
-    {
-        if ($this->isTerminated()) {
-            // Already resolved, call immediately
-            $callback($this);
-        } else {
-            // Store for later when resolved
-            $this->callbacks[] = $callback;
-        }
+        return $this->isSettled();
     }
 
     /**
-     * Mark this Task as cancelled
+     * Give up on this Task.
      *
-     * Note: There's no native way to cancel a Fiber, so we just mark it
-     * and the result will be ignored
-     */
-    public function cancel(): void
-    {
-        $this->cancelled = true;
-    }
-
-    /**
-     * Check if this Task was cancelled
-     */
-    public function isCancelled(): bool
-    {
-        return $this->cancelled;
-    }
-
-    /**
-     * Notify all registered callbacks that this Task has resolved
+     * A suspended Fiber cannot be unwound from outside, so what this can
+     * promise is the half that matters to a caller: the Task settles as
+     * cancelled, whoever awaits it is told, and the scheduler stops resuming
+     * it. Work already inside the Fiber stops at its next suspension point and
+     * never runs again.
      *
-     * @internal
+     * @param Throwable|null $reason Why
+     * @return void
      */
-    private function notifyCallbacks(): void
+    public function cancel(?Throwable $reason = null): void
     {
-        foreach ($this->callbacks as $callback) {
-            try {
-                $callback($this);
-            } catch (\Throwable $e) {
-                // Ignore callback errors to prevent cascade failures
-            }
-        }
-        $this->callbacks = [];
+        $this->cancelWith($reason);
+    }
+
+    /**
+     * Start this Task outside a scheduler.
+     *
+     * @return void
+     * @deprecated Schedule it instead; a Task that starts itself cannot await.
+     */
+    public function start(): void
+    {
+        $this->step();
+    }
+
+    /**
+     * Resume this Task outside a scheduler.
+     *
+     * @return void
+     * @deprecated Schedule it instead; the scheduler knows when it may be resumed.
+     */
+    public function resume(): void
+    {
+        $this->step();
     }
 }

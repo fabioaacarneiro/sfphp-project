@@ -2,117 +2,82 @@
 
 namespace SfphpProject\src\Async\Adapters;
 
-use SfphpProject\src\Async\Future;
+use SfphpProject\src\Async\Context;
+use SfphpProject\src\Async\EventLoop;
+use SfphpProject\src\Async\Pending;
+use Throwable;
 
 /**
- * A Future wrapper for database queries
+ * A database query behind the Future contract — scheduled, but not non-blocking.
  *
- * QueryFuture lazily executes a query when getValue() is called
- * (i.e., when await() accesses the result).
+ * **Read this before believing the name.** The query runs through PDO, and PDO
+ * has no asynchronous API: `PDOStatement::execute()` blocks the process until
+ * the server answers, and no Fiber can change that. Awaiting one of these does
+ * not let another query progress. What it gives is *scheduling*: the work is a
+ * value that can be passed around, composed with others and awaited in the same
+ * shape as everything else in the runtime.
  *
- * This allows the Scheduler to defer database queries until
- * they're actually needed, allowing better parallelism between
- * multiple queries.
+ * The distinction that matters:
+ *
+ * - **Async scheduling** — the operation is a Future the runtime can hold,
+ *   order and combine. This is what a query gets.
+ * - **Non-blocking I/O** — while the operation waits, the process does other
+ *   work. This is what an HTTP request gets, and a query does not.
+ *
+ * So three queries awaited together take as long as the three added up, while
+ * three HTTP requests take as long as the slowest. The framework is not going
+ * to pretend otherwise: an API that said `await()` and blocked anyway would
+ * teach people something false about their own programs.
+ *
+ * **What would make it true.** PDO cannot, but two stock extensions can:
+ * `ext-mysqli` built on mysqlnd exposes `MYSQLI_ASYNC` with `mysqli_poll()`,
+ * and `ext-pgsql` exposes `pg_send_query()` with `pg_socket()` and
+ * `pg_connection_busy()`. Both hand out something the event loop can already
+ * watch — a socket — so a backend written against either would produce a
+ * Future that settles from {@see EventLoop::addWatcher()}, and nothing above
+ * this class would change: `await(User::query()->getAsync())` is the same line
+ * either way. That is the seam, and it is why this is worth having now.
+ *
+ * The query is run from the event loop rather than from the constructor, so
+ * creating one costs nothing and a caller that never awaits it never pays for
+ * it — and awaiting it can never deadlock waiting for something nobody started.
  */
-class QueryFuture implements Future
+final class QueryFuture extends Pending
 {
-    private mixed $result = null;
-    private ?\Throwable $exception = null;
-    private bool $executed = false;
-    private array $callbacks = [];
+    /** @var callable */
     private $executor;
 
     /**
-     * Create a QueryFuture from a query executor
+     * Arrange to run a query.
      *
-     * @param mixed $executor A function that executes the query and returns the result
+     * @param callable $executor Runs the query and returns its result
+     * @param EventLoop|null $loop The loop to run it from, or null for the current one
      */
-    public function __construct($executor)
+    public function __construct(callable $executor, ?EventLoop $loop = null)
     {
         $this->executor = $executor;
+        $this->state = self::RUNNING;
+
+        ($loop ?? Context::scheduler()->loop())->addTimer(0.0, function (): void {
+            $this->execute();
+        });
     }
 
     /**
-     * Execute the query if not already executed
+     * Run the query, blocking until the server answers.
+     *
+     * @return void
      */
     private function execute(): void
     {
-        if ($this->executed) {
+        if ($this->isSettled()) {
             return;
         }
 
         try {
-            $this->result = ($this->executor)();
-            $this->executed = true;
-            $this->notifyCallbacks();
-        } catch (\Throwable $e) {
-            $this->exception = $e;
-            $this->executed = true;
-            $this->notifyCallbacks();
+            $this->resolveWith(($this->executor)());
+        } catch (Throwable $exception) {
+            $this->rejectWith($exception);
         }
-    }
-
-    public function isPending(): bool
-    {
-        return !$this->executed;
-    }
-
-    public function isResolved(): bool
-    {
-        return $this->executed && $this->exception === null;
-    }
-
-    public function isRejected(): bool
-    {
-        return $this->exception !== null;
-    }
-
-    public function getValue()
-    {
-        // Execute query if not already executed
-        if (!$this->executed) {
-            $this->execute();
-        }
-
-        // Throw exception if query failed
-        if ($this->exception) {
-            throw $this->exception;
-        }
-
-        return $this->result;
-    }
-
-    public function getException(): ?\Throwable
-    {
-        if (!$this->executed) {
-            $this->execute();
-        }
-        return $this->exception;
-    }
-
-    public function onResolve(callable $callback): void
-    {
-        if ($this->executed) {
-            // Already executed, call immediately
-            $callback($this);
-        } else {
-            // Store for later
-            $this->callbacks[] = $callback;
-        }
-    }
-
-    /**
-     * Notify all registered callbacks that the query has executed
-     */
-    private function notifyCallbacks(): void
-    {
-        foreach ($this->callbacks as $callback) {
-            try {
-                $callback($this);
-            } catch (\Throwable $e) {
-                // Ignore callback errors
-            }
-        }
-        $this->callbacks = [];
     }
 }

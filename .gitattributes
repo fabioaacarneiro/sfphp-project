@@ -19,6 +19,34 @@
 /tests              export-ignore
 /.github            export-ignore
 
+# The benchmarks measure the framework, and the origin server they measure
+# against is a test fixture. Neither belongs in somebody's application.
+/benchmarks                 export-ignore
+/ASYNC_RUNTIME_AUDIT.md     export-ignore
+
+# Notes and scratch files from building the async runtime. They were shipping:
+# a project installed from 0.12.0 received PHASE4_SUMMARY.md and six example
+# scripts in its root, which is somebody else's working notes landing in your
+# repository.
+/ASYNC_IMPLEMENTATION_COMPLETE.md   export-ignore
+/ASYNC_QUICK_START.md               export-ignore
+/ASYNC_SUMMARY.md                   export-ignore
+/PHASE3_SUMMARY.md                  export-ignore
+/PHASE4_SUMMARY.md                  export-ignore
+/PHASE5_SUMMARY.md                  export-ignore
+/SFPHP_ASYNC_SYSTEM_FINAL.md        export-ignore
+/benchmark-async.php                export-ignore
+/benchmark-comparison.php           export-ignore
+/example-async-controller.php       export-ignore
+/example-phase4.php                 export-ignore
+/example-phase5.php                 export-ignore
+/example-simple-async.php           export-ignore
+/test-async.php                     export-ignore
+/test-integration.php               export-ignore
+/test-phase3.php                    export-ignore
+/test-phase4.php                    export-ignore
+/test-phase5.php                    export-ignore
+
 # The documentation lives on GitHub in three languages, and shipping twelve
 # thousand lines of it into every project is not a service to anybody.
 /docs               export-ignore

@@ -2,120 +2,234 @@
 
 namespace SfphpProject\src\Async;
 
+use SplObjectStorage;
+use Throwable;
+
 /**
- * Simple event loop that manages the execution of multiple Tasks (Fibers)
+ * Decides what runs next, and waits when nothing can.
  *
- * The Scheduler:
- * 1. Keeps a queue of Tasks to run
- * 2. Iterates through them, starting or resuming each one
- * 3. Continues until all Tasks are complete
+ * Tasks live in two places. **Ready** ones have work to do now and are run in
+ * turn. **Waiting** ones have suspended on something that has not happened yet,
+ * and the scheduler does not touch them again until it has: when the Future
+ * they are waiting on settles, it moves them back to ready.
  *
- * This is a cooperative scheduler - Tasks must yield control
- * (via Fiber::suspend() in await()) for other Tasks to run
+ * That division is the whole correction. The previous scheduler kept one queue
+ * and resumed everything in it on every pass, so a Task waiting on a network
+ * response was resumed thousands of times a second to discover, each time, that
+ * the response had not arrived — a spin loop wearing the shape of a scheduler.
+ * Worse, it resumed Fibers that had suspended for a reason that had nothing to
+ * do with it, which is how an awaited value came back as null.
+ *
+ * When nothing is ready, the scheduler does not spin: it asks the event loop to
+ * wait. The process then sits in a single select() over every pending transfer
+ * and the nearest timer, and wakes for whichever finishes first.
  */
-class Scheduler
+final class Scheduler
 {
-    /**
-     * Queue of Tasks to execute
-     * @var Task[]
-     */
-    private array $tasks = [];
+    /** @var list<Task> */
+    private array $ready = [];
 
-    /**
-     * Currently executing Task (for debugging/context)
-     */
-    private ?Task $currentTask = null;
+    /** @var SplObjectStorage<Task, null> */
+    private SplObjectStorage $waiting;
 
-    /**
-     * Flag to prevent recursive scheduler calls
-     */
+    private EventLoop $loop;
+
+    private ?Task $current = null;
+
     private bool $running = false;
 
     /**
-     * Add a Task to the scheduler's queue
+     * Create a scheduler.
+     *
+     * @param EventLoop|null $loop The loop to wait on, or null for a new one
+     */
+    public function __construct(?EventLoop $loop = null)
+    {
+        $this->loop = $loop ?? new EventLoop();
+        $this->waiting = new SplObjectStorage();
+    }
+
+    /**
+     * The event loop this scheduler waits on.
+     *
+     * @return EventLoop The loop
+     */
+    public function loop(): EventLoop
+    {
+        return $this->loop;
+    }
+
+    /**
+     * Queue a Task to run.
+     *
+     * @param Task $task The task
+     * @return void
      */
     public function schedule(Task $task): void
     {
-        $this->tasks[] = $task;
-    }
-
-    /**
-     * Run the scheduler until all Tasks are complete
-     *
-     * This is the main event loop. It:
-     * 1. Starts Tasks that haven't been started yet
-     * 2. Resumes Tasks that were suspended in await()
-     * 3. Continues until all Tasks are complete
-     */
-    public function run(): void
-    {
-        if ($this->running) {
-            // Prevent recursive scheduler calls
+        if ($task->isSettled() || $this->waiting->contains($task)) {
             return;
         }
 
+        foreach ($this->ready as $queued) {
+            if ($queued === $task) {
+                return;
+            }
+        }
+
+        $this->ready[] = $task;
+    }
+
+    /**
+     * Park a Task until a Future settles.
+     *
+     * @param Task $task The task
+     * @param Future $future What it is waiting for
+     * @return void
+     */
+    public function park(Task $task, Future $future): void
+    {
+        $this->waiting->attach($task);
+
+        $future->onResolve(function () use ($task): void {
+            if (!$this->waiting->contains($task)) {
+                return;
+            }
+
+            $this->waiting->detach($task);
+            $this->ready[] = $task;
+        });
+    }
+
+    /**
+     * Run until every Task has finished.
+     *
+     * @return void
+     */
+    public function run(): void
+    {
+        $this->runUntil(static fn (): bool => false);
+    }
+
+    /**
+     * Run until a condition holds, or until there is nothing left to do.
+     *
+     * This is what `await()` calls from outside a Fiber: the outermost caller
+     * drives the loop instead of blocking on the operation, so everything else
+     * that is pending keeps progressing while it waits.
+     *
+     * @param callable(): bool $done Checked before each pass
+     * @return void
+     * @throws AsyncException When nothing can progress and the condition still does not hold
+     */
+    public function runUntil(callable $done): void
+    {
+        $reentrant = $this->running;
         $this->running = true;
 
         try {
-            while (!empty($this->tasks)) {
-                $tasksToRun = $this->tasks;
-                $this->tasks = [];
+            while (!$done()) {
+                if ($this->ready !== []) {
+                    $this->step();
 
-                foreach ($tasksToRun as $task) {
-                    if ($task->isTerminated()) {
-                        // Task already finished, skip
-                        continue;
-                    }
-
-                    $this->currentTask = $task;
-
-                    try {
-                        if (!$task->isPending() && !$task->isTerminated()) {
-                            // First time - start the Task
-                            $task->start();
-                        } elseif ($task->isPending()) {
-                            // Resume a suspended Task
-                            $task->resume();
-                        }
-                    } catch (\Throwable $e) {
-                        // Task threw an unhandled exception
-                        // This shouldn't happen if tasks properly catch exceptions
-                        // but we handle it for robustness
-                    }
-
-                    if (!$task->isTerminated()) {
-                        // Task still running or suspended, put it back in queue
-                        $this->tasks[] = $task;
-                    }
-
-                    $this->currentTask = null;
+                    continue;
                 }
+
+                if (!$this->loop->isEmpty()) {
+                    $this->loop->tick();
+
+                    continue;
+                }
+
+                if ($this->waiting->count() > 0) {
+                    /*
+                     * Every Task is waiting for something nothing is going to
+                     * deliver. Saying so beats hanging: a program that stops
+                     * with a message can be fixed, and one that stops silently
+                     * is reported as "the server is slow".
+                     */
+                    throw new AsyncException(sprintf(
+                        'Deadlock: %d task(s) are waiting and nothing is pending that could wake them.',
+                        $this->waiting->count()
+                    ));
+                }
+
+                return;
             }
         } finally {
-            $this->running = false;
+            $this->running = $reentrant;
         }
     }
 
     /**
-     * Get the currently executing Task
+     * Run one ready Task for one slice.
      *
-     * Useful for debugging
+     * @return void
+     */
+    private function step(): void
+    {
+        $task = array_shift($this->ready);
+
+        if ($task === null || $task->isSettled()) {
+            return;
+        }
+
+        $this->current = $task;
+
+        try {
+            $task->step();
+        } finally {
+            $this->current = null;
+        }
+
+        /*
+         * A Task that is neither finished nor parked yielded without waiting
+         * for anything — cooperative multitasking by choice. It goes to the
+         * back of the queue so its neighbours get a turn.
+         */
+        if (!$task->isSettled() && !$this->waiting->contains($task)) {
+            $this->ready[] = $task;
+        }
+    }
+
+    /**
+     * The Task currently running, if any.
+     *
+     * @return Task|null The task
      */
     public function getCurrentTask(): ?Task
     {
-        return $this->currentTask;
+        return $this->current;
     }
 
     /**
-     * Get the number of pending Tasks
+     * How many Tasks are queued or parked.
+     *
+     * @return int The count
      */
     public function getPendingCount(): int
     {
-        return count($this->tasks);
+        return count($this->ready) + $this->waiting->count();
     }
 
     /**
-     * Check if the scheduler is currently running
+     * How the scheduler's work is divided right now.
+     *
+     * @return array{ready: int, waiting: int, loop: array{transfers: int, timers: int, watchers: int}} The counts
+     */
+    public function stats(): array
+    {
+        return [
+            'ready' => count($this->ready),
+            'waiting' => $this->waiting->count(),
+            'loop' => $this->loop->pending(),
+        ];
+    }
+
+    /**
+     * Whether the scheduler is inside run().
+     *
+     * @return bool True while running
      */
     public function isRunning(): bool
     {

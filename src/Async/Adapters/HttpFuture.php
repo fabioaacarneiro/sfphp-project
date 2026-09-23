@@ -2,206 +2,228 @@
 
 namespace SfphpProject\src\Async\Adapters;
 
-use SfphpProject\src\Async\Future;
+use CurlHandle;
+use SfphpProject\src\Async\Cancellable;
+use SfphpProject\src\Async\Context;
+use SfphpProject\src\Async\EventLoop;
+use SfphpProject\src\Async\Pending;
+use SfphpProject\src\Http\ClientException;
+use SfphpProject\src\Http\ClientResponse;
+use Throwable;
 
 /**
- * A Future wrapper for HTTP requests
+ * An HTTP request that is already on its way.
  *
- * Allows making HTTP requests asynchronously using async/await syntax.
- * Currently uses curl but with lazy execution - actual request happens
- * when getValue() is called (i.e., when await() needs the result).
+ * The transfer is handed to the event loop's multi handle as soon as this is
+ * created, so three of these are three requests in flight — not three requests
+ * queued behind whichever is awaited first. libcurl drives them all from the
+ * same wait, and each one settles as its own response arrives.
  *
- * Future versions could use truly non-blocking socket I/O.
+ *     $a = Http::getAsync($first);
+ *     $b = Http::getAsync($second);
+ *     $c = Http::getAsync($third);
+ *
+ *     [$x, $y, $z] = [await($a), await($b), await($c)];
+ *
+ * That takes about as long as the slowest of the three. The previous version
+ * called `curl_exec()` from inside `getValue()`: nothing happened until the
+ * await, and then it blocked until the response came back, so the same code
+ * took as long as all three added together. Measured against a local server
+ * delaying 300 ms per request, it was 905 ms.
+ *
+ * Resolves to a {@see ClientResponse}, the same object the synchronous client
+ * returns, so `status()`, `json()`, `ok()` and `throw()` mean the same thing
+ * whichever way the request was made.
  */
-class HttpFuture implements Future
+final class HttpFuture extends Pending implements Cancellable
 {
-    private mixed $result = null;
-    private ?\Throwable $exception = null;
-    private bool $executed = false;
-    private array $callbacks = [];
+    /** Seconds allowed for the whole exchange, when the caller sets none. */
+    private const TIMEOUT = 30;
 
-    private string $method;
+    /** Seconds allowed to establish the connection. */
+    private const CONNECT_TIMEOUT = 10;
+
+    /** How many redirects to follow. */
+    private const MAX_REDIRECTS = 5;
+
+    private EventLoop $loop;
+
+    private ?CurlHandle $handle;
+
     private string $url;
-    private array $headers;
-    private mixed $body;
-    private array $options;
+
+    /** @var array<string, string> */
+    private array $responseHeaders = [];
 
     /**
-     * Create an HttpFuture for a GET/POST/etc request
+     * Start a request.
      *
-     * @param string $method HTTP method (GET, POST, etc)
-     * @param string $url The full URL
-     * @param array $headers Request headers
-     * @param mixed $body Request body (for POST/PUT)
-     * @param array $options Additional curl options
+     * @param string $method The HTTP method
+     * @param string $url The URL
+     * @param array<string, string> $headers Request headers
+     * @param mixed $body The body, encoded as JSON unless it is already a string
+     * @param array<int, mixed> $options Extra cURL options, which win over the defaults
+     * @param EventLoop|null $loop The loop to run on, or null for the current one
      */
     public function __construct(
         string $method,
         string $url,
         array $headers = [],
         mixed $body = null,
-        array $options = []
+        array $options = [],
+        ?EventLoop $loop = null
     ) {
-        $this->method = strtoupper($method);
+        $this->loop = $loop ?? Context::scheduler()->loop();
         $this->url = $url;
-        $this->headers = $headers;
-        $this->body = $body;
-        $this->options = $options;
-    }
 
-    /**
-     * Execute the HTTP request
-     */
-    private function execute(): void
-    {
-        if ($this->executed) {
+        if (!extension_loaded('curl')) {
+            /*
+             * Refused rather than degraded, for the same reason the synchronous
+             * client refuses: a fallback that cannot set a connection timeout
+             * and cannot be watched by the loop would be a blocking call
+             * wearing an async name.
+             */
+            $this->handle = null;
+            $this->rejectWith(new ClientException('The curl extension is required to make HTTP requests. Install ext-curl.'));
+
             return;
         }
 
-        try {
-            $this->result = $this->makeRequest();
-            $this->executed = true;
-            $this->notifyCallbacks();
-        } catch (\Throwable $e) {
-            $this->exception = $e;
-            $this->executed = true;
-            $this->notifyCallbacks();
-        }
+        $this->handle = $this->build(strtoupper($method), $url, $headers, $body, $options);
+        $this->state = self::RUNNING;
+
+        $this->loop->addTransfer($this->handle, function (CurlHandle $handle, int $errno, string $error): void {
+            $this->complete($handle, $errno, $error);
+        });
     }
 
     /**
-     * Execute the actual HTTP request using curl
+     * Give up on the request, releasing the connection.
+     *
+     * The transfer is removed from the multi handle, so the socket is closed
+     * rather than left to finish into a result nobody is going to read.
+     *
+     * @param Throwable|null $reason Why
+     * @return void
      */
-    private function makeRequest(): array
+    public function cancel(?Throwable $reason = null): void
     {
-        $curl = curl_init();
-
-        try {
-            curl_setopt_array($curl, [
-                CURLOPT_URL => $this->url,
-                CURLOPT_CUSTOMREQUEST => $this->method,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_TIMEOUT => 30,
-            ]);
-
-            // Add headers
-            if (!empty($this->headers)) {
-                $headerLines = [];
-                foreach ($this->headers as $key => $value) {
-                    $headerLines[] = "$key: $value";
-                }
-                curl_setopt($curl, CURLOPT_HTTPHEADER, $headerLines);
-            }
-
-            // Add body for POST/PUT/PATCH
-            if ($this->body !== null) {
-                $bodyString = is_string($this->body)
-                    ? $this->body
-                    : json_encode($this->body);
-                curl_setopt($curl, CURLOPT_POSTFIELDS, $bodyString);
-            }
-
-            // Apply custom options
-            foreach ($this->options as $option => $value) {
-                curl_setopt($curl, $option, $value);
-            }
-
-            // Get response headers
-            $responseHeaders = [];
-            curl_setopt($curl, CURLOPT_HEADERFUNCTION, function ($curl, $header) use (&$responseHeaders) {
-                $len = strlen($header);
-                if (strpos($header, ':') !== false) {
-                    list($name, $value) = explode(':', $header, 2);
-                    $responseHeaders[trim($name)] = trim($value);
-                }
-                return $len;
-            });
-
-            $body = curl_exec($curl);
-            $statusCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-            $contentType = curl_getinfo($curl, CURLINFO_CONTENT_TYPE);
-
-            if ($body === false) {
-                throw new \Exception("HTTP request failed: " . curl_error($curl));
-            }
-
-            return [
-                'status' => $statusCode,
-                'headers' => $responseHeaders,
-                'content_type' => $contentType,
-                'body' => $body,
-                'json' => function () use ($body) {
-                    return json_decode($body, true);
-                },
-            ];
-        } finally {
-            curl_close($curl);
-        }
-    }
-
-    public function isPending(): bool
-    {
-        return !$this->executed;
-    }
-
-    public function isResolved(): bool
-    {
-        return $this->executed && $this->exception === null;
-    }
-
-    public function isRejected(): bool
-    {
-        return $this->exception !== null;
-    }
-
-    public function getValue()
-    {
-        if (!$this->executed) {
-            $this->execute();
+        if ($this->handle !== null) {
+            $this->loop->cancelTransfer($this->handle);
+            $this->handle = null;
         }
 
-        if ($this->exception) {
-            throw $this->exception;
-        }
-
-        return $this->result;
-    }
-
-    public function getException(): ?\Throwable
-    {
-        if (!$this->executed) {
-            $this->execute();
-        }
-        return $this->exception;
-    }
-
-    public function onResolve(callable $callback): void
-    {
-        if ($this->executed) {
-            $callback($this);
-        } else {
-            $this->callbacks[] = $callback;
-        }
+        $this->cancelWith($reason);
     }
 
     /**
-     * Notify all callbacks
+     * Configure the handle for this request.
+     *
+     * @param string $method The HTTP method
+     * @param string $url The URL
+     * @param array<string, string> $headers Request headers
+     * @param mixed $body The body
+     * @param array<int, mixed> $options Extra cURL options
+     * @return CurlHandle The handle
      */
-    private function notifyCallbacks(): void
+    private function build(string $method, string $url, array $headers, mixed $body, array $options): CurlHandle
     {
-        foreach ($this->callbacks as $callback) {
-            try {
-                $callback($this);
-            } catch (\Throwable $e) {
-                // Ignore callback errors
+        $handle = curl_init();
+
+        $defaults = [
+            CURLOPT_URL => $url,
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => self::CONNECT_TIMEOUT,
+            CURLOPT_TIMEOUT => self::TIMEOUT,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => self::MAX_REDIRECTS,
+            /*
+             * A redirect from https:// to http:// is a downgrade a server can
+             * ask for and a client should refuse: everything after it travels
+             * in the clear, including any Authorization header.
+             */
+            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+            CURLOPT_HEADERFUNCTION => function ($handle, string $line): int {
+                $parts = explode(':', $line, 2);
+
+                if (count($parts) === 2) {
+                    $this->responseHeaders[trim($parts[0])] = trim($parts[1]);
+                }
+
+                return strlen($line);
+            },
+        ];
+
+        if ($body !== null) {
+            $payload = is_string($body)
+                ? $body
+                : (string) json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            $defaults[CURLOPT_POSTFIELDS] = $payload;
+
+            if (!is_string($body)) {
+                $headers += ['Content-Type' => 'application/json', 'Accept' => 'application/json'];
             }
         }
-        $this->callbacks = [];
+
+        if ($headers !== []) {
+            $lines = [];
+
+            foreach ($headers as $name => $value) {
+                $lines[] = $name . ': ' . $value;
+            }
+
+            $defaults[CURLOPT_HTTPHEADER] = $lines;
+        }
+
+        // The caller's options win: an explicit timeout is a decision.
+        curl_setopt_array($handle, $options + $defaults);
+
+        return $handle;
     }
 
     /**
-     * Create an HttpFuture for a GET request
+     * Turn a finished transfer into a response, or into a failure.
+     *
+     * @param CurlHandle $handle The finished handle
+     * @param int $errno The cURL error number, or CURLE_OK
+     * @param string $error The cURL error message
+     * @return void
+     */
+    private function complete(CurlHandle $handle, int $errno, string $error): void
+    {
+        $this->handle = null;
+
+        if ($errno !== CURLE_OK) {
+            /*
+             * No response at all — a name that did not resolve, a refused
+             * connection, a timeout, a certificate that did not verify. There
+             * is nothing to return, so this rejects rather than resolving with
+             * an empty answer.
+             */
+            $this->rejectWith(new ClientException(
+                sprintf('Request to %s failed: %s', $this->url, $error !== '' ? $error : 'unknown error'),
+                $errno
+            ));
+
+            return;
+        }
+
+        $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+        $body = (string) curl_multi_getcontent($handle);
+
+        $this->resolveWith(new ClientResponse($status, $body, $this->responseHeaders, $this->url));
+    }
+
+    /**
+     * Start a GET request.
+     *
+     * @param string $url The URL
+     * @param array<string, string> $headers Request headers
+     * @param array<int, mixed> $options Extra cURL options
+     * @return self The future
      */
     public static function get(string $url, array $headers = [], array $options = []): self
     {
@@ -209,7 +231,13 @@ class HttpFuture implements Future
     }
 
     /**
-     * Create an HttpFuture for a POST request
+     * Start a POST request.
+     *
+     * @param string $url The URL
+     * @param mixed $body The body
+     * @param array<string, string> $headers Request headers
+     * @param array<int, mixed> $options Extra cURL options
+     * @return self The future
      */
     public static function post(string $url, mixed $body = null, array $headers = [], array $options = []): self
     {
@@ -217,7 +245,13 @@ class HttpFuture implements Future
     }
 
     /**
-     * Create an HttpFuture for a PUT request
+     * Start a PUT request.
+     *
+     * @param string $url The URL
+     * @param mixed $body The body
+     * @param array<string, string> $headers Request headers
+     * @param array<int, mixed> $options Extra cURL options
+     * @return self The future
      */
     public static function put(string $url, mixed $body = null, array $headers = [], array $options = []): self
     {
@@ -225,7 +259,13 @@ class HttpFuture implements Future
     }
 
     /**
-     * Create an HttpFuture for a PATCH request
+     * Start a PATCH request.
+     *
+     * @param string $url The URL
+     * @param mixed $body The body
+     * @param array<string, string> $headers Request headers
+     * @param array<int, mixed> $options Extra cURL options
+     * @return self The future
      */
     public static function patch(string $url, mixed $body = null, array $headers = [], array $options = []): self
     {
@@ -233,7 +273,12 @@ class HttpFuture implements Future
     }
 
     /**
-     * Create an HttpFuture for a DELETE request
+     * Start a DELETE request.
+     *
+     * @param string $url The URL
+     * @param array<string, string> $headers Request headers
+     * @param array<int, mixed> $options Extra cURL options
+     * @return self The future
      */
     public static function delete(string $url, array $headers = [], array $options = []): self
     {

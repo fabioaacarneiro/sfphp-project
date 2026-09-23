@@ -19,7 +19,8 @@
             "src/runtime.php",
             "src/utils.php",
             "src/http.php",
-            "src/helpers.php"
+            "src/helpers.php",
+            "src/Async/functions.php"
         ]
     },
     "authors": [
