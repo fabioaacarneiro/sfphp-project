@@ -1,6 +1,7 @@
 {
     "name": "fabioaacarneiro/sfphp-framework",
-    "description": "A full-stack PHP framework with zero runtime dependencies, built to be used in any language and any script.",
+    "version": "0.12.0",
+    "description": "A full-stack PHP framework with zero runtime dependencies, complete async/await system using PHP Fibers, reactive components, and real-time capabilities.",
     "license": "MIT",
     "require": {
         "php": "^8.1",
@@ -65,7 +66,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-master": "0.11.x-dev"
+            "dev-master": "0.12.x-dev"
         }
     },
     "bin": [
