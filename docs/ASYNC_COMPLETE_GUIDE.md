@@ -680,19 +680,35 @@ In standard PHP with blocking I/O:
 | 3 parallel tasks | ~100ms | **3x** |
 | 5 parallel tasks | ~100ms | **5x** |
 
-### Real Benchmarks (Actual Measurements)
+### Framework Overhead (What's Actually Measured)
+
+⚠️ **Important:** These numbers measure **framework overhead**, not actual I/O operations:
 
 ```
-Simple async operation:         286,692 ops/sec
-2x parallel execution:          217,954 ops/sec
-4x parallel execution:          158,126 ops/sec
-Stream map (100 items):          82,177 ops/sec
-Event broadcast (1 listener):   185,918 ops/sec
-Event broadcast (5 listeners):  129,855 ops/sec
-File read (async):             188,678 ops/sec
-Dashboard (3 parallel):        173,893 ops/sec
-Bulk processing (1k items):   7.2M items/sec
-Event system (100 events):    1.8M events/sec
+Async/await overhead (empty operation):  286,692 ops/sec
+Parallel execution overhead (empty):     217,954 ops/sec
+Stream processing overhead:              82,177 ops/sec
+Event broadcast (simple):                185,918 ops/sec
+File read (without actual blocking I/O): 188,678 ops/sec
+```
+
+**What this means:**
+- The framework has minimal overhead (~0.003ms per operation)
+- The async/await mechanism is fast
+- BUT: Real I/O (database, file, network) still blocks in vanilla PHP
+
+**Real-world performance in vanilla PHP:**
+```
+3 sequential I/O operations (100ms each):  ~300ms
+3 "parallel" I/O operations:               ~300ms (I/O still blocks!)
+Speed improvement from async:               0x (no benefit in vanilla PHP)
+```
+
+**Real-world performance in RoadRunner/Swoole:**
+```
+3 sequential I/O operations:   ~300ms
+3 parallel I/O operations:     ~100ms
+Speed improvement from async:   3x ✅
 ```
 
 ### Key Insights
