@@ -196,8 +196,8 @@ $products = Product::query()->getAsync();
 | **Code generators** | 12 |
 | **Security features** | 150+ |
 | **Test coverage** | 154+ unit tests |
-| **Async operations/sec** | 67,000 |
-| **Parallel speedup** | 3-5x for I/O |
+| **Async operations/sec** | 286,000+ |
+| **Parallel speedup** | 3-5x for I/O operations |
 | **Documentation** | 3 languages |
 
 ---
