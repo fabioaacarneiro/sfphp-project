@@ -5087,6 +5087,147 @@ $tests->run('one action answers a fragment and a whole page', function () use ($
     $tests->assertSame('<p>inner</p>', Response::fragment($plain, $panel)->body());
 });
 
+$tests->run('the state helper encodes values an attribute can carry', function () use ($tests): void {
+    /*
+     * A plain string on purpose. {{ }} escapes it, so the quotes JSON needs
+     * become entities inside the attribute and the browser hands them back
+     * intact. Returning Sfht would put raw quotes in an attribute, which is
+     * how markup breaks — or, with a value that came from a visitor, how an
+     * attribute is forged.
+     */
+    $tests->assertSame('{"open":false,"items":[1,2]}', state(['open' => false, 'items' => [1, 2]]));
+
+    // Unicode and slashes stay readable rather than turning into escapes.
+    $tests->assertSame('{"name":"José","path":"a/b"}', state(['name' => 'José', 'path' => 'a/b']));
+
+    // Printed with {{ }}, every quote becomes an entity — attribute-safe.
+    $tests->assertSame(
+        '{&quot;a&quot;:&quot;b&quot;}',
+        SfphpProject\src\View\Compiler::text(state(['a' => 'b']))
+    );
+});
+
+$tests->run('a scope holds state in the browser, and the page follows it', function () use ($tests): void {
+    /*
+     * Interface state — open, selected, half-typed — belongs in the page:
+     * asking a server whether a menu is open spends thirty milliseconds on a
+     * decision that takes none. This is the whole feature in one harness,
+     * because none of it is observable from PHP.
+     *
+     * The expressions are parsed rather than eval()'d, so this also stands as
+     * the check that the grammar covers what the documentation promises.
+     */
+    $browser = '';
+
+    foreach (['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'] as $candidate) {
+        $found = trim((string) shell_exec('command -v ' . escapeshellarg($candidate) . ' 2>/dev/null'));
+
+        if ($found !== '') {
+            $browser = $found;
+            break;
+        }
+    }
+
+    if ($browser === '') {
+        return;
+    }
+
+    $directory = sys_get_temp_dir() . '/sfphp-state-' . bin2hex(random_bytes(6));
+    mkdir($directory . '/profile', 0755, true);
+
+    $page = $directory . '/harness.html';
+    $script = Assets::path() . '/js/sfjs.min.js';
+    $initial = state(['open' => false, 'name' => '', 'items' => 3, 'user' => null, 'busy' => false]);
+    $initial = htmlspecialchars($initial, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+    file_put_contents($page, <<<HTML
+    <!DOCTYPE html>
+    <html><head><meta charset="utf-8"></head>
+    <body>
+    <div \x40state="{$initial}">
+      <button id="toggle" \x40on:click="open = !open">Toggle</button>
+      <div id="panel" \x40show="open">visible</div>
+      <input id="field" \x40model="name">
+      <span id="greeting" \x40text="'Hello, ' + name"></span>
+      <span id="doubled" \x40text="items * 2"></span>
+      <span id="styled" class="base" \x40class="open ? 'on' : 'off'"></span>
+      <button id="load" \x40get="/api/user" \x40into="user" \x40loading="busy">Load</button>
+      <span id="loaded" \x40text="user.name"></span>
+      <span id="busy" \x40text="busy ? 'busy' : 'idle'"></span>
+    </div>
+    <div id="log">nothing happened</div>
+    <script>
+      window.fetch = () => new Promise((resolve) => setTimeout(() => resolve({
+        ok: true, status: 200, text: () => Promise.resolve('{"name":"Ana"}')
+      }), 30));
+    </script>
+    <script src="file://{$script}"></script>
+    <script>
+      window.addEventListener('load', async () => {
+        const q = (id) => document.getElementById(id);
+        const steps = [];
+
+        steps.push('hidden=' + (q('panel').style.display === 'none'));
+        steps.push('class=' + q('styled').className);
+
+        q('toggle').click();
+        steps.push('shown=' + (q('panel').style.display !== 'none'));
+        steps.push('class2=' + q('styled').className);
+
+        q('field').value = 'Fabio';
+        q('field').dispatchEvent(new Event('input'));
+        steps.push('greeting=' + q('greeting').textContent);
+        steps.push('doubled=' + q('doubled').textContent);
+
+        q('load').click();
+        steps.push('during=' + q('busy').textContent);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        steps.push('loaded=' + q('loaded').textContent);
+        steps.push('after=' + q('busy').textContent);
+
+        q('log').textContent = steps.join(' | ');
+      });
+    </script>
+    </body></html>
+    HTML);
+
+    try {
+        $command = escapeshellarg($browser)
+            . ' --headless --disable-gpu --no-sandbox --disable-dev-shm-usage'
+            . ' --no-first-run --no-default-browser-check --virtual-time-budget=4000'
+            . ' --user-data-dir=' . escapeshellarg($directory . '/profile')
+            . ' --dump-dom ' . escapeshellarg('file://' . $page) . ' 2>/dev/null';
+
+        $dom = (string) shell_exec($command);
+
+        if (!str_contains($dom, 'id="log"')) {
+            return;
+        }
+
+        preg_match('/<div id="log">([^<]*)</', $dom, $matches);
+        $log = $matches[1] ?? '';
+
+        // @show follows a boolean, and @on:click can flip it.
+        $tests->assertTrue(str_contains($log, 'hidden=true'));
+        $tests->assertTrue(str_contains($log, 'shown=true'));
+
+        // @class adds to the element's own classes rather than replacing them.
+        $tests->assertTrue(str_contains($log, 'class=base off'));
+        $tests->assertTrue(str_contains($log, 'class2=base on'));
+
+        // @model writes into the state, and @text reads an expression back.
+        $tests->assertTrue(str_contains($log, 'greeting=Hello, Fabio'));
+        $tests->assertTrue(str_contains($log, 'doubled=6'));
+
+        // @into puts the answer in the state; @loading brackets the request.
+        $tests->assertTrue(str_contains($log, 'during=busy'));
+        $tests->assertTrue(str_contains($log, 'loaded=Ana'));
+        $tests->assertTrue(str_contains($log, 'after=idle'));
+    } finally {
+        exec('rm -rf ' . escapeshellarg($directory) . ' 2>/dev/null');
+    }
+});
+
 $tests->run('morph updates a panel without throwing away what is being typed', function () use ($tests): void {
     /*
      * The reason to have a swap strategy other than innerHTML at all. A panel

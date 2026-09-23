@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 160 tests, 0 failures
+> Verified against PHP 8.4 · suite: 162 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -4449,7 +4449,7 @@ Full reference: [SFCSS](SFCSS.md) and
 
 ## SFJS
 
-A dependency-free JavaScript library — 20KB raw, 12KB minified, **3.6KB
+A dependency-free JavaScript library — 35KB raw, 21KB minified, **6.0KB
 gzipped**. Exposed as `window.sf`.
 
 ```html
@@ -4547,6 +4547,96 @@ the element says for itself:
 Several separated by commas. A fragment that arrives through a swap is wired up
 too, so a panel that refreshes itself keeps refreshing after the first time.
 
+### State in the page
+
+Two different things get called state, and keeping them apart is most of the
+design:
+
+- **Application state** — the cart, the record, the list. It lives on the
+  server, and the page shows a projection of it. That is what `@get` with
+  `@trigger` and `morph` is for.
+- **Interface state** — open or closed, which tab, what has been typed and not
+  sent. It lives in the page. Asking a server whether a menu is open spends
+  thirty milliseconds on a decision that takes none.
+
+`@state` is for the second one.
+
+```html
+<div @state="{ open: false, name: '' }">
+  <button @on:click="open = !open">Toggle</button>
+
+  <div @show="open">
+    <input @model="name">
+    <p>Hello, <span @text="name"></span></p>
+  </div>
+</div>
+```
+
+An element carrying `@state` opens a scope. Everything under it reads and
+writes that state until another `@state` starts a scope of its own, and a write
+updates only the bindings that mention it.
+
+| | |
+|---|---|
+| `@text` | the element's text becomes the expression's value |
+| `@show` | shown while the expression is true |
+| `@class` | adds classes to the ones the element already has |
+| `@model` | two-way on an input, a checkbox or a select |
+| `@on:click`, `@on:input`, … | runs an expression when that event fires |
+
+### The first values come from PHP
+
+```php
+function CartPanel(array $items): Sfht
+{
+    return sfht(
+        <div @state="{{ state(['open' => false, 'items' => $items]) }}">
+            <button @on:click="open = !open">
+                Cart (<span @text="items.length"></span>)
+            </button>
+        </div>
+    );
+}
+```
+
+`state()` returns JSON as a plain string so that `{{ }}` escapes it: the quotes
+become entities inside the attribute and the browser hands them back intact.
+
+### Fetching into the state
+
+```html
+<button @get="/api/users/7" @into="user" @loading="busy">Load</button>
+
+<span @text="busy ? 'Loading…' : user.name"></span>
+```
+
+`@into` puts the decoded JSON into that key instead of swapping markup;
+`@loading` holds a boolean for as long as the request is in the air. Between
+them, that is `useState` and `await` without a line of JavaScript.
+
+### What the expressions can do, and what they cannot
+
+Paths (`user.name`), string, number, boolean and null literals, `!` and unary
+`-`, `+ - * / %`, `== != === !== < > <= >=`, `&&` and `||` with short-circuit,
+the ternary, object and array literals, and assignment.
+
+**Not** function calls, arrow functions or indexing by expression. So this does
+not work:
+
+```html
+<span @text="items.filter(i => i.active).length"></span>
+```
+
+Compute it in PHP, before the markup, where the data already is — and pass the
+number in.
+
+> **Why the limit exists.** Alpine and Vue hand attribute values to
+> `new Function()`, which accepts all of JavaScript and, in exchange, requires
+> `unsafe-eval` in the Content-Security-Policy of every page that uses them.
+> This parses the expressions instead, so a strict policy stays strict. An
+> expression it cannot read is reported in the console by name rather than
+> failing silently.
+
 ### Swap strategies
 
 `@swap` accepts `innerHTML` (the default), `outerHTML`, `beforebegin`,
@@ -4591,7 +4681,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 160 unit cases
+composer run test        # 162 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves

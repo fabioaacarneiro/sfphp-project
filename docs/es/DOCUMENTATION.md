@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 160 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 162 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -4519,8 +4519,8 @@ Referencia completa: [SFCSS](SFCSS.md) y
 
 ## SFJS
 
-Una biblioteca JavaScript sin dependencias — 20KB en crudo, 12KB minificada,
-**3,6KB comprimida**. Expuesta como `window.sf`.
+Una biblioteca JavaScript sin dependencias — 35KB en crudo, 21KB minificada,
+**6,0KB comprimida**. Expuesta como `window.sf`.
 
 ```html
 <script src="/assets/js/sfjs.min.js"></script>
@@ -4619,6 +4619,95 @@ Varios separados por comas. Un fragmento que llega por un intercambio también
 queda conectado, así que un panel que se actualiza sigue haciéndolo después de
 la primera vez.
 
+### Estado en la página
+
+Dos cosas distintas se llaman estado, y separarlas es la mayor parte del diseño:
+
+- **Estado de la aplicación** — el carrito, el registro, la lista. Vive en el
+  servidor, y la página muestra una proyección. Para eso está `@get` con
+  `@trigger` y `morph`.
+- **Estado de interfaz** — abierto o cerrado, qué pestaña, lo escrito y aún no
+  enviado. Vive en la página. Preguntarle al servidor si un menú está abierto
+  gasta treinta milisegundos en una decisión que no lleva ninguno.
+
+`@state` es para el segundo.
+
+```html
+<div @state="{ abierto: false, nombre: '' }">
+  <button @on:click="abierto = !abierto">Alternar</button>
+
+  <div @show="abierto">
+    <input @model="nombre">
+    <p>Hola, <span @text="nombre"></span></p>
+  </div>
+</div>
+```
+
+Un elemento con `@state` abre un ámbito. Todo lo que está debajo lee y escribe
+ese estado hasta que otro `@state` abra el suyo, y una escritura actualiza solo
+los enlaces que la mencionan.
+
+| | |
+|---|---|
+| `@text` | el texto del elemento pasa a ser el valor de la expresión |
+| `@show` | visible mientras la expresión sea verdadera |
+| `@class` | suma clases a las que el elemento ya tiene |
+| `@model` | doble sentido en input, checkbox o select |
+| `@on:click`, `@on:input`, … | ejecuta una expresión cuando ocurre el evento |
+
+### Los primeros valores vienen de PHP
+
+```php
+function CartPanel(array $items): Sfht
+{
+    return sfht(
+        <div @state="{{ state(['abierto' => false, 'items' => $items]) }}">
+            <button @on:click="abierto = !abierto">
+                Carrito (<span @text="items.length"></span>)
+            </button>
+        </div>
+    );
+}
+```
+
+`state()` devuelve JSON como cadena simple precisamente para que `{{ }}` lo
+escape: las comillas se convierten en entidades dentro del atributo y el
+navegador las devuelve intactas.
+
+### Traer datos al estado
+
+```html
+<button @get="/api/users/7" @into="user" @loading="busy">Cargar</button>
+
+<span @text="busy ? 'Cargando…' : user.name"></span>
+```
+
+`@into` coloca el JSON decodificado en esa clave en lugar de intercambiar
+marcado; `@loading` mantiene un booleano mientras la petición está en el aire.
+Juntos son `useState` y `await` sin una línea de JavaScript.
+
+### Qué pueden hacer las expresiones, y qué no
+
+Rutas (`user.name`), literales de texto, número, booleano y nulo, `!` y `-`
+unario, `+ - * / %`, `== != === !== < > <= >=`, `&&` y `||` con cortocircuito,
+el ternario, literales de objeto y de lista, y asignación.
+
+**No** hay llamadas a funciones, arrow functions ni índice por expresión. Así
+que esto no funciona:
+
+```html
+<span @text="items.filter(i => i.activo).length"></span>
+```
+
+Calcúlalo en PHP, antes del marcado, donde el dato ya está — y pasa el número.
+
+> **Por qué existe el límite.** Alpine y Vue entregan el valor del atributo a
+> `new Function()`, que acepta todo JavaScript y, a cambio, exige `unsafe-eval`
+> en la Content-Security-Policy de toda página que los use. Aquí las expresiones
+> se interpretan, así que una política estricta sigue siendo estricta. Una
+> expresión que no entiende se reporta en la consola por su nombre, en lugar de
+> fallar en silencio.
+
 ### Estrategias de intercambio
 
 `@swap` acepta `innerHTML` (el valor por defecto), `outerHTML`, `beforebegin`,
@@ -4663,7 +4752,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 160 casos unitarios
+composer run test        # 162 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve

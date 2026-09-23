@@ -337,6 +337,34 @@ if (!function_exists('trans_choice')) {
     }
 }
 
+if (!function_exists('state')) {
+    /**
+     * The initial state of a client-side scope, as an attribute value.
+     *
+     * Interface state lives in the browser, but its first values usually come
+     * from the server — the record being edited, the items already in the
+     * cart. This encodes them so that `@state` can read them back:
+     *
+     *     <div @state="{{ state(['open' => false, 'items' => $items]) }}">
+     *
+     * A plain string on purpose, so `{{ }}` escapes it: the quotes JSON needs
+     * become entities inside the attribute and the browser hands them back
+     * intact. Returning Sfht would place unescaped quotes in an attribute,
+     * which is how markup ends up broken or, with the wrong value, forged.
+     *
+     * @param array<string, mixed> $values The starting values
+     * @return string JSON, ready to be printed with {{ }}
+     * @throws JsonException When a value cannot be encoded
+     */
+    function state(array $values): string
+    {
+        return (string) json_encode(
+            $values,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+        );
+    }
+}
+
 if (!function_exists('lang_tag')) {
     /**
      * The active locale as an HTML language attribute.
