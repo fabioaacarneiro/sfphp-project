@@ -4374,11 +4374,17 @@ Actualizar, entonces, es reemplazar esos archivos sabiendo cuáles son:
 |---|---|
 | Reemplazado entero | `src/`, `sfphp`, `server.php` — todo del framework |
 | Mezclado | `resources/`, `lang/`, `tools/` — los archivos del framework entran encima, los tuyos se quedan |
-| Escrito al lado | `public/index.php` y `composer.json` pasan a `<archivo>.new` para que los leas |
+| Escrito al lado | `public/index.php`, `composer.json` y `tools/css-builder/sfcss.config.json` pasan a `<archivo>.new` para que los leas |
 | Nunca tocado | `app/`, `database/`, el resto de `public/`, `.env`, `vendor/` |
 
-Lista todo eso, espera a que escribas `upgrade` y se niega cuando no hay terminal
-donde responder. `--force` es para un script.
+Lista todo eso — **incluidos, por su nombre, todos los archivos tuyos que la
+mezcla reemplazaría** —, espera a que escribas `upgrade` y se niega cuando no hay
+terminal donde responder. `--force` es para un script.
+
+"Mezclado" suena más seguro de lo que es, y por eso se imprimen esos nombres: un
+archivo tuyo que comparte nombre con uno del framework es reemplazado. Edita un
+archivo de traducción del paquete y lo verás en esa lista antes de que ocurra
+nada.
 
 **Haz commit antes.** Un cambio tuyo dentro de `src/` se pierde — se iba a perder
 en la próxima versión de todos modos, y en silencio. `public/index.php` y

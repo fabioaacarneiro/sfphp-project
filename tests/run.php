@@ -5179,7 +5179,7 @@ $tests->run('upgrade replaces the framework and leaves the application alone', f
     $source = sys_get_temp_dir() . '/sfphp-upgrade-src-' . bin2hex(random_bytes(6));
 
     foreach ([$root, $source] as $directory) {
-        foreach (['vendor', 'src/Console', 'app/controllers', 'lang', 'public', 'resources'] as $part) {
+        foreach (['vendor', 'src/Console', 'app/controllers', 'lang', 'public', 'resources', 'tools'] as $part) {
             mkdir($directory . '/' . $part, 0755, true);
         }
     }
@@ -5197,6 +5197,8 @@ $tests->run('upgrade replaces the framework and leaves the application alone', f
     file_put_contents($root . '/app/controllers/MineController.php', '<?php // mine');
     file_put_contents($root . '/lang/mine.json', '{"mine": true}');
     file_put_contents($root . '/lang/en.json', '{"old": true}');
+    mkdir($root . '/tools/css-builder', 0755, true);
+    file_put_contents($root . '/tools/css-builder/sfcss.config.json', '{"mine": true}');
     file_put_contents($root . '/public/index.php', '<?php // my front controller');
     file_put_contents($root . '/server.php', '<?php // old');
 
@@ -5205,6 +5207,8 @@ $tests->run('upgrade replaces the framework and leaves the application alone', f
     file_put_contents($source . '/sfphp', '#!/usr/bin/env php' . PHP_EOL . '<?php // new binary');
     file_put_contents($source . '/server.php', '<?php // new');
     file_put_contents($source . '/lang/en.json', '{"new": true}');
+    mkdir($source . '/tools/css-builder', 0755, true);
+    file_put_contents($source . '/tools/css-builder/sfcss.config.json', '{"theirs": true}');
     file_put_contents($source . '/public/index.php', '<?php // the new front controller');
 
     $binary = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/sfphp');
@@ -5249,6 +5253,14 @@ $tests->run('upgrade replaces the framework and leaves the application alone', f
         // The front controller is yours; the new one arrives beside it.
         $tests->assertSame('<?php // my front controller', file_get_contents($root . '/public/index.php'));
         $tests->assertSame('<?php // the new front controller', file_get_contents($root . '/public/index.php.new'));
+
+        /*
+         * The SFCSS configuration is documented as yours to edit and sits
+         * inside a merged directory, where it was being overwritten by the
+         * release's copy: a project that had customised its palette lost it.
+         */
+        $tests->assertSame('{"mine": true}', file_get_contents($root . '/tools/css-builder/sfcss.config.json'));
+        $tests->assertSame('{"theirs": true}', file_get_contents($root . '/tools/css-builder/sfcss.config.json.new'));
     } finally {
         exec('rm -rf ' . escapeshellarg($root) . ' ' . escapeshellarg($source) . ' 2>/dev/null');
     }

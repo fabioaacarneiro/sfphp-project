@@ -117,6 +117,13 @@ final class Application
     private const UPGRADE_COMPARE = [
         'public/index.php',
         'composer.json',
+        /*
+         * The documentation tells you to edit this one to change the palette
+         * and the spacing, so it is yours — and it sits inside a merged
+         * directory, where it was being overwritten by the release's copy. A
+         * project that had customised its colours lost them to an upgrade.
+         */
+        'tools/css-builder/sfcss.config.json',
     ];
 
     /** What the routes file becomes once the example application is gone. */
@@ -2077,12 +2084,39 @@ PHP;
             $this->writeLine(sprintf('    %-22s %4d file(s), replaced', $relative, $count));
         }
 
+        $overwritten = $this->upgradeOverwrites($source, array_keys($merge));
+
         foreach ($merge as $relative => $count) {
             $this->writeLine(sprintf('    %-22s %4d file(s), merged in', $relative . '/', $count));
         }
 
-        foreach ($compare as $relative) {
-            $this->writeLine(sprintf('    %-22s differs — written as %s.new, not applied', $relative, $relative));
+        if ($overwritten !== []) {
+            /*
+             * The merged directories are where a project's files sit beside
+             * the framework's, so "merged" sounds safer than it is: a file of
+             * yours with the same name as one of theirs is replaced. Naming
+             * them is the difference between a warning and an informed
+             * decision.
+             */
+            $this->writeLine('');
+            $this->writeLine('    Your versions of these will be replaced:');
+
+            foreach (array_slice($overwritten, 0, 12) as $file) {
+                $this->writeLine('      ' . $file);
+            }
+
+            if (count($overwritten) > 12) {
+                $this->writeLine(sprintf('      … and %d more', count($overwritten) - 12));
+            }
+        }
+
+        if ($compare !== []) {
+            $this->writeLine('');
+            $this->writeLine('    Yours, and changed by this release — left alone, the new one beside it:');
+
+            foreach ($compare as $relative) {
+                $this->writeLine(sprintf('      %s  →  %s.new', $relative, $relative));
+            }
         }
 
         $this->writeLine('');
@@ -2130,8 +2164,14 @@ PHP;
             $this->writeLine('  replaced  ' . $relative);
         }
 
+        $protected = [];
+
+        foreach (self::UPGRADE_COMPARE as $relative) {
+            $protected[$this->projectPath($relative)] = true;
+        }
+
         foreach (array_keys($merge) as $relative) {
-            $this->copyTree($source . '/' . $relative, $this->projectPath($relative));
+            $this->copyTree($source . '/' . $relative, $this->projectPath($relative), $protected);
             $this->writeLine('  merged    ' . $relative . '/');
         }
 
@@ -2156,6 +2196,45 @@ PHP;
         $this->upgradeNotes();
 
         return 0;
+    }
+
+    /**
+     * The project's own files that a merge would replace.
+     *
+     * @param string $source The release being upgraded to
+     * @param list<string> $directories The merged directories
+     * @return list<string> Paths relative to the project
+     */
+    private function upgradeOverwrites(string $source, array $directories): array
+    {
+        $protected = [];
+
+        foreach (self::UPGRADE_COMPARE as $relative) {
+            $protected[$relative] = true;
+        }
+
+        $files = [];
+
+        foreach ($directories as $directory) {
+            foreach ($this->filesUnder($source . '/' . $directory) as $theirs) {
+                $relative = $directory . substr($theirs, strlen($source . '/' . $directory));
+                $relative = str_replace(DIRECTORY_SEPARATOR, '/', $relative);
+
+                if (isset($protected[$relative])) {
+                    continue;
+                }
+
+                $ours = $this->projectPath($relative);
+
+                if (is_file($ours) && file_get_contents($ours) !== file_get_contents($theirs)) {
+                    $files[] = $relative;
+                }
+            }
+        }
+
+        sort($files);
+
+        return $files;
     }
 
     /**
@@ -2193,10 +2272,15 @@ PHP;
      *
      * @param string $from The source
      * @param string $to The destination
+     * @param array<string, bool> $protected Destination paths to leave alone
      * @return void
      */
-    private function copyTree(string $from, string $to): void
+    private function copyTree(string $from, string $to, array $protected = []): void
     {
+        if (isset($protected[$to])) {
+            return;
+        }
+
         if (is_file($from)) {
             if (!is_dir(dirname($to))) {
                 mkdir(dirname($to), 0755, true);
@@ -2216,7 +2300,7 @@ PHP;
         }
 
         foreach (new FilesystemIterator($from, FilesystemIterator::SKIP_DOTS) as $entry) {
-            $this->copyTree($entry->getPathname(), $to . '/' . $entry->getFilename());
+            $this->copyTree($entry->getPathname(), $to . '/' . $entry->getFilename(), $protected);
         }
     }
 

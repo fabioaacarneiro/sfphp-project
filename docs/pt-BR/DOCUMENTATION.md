@@ -4299,11 +4299,17 @@ Atualizar, então, é substituir esses arquivos sabendo quais são:
 |---|---|
 | Substituído inteiro | `src/`, `sfphp`, `server.php` — tudo do framework |
 | Mesclado | `resources/`, `lang/`, `tools/` — os arquivos do framework entram por cima, os seus ficam |
-| Escrito ao lado | `public/index.php` e `composer.json` viram `<arquivo>.new` para você ler |
+| Escrito ao lado | `public/index.php`, `composer.json` e `tools/css-builder/sfcss.config.json` viram `<arquivo>.new` para você ler |
 | Nunca tocado | `app/`, `database/`, o resto de `public/`, `.env`, `vendor/` |
 
-Ele lista tudo isso, espera você digitar `upgrade` e recusa quando não há
-terminal para responder. O `--force` é para script.
+Ele lista tudo isso — **inclusive, pelo nome, cada arquivo seu que a mesclagem
+substituiria** —, espera você digitar `upgrade` e recusa quando não há terminal
+para responder. O `--force` é para script.
+
+"Mesclado" soa mais seguro do que é, e por isso esses nomes são impressos: um
+arquivo seu que divide o nome com um do framework é substituído. Edite um
+arquivo de tradução distribuído e ele aparece nessa lista antes de qualquer
+coisa acontecer.
 
 **Faça commit antes.** Uma alteração sua dentro de `src/` é perdida — ela seria
 perdida no próximo release de qualquer forma, e em silêncio. O
