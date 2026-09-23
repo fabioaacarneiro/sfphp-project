@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 166 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 169 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -2737,13 +2737,50 @@ Los argumentos van tras dos puntos.
 
 | Regla | Comprueba |
 |---|---|
-| `required` | No nulo y no vacío |
+| `required` | No nulo, no vacío, no lista vacía |
 | `email` | `FILTER_VALIDATE_EMAIL` |
-| `min:N` | Al menos N **caracteres** |
-| `max:N` | Como mucho N **caracteres** |
-| `alpha` | Solo letras, en **cualquier escritura** (`\p{L}`) |
-| `alphanum` | Letras y dígitos de cualquier escritura |
+| `url` | `FILTER_VALIDATE_URL` |
 | `number` | Solo dígitos ASCII (seguro para `(int)`) |
+| `alpha` | Solo letras, **cualquier alfabeto** (`\p{L}`) |
+| `alphanum` | Letras y dígitos de cualquier escritura |
+| `min:N` | **Sigue al valor**: al menos N como número, o al menos N caracteres |
+| `max:N` | Como máximo N como número, o como máximo N caracteres |
+| `minLength:N` | Al menos N caracteres, **siempre** — sea cual sea el valor |
+| `maxLength:N` | Como máximo N caracteres, siempre |
+| `pattern:REGEX` | Coincide, con `u` y con los delimitadores puestos por ti |
+
+**`min` y `max` siguen al valor**, que es lo que la gente quiere decir cuando los
+escribe:
+
+```php
+'edad'   => 'required|number|min:18',   // al menos dieciocho años
+'nombre' => 'required|min:3',           // al menos tres caracteres
+```
+
+Antes de 0.19.0 contaban caracteres en cualquier caso, así que `min:18` en una
+edad pasaba con `7` y fallaba con `21` — sin decir nada. Cuando la distinción
+importa, `minLength` y `maxLength` cuentan caracteres siempre: un código postal
+es un número que en realidad es una cadena.
+
+```php
+'cp' => 'required|minLength:5',         // 01001 son cinco caracteres, no 1.001
+```
+
+**El navegador comprueba las mismas reglas.** `@validate` acepta estos nombres,
+con los mismos argumentos y el mismo significado, así que un formulario dice una
+cosa una vez — y la suite compara ambas listas para que no se separen. La
+respuesta del navegador es una comodidad; la del servidor es la que cuenta.
+
+```html
+<input name="edad" @validate="required|number|min:18">
+```
+
+Una expresión que contiene `|` no cabe en una cadena separada por `|`, así que
+pasa las reglas como lista:
+
+```php
+'color' => ['required', 'pattern:^(azul|verde)$'],
+```
 
 Una regla desconocida lanza `InvalidArgumentException` — una errata falla
 pronto en lugar de pasar la validación en silencio.
@@ -4882,8 +4919,9 @@ SFJS envía `X-Requested-With`, así que recibe la pieza que cambió; un formula
 enviado sin JavaScript recibe la página entera con el fragmento ya en su sitio.
 `$request->isFragment()` es la misma pregunta, si la necesitas directamente.
 
-`@validate` se ejecuta en `blur` y acepta `required`, `email`, `number`, `url`,
-`minLength:N`, `maxLength:N` y `pattern:regex`.
+`@validate` se ejecuta en `blur` y acepta las mismas reglas que valida el
+servidor — véase [Validación](#validación) para la lista. Varias separadas por
+`|`: `@validate="required|number|min:18"`.
 
 ---
 
@@ -4893,7 +4931,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 166 casos unitarios
+composer run test        # 169 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve

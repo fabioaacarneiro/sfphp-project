@@ -5621,6 +5621,96 @@ $tests->run('a declarative form sends the fields a visitor typed', function () u
     }
 });
 
+$tests->run('min and max follow the value, and length is asked for by name', function () use ($tests): void {
+    /*
+     * "min:18" on an age used to demand eighteen *characters*: it passed for 7
+     * and failed for 21, and nothing said so. A rule whose meaning is the
+     * opposite of what it reads is worse than a missing rule.
+     */
+    $tests->assertSame(true, Validator::validate(['age' => 21], ['age' => 'number|min:18'])->passes());
+    $tests->assertSame(true, Validator::validate(['age' => 7], ['age' => 'number|min:18'])->fails());
+    $tests->assertSame(true, Validator::validate(['age' => 21], ['age' => 'number|max:18'])->fails());
+
+    // On anything that is not a number they count characters, as before.
+    $tests->assertSame(true, Validator::validate(['name' => 'Jo'], ['name' => 'min:3'])->fails());
+    $tests->assertSame(true, Validator::validate(['name' => 'Joana'], ['name' => 'min:3'])->passes());
+
+    // Characters, not bytes.
+    $tests->assertSame(true, Validator::validate(['name' => '日本語'], ['name' => 'min:3'])->passes());
+
+    /*
+     * A postcode is a number that is really a string, so the length rules say
+     * so by name and are never read as a value.
+     */
+    $tests->assertSame(true, Validator::validate(['zip' => '01001'], ['zip' => 'minLength:5'])->passes());
+    $tests->assertSame(true, Validator::validate(['zip' => '0100'], ['zip' => 'minLength:5'])->fails());
+    $tests->assertSame(true, Validator::validate(['zip' => '010012'], ['zip' => 'maxLength:5'])->fails());
+
+    // The message says which kind of limit failed.
+    $value = Validator::validate(['age' => 7], ['age' => 'number|min:18'])->errors()['age'][0];
+    $length = Validator::validate(['name' => 'Jo'], ['name' => 'min:3'])->errors()['name'][0];
+
+    $tests->assertSame(false, str_contains($value, 'character'));
+    $tests->assertSame(true, str_contains($length, 'character'));
+});
+
+$tests->run('the rules the browser checks are the rules the server enforces', function () use ($tests): void {
+    /*
+     * The browser validated url and pattern while the server could not, which
+     * is backwards: anybody can skip the browser with a request of their own,
+     * so the weaker list was the one that mattered. And three of the client's
+     * documented rules never ran at all — "minLength:5" was looked up whole as
+     * a rule name, not found, and the field passed.
+     *
+     * This compares the two lists so they cannot drift apart again.
+     */
+    $script = (string) file_get_contents(Assets::path() . '/js/sfjs.js');
+    $start = strpos($script, 'const validate = {');
+    $end = strpos($script, PHP_EOL . '  };', $start ?: 0);
+    $section = substr($script, (int) $start, (int) $end - (int) $start);
+
+    preg_match_all('/^\s{4}([a-zA-Z]+):/m', $section, $matches);
+    $browser = array_values(array_unique($matches[1]));
+
+    $server = ['required', 'email', 'url', 'number', 'alpha', 'alphanum', 'min', 'max', 'minLength', 'maxLength', 'pattern'];
+
+    sort($browser);
+    sort($server);
+
+    $tests->assertSame($server, $browser);
+
+    // And every one of them is a rule the server really applies.
+    foreach ($server as $rule) {
+        $expression = in_array($rule, ['min', 'max', 'minLength', 'maxLength'], true)
+            ? $rule . ':3'
+            : ($rule === 'pattern' ? 'pattern:^a$' : $rule);
+
+        // Unknown rules throw; a known one must not, whatever the value.
+        Validator::validate(['f' => 'a'], ['f' => $expression]);
+    }
+
+    $tests->assertThrows(
+        static fn () => Validator::validate(['f' => 'a'], ['f' => 'inventada']),
+        InvalidArgumentException::class
+    );
+});
+
+$tests->run('a pattern that needs a pipe is given as an array', function () use ($tests): void {
+    /*
+     * Rules are pipe separated, so a pattern containing one cannot be written
+     * in the string form — the separator cannot tell them apart. The array
+     * form exists for exactly that, and for nothing else.
+     */
+    $rules = ['colour' => ['required', 'pattern:^(blue|green)$']];
+
+    $tests->assertSame(true, Validator::validate(['colour' => 'blue'], $rules)->passes());
+    $tests->assertSame(true, Validator::validate(['colour' => 'red'], $rules)->fails());
+
+    // url is the other half of the parity that was missing.
+    $tests->assertSame(true, Validator::validate(['site' => 'https://example.com'], ['site' => 'url'])->passes());
+    $tests->assertSame(true, Validator::validate(['site' => 'not a url'], ['site' => 'url'])->fails());
+});
+
 $tests->run('the documented field vocabulary is the one the code accepts', function () use ($tests): void {
     /*
      * A reader asked for every type and every modifier to be listed, because

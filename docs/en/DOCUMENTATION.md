@@ -5,7 +5,7 @@ correctness across the whole surface. This documentation describes what the
 code does today. Where something does not exist, it says so — see
 [Known limitations](#known-limitations).
 
-> Verified against PHP 8.4 · suite: 166 tests, 0 failures
+> Verified against PHP 8.4 · suite: 169 tests, 0 failures
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -2703,13 +2703,50 @@ Rules are a **pipe-separated string**, not an array. Arguments follow a colon.
 
 | Rule | Checks |
 |---|---|
-| `required` | Not null and not empty |
+| `required` | Not null, not empty, not an empty array |
 | `email` | `FILTER_VALIDATE_EMAIL` |
-| `min:N` | At least N **characters** |
-| `max:N` | At most N **characters** |
-| `alpha` | Letters only, in **any script** (`\p{L}`) |
-| `alphanum` | Letters and digits from any script |
+| `url` | `FILTER_VALIDATE_URL` |
 | `number` | ASCII digits only (safe for `(int)`) |
+| `alpha` | Letters only, **any alphabet** (`\p{L}`) |
+| `alphanum` | Letters and digits from any script |
+| `min:N` | **Follows the value**: at least N as a number, or at least N characters |
+| `max:N` | At most N as a number, or at most N characters |
+| `minLength:N` | At least N characters, **always** — whatever the value looks like |
+| `maxLength:N` | At most N characters, always |
+| `pattern:REGEX` | Matches, with `u` and the delimiters supplied for you |
+
+**`min` and `max` follow the value**, which is what people mean when they write
+them:
+
+```php
+'age'  => 'required|number|min:18',   // at least eighteen years old
+'name' => 'required|min:3',           // at least three characters
+```
+
+Before 0.19.0 they counted characters whatever the value was, so `min:18` on an
+age passed for `7` and failed for `21` — and said nothing. When the distinction
+matters, `minLength` and `maxLength` count characters always: a postcode is a
+number that is really a string.
+
+```php
+'zip' => 'required|minLength:5',      // 01001 is five characters, not 1,001
+```
+
+**The browser checks the same rules.** `@validate` takes these names, with the
+same arguments and the same meaning, so a form says one thing once — and the
+suite compares the two lists so they cannot drift apart. The browser's answer is
+a convenience; the server's is the one that counts.
+
+```html
+<input name="age" @validate="required|number|min:18">
+```
+
+A pattern containing a `|` cannot go in a pipe-separated string, so pass the
+rules as an array instead:
+
+```php
+'colour' => ['required', 'pattern:^(blue|green)$'],
+```
 
 An unknown rule throws `InvalidArgumentException` — a typo fails early rather
 than silently passing validation.
@@ -4810,8 +4847,9 @@ SFJS sends `X-Requested-With`, so it gets the piece that changed; a form
 submitted without JavaScript gets the whole page with the fragment already in
 place. `$request->isFragment()` is the same question if you need it directly.
 
-`@validate` runs on `blur` and accepts `required`, `email`, `number`, `url`,
-`minLength:N`, `maxLength:N` and `pattern:regex`.
+`@validate` runs on `blur` and takes the same rules the server validates with —
+see [Validation](#validation) for the list. Several separated by `|`:
+`@validate="required|number|min:18"`.
 
 ---
 
@@ -4821,7 +4859,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 166 unit cases
+composer run test        # 169 unit cases
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves

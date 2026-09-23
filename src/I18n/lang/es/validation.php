@@ -7,5 +7,9 @@ return [
     'max' => '{1} :field debe tener como máximo un carácter.|[2,*] :field debe tener como máximo :max caracteres.',
     'alpha' => ':field debe contener solo letras.',
     'alphanum' => ':field debe contener solo letras y números.',
+    'url' => ':field debe ser una URL válida.',
+    'pattern' => ':field no tiene el formato esperado.',
+    'minValue' => ':field debe ser como mínimo :min.',
+    'maxValue' => ':field debe ser como máximo :max.',
     'number' => ':field debe contener solo números.',
 ];
