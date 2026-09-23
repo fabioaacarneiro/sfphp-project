@@ -4526,33 +4526,61 @@ Sem `@trigger`, um clique dispara o elemento e um submit dispara o formulário.
 Com ele, o elemento diz por si:
 
 ```html
-<div @get="/painel/vendas" @trigger="load, every 10s"></div>
+<div @get="/painel/vendas" @trigger="load, every:10s"></div>
 
 <input name="q" @get="/busca" @trigger="input delay:300ms" @target="#resultados">
 ```
 
+**A gramática é uma regra só.** Um gatilho é uma palavra, ou uma palavra e um
+valor unidos por dois-pontos. Várias palavras separadas por espaço pertencem ao
+mesmo gatilho; a vírgula começa outro.
+
+```
+@trigger="load, every:10s"        dois gatilhos: dispara agora, e a cada dez segundos
+@trigger="input delay:300ms"      um gatilho, com um modificador
+@trigger="every:5s delay:2s"      um gatilho: começa em dois segundos, depois a cada cinco
+```
+
+É por isso que o primeiro exemplo tem vírgula e o segundo não — o segundo é um
+gatilho só, carregando um modificador, e não dois gatilhos.
+
+**O que um gatilho pode ser**, e esta é a lista inteira:
+
 | | |
 |---|---|
 | `load` | assim que o elemento está na página |
-| `every 10s` | de tempos em tempos — `ms`, `s` e `m` funcionam |
-| `input`, `change`, `click`, `submit` | naquele evento |
-| `delay:300ms` | somado a qualquer um, para digitar não afogar o servidor |
+| `every:10s` | de tempos em tempos. `ms`, `s` e `m` são entendidos; número solto é segundo |
+| qualquer evento do DOM | `click`, `submit`, `input`, `change`, `focus`, `blur`, `keyup`, `mouseenter` — o que o navegador disparar |
 
-Vários separados por vírgula. Um fragmento que chega por uma troca também é
-ligado, então um painel que se atualiza continua se atualizando depois da
-primeira vez.
+Não há uma lista de eventos suportados porque não há lista no código: o nome é
+entregue ao `addEventListener`, então tudo que o navegador conhece funciona. Um
+nome que ele não conhece simplesmente nunca dispara.
+
+**Modificadores**, somados a qualquer gatilho:
+
+| | |
+|---|---|
+| `delay:300ms` | num evento, espera a digitação parar antes de enviar — uma requisição, não uma por tecla. No `load`, adia a primeira execução; no `every`, desloca a primeira, para dez painéis não dispararem no mesmo instante |
+
+Um fragmento que chega por uma troca também é ligado, então um painel que se
+atualiza continua se atualizando depois da primeira vez.
+
+> O `every 10s` com espaço é lido como `every:10s`. Ele saiu na 0.15.0, então
+> fica como grafia depreciada e some num release futuro.
 
 ### Estado na página
 
 Duas coisas diferentes são chamadas de estado, e separá-las é a maior parte do
 desenho:
 
-- **Estado da aplicação** — o carrinho, o registro, a lista. Vive no servidor, e
-  a página mostra uma projeção dele. É para isso que existe o `@get` com
-  `@trigger` e `morph`.
-- **Estado de interface** — aberto ou fechado, qual aba, o que foi digitado e
-  ainda não enviado. Vive na página. Perguntar ao servidor se um menu está
-  aberto gasta trinta milissegundos numa decisão que não leva nenhum.
+- **Estado da aplicação** é o que o servidor possui: o carrinho, o registro, a
+  lista. A página mostra uma cópia, e o `@get` com `@trigger` e `morph` é como
+  essa cópia se mantém atual.
+- **Estado de interface** é o que só interessa a esta página: se um menu está
+  aberto, qual aba está selecionada, o que já foi digitado e ainda não enviado.
+  Isso fica no navegador. Abrir um menu não leva tempo nenhum, e perguntar ao
+  servidor acrescentaria uma ida à rede a uma pergunta que a própria página já
+  sabe responder.
 
 O `@state` é para o segundo.
 
@@ -4593,7 +4621,7 @@ function CartPanel(array $itens): Sfht
     return sfht(
         <div @state="{{ state(['aberto' => false, 'itens' => $itens]) }}">
             <button @on:click="aberto = !aberto">
-                Carrinho (<span @text="itens.length"></span>)
+                Carrinho: <span @text="itens.length"></span>
             </button>
         </div>
     );
@@ -4639,19 +4667,37 @@ Calcule no PHP, antes do markup, onde o dado já está — e passe o número.
 
 ### Estratégias de troca
 
-O `@swap` aceita `innerHTML` (o padrão), `outerHTML`, `beforebegin`,
-`afterbegin`, `beforeend`, `afterend` e `morph`.
+O `@swap` aceita `morph` (o padrão), `innerHTML`, `outerHTML`, `beforebegin`,
+`afterbegin`, `beforeend` e `afterend`.
 
-**O `morph` é o que vale conhecer.** Os outros substituem markup, e substituir
-markup joga fora o foco, o cursor e o que foi digitado em um campo e ainda não
-enviado — então um painel que se atualiza a cada dez segundos torna inutilizável
-um formulário dentro dele. O `morph` percorre a árvore antiga e a nova juntas e
-muda só o que difere: o mesmo nó continua o mesmo nó, e um campo em que a pessoa
-está digitando fica em paz.
+**O `morph` é o padrão porque a alternativa é destrutiva.** Substituir markup
+joga fora o foco, o cursor e o que foi digitado em um campo e ainda não enviado
+— então um painel que se atualiza a cada dez segundos torna inutilizável um
+formulário dentro dele, sem avisar ninguém. O `morph` percorre a árvore antiga e
+a nova juntas e muda só o que difere: o mesmo nó continua o mesmo nó, e um campo
+em que a pessoa está digitando fica em paz.
 
 ```html
-<div id="carrinho" @get="/carrinho" @trigger="every 5s" @target="#carrinho" @swap="morph"></div>
+<div id="carrinho" @get="/carrinho" @trigger="every:5s" @target="#carrinho"></div>
 ```
+
+Ele custa cerca de quatro vezes o `innerHTML`. Medido no Chrome desta máquina,
+trocando uma tabela vinte vezes: 200 linhas dão 1,4 ms contra 6 ms, e 1.000
+linhas dão 4 ms contra 16 ms. Os dois são trabalho de um fragmento, e um
+fragmento com mil linhas é um problema de paginação, não de troca.
+
+Peça `innerHTML` quando a resposta não tem nada em comum com o que está lá — uma
+lista substituída por um estado vazio, por exemplo — e a comparação seria
+trabalho à toa:
+
+```html
+<div @get="/resultados" @target="#resultados" @swap="innerHTML"></div>
+```
+
+> O `morph` virou padrão na 0.17.0. Antes era o `innerHTML`, e uma página que
+> dependia de a subárvore ser reconstruída — um widget de terceiro que se
+> reinicializa, por exemplo — passa a precisar de `@swap="innerHTML"` naquele
+> alvo.
 
 ### Responder com um fragmento
 

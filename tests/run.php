@@ -5338,10 +5338,11 @@ $tests->run('a scope holds state in the browser, and the page follows it', funct
 
 $tests->run('morph updates a panel without throwing away what is being typed', function () use ($tests): void {
     /*
-     * The reason to have a swap strategy other than innerHTML at all. A panel
-     * that refreshes on a period contains a form somebody is filling in;
-     * replacing the markup throws away the focus, the caret and anything typed
-     * and not yet sent. Measured against innerHTML by hand, the same swap loses
+     * Why morph is the default rather than an option. A panel that refreshes on
+     * a period contains a form somebody is filling in; replacing the markup
+     * throws away the focus, the caret and anything typed and not yet sent, and
+     * nothing warns anybody. This asks for no strategy at all, so a change of
+     * default is what it would catch. Measured against innerHTML by hand, the same swap loses
      * the focus, the caret and the text; here the strategy is asserted on its
      * own, because two panels in one page end up with duplicate ids and the
      * assertions start reading the wrong element.
@@ -5386,7 +5387,8 @@ $tests->run('morph updates a panel without throwing away what is being typed', f
         const field = document.getElementById('field');
         field.focus(); field.value = 'typing'; field.setSelectionRange(3, 3);
 
-        await sf.ajax.get('/x', { target: '#morphed', swap: 'morph' });
+        // No swap named on purpose: the default is what is under test.
+        await sf.ajax.get('/x', { target: '#morphed' });
 
         document.getElementById('log').textContent = [
           'text=' + document.getElementById('heading').textContent,

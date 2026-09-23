@@ -15,7 +15,16 @@ const sf = (() => {
   const VERBS = ['get', 'post', 'put', 'patch', 'delete'];
 
   const DEFAULTS = {
-    swapStrategy: 'innerHTML',
+    /*
+     * morph, not innerHTML. Replacing markup throws away the focus, the caret
+     * and anything typed and not yet sent, so the old default quietly broke a
+     * form inside any panel that refreshed itself — a framework should not
+     * make the destructive choice on the visitor's behalf. It costs about four
+     * times as much: measured in Chrome, a 200-row table is 1.4 ms against 6
+     * ms, and a 1,000-row one is 4 ms against 16. Both are a fragment's worth
+     * of work, and a fragment that large is a pagination problem.
+     */
+    swapStrategy: 'morph',
     validateOn: 'blur',
     debounceDelay: 300,
   };
@@ -68,7 +77,7 @@ const sf = (() => {
   };
 
   function request(method, url, options = {}) {
-    const { data = {}, target = null, swap = 'innerHTML', onSuccess = null, onError = null } = options;
+    const { data = {}, target = null, swap = DEFAULTS.swapStrategy, onSuccess = null, onError = null } = options;
 
     return fetch(url, {
       method,
@@ -144,7 +153,7 @@ const sf = (() => {
         morph(target, content);
         break;
       default:
-        target.innerHTML = content;
+        morph(target, content);
     }
 
     /*
@@ -187,7 +196,7 @@ const sf = (() => {
 
       const action = (declared && declared.url) || formElement.getAttribute('action') || '';
       const swapTarget = declared ? declared.target : attributeOf(formElement, 'target');
-      const swapStrategy = (declared ? declared.swap : attributeOf(formElement, 'swap')) || 'innerHTML';
+      const swapStrategy = (declared ? declared.swap : attributeOf(formElement, 'swap')) || DEFAULTS.swapStrategy;
 
       const swapOptions = { target: swapTarget || null, swap: swapStrategy };
 
@@ -1084,19 +1093,41 @@ const sf = (() => {
       element.__sfBound = true;
 
       spec.split(',').forEach((one) => {
+        /*
+         * One shape for everything: a word, or a word and a value joined by a
+         * colon, separated by spaces. "every 10s" with a space is read as the
+         * same thing, because it shipped — it is deprecated and goes in a
+         * later release.
+         */
         const parts = one.trim().split(/\s+/);
-        const name = (parts[0] || '').toLowerCase();
+        const head = (parts[0] || '').split(':');
+        const name = (head[0] || '').toLowerCase();
+        const argument = head[1] || parts[1] || '';
         const delay = readDelay(parts);
 
         if (name === 'load') {
-          send(element);
+          // delay: works here too; it used to be read and then ignored.
+          if (delay > 0) setTimeout(() => send(element), delay);
+          else send(element);
+
           return;
         }
 
         if (name === 'every') {
-          const period = readPeriod(parts[1]);
+          const period = readPeriod(argument);
 
-          if (period > 0) setInterval(() => send(element), period);
+          if (period <= 0) {
+            console.error('SFJS: @trigger="every" needs a period, such as "every:10s"');
+
+            return;
+          }
+
+          // delay: postpones the first run, so ten panels do not all fire at once.
+          const start = () => setInterval(() => send(element), period);
+
+          if (delay > 0) setTimeout(start, delay);
+          else start();
+
           return;
         }
 
@@ -1224,6 +1255,7 @@ const sf = (() => {
   return {
     ajax,
     bind: (root) => { bindTriggers(root); bindState(root); },
+    morph,
     form: { ...form, ...form_validation },
     dom,
     validate,

@@ -4532,32 +4532,60 @@ Without `@trigger`, a click fires an element and a submit fires a form. With it,
 the element says for itself:
 
 ```html
-<div @get="/dashboard/sales" @trigger="load, every 10s"></div>
+<div @get="/dashboard/sales" @trigger="load, every:10s"></div>
 
 <input name="q" @get="/search" @trigger="input delay:300ms" @target="#results">
 ```
 
+**The grammar is one rule.** A trigger is a word, or a word and a value joined
+by a colon. Several words separated by spaces belong to the same trigger; a
+comma starts another one.
+
+```
+@trigger="load, every:10s"        two triggers: fire now, then every ten seconds
+@trigger="input delay:300ms"      one trigger, with a modifier
+@trigger="every:5s delay:2s"      one trigger: start in two seconds, then every five
+```
+
+That is why the first example has a comma and the second does not — the second
+is a single trigger carrying a modifier, not two triggers.
+
+**What a trigger can be**, and this is the whole list:
+
 | | |
 |---|---|
 | `load` | as soon as the element is in the page |
-| `every 10s` | on a period — `ms`, `s` and `m` all work |
-| `input`, `change`, `click`, `submit` | on that event |
-| `delay:300ms` | added to any of them, so typing does not flood the server |
+| `every:10s` | on a period. `ms`, `s` and `m` are understood; a bare number is seconds |
+| any DOM event | `click`, `submit`, `input`, `change`, `focus`, `blur`, `keyup`, `mouseenter` — whatever the browser fires |
 
-Several separated by commas. A fragment that arrives through a swap is wired up
-too, so a panel that refreshes itself keeps refreshing after the first time.
+There is no list of supported events, because there is no list in the code: the
+name is handed to `addEventListener`, so anything the browser knows about works.
+A name the browser does not know simply never fires.
+
+**Modifiers**, added to any trigger:
+
+| | |
+|---|---|
+| `delay:300ms` | on an event, waits for the typing to stop before sending — one request, not one per keystroke. On `load` it postpones the first run; on `every` it offsets the first run, so ten panels do not all fire in the same instant |
+
+A fragment that arrives through a swap is wired up too, so a panel that
+refreshes itself keeps refreshing after the first time.
+
+> `every 10s` with a space is read as `every:10s`. It shipped in 0.15.0, so it
+> is kept as a deprecated spelling and goes in a later release.
 
 ### State in the page
 
 Two different things get called state, and keeping them apart is most of the
 design:
 
-- **Application state** — the cart, the record, the list. It lives on the
-  server, and the page shows a projection of it. That is what `@get` with
-  `@trigger` and `morph` is for.
-- **Interface state** — open or closed, which tab, what has been typed and not
-  sent. It lives in the page. Asking a server whether a menu is open spends
-  thirty milliseconds on a decision that takes none.
+- **Application state** is what the server owns: the cart, the record, the
+  list. The page shows a copy of it, and `@get` with `@trigger` and `morph` is
+  how that copy is kept current.
+- **Interface state** is what only this page cares about: whether a menu is
+  open, which tab is selected, what has been typed and not sent yet. Keep it in
+  the browser. Opening a menu takes no time at all, and asking the server about
+  it would add a round trip to a question the page can already answer.
 
 `@state` is for the second one.
 
@@ -4597,7 +4625,7 @@ function CartPanel(array $items): Sfht
     return sfht(
         <div @state="{{ state(['open' => false, 'items' => $items]) }}">
             <button @on:click="open = !open">
-                Cart (<span @text="items.length"></span>)
+                Cart: <span @text="items.length"></span>
             </button>
         </div>
     );
@@ -4644,19 +4672,38 @@ number in.
 
 ### Swap strategies
 
-`@swap` accepts `innerHTML` (the default), `outerHTML`, `beforebegin`,
-`afterbegin`, `beforeend`, `afterend` and `morph`.
+`@swap` accepts `morph` (the default), `innerHTML`, `outerHTML`, `beforebegin`,
+`afterbegin`, `beforeend` and `afterend`.
 
-**`morph` is the one worth knowing about.** The others replace markup, and
-replacing markup throws away the focus, the caret and anything typed into a
-field that has not been sent yet — so a panel refreshing every ten seconds makes
-a form inside it unusable. `morph` walks the old tree and the new one together
-and changes only what differs: the same node stays the same node, and a field
-the visitor is typing into is left alone.
+**`morph` is the default because the alternative is destructive.** Replacing
+markup throws away the focus, the caret and anything typed into a field that has
+not been sent yet — so a panel refreshing every ten seconds makes a form inside
+it unusable, and nothing warns you. `morph` walks the old tree and the new one
+together and changes only what differs: the same node stays the same node, and a
+field the visitor is typing into is left alone.
 
 ```html
-<div id="cart" @get="/cart" @trigger="every 5s" @target="#cart" @swap="morph"></div>
+<div id="cart" @get="/cart" @trigger="every:5s" @target="#cart"></div>
 ```
+
+It costs about four times what `innerHTML` costs. Measured in Chrome on this
+machine, replacing a table twenty times: a 200-row table is 1.4 ms against 6 ms,
+and a 1,000-row one is 4 ms against 16 ms. Both are a fragment's worth of work,
+and a fragment with a thousand rows in it is a pagination problem rather than a
+swap problem.
+
+Ask for `innerHTML` when the answer has nothing in common with what is there —
+a list replaced by an empty state, for instance — and the comparison would be
+work for nothing:
+
+```html
+<div @get="/results" @target="#results" @swap="innerHTML"></div>
+```
+
+> `morph` became the default in 0.17.0. Before that it was `innerHTML`, and a
+> page that relied on the subtree being rebuilt — a third-party widget
+> reinitialising itself, say — should now say `@swap="innerHTML"` for that
+> target.
 
 ### Answering with a fragment
 

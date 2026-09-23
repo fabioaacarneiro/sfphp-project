@@ -4603,32 +4603,60 @@ Sin `@trigger`, un clic dispara el elemento y un submit dispara el formulario.
 Con él, el elemento lo dice por sí mismo:
 
 ```html
-<div @get="/panel/ventas" @trigger="load, every 10s"></div>
+<div @get="/panel/ventas" @trigger="load, every:10s"></div>
 
 <input name="q" @get="/buscar" @trigger="input delay:300ms" @target="#resultados">
 ```
 
+**La gramática es una sola regla.** Un disparador es una palabra, o una palabra
+y un valor unidos por dos puntos. Varias palabras separadas por espacios
+pertenecen al mismo disparador; la coma empieza otro.
+
+```
+@trigger="load, every:10s"        dos disparadores: ahora, y cada diez segundos
+@trigger="input delay:300ms"      uno solo, con un modificador
+@trigger="every:5s delay:2s"      uno solo: empieza en dos segundos, luego cada cinco
+```
+
+Por eso el primer ejemplo lleva coma y el segundo no — el segundo es un único
+disparador con un modificador, no dos disparadores.
+
+**Qué puede ser un disparador**, y esta es la lista completa:
+
 | | |
 |---|---|
 | `load` | en cuanto el elemento está en la página |
-| `every 10s` | cada cierto tiempo — `ms`, `s` y `m` funcionan |
-| `input`, `change`, `click`, `submit` | en ese evento |
-| `delay:300ms` | añadido a cualquiera, para que teclear no inunde el servidor |
+| `every:10s` | cada cierto tiempo. `ms`, `s` y `m` se entienden; un número suelto son segundos |
+| cualquier evento del DOM | `click`, `submit`, `input`, `change`, `focus`, `blur`, `keyup`, `mouseenter` — lo que el navegador dispare |
 
-Varios separados por comas. Un fragmento que llega por un intercambio también
-queda conectado, así que un panel que se actualiza sigue haciéndolo después de
-la primera vez.
+No hay una lista de eventos admitidos porque no la hay en el código: el nombre
+se entrega a `addEventListener`, así que funciona todo lo que el navegador
+conozca. Un nombre que no conoce simplemente no se dispara nunca.
+
+**Modificadores**, añadidos a cualquier disparador:
+
+| | |
+|---|---|
+| `delay:300ms` | en un evento, espera a que pare la escritura antes de enviar — una petición, no una por tecla. En `load` retrasa la primera ejecución; en `every` desplaza la primera, para que diez paneles no disparen en el mismo instante |
+
+Un fragmento que llega por un intercambio también queda conectado, así que un
+panel que se actualiza sigue haciéndolo después de la primera vez.
+
+> `every 10s` con espacio se lee como `every:10s`. Se publicó en la 0.15.0, así
+> que se mantiene como grafía obsoleta y desaparece en una versión posterior.
 
 ### Estado en la página
 
 Dos cosas distintas se llaman estado, y separarlas es la mayor parte del diseño:
 
-- **Estado de la aplicación** — el carrito, el registro, la lista. Vive en el
-  servidor, y la página muestra una proyección. Para eso está `@get` con
-  `@trigger` y `morph`.
-- **Estado de interfaz** — abierto o cerrado, qué pestaña, lo escrito y aún no
-  enviado. Vive en la página. Preguntarle al servidor si un menú está abierto
-  gasta treinta milisegundos en una decisión que no lleva ninguno.
+- **Estado de la aplicación** es lo que posee el servidor: el carrito, el
+  registro, la lista. La página muestra una copia, y `@get` con `@trigger` y
+  `morph` es cómo esa copia se mantiene al día.
+- **Estado de interfaz** es lo que solo le importa a esta página: si un menú
+  está abierto, qué pestaña está seleccionada, lo que ya se escribió y aún no se
+  envió. Eso se queda en el navegador. Abrir un menú no lleva tiempo, y
+  preguntárselo al servidor añadiría una ida a la red a una pregunta que la
+  propia página ya sabe responder.
 
 `@state` es para el segundo.
 
@@ -4669,7 +4697,7 @@ function CartPanel(array $items): Sfht
     return sfht(
         <div @state="{{ state(['abierto' => false, 'items' => $items]) }}">
             <button @on:click="abierto = !abierto">
-                Carrito (<span @text="items.length"></span>)
+                Carrito: <span @text="items.length"></span>
             </button>
         </div>
     );
@@ -4716,19 +4744,37 @@ Calcúlalo en PHP, antes del marcado, donde el dato ya está — y pasa el núme
 
 ### Estrategias de intercambio
 
-`@swap` acepta `innerHTML` (el valor por defecto), `outerHTML`, `beforebegin`,
-`afterbegin`, `beforeend`, `afterend` y `morph`.
+`@swap` acepta `morph` (el valor por defecto), `innerHTML`, `outerHTML`,
+`beforebegin`, `afterbegin`, `beforeend` y `afterend`.
 
-**`morph` es el que vale la pena conocer.** Los demás reemplazan marcado, y
-reemplazar marcado tira el foco, el cursor y lo escrito en un campo que aún no
+**`morph` es el valor por defecto porque la alternativa es destructiva.**
+Reemplazar marcado tira el foco, el cursor y lo escrito en un campo que aún no
 se ha enviado — así que un panel que se actualiza cada diez segundos vuelve
-inutilizable un formulario dentro de él. `morph` recorre el árbol viejo y el
-nuevo a la vez y cambia solo lo que difiere: el mismo nodo sigue siendo el mismo
-nodo, y un campo en el que se está escribiendo se deja en paz.
+inutilizable un formulario dentro de él, y nada avisa. `morph` recorre el árbol
+viejo y el nuevo a la vez y cambia solo lo que difiere: el mismo nodo sigue
+siendo el mismo nodo, y un campo en el que se está escribiendo se deja en paz.
 
 ```html
-<div id="carrito" @get="/carrito" @trigger="every 5s" @target="#carrito" @swap="morph"></div>
+<div id="carrito" @get="/carrito" @trigger="every:5s" @target="#carrito"></div>
 ```
+
+Cuesta unas cuatro veces lo que `innerHTML`. Medido en Chrome en esta máquina,
+reemplazando una tabla veinte veces: 200 filas son 1,4 ms frente a 6 ms, y 1.000
+filas son 4 ms frente a 16 ms. Ambos son el trabajo de un fragmento, y un
+fragmento con mil filas es un problema de paginación, no de intercambio.
+
+Pide `innerHTML` cuando la respuesta no tiene nada en común con lo que hay —una
+lista sustituida por un estado vacío, por ejemplo— y la comparación sería
+trabajo en balde:
+
+```html
+<div @get="/resultados" @target="#resultados" @swap="innerHTML"></div>
+```
+
+> `morph` pasó a ser el valor por defecto en la 0.17.0. Antes era `innerHTML`, y
+> una página que dependía de que el subárbol se reconstruyera —un widget de
+> terceros que se reinicializa, por ejemplo— ahora necesita `@swap="innerHTML"`
+> en ese objetivo.
 
 ### Responder con un fragmento
 
