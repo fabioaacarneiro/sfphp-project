@@ -1,7 +1,7 @@
 /**
  * SFJS — Simple Framework JavaScript Library
  * HTMX-like AJAX, forms, and DOM utilities without dependencies
- * ~12KB minified, 3,6KB gzipped
+ * ~21KB minified, 6.0KB gzipped
  */
 
 const sf = (() => {
@@ -154,6 +154,7 @@ const sf = (() => {
      * describe as "it only updates the first time".
      */
     bindTriggers(target.parentNode || document);
+    bindState(target.parentNode || document);
   }
 
   // ========== FORMS ==========
@@ -456,6 +457,511 @@ const sf = (() => {
     morphChildren(here, there);
   }
 
+  // ========== STATE ==========
+
+  /*
+   * A tiny expression language, parsed rather than eval()'d.
+   *
+   * Alpine and Vue hand their attribute values to new Function(), which
+   * accepts all of JavaScript and, in exchange, requires 'unsafe-eval' in the
+   * Content-Security-Policy of every page that uses them. This framework
+   * spends a chapter arguing for a strict policy, so it cannot ship a feature
+   * that quietly asks for the opposite.
+   *
+   * What is supported: paths (user.name), literals, ! - unary, the arithmetic
+   * and comparison operators, && and ||, the ternary, object and array
+   * literals, and assignment. What is not: calls, arrow functions, indexing by
+   * expression. Those belong in PHP, before the markup, where the data already
+   * is — and refusing them loudly beats supporting them at the price above.
+   */
+
+  const PUNCTUATION = ['===', '!==', '==', '!=', '<=', '>=', '&&', '||', '?', ':', '(', ')', '{', '}', '[', ']', ',', '.', '+', '-', '*', '/', '%', '<', '>', '=', '!'];
+
+  /**
+   * Break an expression into tokens.
+   *
+   * @param {string} source The expression
+   * @returns {Array<{type: string, value: *}>}
+   */
+  function tokenize(source) {
+    const tokens = [];
+    let i = 0;
+
+    while (i < source.length) {
+      const char = source[i];
+
+      if (/\s/.test(char)) { i++; continue; }
+
+      if (char === '"' || char === "'") {
+        let value = '';
+        i++;
+
+        while (i < source.length && source[i] !== char) {
+          if (source[i] === '\\') i++;
+          value += source[i++];
+        }
+
+        i++;
+        tokens.push({ type: 'string', value });
+        continue;
+      }
+
+      if (/[0-9]/.test(char)) {
+        let raw = '';
+
+        while (i < source.length && /[0-9.]/.test(source[i])) raw += source[i++];
+
+        tokens.push({ type: 'number', value: parseFloat(raw) });
+        continue;
+      }
+
+      if (/[A-Za-z_$]/.test(char)) {
+        let name = '';
+
+        while (i < source.length && /[A-Za-z0-9_$]/.test(source[i])) name += source[i++];
+
+        if (name === 'true') tokens.push({ type: 'boolean', value: true });
+        else if (name === 'false') tokens.push({ type: 'boolean', value: false });
+        else if (name === 'null') tokens.push({ type: 'null', value: null });
+        else tokens.push({ type: 'name', value: name });
+
+        continue;
+      }
+
+      const punctuation = PUNCTUATION.find((one) => source.startsWith(one, i));
+
+      if (!punctuation) throw new Error('SFJS: cannot read "' + char + '" in expression');
+
+      tokens.push({ type: 'punctuation', value: punctuation });
+      i += punctuation.length;
+    }
+
+    return tokens;
+  }
+
+  /**
+   * Parse tokens into a tree.
+   *
+   * @param {Array} tokens The tokens
+   * @returns {Object} The tree
+   */
+  function parse(tokens) {
+    let at = 0;
+
+    const peek = () => tokens[at];
+    const take = () => tokens[at++];
+    const eat = (value) => {
+      if (!peek() || peek().value !== value) {
+        throw new Error('SFJS: expected "' + value + '" in expression');
+      }
+
+      return take();
+    };
+
+    function primary() {
+      const token = peek();
+
+      if (!token) throw new Error('SFJS: expression ended early');
+
+      if (token.value === '!' ) { take(); return { kind: 'not', value: primary() }; }
+      if (token.value === '-') { take(); return { kind: 'negate', value: primary() }; }
+
+      if (token.value === '(') {
+        take();
+        const inner = expression();
+        eat(')');
+
+        return inner;
+      }
+
+      if (token.value === '[') {
+        take();
+        const items = [];
+
+        while (peek() && peek().value !== ']') {
+          items.push(expression());
+
+          if (peek() && peek().value === ',') take();
+        }
+
+        eat(']');
+
+        return { kind: 'array', items };
+      }
+
+      if (token.value === '{') {
+        take();
+        const entries = [];
+
+        while (peek() && peek().value !== '}') {
+          const key = take();
+          eat(':');
+          entries.push([key.value, expression()]);
+
+          if (peek() && peek().value === ',') take();
+        }
+
+        eat('}');
+
+        return { kind: 'object', entries };
+      }
+
+      if (token.type === 'name') {
+        take();
+        const path = [token.value];
+
+        while (peek() && peek().value === '.') {
+          take();
+          path.push(take().value);
+        }
+
+        return { kind: 'path', path };
+      }
+
+      take();
+
+      return { kind: 'literal', value: token.value };
+    }
+
+    const LEVELS = [['||'], ['&&'], ['===', '!==', '==', '!='], ['<', '>', '<=', '>='], ['+', '-'], ['*', '/', '%']];
+
+    function binary(level) {
+      if (level >= LEVELS.length) return primary();
+
+      let left = binary(level + 1);
+
+      while (peek() && peek().type === 'punctuation' && LEVELS[level].includes(peek().value)) {
+        const operator = take().value;
+        left = { kind: 'binary', operator, left, right: binary(level + 1) };
+      }
+
+      return left;
+    }
+
+    function expression() {
+      const left = binary(0);
+
+      if (peek() && peek().value === '?') {
+        take();
+        const yes = expression();
+        eat(':');
+
+        return { kind: 'ternary', test: left, yes, no: expression() };
+      }
+
+      if (peek() && peek().value === '=' && left.kind === 'path') {
+        take();
+
+        return { kind: 'assign', path: left.path, value: expression() };
+      }
+
+      return left;
+    }
+
+    const tree = expression();
+
+    if (at < tokens.length) throw new Error('SFJS: unexpected "' + tokens[at].value + '" in expression');
+
+    return tree;
+  }
+
+  /** Expressions are parsed once and kept, because bindings re-evaluate often. */
+  const parsed = new Map();
+
+  /**
+   * Parse an expression, reusing the tree when it has been seen before.
+   *
+   * @param {string} source The expression
+   * @returns {Object} The tree
+   */
+  function compile(source) {
+    if (!parsed.has(source)) parsed.set(source, parse(tokenize(source)));
+
+    return parsed.get(source);
+  }
+
+  /**
+   * Work out what an expression means in a scope.
+   *
+   * @param {Object} node The tree
+   * @param {Object} scope The state
+   * @returns {*} The value
+   */
+  function evaluate(node, scope) {
+    switch (node.kind) {
+      case 'literal': return node.value;
+      case 'not': return !evaluate(node.value, scope);
+      case 'negate': return -evaluate(node.value, scope);
+      case 'array': return node.items.map((item) => evaluate(item, scope));
+      case 'object': {
+        const built = {};
+        node.entries.forEach(([key, value]) => { built[key] = evaluate(value, scope); });
+
+        return built;
+      }
+      case 'path': {
+        let value = scope;
+
+        for (const step of node.path) {
+          if (value === null || value === undefined) return undefined;
+          value = value[step];
+        }
+
+        return value;
+      }
+      case 'ternary':
+        return evaluate(node.test, scope) ? evaluate(node.yes, scope) : evaluate(node.no, scope);
+      case 'assign': {
+        const value = evaluate(node.value, scope);
+        let holder = scope;
+
+        for (let i = 0; i < node.path.length - 1; i++) holder = holder[node.path[i]];
+
+        holder[node.path[node.path.length - 1]] = value;
+
+        return value;
+      }
+      case 'binary': {
+        const left = evaluate(node.left, scope);
+
+        // Short-circuit, so "user && user.name" is safe when there is no user.
+        if (node.operator === '&&') return left ? evaluate(node.right, scope) : left;
+        if (node.operator === '||') return left ? left : evaluate(node.right, scope);
+
+        const right = evaluate(node.right, scope);
+
+        switch (node.operator) {
+          case '+': return left + right;
+          case '-': return left - right;
+          case '*': return left * right;
+          case '/': return left / right;
+          case '%': return left % right;
+          case '==': return left == right;
+          case '!=': return left != right;
+          case '===': return left === right;
+          case '!==': return left !== right;
+          case '<': return left < right;
+          case '>': return left > right;
+          case '<=': return left <= right;
+          case '>=': return left >= right;
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Make an object announce its changes.
+   *
+   * @param {Object} initial The starting values
+   * @param {Function} onChange Called after any write
+   * @returns {Proxy} The state
+   */
+  function reactive(initial, onChange) {
+    const handler = {
+      get(target, key) {
+        const value = target[key];
+
+        // Nested objects announce their own writes, so user.name = 'x' works.
+        return value && typeof value === 'object' ? new Proxy(value, handler) : value;
+      },
+      set(target, key, value) {
+        if (target[key] === value) return true;
+
+        target[key] = value;
+        onChange();
+
+        return true;
+      },
+      deleteProperty(target, key) {
+        delete target[key];
+        onChange();
+
+        return true;
+      },
+    };
+
+    return new Proxy(initial, handler);
+  }
+
+  /**
+   * Wire up every state scope under a root.
+   *
+   * A scope is an element carrying @state. Everything under it binds to that
+   * state until another @state starts a scope of its own.
+   *
+   *   <div @state="{ open: false, name: '' }">
+   *     <button @on:click="open = !open">Toggle</button>
+   *     <div @show="open">
+   *       <input @model="name">
+   *       <p>Hello, <span @text="name"></span></p>
+   *     </div>
+   *   </div>
+   *
+   * Nothing here goes to the server. This is interface state — open, selected,
+   * half-typed — and asking a server whether a menu is open is thirty
+   * milliseconds spent on a decision that takes none.
+   *
+   * @param {ParentNode} root Where to look
+   * @returns {void}
+   */
+  function bindState(root) {
+    const scopes = [];
+
+    if (root.nodeType === Node.ELEMENT_NODE && root.hasAttribute('@state')) scopes.push(root);
+
+    if (root.querySelectorAll) root.querySelectorAll('[\\@state]').forEach((one) => scopes.push(one));
+
+    scopes.forEach((element) => {
+      if (element.__sfState) return;
+
+      let state;
+      const bindings = [];
+      const apply = () => bindings.forEach((binding) => binding());
+
+      try {
+        state = reactive(evaluate(compile(element.getAttribute('@state') || '{}'), {}), apply);
+      } catch (error) {
+        console.error('SFJS: @state could not be read —', error.message);
+
+        return;
+      }
+
+      element.__sfState = state;
+
+      collect(element, element, bindings, state);
+      apply();
+    });
+  }
+
+  /**
+   * Find the state this element belongs to.
+   *
+   * @param {Element} element The element
+   * @returns {?Object} The state, or null
+   */
+  function scopeOf(element) {
+    const holder = element && element.closest ? element.closest('[\\@state]') : null;
+
+    return holder ? holder.__sfState || null : null;
+  }
+
+  /**
+   * Walk a scope and register what each element asked for.
+   *
+   * @param {Element} scope The element carrying @state
+   * @param {Element} element The element being examined
+   * @param {Array} bindings Where to add the update functions
+   * @param {Object} state The scope's state
+   * @returns {void}
+   */
+  function collect(scope, element, bindings, state) {
+    if (element !== scope && element.hasAttribute && element.hasAttribute('@state')) return;
+
+    if (element.attributes) {
+      Array.from(element.attributes).forEach((attribute) => {
+        const name = attribute.name.toLowerCase();
+        const source = attribute.value;
+
+        if (name === '@text') {
+          bindings.push(() => {
+            const value = read(source, state);
+            const text = value === undefined || value === null ? '' : String(value);
+
+            if (element.textContent !== text) element.textContent = text;
+          });
+        }
+
+        if (name === '@show') {
+          bindings.push(() => {
+            element.style.display = read(source, state) ? '' : 'none';
+          });
+        }
+
+        if (name === '@class') {
+          const fixed = element.getAttribute('class') || '';
+
+          bindings.push(() => {
+            const extra = read(source, state);
+            element.setAttribute('class', (fixed + ' ' + (extra || '')).trim());
+          });
+        }
+
+        if (name === '@model') {
+          const path = source.trim();
+
+          element.addEventListener('input', () => {
+            write(path, element.type === 'checkbox' ? element.checked : element.value, state);
+          });
+
+          bindings.push(() => {
+            const value = read(path, state);
+
+            if (element.type === 'checkbox') {
+              element.checked = !!value;
+
+              return;
+            }
+
+            const text = value === undefined || value === null ? '' : String(value);
+
+            // Writing while somebody types moves the caret, so only when it differs.
+            if (element.value !== text) element.value = text;
+          });
+        }
+
+        if (name.startsWith('@on:')) {
+          element.addEventListener(name.slice('@on:'.length), (event) => {
+            if (element.tagName === 'FORM' || element.type === 'submit') event.preventDefault();
+
+            try {
+              evaluate(compile(source), state);
+            } catch (error) {
+              console.error('SFJS: ' + name + ' failed —', error.message);
+            }
+          });
+        }
+      });
+    }
+
+    Array.from(element.children || []).forEach((child) => collect(scope, child, bindings, state));
+  }
+
+  /**
+   * Evaluate an expression, reporting rather than throwing.
+   *
+   * @param {string} source The expression
+   * @param {Object} state The state
+   * @returns {*} The value
+   */
+  function read(source, state) {
+    try {
+      return evaluate(compile(source), state);
+    } catch (error) {
+      console.error('SFJS: cannot evaluate "' + source + '" —', error.message);
+
+      return undefined;
+    }
+  }
+
+  /**
+   * Assign to a path in the state.
+   *
+   * @param {string} path Dotted
+   * @param {*} value The value
+   * @param {Object} state The state
+   * @returns {void}
+   */
+  function write(path, value, state) {
+    const steps = path.split('.');
+    let holder = state;
+
+    for (let i = 0; i < steps.length - 1; i++) holder = holder[steps[i]];
+
+    holder[steps[steps.length - 1]] = value;
+  }
+
   // ========== DECLARATIVE TRIGGERS ==========
 
   /**
@@ -473,7 +979,35 @@ const sf = (() => {
 
     if (!declared) return null;
 
+    const into = attributeOf(element, 'into');
+    const busy = attributeOf(element, 'loading');
+    const state = into || busy ? scopeOf(element) : null;
+
     const options = { target: declared.target, swap: declared.swap };
+
+    if (state && into) {
+      /*
+       * @into puts the answer in the state instead of in the page, which is
+       * what "fetch and render where I said" looks like without a line of
+       * JavaScript: @get="/api/user" @into="user", then @text="user.name".
+       */
+      options.target = null;
+      options.onSuccess = (body) => {
+        try {
+          write(into, JSON.parse(body), state);
+        } catch (error) {
+          console.error('SFJS: @into expected JSON —', error.message);
+        }
+
+        if (busy) write(busy, false, state);
+      };
+      options.onError = () => { if (busy) write(busy, false, state); };
+    } else if (state && busy) {
+      options.onSuccess = () => write(busy, false, state);
+      options.onError = () => write(busy, false, state);
+    }
+
+    if (state && busy) write(busy, true, state);
 
     /*
      * A field carries its own value. Typing in a search box and having the
@@ -622,6 +1156,7 @@ const sf = (() => {
     });
 
     bindTriggers(document);
+    bindState(document);
 
     // Validation on blur/change
     document.addEventListener('blur', (e) => {
@@ -658,7 +1193,7 @@ const sf = (() => {
 
   return {
     ajax,
-    bind: bindTriggers,
+    bind: (root) => { bindTriggers(root); bindState(root); },
     form: { ...form, ...form_validation },
     dom,
     validate,

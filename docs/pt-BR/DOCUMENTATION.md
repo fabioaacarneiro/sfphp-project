@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 160 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 162 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -4443,7 +4443,7 @@ Referência completa: [SFCSS](SFCSS.md) e
 
 ## SFJS
 
-Biblioteca JavaScript sem dependências — 20KB crus, 12KB minificados, **3,6KB
+Biblioteca JavaScript sem dependências — 35KB crus, 21KB minificados, **6,0KB
 gzipped**. Exposta como `window.sf`.
 
 ```html
@@ -4542,6 +4542,95 @@ Vários separados por vírgula. Um fragmento que chega por uma troca também é
 ligado, então um painel que se atualiza continua se atualizando depois da
 primeira vez.
 
+### Estado na página
+
+Duas coisas diferentes são chamadas de estado, e separá-las é a maior parte do
+desenho:
+
+- **Estado da aplicação** — o carrinho, o registro, a lista. Vive no servidor, e
+  a página mostra uma projeção dele. É para isso que existe o `@get` com
+  `@trigger` e `morph`.
+- **Estado de interface** — aberto ou fechado, qual aba, o que foi digitado e
+  ainda não enviado. Vive na página. Perguntar ao servidor se um menu está
+  aberto gasta trinta milissegundos numa decisão que não leva nenhum.
+
+O `@state` é para o segundo.
+
+```html
+<div @state="{ aberto: false, nome: '' }">
+  <button @on:click="aberto = !aberto">Alternar</button>
+
+  <div @show="aberto">
+    <input @model="nome">
+    <p>Olá, <span @text="nome"></span></p>
+  </div>
+</div>
+```
+
+Um elemento com `@state` abre um escopo. Tudo abaixo dele lê e escreve naquele
+estado até outro `@state` abrir um escopo próprio, e uma escrita atualiza
+apenas as ligações que a mencionam.
+
+| | |
+|---|---|
+| `@text` | o texto do elemento passa a ser o valor da expressão |
+| `@show` | exibido enquanto a expressão for verdadeira |
+| `@class` | soma classes às que o elemento já tem |
+| `@model` | mão dupla em input, checkbox ou select |
+| `@on:click`, `@on:input`, … | roda uma expressão quando o evento acontece |
+
+### Os primeiros valores vêm do PHP
+
+```php
+function CartPanel(array $itens): Sfht
+{
+    return sfht(
+        <div @state="{{ state(['aberto' => false, 'itens' => $itens]) }}">
+            <button @on:click="aberto = !aberto">
+                Carrinho (<span @text="itens.length"></span>)
+            </button>
+        </div>
+    );
+}
+```
+
+O `state()` devolve JSON como string simples justamente para o `{{ }}` escapar:
+as aspas viram entidades dentro do atributo e o navegador as devolve intactas.
+
+### Buscar para dentro do estado
+
+```html
+<button @get="/api/users/7" @into="user" @loading="busy">Carregar</button>
+
+<span @text="busy ? 'Carregando…' : user.name"></span>
+```
+
+O `@into` coloca o JSON decodificado naquela chave em vez de trocar markup; o
+`@loading` segura um booleano enquanto a requisição está no ar. Juntos, são o
+`useState` e o `await` sem uma linha de JavaScript.
+
+### O que as expressões fazem, e o que não fazem
+
+Caminhos (`user.name`), literais de texto, número, booleano e nulo, `!` e `-`
+unário, `+ - * / %`, `== != === !== < > <= >=`, `&&` e `||` com curto-circuito,
+o ternário, literais de objeto e de lista, e atribuição.
+
+**Não** há chamada de função, arrow function nem índice por expressão. Então
+isto não funciona:
+
+```html
+<span @text="itens.filter(i => i.ativo).length"></span>
+```
+
+Calcule no PHP, antes do markup, onde o dado já está — e passe o número.
+
+> **Por que o limite existe.** Alpine e Vue entregam o valor do atributo ao
+> `new Function()`, que aceita todo o JavaScript e, em troca, exige
+> `unsafe-eval` na Content-Security-Policy de toda página que os usa. Aqui as
+> expressões são interpretadas, então uma política estrita continua estrita.
+> Uma expressão que ele não entende é reportada no console pelo nome, em vez de
+> falhar em silêncio.
+
 ### Estratégias de troca
 
 O `@swap` aceita `innerHTML` (o padrão), `outerHTML`, `beforebegin`,
@@ -4587,7 +4676,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 160 casos unitários
+composer run test        # 162 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve
