@@ -5621,6 +5621,83 @@ $tests->run('a declarative form sends the fields a visitor typed', function () u
     }
 });
 
+$tests->run('the documented field vocabulary is the one the code accepts', function () use ($tests): void {
+    /*
+     * A reader asked for every type and every modifier to be listed, because
+     * otherwise they are guessed at. A list written by hand is a list that
+     * drifts, so this compares the documentation against the constants: adding
+     * a type without documenting it fails here, in all three languages.
+     */
+    $draft = new ReflectionClass(SfphpProject\src\Migrations\MigrationDraft::class);
+
+    $vocabulary = array_merge(
+        $draft->getConstant('PLAIN_TYPES'),
+        $draft->getConstant('SIZED_TYPES'),
+        $draft->getConstant('PRECISION_TYPES'),
+        $draft->getConstant('FLAGS'),
+        $draft->getConstant('SHORTHANDS')
+    );
+
+    foreach (['en', 'pt-BR', 'es'] as $language) {
+        $documentation = (string) file_get_contents(dirname(__DIR__) . '/docs/' . $language . '/DOCUMENTATION.md');
+
+        foreach ($vocabulary as $word) {
+            if (!str_contains($documentation, '`' . $word . '`')) {
+                throw new RuntimeException(sprintf('%s does not document "%s".', $language, $word));
+            }
+        }
+
+        foreach ($draft->getConstant('VALUED') as $word) {
+            if (!str_contains($documentation, '`' . $word . '=`')) {
+                throw new RuntimeException(sprintf('%s does not document "%s=".', $language, $word));
+            }
+        }
+    }
+
+    $tests->assertSame(true, true);
+});
+
+$tests->run('a request validates what it carried, not what is in a superglobal', function () use ($tests): void {
+    /*
+     * The documentation used to show Validator::validate($_POST, ...), which
+     * contradicts the layer it sits in: a superglobal is process-wide state, so
+     * a test has to fake it, a second request in the same worker inherits it,
+     * and a controller written against it cannot be called twice with different
+     * input.
+     */
+    $request = Request::create('POST', '/users', [
+        'body' => ['name' => 'Jo', 'email' => 'not-an-email', 'age' => '30'],
+    ]);
+
+    $result = $request->validate([
+        'name' => 'required|min:3',
+        'email' => 'required|email',
+        'age' => 'required|number',
+    ]);
+
+    $tests->assertSame(true, $result->fails());
+    $tests->assertSame(true, isset($result->errors()['name']));
+    $tests->assertSame(true, isset($result->errors()['email']));
+
+    // The field that passed is in validated(); the ones that did not are not.
+    $tests->assertSame(false, isset($result->errors()['age']));
+
+    // Two requests, two answers, with nothing shared between them.
+    $second = Request::create('POST', '/users', [
+        'body' => ['name' => 'Joana', 'email' => 'joana@example.com', 'age' => '30'],
+    ]);
+
+    $tests->assertSame(true, $second->validate([
+        'name' => 'required|min:3',
+        'email' => 'required|email',
+        'age' => 'required|number',
+    ])->passes());
+
+    // Query string counts too: a GET form is still input.
+    $query = Request::create('GET', '/search?term=ab');
+    $tests->assertSame(true, $query->validate(['term' => 'required|min:3'])->fails());
+});
+
 $tests->run('a migration reads its own name, and its fields', function () use ($tests): void {
     /*
      * The name is the instruction: create_users creates, add_x_to_users

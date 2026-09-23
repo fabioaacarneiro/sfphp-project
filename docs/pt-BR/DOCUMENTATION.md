@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> Verificado contra PHP 8.4 · suíte: 164 testes, 0 falhas
+> Verificado contra PHP 8.4 · suíte: 166 testes, 0 falhas
 >
 > 🌍 Disponível também em [English](../en/DOCUMENTATION.md) e
 > [Español](../es/DOCUMENTATION.md).
@@ -1668,6 +1668,39 @@ depois dele são modificadores:
 | `author_id:foreignId:constrained` | `$table->foreignId('author_id')->constrained()` |
 | `timestamps` | `$table->timestamps()` — palavra solta não leva nome de coluna |
 
+
+#### Todos os tipos e todos os modificadores
+
+Nada para adivinhar — este é o vocabulário inteiro que o comando aceita, e um
+nome fora dele é recusado com esta lista antes de qualquer arquivo ser escrito.
+
+**Tipos sem argumento**
+
+`id` · `increments` · `smallIncrements` · `mediumIncrements` · `bigIncrements` ·
+`foreignId` · `foreignUuid` · `foreignUlid` · `tinyInteger` · `smallInteger` ·
+`mediumInteger` · `integer` · `bigInteger` · `unsignedTinyInteger` ·
+`unsignedSmallInteger` · `unsignedMediumInteger` · `unsignedInteger` ·
+`unsignedBigInteger` · `text` · `mediumText` · `longText` · `binary` ·
+`boolean` · `date` · `time` · `timeTz` · `dateTime` · `dateTimeTz` ·
+`timestamp` · `timestampTz` · `json` · `jsonb` · `uuid` · `ulid` ·
+`ipAddress` · `macAddress` · `year` · `float` · `double`
+
+**Tipos que levam tamanho** — `string`, `char`. `title:string:120`.
+
+**Tipos que levam precisão e escala** — `decimal`, `unsignedDecimal`.
+`price:decimal:8,2`.
+
+**Modificadores sem valor** — `nullable`, `unique`, `index`, `unsigned`,
+`primary`, `autoIncrement`, `useCurrent`, `useCurrentOnUpdate`, `constrained`,
+`first`. Quantos quiser: `slug:string:120:unique:index`.
+
+**Modificadores com valor** — `default=`, `comment=`, `after=`. Um valor
+`true`, `false`, `null` ou número vira esse literal; qualquer outra coisa vira
+string entre aspas. `role:string:default=editor`, `active:boolean:default=true`.
+
+**Palavras soltas, que não levam nome de coluna** — `id`, `timestamps`,
+`timestampsTz`, `softDeletes`, `softDeletesTz`, `rememberToken`.
+
 Dois-pontos em vez de parênteses de propósito: `surname:varchar(255)` é erro de
 sintaxe no shell a menos que esteja entre aspas, e argumento que só funciona
 entre aspas é argumento que as pessoas erram.
@@ -2622,21 +2655,37 @@ requisição que o criou e seria visto pela seguinte.
 ## Validação
 
 ```php
+public function store(Request $request): Response
+{
+    $resultado = $request->validate([
+        'name'  => 'required|min:3|max:255',
+        'email' => 'required|email',
+        'idade' => 'required|number',
+    ]);
+
+    if ($resultado->fails()) {
+        return Response::json(['errors' => $resultado->errors()], HTTP_UNPROCESSABLE_ENTITY);
+    }
+
+    $limpos = $resultado->validated();
+
+    // ...
+}
+```
+
+Os dados são os da própria requisição — query string, corpo, JSON, o que aquela
+requisição de fato carregou. **Nada mexe no `$_POST`**, e isso importa além do
+gosto: superglobal é estado do processo inteiro, então um teste precisa forjá-la,
+uma segunda requisição no mesmo worker herda o que sobrou, e um controller
+escrito contra ela não pode ser chamado duas vezes com entradas diferentes.
+
+Fora de uma requisição — um comando de console, um job de fila, um valor que
+você mesmo montou — o validador aceita qualquer array:
+
+```php
 use SfphpProject\src\Validator;
 
-$resultado = Validator::validate($_POST, [
-    'name'  => 'required|min:3|max:255',
-    'email' => 'required|email',
-    'idade' => 'required|number',
-]);
-
-if ($resultado->fails()) {
-    foreach ($resultado->errors() as $campo => $mensagens) {
-        echo $campo . ': ' . implode(', ', $mensagens);
-    }
-}
-
-$limpos = $resultado->validated();
+$resultado = Validator::validate($linha, ['email' => 'required|email']);
 ```
 
 As regras são uma **string separada por `|`**, não um array. Argumentos vêm
@@ -4767,7 +4816,7 @@ Runner próprio, sem PHPUnit — coerente com zero dependências.
 
 ```bash
 composer run lint        # php -l em todo o projeto
-composer run test        # 164 casos unitários
+composer run test        # 166 casos unitários
 composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve
