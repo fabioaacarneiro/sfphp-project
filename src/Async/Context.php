@@ -50,6 +50,28 @@ class Context
     }
 
     /**
+     * The scheduler everything runs on, creating one if nothing did.
+     *
+     * A request goes through the EnableAsync middleware and gets its own, but
+     * a console command, a queue worker and a test do not — and `await()` has
+     * to work in all of them. Falling back to a lazily created root scheduler
+     * is what makes the public API usable outside a web request, which it was
+     * not: `await()` outside the middleware simply returned null.
+     *
+     * @return Scheduler The scheduler
+     */
+    public static function scheduler(): Scheduler
+    {
+        self::initialize();
+
+        if (self::$schedulerStack->isEmpty()) {
+            self::$schedulerStack->push(new Scheduler());
+        }
+
+        return self::$schedulerStack->top();
+    }
+
+    /**
      * Get the current active Scheduler
      *
      * @throws AsyncException If no Scheduler is active

@@ -1,6 +1,5 @@
 {
     "name": "fabioaacarneiro/sfphp-framework",
-    "version": "0.12.0",
     "description": "A full-stack PHP framework with zero runtime dependencies, complete async/await system using PHP Fibers, reactive components, and real-time capabilities.",
     "license": "MIT",
     "require": {
@@ -19,7 +18,8 @@
             "src/runtime.php",
             "src/utils.php",
             "src/http.php",
-            "src/helpers.php"
+            "src/helpers.php",
+            "src/Async/functions.php"
         ]
     },
     "authors": [

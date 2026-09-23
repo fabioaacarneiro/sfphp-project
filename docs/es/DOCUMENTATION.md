@@ -5,7 +5,7 @@ Unicode en toda su superficie. Esta documentación describe lo que el código
 hace hoy. Donde algo no existe, se dice que no existe — véase
 [Limitaciones conocidas](#limitaciones-conocidas).
 
-> Verificado contra PHP 8.4 · suite: 154 pruebas, 0 fallos
+> Verificado contra PHP 8.4 · suite: 156 pruebas, 0 fallos
 >
 > 🌍 Disponible también en [English](../en/DOCUMENTATION.md) y
 > [Português](../pt-BR/DOCUMENTATION.md).
@@ -45,6 +45,7 @@ hace hoy. Donde algo no existe, se dice que no existe — véase
 - [CSRF](#csrf)
 - [JWT](#jwt)
 - [Depuración](#depuración)
+- [Async](#async)
 - [Manejo de errores](#manejo-de-errores)
 - [Registro](#registro)
 - [Health check y métricas](#health-check-y-métricas)
@@ -3852,6 +3853,141 @@ datos; así es una entrada en tu registro y un 500 para él. El registro pasa po
 
 ---
 
+## Async
+
+Dos cosas comparten la misma palabra, y separarlas es lo esencial para entender
+esta sección:
+
+- **Planificación asíncrona** — la operación es un valor que el runtime sostiene,
+  pasa, combina y espera. Todo lo de aquí tiene esto.
+- **I/O no bloqueante** — mientras la operación espera, el proceso hace otra
+  cosa. **Las peticiones HTTP y los temporizadores lo tienen. Las consultas a la
+  base de datos no.**
+
+El framework no va a fingir lo contrario, porque una API que dice `await()` y
+bloquea igualmente enseña algo falso sobre tu propio programa.
+
+### Empezar un trabajo y esperarlo
+
+```php
+use function SfphpProject\src\Async\async;
+use function SfphpProject\src\Async\await;
+
+$a = Http::getAsync('https://billing.internal/invoices/7');
+$b = Http::getAsync('https://catalog.internal/products/42');
+
+[$factura, $producto] = [await($a), await($b)];
+```
+
+Cada petición está en la red en cuanto se crea, así que ambas se solapan y esto
+cuesta más o menos lo que la más lenta. `async()` hace lo mismo con tu propio
+código: se ejecuta como una tarea, junto a lo demás que esté corriendo.
+
+```php
+$tarea = async(fn () => await(Http::getAsync($url))->json());
+
+$datos = await($tarea);
+```
+
+`await()` nunca consulta en bucle. Dentro de una tarea aparca la Fiber y el
+planificador la reanuda cuando llega el resultado; fuera de una, conduce el
+event loop, así que todo lo demás pendiente sigue avanzando. El proceso espera
+en un único `select()` sobre todas las transferencias abiertas y el temporizador
+más cercano.
+
+### Varios a la vez
+
+```php
+use SfphpProject\src\Async\CompositeFuture;
+
+[$primero, $segundo, $tercero] = await(CompositeFuture::all(
+    Http::getAsync($uno),
+    Http::getAsync($dos),
+    Http::getAsync($tres),
+));
+
+$masRapido = await(CompositeFuture::race($principal, $espejo));
+```
+
+`all()` se resuelve cuando todas las partes lo hacen, con los valores en el
+orden dado, y se rechaza con el primer fallo. `race()` se resuelve con la
+primera en terminar.
+
+Si las partes se solapan lo deciden las partes: escuchan, no inician nada. Tres
+`Http::getAsync()` se solapan porque cada una ya estaba en la red.
+
+### Plazos
+
+```php
+$respuesta = await(Http::getAsync($url), timeout: 5000);
+```
+
+El plazo es un temporizador del event loop. Cuando vence, la transferencia se
+cancela — el socket se libera, no se deja terminar en una respuesta que nadie va
+a leer — y se lanza `TimeoutException`.
+
+### Esperas
+
+```php
+await(delay(250));
+```
+
+Un plazo por el que el loop despierta, no un `usleep()`. Tres esperas de 250 ms
+aguardadas juntas tardan 250 ms, y toda petición en curso sigue avanzando
+durante ellas.
+
+### Qué es un Future
+
+| | |
+|---|---|
+| `isPending()` | aún no se ha resuelto |
+| `isResolved()` / `getValue()` | resuelto con un valor |
+| `isRejected()` / `getException()` | resuelto con una excepción |
+| `isCancelled()` | cancelado |
+| `onResolve()` | ejecuta algo cuando se resuelva |
+
+Resuelto es definitivo. Leer un valor que todavía no ha llegado lanza una
+excepción en lugar de devolver `null`.
+
+### Consultas: planificadas, no solapadas
+
+```php
+$usuarios = await(User::query()->where('active', true)->getAsync());
+```
+
+Esto funciona, y bloquea. PDO no tiene API asíncrona: `execute()` espera al
+servidor y ninguna Fiber cambia eso. Esperar tres consultas juntas tarda lo que
+tres consultas — medido en 609 ms frente a 603 ms de la versión síncrona.
+
+Aun así la forma merece la pena. `ext-mysqli` sobre mysqlnd (`MYSQLI_ASYNC`,
+`mysqli_poll()`) y `ext-pgsql` (`pg_send_query()`, `pg_socket()`) entregan un
+socket que el event loop ya sabe observar, así que un backend escrito sobre
+cualquiera de ellos resolvería estos Futures desde el loop y esta línea no
+cambiaría.
+
+### Los componentes pueden esperar
+
+```php
+function UserPanel(string $url): Sfht
+{
+    $datos = await(Http::getAsync($url))->json();
+
+    return sfht(
+        <div class="card"><p>{{ $datos['name'] }}</p></div>
+    );
+}
+```
+
+Un componente `.phpx` es una función, así que se suspende y se reanuda como
+cualquier otra cosa. Dos componentes esperando cada uno una petición de 300 ms
+se renderizan juntos en unos 300 ms.
+
+> La auditoría completa — qué bloqueaba, qué ya no, qué permiten las extensiones
+> de PHP, y cada benchmark con el comando que lo produce — está en
+> `ASYNC_RUNTIME_AUDIT.md`, en el repositorio.
+
+---
+
 ## Manejo de errores
 
 Una excepción lanzada dentro de una acción la captura el router, en un límite
@@ -4418,7 +4554,7 @@ Un ejecutor propio, sin PHPUnit — coherente con las cero dependencias.
 
 ```bash
 composer run lint        # php -l por todo el proyecto
-composer run test        # 154 casos unitarios
+composer run test        # 156 casos unitarios
 composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve

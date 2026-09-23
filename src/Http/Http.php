@@ -2,6 +2,9 @@
 
 namespace SfphpProject\src\Http;
 
+use SfphpProject\src\Async\Adapters\HttpFuture;
+use SfphpProject\src\Async\Future;
+
 /**
  * The front door for talking to another service.
  *
@@ -52,6 +55,83 @@ final class Http
     public static function client(): Client
     {
         return new Client();
+    }
+
+    /**
+     * Start a GET request without waiting for it.
+     *
+     * The request is on its way as soon as this returns, so starting three and
+     * then awaiting all three takes about as long as the slowest — not as long
+     * as the three added together.
+     *
+     *     $a = Http::getAsync($first);
+     *     $b = Http::getAsync($second);
+     *
+     *     [$x, $y] = [await($a), await($b)];
+     *
+     * @param string $url The URL
+     * @param array<string, mixed> $query Values appended as a query string
+     * @param array<string, string> $headers Request headers
+     * @return Future Settles with a ClientResponse
+     */
+    public static function getAsync(string $url, array $query = [], array $headers = []): Future
+    {
+        if ($query !== []) {
+            $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($query);
+        }
+
+        return HttpFuture::get($url, $headers);
+    }
+
+    /**
+     * Start a POST request without waiting for it.
+     *
+     * @param string $url The URL
+     * @param array<string, mixed>|string|null $body The body, sent as JSON
+     * @param array<string, string> $headers Request headers
+     * @return Future Settles with a ClientResponse
+     */
+    public static function postAsync(string $url, array|string|null $body = null, array $headers = []): Future
+    {
+        return HttpFuture::post($url, $body, $headers);
+    }
+
+    /**
+     * Start a PUT request without waiting for it.
+     *
+     * @param string $url The URL
+     * @param array<string, mixed>|string|null $body The body
+     * @param array<string, string> $headers Request headers
+     * @return Future Settles with a ClientResponse
+     */
+    public static function putAsync(string $url, array|string|null $body = null, array $headers = []): Future
+    {
+        return HttpFuture::put($url, $body, $headers);
+    }
+
+    /**
+     * Start a PATCH request without waiting for it.
+     *
+     * @param string $url The URL
+     * @param array<string, mixed>|string|null $body The body
+     * @param array<string, string> $headers Request headers
+     * @return Future Settles with a ClientResponse
+     */
+    public static function patchAsync(string $url, array|string|null $body = null, array $headers = []): Future
+    {
+        return HttpFuture::patch($url, $body, $headers);
+    }
+
+    /**
+     * Start a DELETE request without waiting for it.
+     *
+     * @param string $url The URL
+     * @param array<string, string> $headers Request headers
+     * @return Future Settles with a ClientResponse
+     */
+    public static function deleteAsync(string $url, array $headers = []): Future
+    {
+        return HttpFuture::delete($url, $headers);
     }
 
     /**

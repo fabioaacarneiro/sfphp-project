@@ -2,123 +2,126 @@
 
 namespace SfphpProject\src\Async;
 
+use Fiber;
+use Throwable;
+
 /**
- * Create an async Task from a callable
+ * Run something as a Task, alongside whatever else is running.
  *
- * The Task is automatically scheduled on the current Scheduler if one is active.
- * If no Scheduler is active, you must manually schedule and run it.
+ * The Task is queued on the current scheduler and begins at the next
+ * opportunity, so calling this twice puts two pieces of work in flight before
+ * either is awaited.
  *
- * @param callable(): mixed $executor The function to execute asynchronously
- * @return Task A Task representing the async operation
+ * @param callable $executor The work
+ * @return Task The task
  *
  * @example
- *   $task = async(fn () => User::query()->find(1));
- *   $user = await($task);
+ *   $a = async(fn () => Http::getAsync($first));
+ *   $b = async(fn () => Http::getAsync($second));
+ *   [$x, $y] = [await($a), await($b)];
  */
 function async(callable $executor): Task
 {
     $task = new Task($executor);
 
-    // Try to schedule on current Scheduler if one is active
-    if (Context::hasScheduler()) {
-        try {
-            $scheduler = Context::getScheduler();
-            $scheduler->schedule($task);
-        } catch (AsyncException $e) {
-            // No scheduler active, task will be scheduled manually
-        }
-    }
+    Context::scheduler()->schedule($task);
 
     return $task;
 }
 
 /**
- * Await the result of a Future
+ * Wait for a Future, without stopping anything else.
  *
- * If the Future is already resolved, returns immediately.
- * If pending, suspends the current Fiber until the Future resolves.
+ * Inside a Task this parks the Fiber: the scheduler is told what it is waiting
+ * for, the Fiber suspends, and it is resumed once that has settled. Outside
+ * one — a controller, a command, a test — the caller drives the event loop
+ * instead, so every pending operation keeps progressing while it waits.
  *
- * @param Future $future The Future to await
- * @param int|null $timeout Optional timeout in milliseconds
- * @return mixed The resolved value
- * @throws \Throwable If the Future was rejected
- * @throws TimeoutException If timeout was exceeded
+ * Either way the process never polls. It waits in a single select() over
+ * everything outstanding, and wakes for whichever finishes first.
+ *
+ * @param Future $future What to wait for
+ * @param int|null $timeout Milliseconds to allow, or null for no limit
+ * @return mixed The value it settled with
+ * @throws Throwable Whatever it was rejected with
+ * @throws TimeoutException When the timeout passes first
  *
  * @example
- *   $user = await(User::query()->find(1));
- *   [$user, $posts] = await(Future::all($task1, $task2));
+ *   $response = await(Http::getAsync($url), timeout: 5000);
  */
 function await(Future $future, ?int $timeout = null): mixed
 {
-    // If already resolved, return immediately without suspending
-    if ($future->isResolved()) {
-        return $future->getValue();
-    }
+    $scheduler = Context::scheduler();
 
-    if ($future->isRejected()) {
-        throw $future->getException();
-    }
-
-    // If it's a Task that hasn't started, start it
     if ($future instanceof Task) {
-        $task = $future;
-        if (!$task->isPending() && !$task->isTerminated()) {
-            // Get scheduler and schedule if active
-            if (Context::hasScheduler()) {
-                try {
-                    $scheduler = Context::getScheduler();
-                    $scheduler->schedule($task);
-                } catch (AsyncException $e) {
-                    // No scheduler, we'll have to run inline
-                    $task->start();
-                }
+        $scheduler->schedule($future);
+    }
+
+    $timer = null;
+
+    if ($timeout !== null && $future->isPending()) {
+        $loop = $scheduler->loop();
+        $timer = $loop->addTimer($timeout / 1000, static function () use ($future, $timeout): void {
+            if (!$future->isPending()) {
+                return;
+            }
+
+            $expired = new TimeoutException(sprintf('The operation did not finish within %d ms.', $timeout));
+
+            /*
+             * Cancelling is what releases the network handle and everybody
+             * waiting on it. A Future that cannot be cancelled is left to
+             * finish on its own — the caller is freed by the exception below,
+             * but nothing pretends the work stopped.
+             */
+            if ($future instanceof Cancellable) {
+                $future->cancel($expired);
+            }
+        });
+    }
+
+    try {
+        if ($future->isPending() && !$future instanceof Pending) {
+            /*
+             * An adapter from before this runtime existed. Those do their work
+             * when their value is read — CacheFuture, FileFuture and
+             * ComponentFuture all still do — so there is nothing for the loop
+             * to wait for, and waiting would be waiting for something nobody
+             * started. Reading it runs it, blocking, which is what it did
+             * before and what the audit records as still outstanding.
+             */
+            return $future->getValue();
+        }
+
+        if ($future->isPending()) {
+            $task = $scheduler->getCurrentTask();
+
+            if ($task !== null && Fiber::getCurrent() !== null) {
+                $scheduler->park($task, $future);
+                Fiber::suspend();
             } else {
-                $task->start();
+                $scheduler->runUntil(static fn (): bool => $future->isSettled());
             }
         }
-    }
 
-    // Future is still pending, we need to suspend
-
-    // Get current Fiber
-    $currentFiber = \Fiber::getCurrent();
-
-    // Track if we've suspended
-    $suspended = false;
-
-    // Register a callback to resume this Fiber when Future resolves
-    $future->onResolve(function ($resolvedFuture) use ($currentFiber, &$suspended) {
-        if ($suspended) {
-            // Fiber was suspended, resume it now
-            $currentFiber->resume();
+        if ($future->isCancelled() && $future->getException() instanceof TimeoutException) {
+            throw $future->getException();
         }
-    });
 
-    // If Future still pending, suspend this Fiber
-    if ($future->isPending()) {
-        $suspended = true;
-        \Fiber::suspend();
+        return $future->getValue();
+    } finally {
+        if ($timer !== null) {
+            $scheduler->loop()->cancelTimer($timer);
+        }
     }
-
-    // Fiber resumed, get the result
-    return $future->getValue();
 }
 
 /**
- * Await multiple Futures "in parallel"
+ * Wait for several Futures at once.
  *
- * All Futures are started/resumed before any of them blocks,
- * allowing them to progress concurrently.
- *
- * @param Future ...$futures The Futures to await
- * @return array Array of resolved values in order
- * @throws \Throwable If any Future is rejected
- *
- * @example
- *   [$user, $posts] = await(Future::all(
- *       async(fn () => User::query()->find(1)),
- *       async(fn () => Post::query()->where('user_id', 1)->get())
- *   ));
+ * @param Future ...$futures What to wait for
+ * @return array<int, mixed> The values, in the order given
+ * @throws Throwable Whatever the first failure was rejected with
  */
 function awaitAll(Future ...$futures): array
 {
@@ -126,55 +129,35 @@ function awaitAll(Future ...$futures): array
 }
 
 /**
- * Create a Future that resolves after a delay
+ * A Future that settles after a delay.
  *
- * In the current implementation (PHP-only), this still blocks.
- * In a future version with true I/O async, this could be non-blocking.
+ * The wait belongs to the event loop, so everything else keeps progressing
+ * through it. This used to call `usleep()` inside a Fiber, which stopped the
+ * entire process — every other request in flight included.
  *
- * @param int $milliseconds The delay in milliseconds
- * @return Future A Future that resolves after the delay
- *
- * @example
- *   $result = await(delay(1000));  // Wait 1 second
+ * @param int $milliseconds How long
+ * @param mixed $value What to settle with
+ * @return Future The future
  */
-function delay(int $milliseconds): Future
+function delay(int $milliseconds, mixed $value = null): Future
 {
-    return async(function () use ($milliseconds) {
-        usleep($milliseconds * 1000);
-        return null;
-    });
+    return new TimerFuture(Context::scheduler()->loop(), $milliseconds / 1000, $value);
 }
 
 /**
- * Execute a Future synchronously in its own Scheduler context
+ * Run a Future to completion from synchronous code.
  *
- * Useful for running async code from a synchronous context,
- * or for testing.
- *
- * @param Future $future The Future to execute
- * @return mixed The resolved value
- * @throws \Throwable If the Future was rejected
- *
- * @example
- *   $user = syncRun(User::query()->find(1));
+ * @param Future $future What to run
+ * @return mixed The value it settled with
+ * @throws Throwable Whatever it was rejected with
  */
 function syncRun(Future $future): mixed
 {
-    // Create a Scheduler for this operation
     $scheduler = new Scheduler();
     Context::pushScheduler($scheduler);
 
     try {
-        // If it's a Task, schedule it
-        if ($future instanceof Task) {
-            $scheduler->schedule($future);
-        }
-
-        // Run the scheduler until all Tasks complete
-        $scheduler->run();
-
-        // Return the result
-        return $future->getValue();
+        return await($future);
     } finally {
         Context::popScheduler();
     }
