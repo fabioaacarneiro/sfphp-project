@@ -4,6 +4,8 @@ namespace SfphpProject\src\Database;
 
 use PDO;
 use SfphpProject\src\QueryBuilder;
+use SfphpProject\src\Async\Adapters\QueryFuture;
+use SfphpProject\src\Async\Future;
 
 /**
  * A Query Builder that returns models instead of arrays.
@@ -369,5 +371,72 @@ final class ModelQuery
         $relation = $model->{$name}();
 
         return $relation instanceof Relation ? $relation : null;
+    }
+
+    /**
+     * Run the query asynchronously and hydrate the rows.
+     *
+     * Returns a Future that resolves to an array of models.
+     *
+     * @return Future<array<int, Model>> A Future that resolves to the models
+     *
+     * @example
+     *   $users = await(User::query()->where('active', true)->getAsync());
+     */
+    public function getAsync(): Future
+    {
+        return new QueryFuture(function () {
+            return $this->get();
+        });
+    }
+
+    /**
+     * Run the query asynchronously and hydrate the first row.
+     *
+     * Returns a Future that resolves to a model or null.
+     *
+     * @return Future<Model|null> A Future that resolves to the model or null
+     *
+     * @example
+     *   $user = await(User::query()->where('id', 1)->firstAsync());
+     */
+    public function firstAsync(): Future
+    {
+        return new QueryFuture(function () {
+            return $this->first();
+        });
+    }
+
+    /**
+     * Count the matching rows asynchronously.
+     *
+     * Returns a Future that resolves to the count.
+     *
+     * @return Future<int> A Future that resolves to the count
+     *
+     * @example
+     *   $count = await(User::query()->where('active', true)->countAsync());
+     */
+    public function countAsync(): Future
+    {
+        return new QueryFuture(function () {
+            return $this->count();
+        });
+    }
+
+    /**
+     * Find a model by ID asynchronously.
+     *
+     * This is a convenience method that awaits a query for a specific ID.
+     *
+     * @param int|string $id The ID to find
+     * @return Future<Model|null> A Future that resolves to the model or null
+     *
+     * @example
+     *   $user = await(User::query()->findAsync(1));
+     */
+    public function findAsync(int|string $id): Future
+    {
+        return $this->where('id', $id)->firstAsync();
     }
 }
