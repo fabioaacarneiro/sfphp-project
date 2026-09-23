@@ -4579,12 +4579,13 @@ refreshes itself keeps refreshing after the first time.
 Two different things get called state, and keeping them apart is most of the
 design:
 
-- **Application state** — the cart, the record, the list. It lives on the
-  server, and the page shows a projection of it. That is what `@get` with
-  `@trigger` and `morph` is for.
-- **Interface state** — open or closed, which tab, what has been typed and not
-  sent. It lives in the page. Asking a server whether a menu is open spends
-  thirty milliseconds on a decision that takes none.
+- **Application state** is what the server owns: the cart, the record, the
+  list. The page shows a copy of it, and `@get` with `@trigger` and `morph` is
+  how that copy is kept current.
+- **Interface state** is what only this page cares about: whether a menu is
+  open, which tab is selected, what has been typed and not sent yet. Keep it in
+  the browser. Opening a menu takes no time at all, and asking the server about
+  it would add a round trip to a question the page can already answer.
 
 `@state` is for the second one.
 

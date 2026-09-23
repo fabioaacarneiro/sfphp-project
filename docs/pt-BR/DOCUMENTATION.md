@@ -4573,12 +4573,14 @@ atualiza continua se atualizando depois da primeira vez.
 Duas coisas diferentes são chamadas de estado, e separá-las é a maior parte do
 desenho:
 
-- **Estado da aplicação** — o carrinho, o registro, a lista. Vive no servidor, e
-  a página mostra uma projeção dele. É para isso que existe o `@get` com
-  `@trigger` e `morph`.
-- **Estado de interface** — aberto ou fechado, qual aba, o que foi digitado e
-  ainda não enviado. Vive na página. Perguntar ao servidor se um menu está
-  aberto gasta trinta milissegundos numa decisão que não leva nenhum.
+- **Estado da aplicação** é o que o servidor possui: o carrinho, o registro, a
+  lista. A página mostra uma cópia, e o `@get` com `@trigger` e `morph` é como
+  essa cópia se mantém atual.
+- **Estado de interface** é o que só interessa a esta página: se um menu está
+  aberto, qual aba está selecionada, o que já foi digitado e ainda não enviado.
+  Isso fica no navegador. Abrir um menu não leva tempo nenhum, e perguntar ao
+  servidor acrescentaria uma ida à rede a uma pergunta que a própria página já
+  sabe responder.
 
 O `@state` é para o segundo.
 

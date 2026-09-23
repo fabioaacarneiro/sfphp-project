@@ -4649,12 +4649,14 @@ panel que se actualiza sigue haciéndolo después de la primera vez.
 
 Dos cosas distintas se llaman estado, y separarlas es la mayor parte del diseño:
 
-- **Estado de la aplicación** — el carrito, el registro, la lista. Vive en el
-  servidor, y la página muestra una proyección. Para eso está `@get` con
-  `@trigger` y `morph`.
-- **Estado de interfaz** — abierto o cerrado, qué pestaña, lo escrito y aún no
-  enviado. Vive en la página. Preguntarle al servidor si un menú está abierto
-  gasta treinta milisegundos en una decisión que no lleva ninguno.
+- **Estado de la aplicación** es lo que posee el servidor: el carrito, el
+  registro, la lista. La página muestra una copia, y `@get` con `@trigger` y
+  `morph` es cómo esa copia se mantiene al día.
+- **Estado de interfaz** es lo que solo le importa a esta página: si un menú
+  está abierto, qué pestaña está seleccionada, lo que ya se escribió y aún no se
+  envió. Eso se queda en el navegador. Abrir un menú no lleva tiempo, y
+  preguntárselo al servidor añadiría una ida a la red a una pregunta que la
+  propia página ya sabe responder.
 
 `@state` es para el segundo.
 
