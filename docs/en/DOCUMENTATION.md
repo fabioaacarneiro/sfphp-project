@@ -4307,11 +4307,16 @@ So upgrading means replacing those files, and knowing which ones they are:
 |---|---|
 | Replaced whole | `src/`, `sfphp`, `server.php` — entirely the framework |
 | Merged in | `resources/`, `lang/`, `tools/` — the framework's files land on top, yours stay |
-| Written beside | `public/index.php` and `composer.json` become `<file>.new` for you to read |
+| Written beside | `public/index.php`, `composer.json` and `tools/css-builder/sfcss.config.json` become `<file>.new` for you to read |
 | Never touched | `app/`, `database/`, the rest of `public/`, `.env`, `vendor/` |
 
-It lists all of that, waits for you to type `upgrade`, and refuses when there is
-no terminal to answer at. `--force` is for a script.
+It lists all of that — **including, by name, every file of yours a merge would
+replace** — waits for you to type `upgrade`, and refuses when there is no
+terminal to answer at. `--force` is for a script.
+
+"Merged" sounds safer than it is, which is why those names are printed: a file
+of yours that shares a name with one of the framework's is replaced. Edit a
+shipped language file and you will see it on that list before anything happens.
 
 **Commit first.** A change you made under `src/` is lost — it was going to be
 lost at the next release anyway, and silently. `public/index.php` and
