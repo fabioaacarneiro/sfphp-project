@@ -25,7 +25,7 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 ### 🎯 **Developer Experience**
 - **Type-safe everywhere** — PHP 8.1 attributes, typed parameters, IDE autocompletion
 - **Generators for speed** — 12 code generators for models, migrations, controllers, etc.
-- **Comprehensive CLI** — 35 commands to manage your application
+- **Comprehensive CLI** — 36 commands to manage your application
 - **Intuitive API** — learn it once, it works the same everywhere
 
 ### 🌍 **Truly Multilingual**
@@ -255,7 +255,7 @@ No extensions required except what your database driver needs. No `mbstring`. No
 ## Testing
 
 ```bash
-composer run test       # 156 unit tests
+composer run test       # 157 unit tests
 composer run test:db    # Integration tests on real MySQL & PostgreSQL
 composer run lint       # PHP syntax check
 composer run docs       # Verify documentation consistency
