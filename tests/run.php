@@ -5621,6 +5621,104 @@ $tests->run('a declarative form sends the fields a visitor typed', function () u
     }
 });
 
+$tests->run('a migration reads its own name, and its fields', function () use ($tests): void {
+    /*
+     * The name is the instruction: create_users creates, add_x_to_users
+     * alters, drop_users_table drops. Asking for the table again as a separate
+     * argument — which is what make:migration:create did — was a second way to
+     * say something already said.
+     */
+    $draft = new SfphpProject\src\Migrations\MigrationDraft('create_users', [
+        'name:string',
+        'surname:string:255',
+        'email:string:unique',
+        'active:boolean:default=true',
+        'price:decimal:8,2',
+        'bio:text:nullable',
+        'author_id:foreignId:constrained',
+        'timestamps',
+        'softDeletes',
+    ]);
+
+    $body = $draft->body();
+
+    $tests->assertSame('create', $draft->action());
+    $tests->assertSame('users', $draft->table());
+
+    // A table being created gets a key whether or not one was asked for.
+    $tests->assertTrue(str_contains($body, '$table->id();'));
+
+    // Numbers after the type are its arguments; words are modifiers.
+    $tests->assertTrue(str_contains($body, "\$table->string('surname', 255);"));
+    $tests->assertTrue(str_contains($body, "\$table->string('email')->unique();"));
+    $tests->assertTrue(str_contains($body, "\$table->boolean('active')->default(true);"));
+    $tests->assertTrue(str_contains($body, "\$table->decimal('price', 8, 2);"));
+    $tests->assertTrue(str_contains($body, "\$table->foreignId('author_id')->constrained();"));
+
+    // A bare word is a call with no column name of its own.
+    $tests->assertTrue(str_contains($body, '$table->timestamps();'));
+    $tests->assertTrue(str_contains($body, '$table->softDeletes();'));
+
+    $tests->assertTrue(str_contains($body, "\$schema->dropIfExists('users');"));
+
+    // An alter says what it added, so down() can take it away again.
+    $alter = new SfphpProject\src\Migrations\MigrationDraft('add_phone_to_users', ['phone:string:nullable']);
+
+    $tests->assertSame('table', $alter->action());
+    $tests->assertSame('users', $alter->table());
+    $tests->assertTrue(str_contains($alter->body(), "\$schema->table('users'"));
+    $tests->assertTrue(str_contains($alter->body(), "\$table->dropColumn(['phone']);"));
+
+    // Dropping is dropping, whichever verb the name used.
+    foreach (['drop_users_table', 'delete_users_table', 'remove_users'] as $name) {
+        $drop = new SfphpProject\src\Migrations\MigrationDraft($name);
+
+        $tests->assertSame('drop', $drop->action());
+        $tests->assertSame('users', $drop->table());
+        $tests->assertTrue(str_contains($drop->body(), "\$schema->dropIfExists('users');"));
+    }
+
+    // A name that says nothing about a table still produces a usable file.
+    $plain = new SfphpProject\src\Migrations\MigrationDraft('backfill_totals');
+    $tests->assertSame('plain', $plain->action());
+    $tests->assertSame(null, $plain->table());
+    $tests->assertTrue(str_contains($plain->body(), 'public function up(Schema $schema): void'));
+
+    /*
+     * A wrong type is refused with the right one, because varchar is what
+     * everybody types first — and refused before anything is written, so a
+     * typo in the fourth column does not leave half a migration behind.
+     */
+    $tests->assertThrows(
+        static fn () => (new SfphpProject\src\Migrations\MigrationDraft('create_posts', ['title:varchar:255']))->body(),
+        InvalidArgumentException::class
+    );
+
+    $tests->assertThrows(
+        static fn () => (new SfphpProject\src\Migrations\MigrationDraft('create_posts', ['title:string:nulable']))->body(),
+        InvalidArgumentException::class
+    );
+
+    $tests->assertThrows(
+        static fn () => (new SfphpProject\src\Migrations\MigrationDraft('create_posts', ['title']))->body(),
+        InvalidArgumentException::class
+    );
+
+    // Every file it writes is PHP.
+    $file = sys_get_temp_dir() . '/sfphp-draft-' . bin2hex(random_bytes(6)) . '.php';
+    file_put_contents($file, $body);
+
+    try {
+        $output = [];
+        $status = 0;
+        exec('php -l ' . escapeshellarg($file) . ' 2>&1', $output, $status);
+
+        $tests->assertSame(0, $status);
+    } finally {
+        @unlink($file);
+    }
+});
+
 $tests->run('upgrade replaces the framework and leaves the application alone', function () use ($tests): void {
     /*
      * Tested against a project of its own, for the same reason reset is: this
