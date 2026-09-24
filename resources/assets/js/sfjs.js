@@ -79,12 +79,22 @@ const sf = (() => {
   function request(method, url, options = {}) {
     const { data = {}, target = null, swap = DEFAULTS.swapStrategy, onSuccess = null, onError = null } = options;
 
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+    };
+
+    // Add CSRF token for state-changing requests
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      const token = document.querySelector('meta[name="csrf-token"]')?.content;
+      if (token) {
+        headers['X-CSRF-Token'] = token;
+      }
+    }
+
     return fetch(url, {
       method,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-      },
+      headers,
       body: method !== 'GET' && method !== 'DELETE' ? JSON.stringify(data) : undefined,
     })
       .then(response => {
