@@ -36,6 +36,13 @@ html/
 context.md
 features-implemented.md
 
+# Phase/Implementation summary files (development artifacts)
+PHASES_SUMMARY.md
+PHASE*_SUMMARY.md
+ASYNC_SUMMARY.md
+ASYNC_IMPLEMENTATION_COMPLETE.md
+ASYNC_RUNTIME_AUDIT.md
+
 # Node modules (for VSCode extension)
 node_modules/
 package-lock.json
