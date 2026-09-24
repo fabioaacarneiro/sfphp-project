@@ -2435,7 +2435,7 @@ PHP;
      */
     private function routesFile(): ?string
     {
-        foreach (['routes.php', 'src/routes.php', 'routes/web.php'] as $candidate) {
+        foreach (['app/routes/web.php', 'app/routes/api.php', 'routes/web.php', 'routes.php'] as $candidate) {
             $path = $this->projectPath($candidate);
 
             if (is_file($path)) {
