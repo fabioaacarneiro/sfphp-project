@@ -713,14 +713,87 @@ final class Application
      */
     private function makePwa(array $arguments): int
     {
-        $this->writeLine('PWA setup generator is available via documentation.');
-        $this->writeLine('Run: php -r "use SfphpProject\\src\\Pwa\\ManifestGenerator; ...');
+        $name = $this->option($arguments, 'name');
+        if (!$name) {
+            $this->writeLine('Error: --name is required');
+            $this->writeLine('Usage: ./sfphp make:pwa --name="My App" [--logo=path/to/logo.png]');
+            return 1;
+        }
+
+        $shortName = $this->option($arguments, 'short') ?? mb_substr($name, 0, 12);
+        $description = $this->option($arguments, 'description') ?? '';
+        $color = $this->option($arguments, 'color') ?? '#007AFF';
+        $logo = $this->option($arguments, 'logo');
+
+        $publicPath = $this->projectPath('public');
+        @mkdir($publicPath . '/icons', 0755, true);
+
+        // 1. Generate manifest.json
+        $this->writeLine('✓ Generating manifest.json');
+        $manifest = new \SfphpProject\src\Pwa\ManifestGenerator();
+        $manifest
+            ->name($name)
+            ->shortName($shortName)
+            ->description($description)
+            ->themeColor($color)
+            ->icon('/icons/icon-192x192.png', '192x192', 'image/png')
+            ->icon('/icons/icon-512x512.png', '512x512', 'image/png');
+
+        $manifest->save($publicPath . '/manifest.json');
+
+        // 2. Generate service-worker.js
+        $this->writeLine('✓ Generating service-worker.js');
+        $sw = new \SfphpProject\src\Pwa\ServiceWorkerGenerator('v1');
+        $sw->appName(mb_strtolower(str_replace(' ', '-', $name)));
+
+        if ($this->option($arguments, 'enable-push')) {
+            $sw->enablePushNotifications();
+            $this->writeLine('  ├─ Push notifications enabled');
+        }
+
+        if ($this->option($arguments, 'enable-sync')) {
+            $sw->enableBackgroundSync();
+            $this->writeLine('  └─ Background sync enabled');
+        }
+
+        $sw->save($publicPath . '/service-worker.js');
+
+        // 3. Copy offline page
+        $this->writeLine('✓ Generating offline.html');
+        $template = __DIR__ . '/../../resources/pwa/offline-template.html';
+        if (is_file($template)) {
+            copy($template, $publicPath . '/offline.html');
+        }
+
+        // 4. Copy install script
+        $this->writeLine('✓ Copying install-sw.js');
+        $script = __DIR__ . '/../../resources/pwa/install-sw.js';
+        if (is_file($script)) {
+            copy($script, $publicPath . '/install-sw.js');
+        }
+
+        // 5. Generate icons (if logo provided)
+        if ($logo && is_file($logo)) {
+            $this->writeLine('✓ Generating icons from ' . basename($logo));
+            try {
+                $iconGen = new \SfphpProject\src\Pwa\IconGenerator($logo);
+                $iconGen->generate($publicPath . '/icons');
+            } catch (\Exception $e) {
+                $this->writeLine('⚠ Could not generate icons: ' . $e->getMessage());
+                $this->writeLine('  Add icons manually to public/icons/');
+            }
+        } else {
+            $this->writeLine('⚠ Skipping icon generation (no logo provided)');
+            $this->writeLine('  Usage: ./sfphp make:pwa --name="..." --logo=path/to/logo.png');
+        }
+
         $this->writeLine('');
-        $this->writeLine('For complete PWA setup, see: docs/PWA_GUIDE.md');
-        $this->writeLine('Or use individual generators:');
-        $this->writeLine('  - ManifestGenerator (generates manifest.json)');
-        $this->writeLine('  - ServiceWorkerGenerator (generates service-worker.js)');
-        $this->writeLine('  - IconGenerator (generates app icons from logo)');
+        $this->writeLine('✨ PWA setup complete!');
+        $this->writeLine('');
+        $this->writeLine('📋 Next Steps:');
+        $this->writeLine('  1. Review your app configuration: app/pwa/config.php');
+        $this->writeLine('  2. Test in DevTools: F12 → Application → Manifest');
+        $this->writeLine('  3. Read the complete guide: docs/PWA_GUIDE.md');
         $this->writeLine('');
 
         return 0;

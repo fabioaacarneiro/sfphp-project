@@ -15,7 +15,6 @@ namespace SfphpProject\src\Pwa;
 final class ServiceWorkerGenerator
 {
     private string $appName = 'sfphp-app';
-    private string $version = 'v1';
 
     /** @var array<int, string> */
     private array $staticAssets = [
