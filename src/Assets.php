@@ -198,7 +198,14 @@ final class Assets
      */
     public static function files(): array
     {
-        return ['css/sfcss.css', 'css/sfcss.min.css', 'js/sfjs.js', 'js/sfjs.min.js'];
+        return [
+            'css/sfcss.css',
+            'css/sfcss.min.css',
+            'js/sfjs.js',
+            'js/sfjs.min.js',
+            'js/sfjs-stream.js',
+            'js/sfjs-stream.min.js',
+        ];
     }
 
     /**

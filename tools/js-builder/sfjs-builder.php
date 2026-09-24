@@ -19,29 +19,41 @@
  * is there, which is what would catch it if that changed.
  */
 
-$source = __DIR__ . '/../../resources/assets/js/sfjs.js';
-$target = __DIR__ . '/../../resources/assets/js/sfjs.min.js';
+$files = [
+    [
+        'source' => __DIR__ . '/../../resources/assets/js/sfjs.js',
+        'target' => __DIR__ . '/../../resources/assets/js/sfjs.min.js',
+        'name' => 'SFJS'
+    ],
+    [
+        'source' => __DIR__ . '/../../resources/assets/js/sfjs-stream.js',
+        'target' => __DIR__ . '/../../resources/assets/js/sfjs-stream.min.js',
+        'name' => 'SFJS Stream'
+    ]
+];
 
-if (!is_file($source)) {
-    fwrite(STDERR, "SFJS not found at {$source}\n");
-    exit(1);
+foreach ($files as $file) {
+    if (!is_file($file['source'])) {
+        fwrite(STDERR, "{$file['name']} not found at {$file['source']}\n");
+        exit(1);
+    }
+
+    $js = file_get_contents($file['source']);
+
+    if ($js === false) {
+        fwrite(STDERR, "Could not read {$file['source']}\n");
+        exit(1);
+    }
+
+    $minified = minifyJs($js);
+
+    if (file_put_contents($file['target'], $minified) === false) {
+        fwrite(STDERR, "Could not write {$file['target']}\n");
+        exit(1);
+    }
+
+    printf("✓ Generated: %s (%s bytes, from %s)\n", $file['target'], number_format(strlen($minified)), number_format(strlen($js)));
 }
-
-$js = file_get_contents($source);
-
-if ($js === false) {
-    fwrite(STDERR, "Could not read {$source}\n");
-    exit(1);
-}
-
-$minified = minifyJs($js);
-
-if (file_put_contents($target, $minified) === false) {
-    fwrite(STDERR, "Could not write {$target}\n");
-    exit(1);
-}
-
-printf("✓ Generated: %s (%s bytes, from %s)\n", $target, number_format(strlen($minified)), number_format(strlen($js)));
 
 /**
  * Strip comments and needless whitespace from JavaScript.

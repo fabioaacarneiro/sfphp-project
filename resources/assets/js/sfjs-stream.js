@@ -32,9 +32,9 @@
     const isSSE = element.getAttribute('@sse') !== null || element.getAttribute('@hxsse') !== null;
 
     if (isSSE) {
-      handleSSE(url, targetEl);
+      handleSSE(url, targetEl, element);
     } else {
-      handleTextStream(url, targetEl);
+      handleTextStream(url, targetEl, element);
     }
   }
 
@@ -42,8 +42,9 @@
    * Handle text streaming (append chunks)
    * @param {string} url The streaming endpoint
    * @param {Element} target The target element
+   * @param {Element} element The original element with @stream (for @abort binding)
    */
-  function handleTextStream(url, target) {
+  function handleTextStream(url, target, element) {
     const controller = new AbortController();
 
     fetch(url, {
@@ -105,8 +106,9 @@
    * Handle Server-Sent Events
    * @param {string} url The SSE endpoint
    * @param {Element} target The target element
+   * @param {Element} element The original element with @stream (for @events/@abort binding)
    */
-  function handleSSE(url, target) {
+  function handleSSE(url, target, element) {
     const es = new EventSource(url);
     let content = '';
 
@@ -139,7 +141,7 @@
     });
 
     // Allow closing via @abort attribute
-    const abortBtn = target.getAttribute('@abort');
+    const abortBtn = element.getAttribute('@abort');
     if (abortBtn) {
       document.querySelector(abortBtn)?.addEventListener('click', () => {
         es.close();

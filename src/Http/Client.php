@@ -221,6 +221,92 @@ final class Client
     }
 
     /**
+     * Receive a streamed response and process chunks as they arrive.
+     *
+     * @param string $method The HTTP method (GET, POST, etc)
+     * @param string $url The URL, absolute or relative to the base
+     * @param ClientStreamListener $listener Callback for each chunk
+     * @param array<string, mixed>|string|null $body The request body (for POST/PUT/PATCH)
+     * @return void
+     * @throws ClientException When the connection could not be established
+     */
+    public function streamRequest(string $method, string $url, ClientStreamListener $listener, array|string|null $body = null): void
+    {
+        if (!extension_loaded('curl')) {
+            throw new ClientException('The curl extension is required to stream HTTP responses. Install ext-curl.');
+        }
+
+        $url = $this->resolve($url);
+        $handle = curl_init();
+        $responseHeaders = [];
+        $statusCode = 0;
+        $receivedFirstChunk = false;
+
+        $manager = new ClientStream($listener);
+        [$encodedBody, $bodyHeaders] = $this->payload($body);
+
+        curl_setopt_array($handle, [
+            CURLOPT_URL => $url,
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_RETURNTRANSFER => false,
+            CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
+            CURLOPT_TIMEOUT => $this->timeout,
+            CURLOPT_LOW_SPEED_TIME => 30,
+            CURLOPT_LOW_SPEED_LIMIT => 1024, // 1KB in 30s = abort
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => self::MAX_REDIRECTS,
+            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+            CURLOPT_SSL_VERIFYPEER => $this->verify,
+            CURLOPT_SSL_VERIFYHOST => $this->verify ? 2 : 0,
+            CURLOPT_HTTPHEADER => $this->headerLines($bodyHeaders),
+            CURLOPT_HEADERFUNCTION => static function ($handle, string $line) use (&$responseHeaders, &$statusCode): int {
+                $parts = explode(':', $line, 2);
+
+                if (count($parts) === 2) {
+                    $responseHeaders[trim($parts[0])] = trim($parts[1]);
+                } elseif (str_starts_with($line, 'HTTP/')) {
+                    $statusCode = (int) explode(' ', $line)[1] ?? 0;
+                }
+
+                return strlen($line);
+            },
+            CURLOPT_WRITEFUNCTION => static function (mixed $handle, string $chunk) use ($manager, &$receivedFirstChunk, $listener, &$statusCode, &$responseHeaders): int {
+                if (!$receivedFirstChunk) {
+                    $receivedFirstChunk = true;
+                    // Notify status/headers BEFORE first chunk
+                    $listener->onStatus($statusCode, $responseHeaders);
+                }
+                return $manager->receive($chunk);
+            },
+        ]);
+
+        if ($encodedBody !== null) {
+            curl_setopt($handle, CURLOPT_POSTFIELDS, $encodedBody);
+        }
+
+        $result = curl_exec($handle);
+        $error = curl_error($handle);
+        $errno = curl_errno($handle);
+
+        curl_close($handle);
+
+        if ($result === false && !$receivedFirstChunk) {
+            throw new ClientException(
+                sprintf('Stream request failed: %s', $error !== '' ? $error : 'unknown error'),
+                $errno
+            );
+        }
+
+        $remainder = $manager->finalize();
+        if ($remainder !== '') {
+            $listener->onChunk($remainder);
+        }
+
+        $listener->onComplete($statusCode ?: 0, $responseHeaders);
+    }
+
+    /**
      * Send a request with this client.
      *
      * @param string $method The HTTP method
@@ -334,74 +420,16 @@ final class Client
      * @param ClientStreamListener $listener Receives chunks and completion
      * @throws ClientException When the request fails or curl is unavailable
      */
+    /**
+     * Stream a GET request (simple case).
+     *
+     * @param string $url The URL
+     * @param ClientStreamListener $listener Callback for chunks
+     * @return void
+     */
     public function stream(string $url, ClientStreamListener $listener): void
     {
-        if (!extension_loaded('curl')) {
-            throw new ClientException('The curl extension is required to stream HTTP responses. Install ext-curl.');
-        }
-
-        $url = $this->resolve($url);
-
-        $handle = curl_init();
-        $responseHeaders = [];
-        $statusCode = 0;
-        $receivedFirstChunk = false;
-
-        $manager = new ClientStream($listener);
-
-        curl_setopt_array($handle, [
-            CURLOPT_URL => $url,
-            CURLOPT_CUSTOMREQUEST => 'GET',
-            CURLOPT_RETURNTRANSFER => false, // Don't buffer the body
-            CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
-            CURLOPT_TIMEOUT => $this->timeout,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS => self::MAX_REDIRECTS,
-            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
-            CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
-            CURLOPT_SSL_VERIFYPEER => $this->verify,
-            CURLOPT_SSL_VERIFYHOST => $this->verify ? 2 : 0,
-            CURLOPT_HTTPHEADER => $this->headerLines([]),
-            CURLOPT_HEADERFUNCTION => static function ($handle, string $line) use (&$responseHeaders, &$statusCode): int {
-                $parts = explode(':', $line, 2);
-
-                if (count($parts) === 2) {
-                    $responseHeaders[trim($parts[0])] = trim($parts[1]);
-                } elseif (str_starts_with($line, 'HTTP/')) {
-                    // Extract status from "HTTP/1.1 200 OK"
-                    $statusCode = (int) explode(' ', $line)[1] ?? 0;
-                }
-
-                return strlen($line);
-            },
-            CURLOPT_WRITEFUNCTION => static function (mixed $handle, string $chunk) use ($manager, &$receivedFirstChunk): int {
-                $receivedFirstChunk = true;
-                return $manager->receive($chunk);
-            },
-        ]);
-
-        $result = curl_exec($handle);
-        $error = curl_error($handle);
-        $errno = curl_errno($handle);
-
-        curl_close($handle);
-
-        if ($result === false && !$receivedFirstChunk) {
-            throw new ClientException(
-                sprintf('Stream request failed: %s', $error !== '' ? $error : 'unknown error'),
-                $errno
-            );
-        }
-
-        // Handle any incomplete UTF-8
-        $remainder = $manager->finalize();
-        if ($remainder !== '') {
-            // A well-formed stream should not end mid-character
-            $listener->onChunk($remainder);
-        }
-
-        // Notify completion
-        $listener->onComplete($statusCode ?: 0, $responseHeaders);
+        $this->streamRequest('GET', $url, $listener);
     }
 
     /**

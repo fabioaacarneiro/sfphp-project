@@ -105,6 +105,9 @@ final class Emitter
         // Close session before streaming to prevent locking
         $this->closeSession();
 
+        // Allow producer to detect client abort, but continue running
+        ignore_user_abort(true);
+
         // Disable output buffering and compression
         $this->disableOutputBuffering();
 
