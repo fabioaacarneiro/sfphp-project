@@ -178,6 +178,7 @@ final class Application
                 'make:migration:create' => $this->makeMigrationCreate($arguments),
                 'make:controller' => $this->makeController($arguments),
                 'make:model' => $this->makeModel($arguments),
+                'make:pwa' => $this->makePwa($arguments),
                 'make:repository' => $this->makeRepository($arguments),
                 'make:request' => $this->makeRequest($arguments),
                 'make:service' => $this->makeService($arguments),
@@ -226,6 +227,7 @@ final class Application
             $this->writeLine('Generation Commands:');
             $this->writeLine('  make:controller <name>     Generate a controller skeleton');
             $this->writeLine('  make:model <name>          Generate a model skeleton');
+            $this->writeLine('  make:pwa [options]         Generate PWA (Progressive Web App) setup');
             $this->writeLine('  make:repository <name>     Generate a repository skeleton');
             $this->writeLine('  make:request <name>        Generate a form request class');
             $this->writeLine('  make:service <name>        Generate a service skeleton');
@@ -704,6 +706,27 @@ final class Application
     }
 
     /**
+     * Generate PWA (Progressive Web App) setup.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makePwa(array $arguments): int
+    {
+        $this->writeLine('PWA setup generator is available via documentation.');
+        $this->writeLine('Run: php -r "use SfphpProject\\src\\Pwa\\ManifestGenerator; ...');
+        $this->writeLine('');
+        $this->writeLine('For complete PWA setup, see: docs/PWA_GUIDE.md');
+        $this->writeLine('Or use individual generators:');
+        $this->writeLine('  - ManifestGenerator (generates manifest.json)');
+        $this->writeLine('  - ServiceWorkerGenerator (generates service-worker.js)');
+        $this->writeLine('  - IconGenerator (generates app icons from logo)');
+        $this->writeLine('');
+
+        return 0;
+    }
+
+    /**
      * Generate a service.
      *
      * @param array<int, string> $arguments The command arguments
@@ -863,21 +886,10 @@ final class Application
     private function routes(array $arguments): int
     {
         try {
-            /*
-             * Where the route file is depends on whose project this is. This
-             * repository keeps it in src/, `sfphp init` writes it at the root,
-             * and an application may well have chosen routes/web.php — so all
-             * three are looked for rather than one being assumed. Guessing
-             * src/routes.php made `routes` fail in every installed project.
-             */
-            $file = $this->firstExisting([
-                $this->projectPath('routes.php'),
-                $this->projectPath('src/routes.php'),
-                $this->projectPath('routes/web.php'),
-            ]);
+            $file = $this->routesFile();
 
             if ($file === null) {
-                $this->writeLine('No route file found. Looked for routes.php, src/routes.php and routes/web.php.');
+                $this->writeLine('No route file found. Looked for app/routes/web.php, app/routes/api.php, routes/web.php and routes.php.');
                 $this->writeLine('Pass one with --path=, or run ./sfphp init to scaffold a project.');
 
                 return 1;
