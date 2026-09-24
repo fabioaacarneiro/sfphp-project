@@ -746,12 +746,12 @@ final class Application
         $sw = new \SfphpProject\src\Pwa\ServiceWorkerGenerator('v1');
         $sw->appName(mb_strtolower(str_replace(' ', '-', $name)));
 
-        if ($this->option($arguments, 'enable-push')) {
+        if (in_array('--enable-push', $arguments, true)) {
             $sw->enablePushNotifications();
             $this->writeLine('  ├─ Push notifications enabled');
         }
 
-        if ($this->option($arguments, 'enable-sync')) {
+        if (in_array('--enable-sync', $arguments, true)) {
             $sw->enableBackgroundSync();
             $this->writeLine('  └─ Background sync enabled');
         }
