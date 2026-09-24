@@ -48,6 +48,7 @@ hace hoy. Donde algo no existe, se dice que no existe — véase
 - [JWT](#jwt)
 - [Depuración](#depuración)
 - [Async](#async)
+- [PWA](#pwa)
 - [Manejo de errores](#manejo-de-errores)
 - [Registro](#registro)
 - [Health check y métricas](#health-check-y-métricas)
