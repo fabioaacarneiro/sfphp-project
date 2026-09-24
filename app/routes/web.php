@@ -19,3 +19,7 @@ Router::get("/", "MainController", "index");
 // Shows web pages built with .phpx components (PHP functions + SFHT templates)
 Router::get('/phpx', 'PhpxController', 'index')->name('phpx');
 Router::get('/phpx/postcode', 'PhpxController', 'postcode')->name('phpx.postcode');
+
+// Streaming Demo
+Router::get('/stream', 'StreamController', 'text');
+Router::get('/stream/sse', 'StreamController', 'sse');

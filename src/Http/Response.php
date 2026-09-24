@@ -18,21 +18,62 @@ use SfphpProject\src\View;
  * asserted in a test without output buffering, and what makes a persistent
  * runtime a matter of writing one more emitter rather than reworking the
  * framework.
+ *
+ * Responses can stream their body: instead of buffering the entire response,
+ * the body is generated in chunks. Streaming responses bypass normal body
+ * buffering and are sent directly to the client as they're produced.
  */
 final class Response
 {
+    /** @var callable(StreamWriter): void|null */
+    private readonly mixed $producer;
+
     /**
      * Create a response.
      *
      * @param string $body The response body
      * @param int $status The HTTP status code
      * @param array<string, string> $headers The headers, indexed by name
+     * @param callable(StreamWriter): void|null $producer For streaming responses
      */
     public function __construct(
         private readonly string $body = '',
         private readonly int $status = HTTP_OK,
-        private readonly array $headers = []
-    ) {}
+        private readonly array $headers = [],
+        callable|null $producer = null
+    ) {
+        $this->producer = $producer;
+    }
+
+    /**
+     * Create a streaming response.
+     *
+     * The producer receives a StreamWriter and writes chunks as they're
+     * generated. Nothing is executed until the Emitter sends the response.
+     *
+     * Headers are sent before the first chunk. Middlewares can still modify
+     * status and headers before emission.
+     *
+     *     return Response::stream(function(StreamWriter $out) {
+     *         for ($i = 0; $i < 100; $i++) {
+     *             if ($out->aborted()) break;
+     *             $out->write("Chunk $i\n");
+     *             usleep(100000);
+     *         }
+     *     });
+     *
+     * @param callable(StreamWriter): void $producer Generates response chunks
+     * @param int $status The HTTP status code
+     * @param array<string, string> $headers The headers, indexed by name
+     * @return self The response
+     */
+    public static function stream(
+        callable $producer,
+        int $status = HTTP_OK,
+        array $headers = []
+    ): self {
+        return new self('', $status, $headers, $producer);
+    }
 
     /**
      * Create an HTML response.
@@ -261,11 +302,42 @@ final class Response
     /**
      * Get the response body.
      *
+     * For streaming responses, this throws LogicException: the body is
+     * generated in chunks and cannot be read as a string.
+     *
      * @return string The body
+     * @throws LogicException If this is a streaming response
      */
     public function body(): string
     {
+        if ($this->producer !== null) {
+            throw new LogicException(
+                'Cannot get body of a streaming response. The body is generated in chunks by the producer.'
+            );
+        }
+
         return $this->body;
+    }
+
+    /**
+     * Check if this is a streaming response.
+     *
+     * @return bool True if the response will stream its body
+     */
+    public function isStream(): bool
+    {
+        return $this->producer !== null;
+    }
+
+    /**
+     * Get the stream producer (internal use only).
+     *
+     * @return callable(StreamWriter): void|null
+     * @internal
+     */
+    public function producer(): ?callable
+    {
+        return $this->producer;
     }
 
     /**
@@ -303,7 +375,7 @@ final class Response
      */
     public function withStatus(int $status): self
     {
-        return new self($this->body, $status, $this->headers);
+        return new self($this->body, $status, $this->headers, $this->producer);
     }
 
     /**
@@ -328,7 +400,7 @@ final class Response
 
         $headers[$name] = $value;
 
-        return new self($this->body, $this->status, $headers);
+        return new self($this->body, $this->status, $headers, $this->producer);
     }
 
     /**
@@ -339,6 +411,6 @@ final class Response
      */
     public function withBody(string $body): self
     {
-        return new self($body, $this->status, $this->headers);
+        return new self($body, $this->status, $this->headers, $this->producer);
     }
 }
