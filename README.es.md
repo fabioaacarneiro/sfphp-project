@@ -62,6 +62,7 @@ cd mi-app
 ## Documentación Completa
 
 - **Guía Rápida Async** — [5 minutos para tu primer await](ASYNC_QUICK_START.md)
+- **Guía PWA Completa** — [Progressive Web Apps, offline, notificaciones push](docs/PWA_GUIDE.es.md)
 - **Documentación Completa** — [Framework completo documentado](docs/es/DOCUMENTATION.md)
 - **Sistema Async/Await** — [Async, streams, eventos y real-time](docs/ASYNC_COMPLETE_GUIDE.md)
 
