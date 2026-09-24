@@ -4996,4 +4996,14 @@ de bloques (`@parent`).
 
 ---
 
+## Guías Relacionadas
+
+Más allá de esta referencia del framework, explora nuestras guías especializadas:
+
+- **[Guía Completa Async/Await](../ASYNC_COMPLETE_GUIDE.md)** — Guía integral sobre programación asíncrona con PHP Fibers, WebSockets, streams, broadcast de eventos y componentes reactivos
+- **[Guía PWA](../PWA_GUIDE.es.md)** — Construye Progressive Web Apps con soporte offline, notificaciones push, sincronización en background e instalación en pantalla de inicio
+- **[Framework SFCSS](./SFCSS.md)** — Guía de estilos para el framework CSS integrado inspirado en Pico con utilities al estilo Tailwind
+
+---
+
 *Documentación revisada el 2026-09-22 contra el código en ejecución.*

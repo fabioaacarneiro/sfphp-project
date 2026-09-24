@@ -4924,4 +4924,14 @@ inheritance (`@parent`).
 
 ---
 
+## Related Guides
+
+Beyond this framework reference, explore our specialized guides:
+
+- **[Async/Await Complete Guide](../ASYNC_COMPLETE_GUIDE.md)** — Comprehensive guide to async programming with PHP Fibers, WebSockets, streams, event broadcasting, and reactive components
+- **[PWA Guide](../PWA_GUIDE.md)** — Build Progressive Web Apps with offline support, push notifications, background sync, and home screen installation
+- **[SFCSS Framework](./SFCSS.md)** — Styling guide for the built-in Pico-inspired CSS framework with Tailwind-style utilities
+
+---
+
 *Documentation reviewed on 2026-09-22 against the running code.*

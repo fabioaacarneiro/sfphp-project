@@ -4918,4 +4918,14 @@ parcial de bloco (`@parent`).
 
 ---
 
+## Guias Relacionados
+
+Além desta referência do framework, explore nossos guias especializados:
+
+- **[Guia Completo Async/Await](../ASYNC_COMPLETE_GUIDE.md)** — Guia abrangente sobre programação assíncrona com PHP Fibers, WebSockets, streams, broadcast de eventos e componentes reativos
+- **[Guia PWA](../PWA_GUIDE.pt-BR.md)** — Construa Progressive Web Apps com suporte offline, notificações push, sincronização em background e instalação na tela inicial
+- **[Framework SFCSS](./SFCSS.md)** — Guia de estilos para o framework CSS integrado inspirado em Pico com utilities ao estilo Tailwind
+
+---
+
 *Documentação revisada em 2026-09-22 contra o código em execução.*
