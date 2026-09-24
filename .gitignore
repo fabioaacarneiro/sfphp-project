@@ -64,8 +64,10 @@ benchmark-*.php
 node_modules/
 package-lock.json
 
-# Cache directories
+# Cache directories and local development
 .claude/
+.zed/
+benchmarks/
 
 # Published by ./sfphp assets:publish from resources/assets, which is the one
 # copy under version control. Two copies of the same file drift.
