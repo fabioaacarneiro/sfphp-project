@@ -40,17 +40,25 @@ features-implemented.md
 # - Phase summary files
 # - Async implementation notes
 # - LLM/Agent anotations
+# - Test/benchmark scripts at root
+# - Example files at root
 PHASES_SUMMARY.md
 PHASE*_SUMMARY.md
 ASYNC_SUMMARY.md
 ASYNC_IMPLEMENTATION_COMPLETE.md
 ASYNC_RUNTIME_AUDIT.md
 SFPHP_ASYNC_SYSTEM_FINAL.md
+ASYNC_QUICK_START.md
 docs/ASYNC_PHASE*.md
 docs/ASYNC_USAGE.md
 IMPLEMENTATION_NOTES.md
 DEVELOPMENT_NOTES.md
+context.md
+features-implemented.md
 _*.md
+example-*.php
+test-*.php
+benchmark-*.php
 
 # Node modules (for VSCode extension)
 node_modules/
