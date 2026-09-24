@@ -959,15 +959,6 @@ final class Application
     private function routes(array $arguments): int
     {
         try {
-            $file = $this->routesFile();
-
-            if ($file === null) {
-                $this->writeLine('No route file found. Looked for app/routes/web.php, app/routes/api.php, routes/web.php and routes.php.');
-                $this->writeLine('Pass one with --path=, or run ./sfphp init to scaffold a project.');
-
-                return 1;
-            }
-
             $custom = $this->option($arguments, 'path');
 
             if ($custom !== null) {
@@ -978,10 +969,29 @@ final class Application
 
                     return 1;
                 }
-            }
 
-            // Load routes to populate the static Router::$routes
-            require $file;
+                // Load custom routes file
+                require $file;
+            } else {
+                // Load default routes: web.php and api.php
+                $webFile = $this->projectPath('app/routes/web.php');
+                $apiFile = $this->projectPath('app/routes/api.php');
+
+                if (!is_file($webFile) && !is_file($apiFile)) {
+                    $this->writeLine('No route file found. Looked for app/routes/web.php and app/routes/api.php.');
+                    $this->writeLine('Pass one with --path=, or run ./sfphp init to scaffold a project.');
+
+                    return 1;
+                }
+
+                if (is_file($webFile)) {
+                    require $webFile;
+                }
+
+                if (is_file($apiFile)) {
+                    require $apiFile;
+                }
+            }
 
             // Create a temporary router instance to access the routes
             $container = new \SfphpProject\src\Container();
