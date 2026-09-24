@@ -78,7 +78,7 @@ final class ServiceWorkerGenerator
         $pushNotifications = $this->enablePushNotifications ? $this->generatePushNotifications() : '';
         $backgroundSync = $this->enableBackgroundSync ? $this->generateBackgroundSync() : '';
 
-        return <<<'JAVASCRIPT'
+        $template = <<<'JAVASCRIPT'
 const CACHE_NAME = {CACHE_NAME};
 const STATIC_ASSETS = {STATIC_ASSETS};
 const API_ROUTES = {API_ROUTES};
@@ -90,7 +90,6 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME).then(cache => {
       return cache.addAll(STATIC_ASSETS).catch(err => {
         console.log('Some assets failed to cache:', err);
-        // Continue even if some assets fail
         return Promise.resolve();
       });
     }).then(() => self.skipWaiting())
@@ -117,12 +116,10 @@ self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests
   if (request.method !== 'GET') {
     return;
   }
 
-  // Static assets: cache-first
   if (isStaticAsset(url.pathname)) {
     event.respondWith(
       caches.match(request).then(response => {
@@ -137,7 +134,6 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // API routes: network-first
   if (isApiRoute(url.pathname)) {
     event.respondWith(
       fetch(request)
@@ -155,19 +151,16 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Default: network-first
   event.respondWith(
     fetch(request)
       .catch(() => caches.match(request) || caches.match(OFFLINE_FALLBACK))
   );
 });
 
-// Check if URL is a static asset
 function isStaticAsset(pathname) {
   return /\.(js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot)$/i.test(pathname);
 }
 
-// Check if URL matches API routes
 function isApiRoute(pathname) {
   return API_ROUTES.some(route => {
     const pattern = route.replace(/\*/g, '.*');
@@ -181,7 +174,7 @@ JAVASCRIPT;
         return str_replace(
             ['{CACHE_NAME}', '{STATIC_ASSETS}', '{API_ROUTES}', '{OFFLINE_FALLBACK}', '{PUSH_NOTIFICATIONS}', '{BACKGROUND_SYNC}'],
             [$cacheName, $staticAssets, $apiRoutes, $offlineFallback, $pushNotifications, $backgroundSync],
-            $this->getTemplate()
+            $template
         );
     }
 
