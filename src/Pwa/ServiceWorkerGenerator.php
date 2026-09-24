@@ -7,7 +7,7 @@ namespace SfphpProject\src\Pwa;
  *
  * Handles:
  * - Cache-first strategy (static assets)
- * - Network-first strategy (API calls)
+ * - Network-only strategy for APIs (no private data caching)
  * - Offline fallback pages
  * - Push notifications
  * - Background sync
@@ -18,13 +18,14 @@ final class ServiceWorkerGenerator
 
     /** @var array<int, string> */
     private array $staticAssets = [
-        '/css/sfcss.min.css',
-        '/js/sfjs.min.js',
-        '/index.html',
+        '/assets/css/sfcss.min.css',
+        '/assets/js/sfjs.min.js',
+        '/',
+        '/offline.html',
     ];
 
     /** @var array<int, string> */
-    private array $apiRoutes = ['/api/*'];
+    private array $apiRoutes = [];
 
     private string $offlineFallback = '/offline.html';
     private bool $enablePushNotifications = false;
@@ -111,7 +112,7 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Fetch event: cache-first for static, network-first for API
+// Fetch event: cache-first for static, network-only for API (no private data caching)
 self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
@@ -136,24 +137,13 @@ self.addEventListener('fetch', event => {
 
   if (isApiRoute(url.pathname)) {
     event.respondWith(
-      fetch(request)
-        .then(response => {
-          if (!response.ok) throw new Error('Network response failed');
-          return caches.open(CACHE_NAME).then(cache => {
-            cache.put(request, response.clone());
-            return response;
-          });
-        })
-        .catch(() => {
-          return caches.match(request) || caches.match(OFFLINE_FALLBACK);
-        })
+      fetch(request).catch(() => caches.match(OFFLINE_FALLBACK))
     );
     return;
   }
 
   event.respondWith(
-    fetch(request)
-      .catch(() => caches.match(request) || caches.match(OFFLINE_FALLBACK))
+    fetch(request).catch(() => caches.match(OFFLINE_FALLBACK))
   );
 });
 
@@ -178,102 +168,6 @@ JAVASCRIPT;
         );
     }
 
-    private function getTemplate(): string
-    {
-        return <<<'JAVASCRIPT'
-const CACHE_NAME = {CACHE_NAME};
-const STATIC_ASSETS = {STATIC_ASSETS};
-const API_ROUTES = {API_ROUTES};
-const OFFLINE_FALLBACK = {OFFLINE_FALLBACK};
-
-// Install event: cache static assets
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(STATIC_ASSETS).catch(err => {
-        console.log('Some assets failed to cache:', err);
-        return Promise.resolve();
-      });
-    }).then(() => self.skipWaiting())
-  );
-});
-
-// Activate event: clean old caches
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(name => {
-          if (name !== CACHE_NAME) {
-            return caches.delete(name);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
-  );
-});
-
-// Fetch event: cache-first for static, network-first for API
-self.addEventListener('fetch', event => {
-  const { request } = event;
-  const url = new URL(request.url);
-
-  if (request.method !== 'GET') {
-    return;
-  }
-
-  if (isStaticAsset(url.pathname)) {
-    event.respondWith(
-      caches.match(request).then(response => {
-        return response || fetch(request).then(networkResponse => {
-          return caches.open(CACHE_NAME).then(cache => {
-            cache.put(request, networkResponse.clone());
-            return networkResponse;
-          });
-        }).catch(() => caches.match(OFFLINE_FALLBACK));
-      })
-    );
-    return;
-  }
-
-  if (isApiRoute(url.pathname)) {
-    event.respondWith(
-      fetch(request)
-        .then(response => {
-          if (!response.ok) throw new Error('Network response failed');
-          return caches.open(CACHE_NAME).then(cache => {
-            cache.put(request, response.clone());
-            return response;
-          });
-        })
-        .catch(() => {
-          return caches.match(request) || caches.match(OFFLINE_FALLBACK);
-        })
-    );
-    return;
-  }
-
-  event.respondWith(
-    fetch(request)
-      .catch(() => caches.match(request) || caches.match(OFFLINE_FALLBACK))
-  );
-});
-
-function isStaticAsset(pathname) {
-  return /\.(js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot)$/i.test(pathname);
-}
-
-function isApiRoute(pathname) {
-  return API_ROUTES.some(route => {
-    const pattern = route.replace(/\*/g, '.*');
-    return new RegExp(`^${pattern}$`).test(pathname);
-  });
-}
-
-{PUSH_NOTIFICATIONS}{BACKGROUND_SYNC}
-JAVASCRIPT;
-    }
-
     private function generatePushNotifications(): string
     {
         return <<<'JAVASCRIPT'
@@ -284,8 +178,8 @@ self.addEventListener('push', event => {
   const title = data.title || 'SFPHP Notification';
   const options = {
     body: data.body || '',
-    icon: data.icon || '/icon-192x192.png',
-    badge: data.badge || '/badge-72x72.png',
+    icon: data.icon || '/assets/icons/icon-192x192.png',
+    badge: data.badge || '/assets/icons/badge-72x72.png',
     tag: data.tag || 'sfphp-notification',
     data: data.data || {},
   };
