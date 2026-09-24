@@ -2395,6 +2395,11 @@ final class Blueprint
      */
     private function integerType(string $type): string
     {
+        // SQLite requires INTEGER PRIMARY KEY (not BIGINT) for AUTOINCREMENT to work
+        if ($this->driver === 'sqlite' && in_array($type, ['id', 'bigIncrements'], true)) {
+            return 'INTEGER';
+        }
+
         return match ($type) {
             'tinyInteger' => $this->isPostgres() ? 'SMALLINT' : 'TINYINT',
             'smallInteger' => 'SMALLINT',
