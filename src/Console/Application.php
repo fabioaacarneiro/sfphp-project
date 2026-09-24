@@ -726,7 +726,7 @@ final class Application
         $logo = $this->option($arguments, 'logo');
 
         $publicPath = $this->projectPath('public');
-        @mkdir($publicPath . '/icons', 0755, true);
+        @mkdir($publicPath . '/assets/icons', 0755, true);
 
         // 1. Generate manifest.json
         $this->writeLine('✓ Generating manifest.json');
@@ -736,8 +736,8 @@ final class Application
             ->shortName($shortName)
             ->description($description)
             ->themeColor($color)
-            ->icon('/icons/icon-192x192.png', '192x192', 'image/png')
-            ->icon('/icons/icon-512x512.png', '512x512', 'image/png');
+            ->icon('/assets/icons/icon-192x192.png', '192x192', 'image/png')
+            ->icon('/assets/icons/icon-512x512.png', '512x512', 'image/png');
 
         $manifest->save($publicPath . '/manifest.json');
 
@@ -777,10 +777,10 @@ final class Application
             $this->writeLine('✓ Generating icons from ' . basename($logo));
             try {
                 $iconGen = new \SfphpProject\src\Pwa\IconGenerator($logo);
-                $iconGen->generate($publicPath . '/icons');
+                $iconGen->generate($publicPath . '/assets/icons');
             } catch (\Exception $e) {
                 $this->writeLine('⚠ Could not generate icons: ' . $e->getMessage());
-                $this->writeLine('  Add icons manually to public/icons/');
+                $this->writeLine('  Add icons manually to public/assets/icons/');
             }
         } else {
             $this->writeLine('⚠ Skipping icon generation (no logo provided)');

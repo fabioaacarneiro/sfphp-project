@@ -20,7 +20,6 @@ final class ServiceWorkerGenerator
     private array $staticAssets = [
         '/assets/css/sfcss.min.css',
         '/assets/js/sfjs.min.js',
-        '/',
         '/offline.html',
     ];
 
