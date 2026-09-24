@@ -36,12 +36,21 @@ html/
 context.md
 features-implemented.md
 
-# Phase/Implementation summary files (development artifacts)
+# Development/Agent artifacts (never commit)
+# - Phase summary files
+# - Async implementation notes
+# - LLM/Agent anotations
 PHASES_SUMMARY.md
 PHASE*_SUMMARY.md
 ASYNC_SUMMARY.md
 ASYNC_IMPLEMENTATION_COMPLETE.md
 ASYNC_RUNTIME_AUDIT.md
+SFPHP_ASYNC_SYSTEM_FINAL.md
+docs/ASYNC_PHASE*.md
+docs/ASYNC_USAGE.md
+IMPLEMENTATION_NOTES.md
+DEVELOPMENT_NOTES.md
+_*.md
 
 # Node modules (for VSCode extension)
 node_modules/
