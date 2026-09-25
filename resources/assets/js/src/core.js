@@ -591,6 +591,12 @@ const sf = (() => {
    * was looked up as a rule name, not found, and the field passed — so three
    * of the documented rules never did anything.
    *
+   * An empty field — blank, or only spaces — is judged by required alone,
+   * wherever it sits in the list: with it, "required" is the one message;
+   * without it the field is optional and nothing is checked. A field with a
+   * value is checked against the rest. The server decides the same way, so
+   * the two never disagree about a blank field.
+   *
    * @param {Element} element The field
    * @returns {?{name: string, argument: ?string, value: string}}
    */
@@ -602,15 +608,27 @@ const sf = (() => {
     // An unticked checkbox still has a value ("on"), so required would pass.
     const value = element.type === 'checkbox' && !element.checked ? '' : element.value;
 
-    for (const one of spec.split('|')) {
+    const rules = spec.split('|').map((one) => {
       const at = one.indexOf(':');
-      const name = (at === -1 ? one : one.slice(0, at)).trim();
-      const argument = at === -1 ? null : one.slice(at + 1);
 
-      if (!validate[name]) {
-        console.error('SFJS: @validate does not know "' + name + '"');
-        continue;
-      }
+      return {
+        name: (at === -1 ? one : one.slice(0, at)).trim(),
+        argument: at === -1 ? null : one.slice(at + 1),
+      };
+    }).filter((rule) => rule.name !== '');
+
+    for (const { name } of rules) {
+      if (!validate[name]) console.error('SFJS: @validate does not know "' + name + '"');
+    }
+
+    if (String(value).trim() === '') {
+      return rules.some((rule) => rule.name === 'required')
+        ? { name: 'required', argument: null, value }
+        : null;
+    }
+
+    for (const { name, argument } of rules) {
+      if (name === 'required' || !validate[name]) continue;
 
       if (!validate[name](value, argument)) return { name, argument, value };
     }

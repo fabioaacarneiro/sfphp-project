@@ -2845,7 +2845,7 @@ Argumentos vêm depois de `:`.
 
 | Regra | Verifica |
 |---|---|
-| `required` | Não nulo, não vazio, não lista vazia |
+| `required` | Não nulo, não vazio, não só espaços, não lista vazia |
 | `email` | `FILTER_VALIDATE_EMAIL` |
 | `url` | `FILTER_VALIDATE_URL` |
 | `number` | Só dígitos ASCII (seguro para `(int)`) |
@@ -2856,6 +2856,25 @@ Argumentos vêm depois de `:`.
 | `minLength:N` | No mínimo N caracteres, **sempre** — não importa o que o valor pareça |
 | `maxLength:N` | No máximo N caracteres, sempre |
 | `pattern:REGEX` | Casa, com `u` e com os delimitadores postos para você |
+
+**O `required` vem primeiro, e as outras regras só quando há valor.** Um campo
+ausente, vazio ou só com espaços é julgado apenas pelo `required`, em qualquer
+posição da lista: com ele, "é obrigatório" é a única mensagem — não há
+comprimento a conferir num valor que não existe; sem ele, o campo é opcional e
+nada é verificado. Quando o campo tem valor, o `required` não tem o que dizer e
+todas as outras regras se aplicam, cada uma com a sua mensagem. `"0"` é um
+valor. O navegador (`@validate`) decide do mesmo jeito.
+
+```php
+$rules = ['name' => 'required|min:3', 'nickname' => 'min:3|max:20'];
+
+Validator::validate([], $rules)->errors();
+// ['name' => ['name is required.']]            — nickname is optional: not checked
+
+Validator::validate(['name' => 'Jo', 'nickname' => 'Al'], $rules)->errors();
+// ['name' => ['name must be at least 3 characters long.'],
+//  'nickname' => ['nickname must be at least 3 characters long.']]
+```
 
 **O `min` e o `max` seguem o valor**, que é o que as pessoas querem dizer quando
 os escrevem:
@@ -5199,7 +5218,9 @@ seu `value`, como num envio sem JavaScript.
 
 `@validate` roda no `blur` e aceita as mesmas regras que o servidor valida —
 veja [Validação](#validação) para a lista. Várias separadas por `|`:
-`@validate="required|number|min:18"`.
+`@validate="required|number|min:18"`. Como no servidor, o `required` é julgado
+primeiro: um campo vazio mostra só "obrigatório" quando a regra está lá, e nada
+quando não está; as outras regras só verificam o campo quando ele tem valor.
 
 ```html
 <form @post="/usuarios" @target="#lista">
