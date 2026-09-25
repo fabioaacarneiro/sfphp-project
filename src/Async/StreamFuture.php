@@ -64,17 +64,28 @@ class StreamFuture implements Future
 
     /**
      * Reduce stream to single value
+     *
+     * The pipeline built so far runs chunk by chunk and the reducer folds
+     * every item into one value, carried from each chunk to the next. It
+     * used to be added as one more pipe stage returning `[$total]` per chunk;
+     * the stage results were then concatenated and the first one returned,
+     * which was the total after the first chunk only — range(1, 10) in
+     * chunks of 3 reduced to 6, not 55.
+     *
+     * This is a terminal operation: it does not change the pipeline, so the
+     * stream can still be read with getValue() afterwards.
      */
     public function reduce(callable $reducer, $initial = null)
     {
-        $this->pipe(function ($items) use ($reducer, &$initial) {
-            foreach ($items as $item) {
-                $initial = $reducer($initial, $item);
-            }
-            return [$initial];
-        });
+        $carry = $initial;
 
-        return $this->getValue()[0] ?? $initial;
+        foreach ($this->processedChunks() as $items) {
+            foreach ($items as $item) {
+                $carry = $reducer($carry, $item);
+            }
+        }
+
+        return $carry;
     }
 
     /**
@@ -86,18 +97,13 @@ class StreamFuture implements Future
         $results = [];
 
         try {
-            $chunks = $this->getChunks();
-
-            foreach ($chunks as $chunk) {
-                $processed = $chunk;
-
-                // Apply all processors in pipeline
-                foreach ($this->processors as $processor) {
-                    $processed = call_user_func($processor, $processed);
-                }
-
-                $results = array_merge($results, $processed);
-                $this->processedCount += count($processed);
+            foreach ($this->processedChunks() as $processed) {
+                /*
+                 * array_values, because filter() keeps the keys array_filter
+                 * left, and merging chunks whose keys restart at zero would
+                 * otherwise interleave them unpredictably.
+                 */
+                array_push($results, ...array_values($processed));
             }
 
             $this->result = $results;
@@ -115,11 +121,37 @@ class StreamFuture implements Future
     }
 
     /**
-     * Get chunks from source
+     * Run each chunk through the pipeline, one chunk at a time.
+     *
+     * @return \Generator<int, array> The processed chunks
      */
-    private function getChunks(): array
+    private function processedChunks(): \Generator
     {
-        $chunks = [];
+        foreach ($this->getChunks() as $chunk) {
+            $processed = $chunk;
+
+            // Apply all processors in pipeline
+            foreach ($this->processors as $processor) {
+                $processed = call_user_func($processor, $processed);
+            }
+
+            $this->processedCount += count($processed);
+
+            yield $processed;
+        }
+    }
+
+    /**
+     * Get chunks from source
+     *
+     * A generator, so that only one chunk of the source is held at a time
+     * while the pipeline runs. getValue() still collects every processed item
+     * into its result; reduce() does not, and holds only the running value.
+     *
+     * @return \Generator<int, array> The chunks
+     */
+    private function getChunks(): \Generator
+    {
         $chunk = [];
 
         if (is_callable($this->source)) {
@@ -132,16 +164,14 @@ class StreamFuture implements Future
             $chunk[] = $item;
 
             if (count($chunk) >= $this->chunkSize) {
-                $chunks[] = $chunk;
+                yield $chunk;
                 $chunk = [];
             }
         }
 
         if (!empty($chunk)) {
-            $chunks[] = $chunk;
+            yield $chunk;
         }
-
-        return $chunks;
     }
 
     /**
@@ -224,10 +254,20 @@ class StreamFuture implements Future
 
     /**
      * Create from database query
+     *
+     * SFPHP's ModelQuery and QueryBuilder have no cursor, so the rows are
+     * fetched with get() in one query when the stream is first read, and the
+     * chunk size then bounds how many rows each pipeline stage handles at a
+     * time — not how many are in memory. This used to call `cursor()`, which
+     * no framework query has, so it failed on every framework query. A query
+     * object from elsewhere that does offer `cursor()` is still read through it.
      */
     public static function fromQuery($query, int $chunkSize = 1000): self
     {
-        return new self(fn() => $query->cursor(), $chunkSize);
+        return new self(
+            fn() => method_exists($query, 'cursor') ? $query->cursor() : $query->get(),
+            $chunkSize
+        );
     }
 
     /**
@@ -236,8 +276,10 @@ class StreamFuture implements Future
     public static function fromCsv(string $filepath, int $chunkSize = 1000): self
     {
         return new self(function () use ($filepath) {
-            $handle = fopen($filepath, 'r');
-            while (($row = fgetcsv($handle)) !== false) {
+            $handle = self::open($filepath);
+
+            // The escape character is passed explicitly: PHP 8.4 deprecates relying on its default.
+            while (($row = fgetcsv($handle, null, ',', '"', '\\')) !== false) {
                 yield $row;
             }
             fclose($handle);
@@ -250,7 +292,7 @@ class StreamFuture implements Future
     public static function fromJsonLines(string $filepath, int $chunkSize = 1000): self
     {
         return new self(function () use ($filepath) {
-            $handle = fopen($filepath, 'r');
+            $handle = self::open($filepath);
             while (($line = fgets($handle)) !== false) {
                 $data = json_decode(trim($line), true);
                 if ($data !== null) {
@@ -259,5 +301,24 @@ class StreamFuture implements Future
             }
             fclose($handle);
         }, $chunkSize);
+    }
+
+    /**
+     * Open a file for reading, or say why it could not be.
+     *
+     * Without this, a missing file reached fgetcsv() as `false` and failed
+     * with a TypeError that named neither the file nor the problem.
+     *
+     * @return resource The handle
+     */
+    private static function open(string $filepath)
+    {
+        $handle = is_file($filepath) ? @fopen($filepath, 'r') : false;
+
+        if ($handle === false) {
+            throw new \RuntimeException("Cannot open file for streaming: {$filepath}");
+        }
+
+        return $handle;
     }
 }

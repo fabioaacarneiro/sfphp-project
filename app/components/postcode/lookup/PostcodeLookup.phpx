@@ -31,7 +31,7 @@ function PostcodeLookup(?Sfht $result = null): Sfht
                         <div class="d-flex gap-2 flex-wrap">
                             <input id="postcode" name="postcode" type="text" inputmode="numeric" maxlength="9"
                                    placeholder="01001-000"
-                                   class="border border-gray-300 rounded-md px-3 py-2 flex-grow-1">
+                                   class="form-control flex-1 w-auto">
                             <button type="submit" class="btn btn-primary">Look up</button>
                         </div>
                         <p class="text-xs text-muted mt-2 mb-0">

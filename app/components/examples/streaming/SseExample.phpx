@@ -21,16 +21,17 @@ function SseExample(): Sfht
                     Listen to named events from the server (perfect for notifications, live updates, or progress).
                 </p>
 
-                <div class="bg-white border border-gray-300 rounded p-4 font-mono text-sm min-h-40 max-h-64 overflow-y-auto" id="sse-output">
-                    <span class="text-gray-400">Click "Connect" to receive events...</span>
-                </div>
+                <div
+                    id="sse-output"
+                    class="bg-white border border-gray-300 rounded p-4 font-mono text-sm min-h-40 max-h-64 overflow-y-auto whitespace-pre-wrap break-words"
+                ><span class="text-gray-400">Click "Connect" to receive events...</span></div>
 
                 <button
                     class="btn btn-success w-full mt-4"
-                    @sse="/stream/sse"
-                    @events="progress,complete,status"
+                    @stream="/stream/sse"
+                    @sse
+                    @events="status,progress,data,complete"
                     @target="#sse-output"
-                    onclick="connectSSE()"
                 >
                     Connect to Events
                 </button>
@@ -39,69 +40,11 @@ function SseExample(): Sfht
             <div class="card-footer text-xs">
                 <p><strong>HTML:</strong></p>
                 <code class="block bg-gray-50 p-2 rounded mt-2 overflow-x-auto">
-&lt;div @sse="/events" @events="progress,complete"&gt;
-  Events appear here
-&lt;/div&gt;
+&lt;button @stream="/events" @sse @events="progress,complete" @target="#output"&gt;
+  Connect
+&lt;/button&gt;
                 </code>
             </div>
         </div>
     );
 }
-
-?>
-
-<script>
-function connectSSE() {
-    const output = document.getElementById('sse-output');
-    output.innerHTML = '<span class="text-blue-600">Connecting...</span>';
-
-    const es = new EventSource('/stream/sse');
-
-    es.addEventListener('status', (e) => {
-        addSSEEvent(output, 'status', e.data);
-    });
-
-    es.addEventListener('progress', (e) => {
-        addSSEEvent(output, 'progress', e.data);
-    });
-
-    es.addEventListener('data', (e) => {
-        addSSEEvent(output, 'data', e.data);
-    });
-
-    es.addEventListener('complete', (e) => {
-        addSSEEvent(output, 'complete', e.data);
-        es.close();
-    });
-
-    es.onerror = () => {
-        addSSEEvent(output, 'error', 'Connection closed');
-        es.close();
-    };
-}
-
-function addSSEEvent(container, eventName, data) {
-    const time = new Date().toLocaleTimeString();
-    const line = document.createElement('div');
-    line.className = getSSEEventClass(eventName);
-    line.textContent = `[${time}] ${eventName}: ${data}`;
-
-    if (container.firstChild?.classList?.contains('text-gray-400')) {
-        container.innerHTML = '';
-    }
-
-    container.appendChild(line);
-    container.scrollTop = container.scrollHeight;
-}
-
-function getSSEEventClass(eventName) {
-    const classes = {
-        'status': 'text-blue-600 font-bold',
-        'progress': 'text-green-600',
-        'data': 'text-purple-600',
-        'complete': 'text-indigo-600 font-bold',
-        'error': 'text-red-600 font-bold'
-    };
-    return classes[eventName] || 'text-gray-700';
-}
-</script>

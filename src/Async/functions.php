@@ -70,9 +70,10 @@ function await(Future $future, ?int $timeout = null): mixed
 
             /*
              * Cancelling is what releases the network handle and everybody
-             * waiting on it. A Future that cannot be cancelled is left to
-             * finish on its own — the caller is freed by the exception below,
-             * but nothing pretends the work stopped.
+             * waiting on it. A Future that cannot be cancelled is left alone:
+             * the deadline does not interrupt it, and the caller keeps waiting
+             * until it settles, exactly as it would have without one. Only a
+             * Cancellable honours a timeout.
              */
             if ($future instanceof Cancellable) {
                 $future->cancel($expired);
@@ -101,10 +102,25 @@ function await(Future $future, ?int $timeout = null): mixed
                 Fiber::suspend();
             } else {
                 $scheduler->runUntil(static fn (): bool => $future->isSettled());
+
+                if ($future->isPending()) {
+                    /*
+                     * The loop ran dry and this is still pending: nothing that
+                     * could settle it exists. That is a deadlock, and naming it
+                     * beats the "not finished" a bare read would report.
+                     */
+                    throw new AsyncException('Deadlock: the awaited operation is still pending and nothing is scheduled that could settle it.');
+                }
             }
         }
 
-        if ($future->isCancelled() && $future->getException() instanceof TimeoutException) {
+        /*
+         * isCancelled() belongs to Pending, not to the Future interface. A
+         * legacy adapter that had already run reached this line and failed
+         * with "Call to undefined method", so the check is asked only of a
+         * Future that can answer it.
+         */
+        if ($future instanceof Pending && $future->isCancelled() && $future->getException() instanceof TimeoutException) {
             throw $future->getException();
         }
 

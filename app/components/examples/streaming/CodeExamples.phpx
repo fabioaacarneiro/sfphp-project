@@ -19,8 +19,7 @@ function CodeExamples(): Sfht
                     <h3 class="text-lg font-bold mb-3">HTML: @stream Directive</h3>
                     <pre class="bg-gray-50 p-3 rounded text-xs overflow-x-auto"><code class="language-html">&lt;!-- Simple button --&gt;
 &lt;button @stream="/api/data"
-        @target="#output"
-        @swap="innerHTML"&gt;
+        @target="#output"&gt;
   Load Data
 &lt;/button&gt;
 
@@ -63,7 +62,7 @@ public function stream(): Response
                 <div class="bg-white border border-gray-300 rounded-lg p-6">
                     <h3 class="text-lg font-bold mb-3">HTML: @sse Directive</h3>
                     <pre class="bg-gray-50 p-3 rounded text-xs overflow-x-auto"><code class="language-html">&lt;!-- Listen to events --&gt;
-&lt;div @sse="/api/events"
+&lt;div @stream="/api/events" @sse
      @events="progress,complete,error"
      @target="#output"&gt;
   Waiting for events...

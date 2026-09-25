@@ -13,13 +13,10 @@ use SfphpProject\src\View\Sfht;
  */
 function Field(string $label, string $value): Sfht
 {
-    return (static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="py-1">
-            <span class="text-xs text-muted d-block">';
-echo \SfphpProject\src\View\Compiler::text(($label));
-echo '</span>
-            <span class="font-semibold">';
-echo \SfphpProject\src\View\Compiler::text(($value));
-echo '</span>
-        </div>';
- return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars());
+    return 
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="py-1">
+            <span class="text-xs text-muted d-block">'; echo \SfphpProject\src\View\Compiler::text(($label)); echo '</span>
+            <span class="font-semibold">'; echo \SfphpProject\src\View\Compiler::text(($value)); echo '</span>
+        </div>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+;
 }

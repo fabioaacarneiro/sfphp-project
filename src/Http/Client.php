@@ -290,7 +290,7 @@ final class Client
             CURLOPT_LOW_SPEED_LIMIT => $this->idleTimeout > 0 ? 1 : 0, // 1 byte/sec min, disabled if timeout=0
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => self::MAX_REDIRECTS,
-            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_REDIR_PROTOCOLS => self::redirectProtocols($url),
             CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
             CURLOPT_SSL_VERIFYPEER => $this->verify,
             CURLOPT_SSL_VERIFYHOST => $this->verify ? 2 : 0,
@@ -425,13 +425,8 @@ final class Client
             CURLOPT_TIMEOUT => $this->timeout,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => self::MAX_REDIRECTS,
-            /*
-             * A redirect from https:// to http:// is a downgrade a server can
-             * ask for and a client should refuse: everything after it travels
-             * in the clear, including the Authorization header this may be
-             * carrying.
-             */
-            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+            // See redirectProtocols(): https never downgrades to http.
+            CURLOPT_REDIR_PROTOCOLS => self::redirectProtocols($url),
             CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
             CURLOPT_SSL_VERIFYPEER => $this->verify,
             CURLOPT_SSL_VERIFYHOST => $this->verify ? 2 : 0,
@@ -508,6 +503,32 @@ final class Client
     public function stream(string $url, ClientStreamListener $listener): void
     {
         $this->streamRequest('GET', $url, $listener);
+    }
+
+    /**
+     * Which schemes a redirect may lead to, given where the request started.
+     *
+     * A redirect from https:// to http:// is a downgrade a server can ask for
+     * and a client should refuse: everything after it travels in the clear,
+     * including the Authorization header this may be carrying. So a request
+     * that starts on https:// only ever follows redirects to https://.
+     *
+     * A request that starts on http:// was in the clear from its first byte,
+     * and refusing its redirects to other http:// URLs protected nothing — it
+     * only broke plain-http services that redirect, such as a trailing-slash
+     * redirect on a local development server. Those may go to http:// or
+     * https://. curl fixes the allowed set for the whole chain, so an http://
+     * request that is upgraded to https:// and then sent back to http:// is
+     * followed; it never carried anything the first request did not.
+     *
+     * @param string $url The absolute URL the request starts on
+     * @return int The CURLPROTO_* mask
+     */
+    private static function redirectProtocols(string $url): int
+    {
+        return strtolower((string) parse_url($url, PHP_URL_SCHEME)) === 'http'
+            ? CURLPROTO_HTTP | CURLPROTO_HTTPS
+            : CURLPROTO_HTTPS;
     }
 
     /**

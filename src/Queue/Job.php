@@ -16,6 +16,15 @@ abstract class Job
         return $this;
     }
 
+    /**
+     * How long one attempt may run, in seconds; 0 means no limit.
+     *
+     * The worker enforces it with SIGALRM, so it needs ext-pcntl. Without
+     * pcntl the value is stored but a job runs until it returns.
+     *
+     * @param int $seconds The limit
+     * @return static The job
+     */
     public function timeout(int $seconds): static
     {
         $this->timeout = $seconds;
@@ -127,6 +136,79 @@ abstract class Job
             $property->setAccessible(true);
             $property->setValue($this, $value);
         }
+    }
+
+    /**
+     * The queue settings chosen for this job, for a driver to store.
+     *
+     * tries and timeout are bookkeeping, so payload() leaves them out, and for
+     * a long time nothing else wrote them either: the worker rebuilt the job
+     * with the class defaults, and a ->tries(5) or ->timeout(120) set at
+     * dispatch was silently lost between the request and the worker.
+     *
+     * @internal Called by a queue driver.
+     * @return array{tries: int, timeout: int} The settings
+     */
+    public function options(): array
+    {
+        return ['tries' => $this->tries, 'timeout' => $this->timeout];
+    }
+
+    /**
+     * Rebuild a job from what a driver stored.
+     *
+     * The instance is created without calling its constructor, and its
+     * properties are then put back from the payload. Calling `new $class()`
+     * instead crashed the worker on any job with a required constructor
+     * argument — `new SendInvoice($invoiceId)` is the natural way to write a
+     * job — and it did so inside pop(), outside the worker's try/catch, so the
+     * job came back after its reservation expired and killed the next worker
+     * too. The constructor has already run once, when the job was dispatched;
+     * what it set up is in the payload.
+     *
+     * A payload stored before options were recorded has none, and the job
+     * keeps its class defaults, which is what it would have had anyway.
+     *
+     * @internal Called by a queue driver.
+     * @param array{class?: mixed, data?: mixed, options?: mixed} $payload The decoded payload
+     * @param string $id The id the driver assigned
+     * @param int $attempts How many times the job has already failed
+     * @return Job The job, ready to run
+     * @throws \UnexpectedValueException If the payload does not name a job class
+     */
+    public static function fromPayload(array $payload, string $id, int $attempts): Job
+    {
+        $class = $payload['class'] ?? null;
+
+        /*
+         * Checked because the class name comes out of storage: a payload that
+         * names something other than a Job must not be instantiated at all.
+         */
+        if (!is_string($class) || !class_exists($class) || !is_subclass_of($class, self::class)) {
+            throw new \UnexpectedValueException(sprintf(
+                'Queued payload %s names %s, which is not a job class.',
+                $id,
+                is_string($class) ? $class : 'no class'
+            ));
+        }
+
+        /** @var Job $job */
+        $job = (new \ReflectionClass($class))->newInstanceWithoutConstructor();
+        $job->setId($id);
+        $job->setAttempts($attempts);
+        $job->restore(is_array($payload['data'] ?? null) ? $payload['data'] : []);
+
+        $options = is_array($payload['options'] ?? null) ? $payload['options'] : [];
+
+        if (isset($options['tries']) && is_int($options['tries'])) {
+            $job->tries = $options['tries'];
+        }
+
+        if (isset($options['timeout']) && is_int($options['timeout'])) {
+            $job->timeout = $options['timeout'];
+        }
+
+        return $job;
     }
 
     /**

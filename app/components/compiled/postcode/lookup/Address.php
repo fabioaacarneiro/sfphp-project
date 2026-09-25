@@ -13,21 +13,14 @@ use SfphpProject\src\View\Sfht;
  */
 function Address(string $street, string $district, string $city, string $state): Sfht
 {
-    return (static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="card">
+    return 
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="card">
             <div class="card-body">
-                ';
-echo \SfphpProject\src\View\Compiler::text((Field('Street', $street)));
-echo '
-                ';
-echo \SfphpProject\src\View\Compiler::text((Field('District', $district)));
-echo '
-                ';
-echo \SfphpProject\src\View\Compiler::text((Field('City', $city)));
-echo '
-                ';
-echo \SfphpProject\src\View\Compiler::text((Field('State', $state)));
-echo '
+                '; echo \SfphpProject\src\View\Compiler::text((Field('Street', $street))); echo '
+                '; echo \SfphpProject\src\View\Compiler::text((Field('District', $district))); echo '
+                '; echo \SfphpProject\src\View\Compiler::text((Field('City', $city))); echo '
+                '; echo \SfphpProject\src\View\Compiler::text((Field('State', $state))); echo '
             </div>
-        </div>';
- return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars());
+        </div>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+;
 }

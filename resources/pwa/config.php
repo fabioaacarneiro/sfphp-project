@@ -1,57 +1,151 @@
 <?php
 
 /**
- * PWA Configuration for SFPHP
+ * PWA (Progressive Web App) Configuration — the package's template
  *
- * This file configures all Progressive Web App settings:
- * - Manifest (name, icons, colors)
- * - Service Worker (caching strategies)
- * - Offline support
- * - Push notifications
- * - Background sync
+ * Copy this file to app/pwa/config.php in your project to use it; make:pwa
+ * reads app/pwa/config.php and never this copy.
+ *
+ * Read by `./sfphp make:pwa`, which writes public/manifest.json and
+ * public/service-worker.js from it. Nothing reads this file at request time,
+ * so a change here reaches the browser only after make:pwa runs again. Flags
+ * passed to make:pwa (--name, --short, --description, --color, --background,
+ * --enable-push, --enable-sync) override the values below for that run.
+ *
+ * Values come from .env through Config::get(), the framework's own reader.
  */
 
+use SfphpProject\src\Config;
+
+$appName = Config::get('APP_NAME', 'SFPHP Application');
+$appDescription = Config::get('APP_DESCRIPTION', '');
+
 return [
-    // Enable/disable PWA completely
-    'enabled' => env('PWA_ENABLED', true),
+    /**
+     * App Name
+     * Displayed in app stores and OS menus
+     */
+    'name' => $appName,
 
-    // App identification
-    'name' => env('APP_NAME', 'My App'),
-    'short_name' => env('APP_SHORT_NAME', 'App'),
-    'description' => env('APP_DESCRIPTION', ''),
+    /**
+     * Short Name
+     * Used when space is limited (up to 12 characters)
+     */
+    'short_name' => mb_substr($appName, 0, 12),
 
-    // Visual appearance
-    'theme_color' => env('PWA_THEME_COLOR', '#007AFF'),
-    'background_color' => env('PWA_BG_COLOR', '#ffffff'),
+    /**
+     * Description
+     * Describes your app purpose
+     */
+    'description' => $appDescription,
 
-    // Installation behavior
-    'display' => env('PWA_DISPLAY', 'standalone'), // standalone, fullscreen, minimal-ui, browser
-    'start_url' => env('PWA_START_URL', '/'),
-    'scope' => env('PWA_SCOPE', '/'),
-    'orientation' => env('PWA_ORIENTATION', 'portrait-primary'), // portrait-primary, landscape-primary, etc
+    /**
+     * Start URL
+     * Where the app opens when installed
+     */
+    'start_url' => '/',
 
-    // Caching strategy
-    'cache' => [
-        // Cache name with version (change version to bust cache)
-        'name' => env('PWA_CACHE_NAME', 'sfphp-app-v1'),
+    /**
+     * Scope
+     * Which URLs are considered part of the app
+     */
+    'scope' => '/',
 
-        // Static assets: use cache-first strategy
+    /**
+     * Display Mode
+     * Options: 'fullscreen', 'standalone', 'minimal-ui', 'browser'
+     */
+    'display' => 'standalone',
+
+    /**
+     * Theme Color
+     * Used in browser UI and app themes
+     */
+    'theme_color' => '#007AFF',
+
+    /**
+     * Background Color
+     * Shown while app loads
+     */
+    'background_color' => '#ffffff',
+
+    /**
+     * Orientation
+     * Default: 'portrait-primary'
+     */
+    'orientation' => 'portrait-primary',
+
+    /**
+     * Service Worker Settings
+     */
+    'service_worker' => [
+        /**
+         * Cache version
+         * The cache is named "<app-name-slug>-<version>". Change it and run
+         * make:pwa again: the new service worker deletes every other cache
+         * when it activates.
+         */
+        'version' => 'v1',
+
+        /**
+         * Static Assets to Precache
+         * Downloaded when the service worker installs. Any GET whose path ends
+         * in a static extension (.css, .js, .png, .woff2, ...) is served
+         * cache-first whether or not it is listed here; listing it only makes
+         * it available offline before the first visit.
+         * Avoid listing HTML pages in apps with login: they would be cached
+         * with one user's content in them.
+         */
         'static_assets' => [
-            '/css/sfcss.min.css',
-            '/js/sfjs.min.js',
-            '/index.html',
+            '/assets/css/sfcss.min.css',
+            '/assets/js/sfjs.min.js',
+            '/offline.html',
         ],
 
-        // API routes: use network-first strategy
-        'api_routes' => [
-            '/api/*',
-        ],
+        /**
+         * API Routes
+         * Path patterns ('*' is a wildcard) that are always fetched from the
+         * network and never cached, so private data never reaches the cache.
+         */
+        'api_routes' => [],
 
-        // Fallback when offline
+        /**
+         * Offline Fallback Page
+         * Shown when no connection and page not cached
+         */
         'offline_fallback' => '/offline.html',
+
+        /**
+         * Enable Push Notifications
+         */
+        'enable_push_notifications' => false,
+
+        /**
+         * Enable Background Sync
+         * Adds a 'sync' handler for the "sync-data" tag. It does not queue
+         * failed requests itself; see docs/en/PWA_GUIDE.md.
+         */
+        'enable_background_sync' => false,
     ],
 
-    // Advanced features
-    'push_notifications' => env('PWA_PUSH_NOTIFICATIONS', false),
-    'background_sync' => env('PWA_BACKGROUND_SYNC', false),
+    /**
+     * Icons Configuration
+     * Multiple sizes for different devices
+     * Generated by: ./sfphp make:pwa --name="..." --logo=path/to/logo.png
+     */
+    'icons' => [
+        [
+            'src' => '/assets/icons/icon-192x192.png',
+            'sizes' => '192x192',
+            'type' => 'image/png',
+            'purpose' => 'any',
+        ],
+        [
+            'src' => '/assets/icons/icon-512x512.png',
+            'sizes' => '512x512',
+            'type' => 'image/png',
+            'purpose' => 'any',
+        ],
+    ],
 ];
+

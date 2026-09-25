@@ -708,55 +708,110 @@ final class Application
     /**
      * Generate PWA (Progressive Web App) setup.
      *
+     * Settings come from app/pwa/config.php when the project has one, and a
+     * flag overrides the file for that run. The command used to ignore the
+     * file entirely, so the one place the project was told to configure its
+     * PWA changed nothing, and --name was the only way to name the app.
+     *
+     * It writes into public/ and never edits a template: the <link> and
+     * <script> tags that load the manifest and install-sw.js are the
+     * layout's to add.
+     *
      * @param array<int, string> $arguments The command arguments
      * @return int
      */
     private function makePwa(array $arguments): int
     {
-        $name = $this->option($arguments, 'name');
-        if (!$name) {
-            $this->writeLine('Error: --name is required');
+        $configPath = $this->projectPath('app/pwa/config.php');
+        $hasConfig = is_file($configPath);
+
+        try {
+            $config = \SfphpProject\src\Pwa\PwaConfig::fromFile($configPath);
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: could not read app/pwa/config.php: ' . $e->getMessage() . PHP_EOL);
+
+            return 1;
+        }
+
+        $name = $this->option($arguments, 'name') ?? ($hasConfig ? $config->get('name') : null);
+
+        if (!is_string($name) || trim($name) === '') {
+            $this->writeLine('Error: --name is required when there is no app/pwa/config.php');
             $this->writeLine('Usage: ./sfphp make:pwa --name="My App" [--logo=path/to/logo.png]');
             return 1;
         }
 
-        $shortName = $this->option($arguments, 'short') ?? mb_substr($name, 0, 12);
-        $description = $this->option($arguments, 'description') ?? '';
-        $color = $this->option($arguments, 'color') ?? '#007AFF';
+        /*
+         * The short name follows --name when --name is given and --short is
+         * not: keeping the file's short name would pair a new name with the
+         * old app's abbreviation.
+         */
+        $shortName = $this->option($arguments, 'short')
+            ?? ($this->option($arguments, 'name') === null && $hasConfig ? $config->shortName() : mb_substr($name, 0, 12));
+        $description = $this->option($arguments, 'description') ?? $config->description();
+        $color = $this->option($arguments, 'color') ?? $config->themeColor();
+        $background = $this->option($arguments, 'background') ?? $config->backgroundColor();
         $logo = $this->option($arguments, 'logo');
+        $push = in_array('--enable-push', $arguments, true) || $config->pushNotificationsEnabled();
+        $sync = in_array('--enable-sync', $arguments, true) || $config->backgroundSyncEnabled();
 
         $publicPath = $this->projectPath('public');
         @mkdir($publicPath . '/assets/icons', 0755, true);
 
-        // 1. Generate manifest.json
-        $this->writeLine('✓ Generating manifest.json');
-        $manifest = new \SfphpProject\src\Pwa\ManifestGenerator();
-        $manifest
-            ->name($name)
-            ->shortName($shortName)
-            ->description($description)
-            ->themeColor($color)
-            ->icon('/assets/icons/icon-192x192.png', '192x192', 'image/png')
-            ->icon('/assets/icons/icon-512x512.png', '512x512', 'image/png');
-
-        $manifest->save($publicPath . '/manifest.json');
-
-        // 2. Generate service-worker.js
-        $this->writeLine('✓ Generating service-worker.js');
-        $sw = new \SfphpProject\src\Pwa\ServiceWorkerGenerator('v1');
-        $sw->appName(mb_strtolower(str_replace(' ', '-', $name)));
-
-        if (in_array('--enable-push', $arguments, true)) {
-            $sw->enablePushNotifications();
-            $this->writeLine('  ├─ Push notifications enabled');
+        if ($hasConfig) {
+            $this->writeLine('✓ Reading app/pwa/config.php');
         }
 
-        if (in_array('--enable-sync', $arguments, true)) {
-            $sw->enableBackgroundSync();
-            $this->writeLine('  └─ Background sync enabled');
-        }
+        try {
+            // 1. Generate manifest.json
+            $this->writeLine('✓ Generating manifest.json');
+            $manifest = new \SfphpProject\src\Pwa\ManifestGenerator();
+            $manifest
+                ->name($name)
+                ->shortName($shortName)
+                ->description($description)
+                ->startUrl($config->startUrl())
+                ->scope($config->scope())
+                ->display($config->display())
+                ->orientation($config->orientation())
+                ->themeColor($color)
+                ->backgroundColor($background);
 
-        $sw->save($publicPath . '/service-worker.js');
+            foreach ($config->icons() as $icon) {
+                $manifest->icon(
+                    (string) $icon['src'],
+                    (string) $icon['sizes'],
+                    (string) ($icon['type'] ?? 'image/png'),
+                    (string) ($icon['purpose'] ?? 'any')
+                );
+            }
+
+            $manifest->save($publicPath . '/manifest.json');
+
+            // 2. Generate service-worker.js
+            $this->writeLine('✓ Generating service-worker.js');
+            $sw = new \SfphpProject\src\Pwa\ServiceWorkerGenerator($config->version());
+            $sw->appName(mb_strtolower(str_replace(' ', '-', $name)))
+                ->staticAssets($config->staticAssets())
+                ->apiRoutes($config->apiRoutes())
+                ->offlineFallback($config->offlineFallback());
+
+            if ($push) {
+                $sw->enablePushNotifications();
+                $this->writeLine('  ├─ Push notifications enabled');
+            }
+
+            if ($sync) {
+                $sw->enableBackgroundSync();
+                $this->writeLine('  └─ Background sync enabled');
+            }
+
+            $sw->save($publicPath . '/service-worker.js');
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+
+            return 1;
+        }
 
         // 3. Copy offline page
         $this->writeLine('✓ Generating offline.html');
@@ -773,12 +828,19 @@ final class Application
         }
 
         // 5. Generate icons (if logo provided)
-        if ($logo && is_file($logo)) {
+        if ($logo !== null && !is_file($logo)) {
+            $this->writeLine('⚠ Skipping icon generation: ' . $logo . ' not found');
+        } elseif ($logo !== null) {
             $this->writeLine('✓ Generating icons from ' . basename($logo));
+            /*
+             * Throwable, not Exception: a missing GD function or a GD build
+             * without WebP ends in an Error, and catching only Exception let
+             * it out as a fatal stack trace instead of this message.
+             */
             try {
                 $iconGen = new \SfphpProject\src\Pwa\IconGenerator($logo);
                 $iconGen->generate($publicPath . '/assets/icons');
-            } catch (\Exception $e) {
+            } catch (Throwable $e) {
                 $this->writeLine('⚠ Could not generate icons: ' . $e->getMessage());
                 $this->writeLine('  Add icons manually to public/assets/icons/');
             }
@@ -791,9 +853,16 @@ final class Application
         $this->writeLine('✨ PWA setup complete!');
         $this->writeLine('');
         $this->writeLine('📋 Next Steps:');
-        $this->writeLine('  1. Review your app configuration: app/pwa/config.php');
-        $this->writeLine('  2. Test in DevTools: F12 → Application → Manifest');
-        $this->writeLine('  3. Read the complete guide: docs/PWA_GUIDE.md');
+        $this->writeLine('  1. Add to your layout\'s <head>:');
+        $this->writeLine('       <link rel="manifest" href="/manifest.json">');
+        $this->writeLine('       <meta name="theme-color" content="' . $color . '">');
+        $this->writeLine('       <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">');
+        $this->writeLine('       <script src="/install-sw.js" defer></script>');
+        $this->writeLine($hasConfig
+            ? '  2. Settings live in app/pwa/config.php; run make:pwa again after changing it'
+            : '  2. Copy resources/pwa/config.php to app/pwa/config.php to keep these settings in a file');
+        $this->writeLine('  3. Test in DevTools: F12 → Application → Manifest');
+        $this->writeLine('  4. Read the complete guide: docs/en/PWA_GUIDE.md');
         $this->writeLine('');
 
         return 0;
@@ -1660,6 +1729,16 @@ PHP;
 
             $this->writeLine('Starting queue worker (timeout: ' . $timeout . 's)...');
             $this->writeLine('Press CTRL+C to stop.');
+
+            /*
+             * Said up front, because both are silent otherwise: a worker
+             * without pcntl looks the same until a deploy waits on it or a
+             * job hangs past its timeout.
+             */
+            if (!function_exists('pcntl_async_signals')) {
+                $this->writeLine('ext-pcntl is not loaded: SIGTERM stops the worker immediately, not after the current job, and job timeouts are not enforced.');
+            }
+
             $this->writeLine('');
 
             $queue->work((int) $timeout);
@@ -1779,7 +1858,18 @@ PHP;
             $built = 0;
 
             foreach ($this->componentFiles($source, $target) as $file) {
-                $php = $compiler->compile((string) file_get_contents($file));
+                /*
+                 * The compiler's messages carry the line of the .phpx; the
+                 * file is named here, where it is known, the same way the
+                 * lint failure below names it.
+                 */
+                try {
+                    $php = $compiler->compile((string) file_get_contents($file));
+                } catch (RuntimeException $exception) {
+                    fwrite(STDERR, 'Error in ' . $this->relativePath($file) . ': ' . $exception->getMessage() . PHP_EOL);
+
+                    return 1;
+                }
 
                 /*
                  * The tree under the source is mirrored under the target, so a
@@ -2622,6 +2712,20 @@ PHP;
                 fwrite(STDERR, implode(PHP_EOL, $output) . PHP_EOL);
 
                 return 1;
+            }
+
+            /*
+             * A successful build can still have something to say: the builder
+             * warns on stderr about a colour pair that fails contrast or a
+             * utility produced twice. The output used to be shown only on
+             * failure, so those warnings were swallowed on exactly the builds
+             * that shipped. Everything except the builder's own "Generated"
+             * summary, which is reprinted below with sizes, goes to stderr.
+             */
+            foreach ($output as $line) {
+                if (trim($line) !== '' && !str_starts_with($line, '✓ Generated:')) {
+                    fwrite(STDERR, $line . PHP_EOL);
+                }
             }
 
             $stylesheet = $outputPath . '/sfcss.css';

@@ -18,23 +18,20 @@ use SfphpProject\src\View\Sfht;
  */
 function PostcodeLookup(?Sfht $result = null): Sfht
 {
-    return (static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<section class="card mb-8">
+    return 
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<section class="card mb-8">
             <div class="card-header">
                 <h2 class="text-lg font-semibold m-0">Look up a postcode</h2>
             </div>
 
             <div class="card-body">
-                <form method="get" action="/phpx/postcode" ';
-echo '@get';
-echo '="/phpx/postcode" ';
-echo '@target';
-echo '="#result">
+                <form method="get" action="/phpx/postcode" '; echo '@get'; echo '="/phpx/postcode" '; echo '@target'; echo '="#result">
                     <div class="form-group">
                         <label class="form-label" for="postcode">Brazilian postcode</label>
                         <div class="d-flex gap-2 flex-wrap">
                             <input id="postcode" name="postcode" type="text" inputmode="numeric" maxlength="9"
                                    placeholder="01001-000"
-                                   class="border border-gray-300 rounded-md px-3 py-2 flex-grow-1">
+                                   class="form-control flex-1 w-auto">
                             <button type="submit" class="btn btn-primary">Look up</button>
                         </div>
                         <p class="text-xs text-muted mt-2 mb-0">
@@ -44,10 +41,8 @@ echo '="#result">
                     </div>
                 </form>
 
-                <div id="result" class="mt-4">';
-echo \SfphpProject\src\View\Compiler::text(($result));
-echo '</div>
+                <div id="result" class="mt-4">'; echo \SfphpProject\src\View\Compiler::text(($result)); echo '</div>
             </div>
-        </section>';
- return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars());
+        </section>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+;
 }

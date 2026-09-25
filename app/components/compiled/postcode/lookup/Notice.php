@@ -12,10 +12,7 @@ use SfphpProject\src\View\Sfht;
  */
 function Notice(string $message, string $kind = 'warning'): Sfht
 {
-    return (static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="alert alert-';
-echo \SfphpProject\src\View\Compiler::text(($kind));
-echo '">';
-echo \SfphpProject\src\View\Compiler::text(($message));
-echo '</div>';
- return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars());
+    return 
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="alert alert-'; echo \SfphpProject\src\View\Compiler::text(($kind)); echo '">'; echo \SfphpProject\src\View\Compiler::text(($message)); echo '</div>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+;
 }

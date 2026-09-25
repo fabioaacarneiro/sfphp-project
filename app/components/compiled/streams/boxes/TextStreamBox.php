@@ -11,7 +11,8 @@ use SfphpProject\src\View\Sfht;
  */
 function TextStreamBox(): Sfht
 {
-    return (static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="card">
+    return 
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="card">
             <div class="card-header">
                 <h2 class="text-lg font-bold">Text Streaming</h2>
                 <p class="text-sm text-gray-600 mt-1">Progressive delivery of text chunks</p>
@@ -26,21 +27,12 @@ function TextStreamBox(): Sfht
                 <div
                     id="text-stream-output"
                     class="bg-white border border-gray-300 rounded p-4 mb-4 font-mono text-sm min-h-32 max-h-64 overflow-y-auto whitespace-pre-wrap break-words"
-                >
-                    <span class="text-gray-400">Output appears here...</span>
-                </div>
+                ><span class="text-gray-400">Output appears here...</span></div>
 
                 <button
                     class="btn btn-primary w-full"
-                    ';
-echo '@stream';
-echo '="/stream"
-                    ';
-echo '@target';
-echo '="#text-stream-output"
-                    ';
-echo '@swap';
-echo '="innerHTML"
+                    '; echo '@stream'; echo '="/stream"
+                    '; echo '@target'; echo '="#text-stream-output"
                 >
                     Start Streaming
                 </button>
@@ -52,6 +44,6 @@ echo '="innerHTML"
                 <p>• Browser receives data as it arrives</p>
                 <p>• Perfect for AI responses, file uploads, logs</p>
             </div>
-        </div>';
- return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars());
+        </div>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+;
 }

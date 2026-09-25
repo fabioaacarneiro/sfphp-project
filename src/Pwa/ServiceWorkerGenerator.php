@@ -70,7 +70,12 @@ final class ServiceWorkerGenerator
 
     public function generate(): string
     {
-        $cacheName = "'{$this->appName}-{$this->version}'";
+        /*
+         * Encoded, not quoted by hand: an app called "Joe's Café" put an
+         * apostrophe inside a single-quoted string and the whole service
+         * worker failed to parse.
+         */
+        $cacheName = json_encode($this->appName . '-' . $this->version, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $staticAssets = json_encode($this->staticAssets);
         $apiRoutes = json_encode($this->apiRoutes);
         $offlineFallback = json_encode($this->offlineFallback);
@@ -124,6 +129,11 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       caches.match(request).then(response => {
         return response || fetch(request).then(networkResponse => {
+          // Only a successful (or opaque cross-origin) answer is kept: a 404
+          // or 500 stored here would be served from the cache forever.
+          if (!networkResponse.ok && networkResponse.type !== 'opaque') {
+            return networkResponse;
+          }
           return caches.open(CACHE_NAME).then(cache => {
             cache.put(request, networkResponse.clone());
             return networkResponse;

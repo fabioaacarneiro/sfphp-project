@@ -39,7 +39,6 @@ function StreamsPage(): Sfht
             {{ PageFooter() }}
 
             <script src="{{ asset('js/sfjs.min.js') }}"></script>
-            <script src="{{ asset('js/sfjs-stream.min.js') }}"></script>
         </body>
         </html>
     );

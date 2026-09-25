@@ -14,8 +14,8 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 
 ### ⚡ **Lightning-Fast Performance**
 - **No dependencies bloat** — only the PHP standard library and your database driver
-- **Concurrent HTTP, measured** — three outbound requests cost what one costs; `benchmarks/` has the command and the numbers
-- **Optimized queries** — automatic N+1 detection, efficient relations, smart caching
+- **Concurrent HTTP, measured** — three outbound requests cost what one costs; `benchmarks/` has the scripts that reproduce the numbers
+- **Efficient queries** — relations loaded eagerly with `with()` to avoid N+1 queries, smart caching
 - **Minimal framework overhead** — your code runs immediately, not buried in layers
 
 ### 🔒 **Security Built In**
@@ -26,12 +26,12 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 
 ### 🎯 **Developer Experience**
 - **Type-safe everywhere** — PHP 8.1 attributes, typed parameters, IDE autocompletion
-- **Generators for speed** — 12 code generators for models, migrations, controllers, etc.
-- **Comprehensive CLI** — 36 commands to manage your application
+- **Generators for speed** — 16 `make:*` generators for models, migrations, controllers, tests and more
+- **Comprehensive CLI** — 38 commands to manage your application
 - **Intuitive API** — learn it once, it works the same everywhere
 
 ### 🌍 **Truly Multilingual**
-- **UTF-8 first** — works perfectly with any language, no `mbstring` required
+- **UTF-8 first** — length, validation, routing and case conversion are Unicode-correct
 - **Built-in i18n** — language catalogs, pluralization rules, Accept-Language negotiation
 - **Framework messages in visitor's language** — even 404 errors respect locale
 
@@ -69,8 +69,8 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 |---------|-------------|
 | **SFHT Templates** | Auto-escaping, layout inheritance, component composition |
 | **.phpx Components** | Markup inside PHP functions, compiled on build |
-| **SFCSS Framework** | 2,382 utility classes, 16.8KB gzipped, Tailwind-compatible |
-| **SFJS Library** | AJAX, DOM utilities, form validation, 6KB gzipped |
+| **SFCSS Framework** | 3,836 classes — components and utilities — from one config: forms, navs, modals, dropdowns, dark theme, contrast computed to WCAG AA, 33KB gzipped |
+| **SFJS Library** | One file: AJAX, accessible validation, streaming, modal, dropdown, tooltip, tabs and toasts — 14KB gzipped |
 | **Built-in Assets** | Published to `public/` with zero config |
 
 ### Advanced Features
@@ -78,7 +78,7 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 | Feature | What You Get |
 |---------|-------------|
 | **Async/Await System** | PHP Fibers over a real event loop: HTTP requests overlap, timers and timeouts are the loop's. Queries are scheduled, not overlapped. |
-| **Event Broadcasting** | Pub/sub with wildcards, event history, async dispatch |
+| **Event Broadcasting** | Pub/sub with `user.*` wildcards, event history, async dispatch |
 | **Caching** | File, memory, Redis drivers with smart invalidation |
 | **Job Queues** | Background workers with retries, database or Redis drivers |
 | **Email** | SMTP with TLS, plaintext + HTML, attachments |
@@ -94,10 +94,10 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 ### 📱 **High-Traffic APIs**
 Why SFPHP wins: outbound calls that overlap, intelligent caching, optimized query builder, zero-dependency footprint means minimal memory per request.
 
-**Example:** your endpoint calls three services. Measured against a local origin answering in 100 ms, an endpoint making three calls has the same latency and throughput as one making a single call — 80 RPS, p50 208 ms, under `ab -n 200 -c 20`.
+**Example:** your endpoint calls three services. Measured against a local origin answering in 100 ms, an endpoint making three calls has the same latency and throughput as one making a single call — 80 RPS, p50 208 ms, under the load described in `benchmarks/server.php`.
 
 ### 🌐 **Multilingual Platforms**
-Why SFPHP wins: First-class i18n support with language negotiation, UTF-8 handling that doesn't need `mbstring`, framework messages in visitor's language.
+Why SFPHP wins: First-class i18n support with language negotiation, Unicode-correct UTF-8 handling throughout, framework messages in visitor's language.
 
 **Example:** A marketplace serving 10+ languages—pluralization rules, content localization, and Accept-Language negotiation built-in.
 
@@ -107,7 +107,7 @@ Why SFPHP wins: Security-first design—CSRF by default, SQL binding always, XSS
 **Example:** Financial dashboards, health records systems, and admin panels that can't afford compromises.
 
 ### ⚡ **Real-Time Applications**
-Why SFPHP wins: Built-in WebSocket support, async event broadcasting, reactive state management with automatic cache invalidation.
+Why SFPHP wins: HTTP streaming and Server-Sent Events built in (`@stream` in SFJS, `Response::stream()` on the server), async event broadcasting, reactive state with cache invalidation.
 
 **Example:** Live dashboards, chat applications, collaborative tools where updates need to propagate instantly.
 
@@ -127,7 +127,7 @@ Why SFPHP wins: Zero dependencies means minimal CVEs, static analysis friendly, 
 **Example:** Systems that must integrate with legacy code, bank APIs, or corporate infrastructure without dragging in dependency trees.
 
 ### 🚀 **Startup MVP**
-Why SFPHP wins: Fast to code, slow to break, nothing to configure, 35 CLI generators, migrations built-in, deployment is just PHP files.
+Why SFPHP wins: Fast to code, slow to break, nothing to configure, 16 CLI generators, migrations built-in, deployment is just PHP files.
 
 **Example:** Launch a SaaS, marketplace, or service without weeks of infrastructure decisions.
 
@@ -145,7 +145,7 @@ cd my-app
 
 That's it. Open `http://localhost:8000` and you have:
 - ✅ Working application with example code
-- ✅ Database migrations for users & sessions
+- ✅ A users migration, seeder and factory
 - ✅ JWT configured with real secret key
 - ✅ CSS & JavaScript published and ready
 - ✅ Full CLI available at `./sfphp`
@@ -153,26 +153,30 @@ That's it. Open `http://localhost:8000` and you have:
 ### Generate Your First Model
 
 ```bash
-./sfphp make:model Product --migration
+./sfphp make:model Product
+./sfphp make:migration create_products name:string price:decimal timestamps
 ./sfphp migrate
 ```
 
 ### Create a Controller
 
 ```bash
-./sfphp make:controller ProductController
+./sfphp make:controller Product     # creates app/controllers/ProductController.php
 ```
 
 ### Build a Route
 
 ```php
 Router::get('/products', 'ProductController', 'index');
-Router::get('/products/:id', 'ProductController', 'show');
+Router::get('/products/id:number', 'ProductController', 'show');   // add show() to the controller
 ```
 
 ### Call three services at once
 
 ```php
+use SfphpProject\src\Http\Http;
+use function SfphpProject\src\Async\await;
+
 $a = Http::getAsync('https://billing.internal/invoices/7');
 $b = Http::getAsync('https://catalog.internal/products/42');
 $c = Http::getAsync('https://ratings.internal/products/42');
@@ -195,8 +199,8 @@ Measured: 301 ms for three 300 ms requests, 309 ms for fifty.
 ```php
 Str::length('日本語');           // 3 (not 9 bytes)
 Validator::validate(['n' => 'José'], ['n' => 'alpha'])->passes();  // true
-Router::get('/products/:name:alpha', ...);  // matches /produtos/café
-__('http.not_found');  // Message in visitor's language
+Router::get('/products/name:alpha', ...);  // matches /products/café
+__('http.not_found_message');  // in the visitor's language
 ```
 
 ---
@@ -229,20 +233,20 @@ __('http.not_found');  // Message in visitor's language
 
 ## Documentation
 
-Complete in three languages—not translations, but full documentation in each:
+Complete in three languages—English, Portuguese and Spanish, each a full version:
 
-| Language | Framework | Async | PWA | Styling | Templates |
-|----------|-----------|-------|-----|---------|-----------|
-| 🇬🇧 **English** | [Docs](docs/en/DOCUMENTATION.md) | [Async/Await](docs/ASYNC_COMPLETE_GUIDE.md) | [PWA Guide](docs/PWA_GUIDE.md) | [SFCSS](docs/en/SFCSS.md) | [SFHT](docs/en/DOCUMENTATION.md#views-and-sfht) |
-| 🇧🇷 **Português** | [Docs](docs/pt-BR/DOCUMENTATION.md) | [Async/Await](docs/ASYNC_COMPLETE_GUIDE.md) | [Guia PWA](docs/PWA_GUIDE.pt-BR.md) | [SFCSS](docs/pt-BR/SFCSS.md) | [SFHT](docs/pt-BR/DOCUMENTATION.md#views-e-sfht) |
-| 🇪🇸 **Español** | [Docs](docs/es/DOCUMENTATION.md) | [Async/Await](docs/ASYNC_COMPLETE_GUIDE.md) | [Guía PWA](docs/PWA_GUIDE.es.md) | [SFCSS](docs/es/SFCSS.md) | [SFHT](docs/es/DOCUMENTATION.md#vistas-y-sfht) |
+| Language | Framework | Async | Streaming | PWA | Styling | Components |
+|----------|-----------|-------|-----------|-----|---------|------------|
+| 🇬🇧 **English** | [Docs](docs/en/DOCUMENTATION.md) | [Async/Await](docs/en/ASYNC.md) | [Streaming](docs/en/STREAMING.md) | [PWA Guide](docs/en/PWA_GUIDE.md) | [SFCSS](docs/en/SFCSS.md) | [.phpx](docs/en/PHPX_COMPONENTS.md) |
+| 🇧🇷 **Português** | [Docs](docs/pt-BR/DOCUMENTATION.md) | [Async/Await](docs/pt-BR/ASYNC.md) | [Streaming](docs/pt-BR/STREAMING.md) | [Guia PWA](docs/pt-BR/PWA_GUIDE.md) | [SFCSS](docs/pt-BR/SFCSS.md) | [.phpx](docs/pt-BR/PHPX_COMPONENTS.md) |
+| 🇪🇸 **Español** | [Docs](docs/es/DOCUMENTATION.md) | [Async/Await](docs/es/ASYNC.md) | [Streaming](docs/es/STREAMING.md) | [Guía PWA](docs/es/PWA_GUIDE.md) | [SFCSS](docs/es/SFCSS.md) | [.phpx](docs/es/PHPX_COMPONENTS.md) |
 
-**SFHT** is markup in a file; **.phpx** is a component written as a PHP function
+**[SFHT](docs/en/DOCUMENTATION.md#views-and-sfht)** is markup in a file; **.phpx** is a component written as a PHP function
 with its markup inside it. Both ship, and the documentation says when each one
 is the right shape.
 
 **Quick start?**
-- 📱 [PWA setup guide](docs/PWA_GUIDE.md)
+- 📱 [PWA setup guide](docs/en/PWA_GUIDE.md)
 - 📖 [Full documentation](docs/en/DOCUMENTATION.md)
 
 ---
@@ -255,20 +259,20 @@ is the right shape.
 - **Cache** (optional) — File, Memory, or Redis
 - **Queue** (optional) — Database or Redis
 
-No extensions required except what your database driver needs. No `mbstring`. No dependencies.
+Requires extensions that ship with PHP: `ext-ctype`, `ext-curl`, `ext-fileinfo`, `ext-filter`, `ext-json`, `ext-mbstring`, `ext-openssl`, `ext-pdo`, `ext-session`, `ext-tokenizer` — plus your database's PDO driver. Optional: `ext-redis` for the Redis drivers, `ext-pcntl` for graceful queue workers (Unix), `ext-posix`, `ext-gd` for PWA icons, `ext-readline` for tinker. No Composer dependencies.
 
 ---
 
 ## Testing
 
 ```bash
-composer run test       # 169 unit tests
+composer run test       # the unit suite (php tests/run.php)
 composer run test:db    # Integration tests on real MySQL & PostgreSQL
 composer run lint       # PHP syntax check
 composer run docs       # Verify documentation consistency
 ```
 
-All tests pass on **PHP 8.1–8.4** without `mbstring` installed.
+The test suite runs on **PHP 8.1–8.4** in CI.
 
 ---
 
@@ -286,7 +290,7 @@ We take security seriously. See [SECURITY.md](SECURITY.md) for:
 MIT — See [LICENSE](LICENSE)
 
 **Created by** Fabio Carneiro  
-**Contributors** The community, with special thanks to Claude Haiku 4.5 for the async/await system
+**Contributors** The community
 
 ---
 

@@ -1,169 +1,129 @@
 # SFCSS — Complete utilities reference
 
-> **Size:** 110KB raw · 92KB minified · **16.1KB gzipped**
-> **Classes:** 2,339 in total — 1,211 base, 600 `hover:`, 528 responsive
-> **Colours:** 600 palette classes (20 families × 10 shades × `bg`/`text`/`border`) plus 25 theme classes
+> **Size:** 237KB raw · 195KB minified · **33.1KB gzipped**
+> **Classes:** 3,836 in total — 2,091 base, 628 `hover:`, 1,096 breakpoint, 21 `print:`
+> **Colours:** 600 palette classes (20 families × 10 shades × `bg`/`text`/`border`), plus the role colours and their variants
 >
 > 🌍 Also available in [Português](../pt-BR/SFCSS_UTILITIES.md) and
 > [Español](../es/SFCSS_UTILITIES.md).
 
-Every class on this page is defined in the built stylesheet. Components —
-buttons, cards, forms, tables, badges, alerts — are documented in
+Every class on this page is defined in the built stylesheet. Most come from the
+utility map in `tools/css-builder/sfcss-builder.php`, reading the scales in
+`sfcss.config.json` — change a scale, and the classes follow. The palette,
+gradients, role colours and container are generated from the config directly,
+and a few helpers (`text-truncate`, `line-clamp`, `sticky-*`/`fixed-*`, the
+legacy `h-[…]`/`w-[…]`) are written in `sfcss-base.css`.
+Components (buttons, forms, tables, navs, modals…) are documented in
 [SFCSS](SFCSS.md).
 
 ## Contents
 
-- [Spacing](#spacing) — margin, padding, gap
-- [Sizing](#sizing) — width, height, max/min
-- [Layout](#layout) — display, flexbox, grid
-- [Typography](#typography) — size, weight, alignment, transform
-- [Colours](#colours) — 20 families with 10 shades each
+- [Scales](#scales)
+- [Spacing](#spacing) — margin, padding, gap, space between
+- [Sizing](#sizing) — width, height, min, max, size
+- [Layout](#layout) — display, flexbox, grid, container
+- [Typography](#typography)
+- [Colours](#colours)
 - [Borders and radius](#borders-and-radius)
-- [Shadows and effects](#shadows-and-effects)
-- [Position and visibility](#position-and-visibility)
-- [Overflow and cursor](#overflow-and-cursor)
-- [Responsive](#responsive)
+- [Effects](#effects) — shadow, opacity, gradients, transition
+- [Position](#position)
+- [Interaction](#interaction) — overflow, cursor, pointer events, selection
+- [Variants](#variants) — `hover:`, breakpoints, `print:`
+- [Totals](#totals)
+
+---
+
+## Scales
+
+Four scales in the config drive most utilities.
+
+**Spacing** (`config.spacing`) — margin, padding, gap, `space-*`:
+
+| Key | 0 | 0.5 | 1 | 2 | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 16 | 20 | 24 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| rem | 0 | 0.125 | 0.25 | 0.5 | 1 | 1.5 | 2 | 2.5 | 3 | 3.75 | 4.5 | 6 | 7.5 | 9 |
+
+**Sizing** (`config.sizing`) — width, height, `min-*`, `max-*`, `size-*`: each
+key is `n × 0.25rem`, so `w-8` is 2rem and `h-64` is 16rem.
+
+| Keys | 0 1 2 3 4 5 6 8 10 12 16 20 24 28 32 36 40 44 48 52 56 60 64 80 96 |
+|---|---|
+
+**Font size** (`config.typography.sizes`):
+
+| `text-xs` | `text-sm` | `text-base` | `text-lg` | `text-xl` | `text-2xl` | `text-3xl` | `text-4xl` | `text-5xl` |
+|---|---|---|---|---|---|---|---|---|
+| 0.75rem | 0.875rem | 1rem | 1.125rem | 1.25rem | 1.5rem | 1.875rem | 2.25rem | 3rem |
+
+**Radius** (`config.radii`):
+
+| `rounded-none` | `rounded-sm` | `rounded` | `rounded-md` | `rounded-lg` | `rounded-xl` | `rounded-2xl` | `rounded-full` |
+|---|---|---|---|---|---|---|---|
+| 0 | 0.125rem | 0.375rem | 0.5rem | 0.75rem | 1rem | 1.5rem | 9999px |
 
 ---
 
 ## Spacing
 
-**Scale:** 0, 0.25rem, 0.5rem, 0.75rem, 1rem, 1.25rem, 1.5rem, 2rem, 2.5rem,
-3rem, 4rem, 5rem, 6rem — addressed as `0 1 2 3 4 5 6 8 10 12 16 20 24`.
+### Margin and padding
 
-### Margin
+`{property}{side}-{key}`, where the key is from the spacing scale:
 
-```html
-<!-- All sides -->
-<div class="m-0 m-1 m-2 m-3 m-4 m-5 m-6 m-8 m-12 m-16 m-20 m-24">
+| Prefix | Sets |
+|---|---|
+| `m-` / `p-` | all four sides |
+| `mt-` `mb-` / `pt-` `pb-` | top, bottom |
+| `ml-` `mr-` / `pl-` `pr-` | left, right |
+| `mx-` `my-` / `px-` `py-` | left and right, top and bottom |
+| `ms-` `me-` / `ps-` `pe-` | start and end — they follow the writing direction, so they mirror under `dir="rtl"` |
 
-<!-- Top -->
-<div class="mt-0 mt-1 mt-2 mt-3 mt-4 mt-5 mt-6 mt-8 mt-12 mt-16 mt-20 mt-24">
-
-<!-- Bottom -->
-<div class="mb-0 mb-1 mb-2 mb-3 mb-4 mb-5 mb-6 mb-8 mb-12 mb-16 mb-20 mb-24">
-
-<!-- Left, with auto -->
-<div class="ml-0 ml-1 ml-2 ml-3 ml-4 ml-5 ml-6 ml-8 ml-12 ml-16 ml-20 ml-24 ml-auto">
-
-<!-- Right, with auto -->
-<div class="mr-0 mr-1 mr-2 mr-3 mr-4 mr-5 mr-6 mr-8 mr-12 mr-16 mr-20 mr-24 mr-auto">
-
-<!-- Horizontal: left + right -->
-<div class="mx-0 mx-1 mx-2 mx-3 mx-4 mx-5 mx-6 mx-8 mx-12 mx-16 mx-20 mx-24 mx-auto">
-
-<!-- Vertical: top + bottom -->
-<div class="my-0 my-1 my-2 my-3 my-4 my-5 my-6 my-8 my-12 my-16 my-20">
-```
-
-`mx-auto` is how a fixed-width block is centred horizontally.
-
-### Padding
+Every margin also has `-auto`: `mx-auto` centres a block, `ms-auto` pushes an
+item to the end of a flex row.
 
 ```html
-<!-- All sides -->
-<div class="p-0 p-1 p-2 p-3 p-4 p-5 p-6 p-8 p-12 p-16 p-20 p-24">
-
-<!-- Individual sides -->
-<div class="pt-0 pt-1 pt-2 pt-3 pt-4 pt-5 pt-6 pt-8 pt-12 pt-16 pt-20 pt-24">
-<div class="pb-0 pb-1 pb-2 pb-3 pb-4 pb-5 pb-6 pb-8 pb-12 pb-16 pb-20 pb-24">
-<div class="pl-0 pl-1 pl-2 pl-3 pl-4 pl-5 pl-6 pl-8 pl-12 pl-16 pl-20 pl-24">
-<div class="pr-0 pr-1 pr-2 pr-3 pr-4 pr-5 pr-6 pr-8 pr-12 pr-16 pr-20 pr-24">
-
-<!-- Pairs -->
-<div class="px-0 px-1 px-2 px-3 px-4 px-5 px-6 px-8 px-12 px-16 px-20 px-24">
-<div class="py-0 py-1 py-2 py-3 py-4 py-5 py-6 py-8 py-12 py-16 py-20 py-24">
+<div class="p-4 mb-3 mx-auto">
+<div class="d-flex"><span>Logo</span><nav class="ms-auto">…</nav></div>
 ```
 
 ### Gap
 
-Space between items in a grid or flex container:
+Space between the items of a grid or flex container: `gap-{key}`, and
+`gap-x-{key}` / `gap-y-{key}` for one axis.
+
+### Space between children
+
+A margin on every child except the first, so a stack is spaced without the last
+item pushing on what follows. `space-y-{key}` (vertical) and `space-x-{key}`
+(horizontal, along the writing direction):
 
 ```html
-<div class="grid grid-cols-3 gap-0 gap-1 gap-2 gap-3 gap-4 gap-5 gap-6 gap-8">
+<div class="space-y-4">
+  <p>First</p>
+  <p>Second</p>
+</div>
 ```
 
 ---
 
 ## Sizing
 
-### Width
+| Utility | Values |
+|---|---|
+| `w-{key}` | the sizing scale, and `auto` `full` `screen` `min` `max` `fit`, and the fractions `1/2` `1/3` `2/3` `1/4` `3/4` `1/5` `2/5` `3/5` `4/5` `1/6` `5/6` |
+| `h-{key}` | the sizing scale, and `auto` `full` `screen` `min` `max` `fit` `1/2` `1/3` `2/3` `1/4` `3/4` |
+| `min-w-{key}` | `0` `full` `min` `max` `fit` |
+| `max-w-{key}` | `xs` 20rem · `sm` 24rem · `md` 28rem · `lg` 32rem · `xl` 36rem · `2xl` 42rem · `3xl` 48rem · `4xl` 56rem · `5xl` 64rem · `6xl` 72rem · `7xl` 80rem · `full` · `none` · `prose` (65ch, a comfortable line of text) |
+| `min-h-{key}` | the sizing scale, and `full` `screen` `fit` |
+| `max-h-{key}` | the sizing scale, and `full` `screen` `none` `fit` |
+| `size-{key}` | width **and** height from the sizing scale, and `full` — `size-10` for an avatar or an icon button |
 
 ```html
-<!-- Fixed, in rem -->
-<div class="w-0 w-1 w-2 w-3 w-4 w-5 w-6 w-8 w-10 w-12 w-16 w-20 w-24 w-28 w-32 w-36 w-40 w-44 w-48 w-52 w-56 w-60 w-64">
-
-<!-- Keywords -->
-<div class="w-auto">          <!-- auto -->
-<div class="w-full">          <!-- 100% -->
-<div class="w-screen">        <!-- 100vw -->
-<div class="w-min">           <!-- min-content -->
-<div class="w-max">           <!-- max-content -->
-<div class="w-fit">           <!-- fit-content -->
-
-<!-- Fractions -->
-<div class="w-1/2">           <!-- 50% -->
-<div class="w-1/3 w-2/3">     <!-- 33.333% / 66.667% -->
-<div class="w-1/4 w-3/4">     <!-- 25% / 75% -->
-<div class="w-1/5 w-2/5 w-3/5 w-4/5">
-<div class="w-1/6 w-5/6">
-
-<!-- Percentages in tens -->
-<div class="w-[0%] w-[10%] w-[20%] w-[30%] w-[40%] w-[50%]">
-<div class="w-[60%] w-[70%] w-[80%] w-[90%] w-[100%]">
-
-<!-- Fractional percentages -->
-<div class="w-[25%] w-[33%] w-[66%] w-[75%]">
-
-<!-- Arbitrary pixels -->
-<div class="w-[10px] w-[16px] w-[20px] w-[24px] w-[29px]">
-<div class="w-[30px] w-[32px] w-[36px] w-[40px] w-[44px]">
-<div class="w-[48px] w-[52px] w-[56px] w-[60px] w-[64px]">
-<div class="w-[72px] w-[80px] w-[96px] w-[120px] w-[128px]">
-<div class="w-[144px] w-[160px] w-[192px] w-[224px] w-[256px]">
+<div class="min-h-32 max-h-64 overflow-y-auto">   <!-- grows with its content, then scrolls -->
+<div class="w-full md:w-1/2">                      <!-- full width on phones, half from md up -->
 ```
 
-The bracketed values are a **fixed set** generated by the builder, not an
-open-ended syntax: `w-[137px]` does not exist because nothing generated it. Add
-the value to the builder, or write the rule yourself.
-
-### Height
-
-```html
-<!-- Fixed, in rem -->
-<div class="h-0 h-1 h-2 h-3 h-4 h-5 h-6 h-8 h-10 h-12 h-16 h-20 h-24 h-28 h-32 h-36 h-40 h-44 h-48 h-52 h-56 h-60 h-64">
-
-<!-- Keywords -->
-<div class="h-auto h-full h-screen h-min h-max h-fit">
-
-<!-- Fractions -->
-<div class="h-1/2 h-1/3 h-2/3 h-1/4 h-3/4">
-
-<!-- Percentages -->
-<div class="h-[0%] h-[10%] h-[20%] h-[30%] h-[40%]">
-<div class="h-[50%] h-[60%] h-[70%] h-[80%] h-[90%] h-[100%]">
-
-<!-- Arbitrary pixels -->
-<div class="h-[10px] h-[16px] h-[24px] h-[29px] h-[30px]">
-<div class="h-[32px] h-[36px] h-[40px] h-[48px] h-[64px]">
-<div class="h-[96px] h-[128px] h-[192px] h-[256px]">
-```
-
-### Max and min width
-
-```html
-<div class="max-w-sm">        <!-- 24rem -->
-<div class="max-w-md">        <!-- 28rem -->
-<div class="max-w-lg">        <!-- 32rem -->
-<div class="max-w-xl">        <!-- 36rem -->
-<div class="max-w-2xl">       <!-- 42rem -->
-<div class="max-w-3xl">       <!-- 48rem -->
-<div class="max-w-full">      <!-- 100% -->
-<div class="max-w-none">      <!-- none -->
-
-<div class="min-w-0">         <!-- 0 -->
-<div class="min-w-full">      <!-- 100% -->
-```
+The older fixed-list classes `h-[29px]`, `w-[120px]`, `h-[50%]` and the
+`--h-arbitrary` style hooks are still there for pages written against them.
 
 ---
 
@@ -171,133 +131,87 @@ the value to the builder, or write the rule yourself.
 
 ### Display
 
-Both spellings exist — the bare name and the `d-` prefix:
+`d-{value}` and the bare names, both with breakpoint and `print:` variants:
+
+| `d-*` | `none` `block` `inline` `inline-block` `flex` `inline-flex` `grid` `inline-grid` `contents` `table` `table-cell` `table-row` |
+|---|---|
+| bare | `block` `inline` `inline-block` `flex` `inline-flex` `grid` `inline-grid` `hidden` `none` |
 
 ```html
-<div class="block">           <div class="d-block">
-<div class="inline">          <div class="d-inline">
-<div class="inline-block">    <div class="d-inline-block">
-<div class="flex">            <div class="d-flex">
-<div class="inline-flex">     <!-- no d- form at base width -->
-<div class="grid">            <div class="d-grid">
-<div class="none">            <div class="d-none">
+<nav class="d-none md:d-flex">          <!-- hidden on phones -->
+<aside class="print:d-none">            <!-- not printed -->
 ```
-
-`inline-flex` is the one exception: the builder emits no base `d-inline-flex`,
-though `md:d-inline-flex` and the other breakpoint forms do exist.
 
 ### Flexbox
 
-```html
-<!-- Direction and wrapping -->
-<div class="flex-row">        <!-- row (default) -->
-<div class="flex-column">     <!-- column -->
-<div class="flex-wrap">       <!-- wrap -->
-<div class="flex-nowrap">     <!-- nowrap -->
-
-<!-- Justify content: along the main axis -->
-<div class="justify-start">   <!-- flex-start -->
-<div class="justify-center">  <!-- center -->
-<div class="justify-end">     <!-- flex-end -->
-<div class="justify-between"> <!-- space-between -->
-<div class="justify-around">  <!-- space-around -->
-<div class="justify-evenly">  <!-- space-evenly -->
-
-<!-- Align items: across the main axis -->
-<div class="items-start">     <!-- flex-start -->
-<div class="items-center">    <!-- center -->
-<div class="items-end">       <!-- flex-end -->
-<div class="items-stretch">   <!-- stretch -->
-<div class="items-baseline">  <!-- baseline -->
-
-<!-- Grow and shrink -->
-<div class="flex-grow-0 flex-grow-1">
-<div class="flex-shrink-0 flex-shrink-1">
-```
-
-`flex-column` rather than `flex-col`: the class is named after the CSS value it
-sets.
+| Utility | Values |
+|---|---|
+| `flex-{direction}` | `row` `row-reverse` `column` `column-reverse` `col` |
+| `flex-{wrap}` | `wrap` `nowrap` `wrap-reverse` |
+| `flex-{n}` | `1` (grow from zero) · `auto` · `initial` · `none` · `fill` |
+| `flex-grow-{0,1}` · `flex-shrink-{0,1}` | |
+| `justify-{value}` | `start` `center` `end` `between` `around` `evenly` `stretch` |
+| `items-{value}` | `start` `center` `end` `stretch` `baseline` |
+| `self-{value}` | `auto` `start` `center` `end` `stretch` `baseline` |
+| `content-{value}` | `start` `center` `end` `between` `around` `stretch` |
+| `justify-items-{value}` | `start` `center` `end` `stretch` |
+| `place-{value}` | `center` `start` `end` (place-items) |
+| `order-{value}` | `first` `last` `none` `1`–`5` |
 
 ### Grid
 
+| Utility | Values |
+|---|---|
+| `grid` | `display: grid` with a 1.5rem gap |
+| `grid-cols-{n}` | `1`–`12`, `none` |
+| `grid-auto-fit` / `grid-auto-fill` | as many columns as fit, each at least `--grid-min` (16rem) — a card grid with no breakpoint at all |
+| `col-span-{n}` | `1`–`12`, `full`, `auto` |
+| `col-start-{n}` | `1`–`13`, `auto` |
+| `row-span-{n}` | `1`–`3`, `full` |
+
 ```html
-<div class="grid">            <!-- display: grid -->
-<div class="grid-cols-1">
-<div class="grid-cols-2">
-<div class="grid-cols-3">
-<div class="grid-cols-4">
-<div class="grid-cols-5">
-<div class="grid-cols-6">
-<div class="grid-cols-12">
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+  <main class="md:col-span-2">…</main>
+  <aside>…</aside>
+</div>
+
+<ul class="grid grid-auto-fit gap-4" style="--grid-min: 12rem">…</ul>
 ```
+
+### Container
+
+`container` is a centred column whose maximum width is the current breakpoint;
+`container-fluid` is always full width; `container-{sm,md,lg,xl}` is fluid below
+that breakpoint. Padding comes from `--container-padding` (1rem).
 
 ---
 
 ## Typography
 
-### Font size
+| Utility | Values |
+|---|---|
+| `text-{size}` | the font-size scale |
+| `text-{align}` | `left` `center` `right` `justify` `start` `end` |
+| `font-{weight}` | `light` 300 · `normal` 400 · `medium` 500 · `semibold` 600 · `bold` 700 · `extrabold` 800 |
+| `font-sans` · `font-mono` | the two font families |
+| `italic` · `not-italic` | |
+| `leading-{value}` | line height: `none` 1 · `tight` 1.25 · `snug` 1.375 · `normal` 1.5 · `relaxed` 1.625 · `loose` 2 |
+| `tracking-{value}` | letter spacing: `tight` `normal` `wide` `wider` `widest` |
+| `underline` · `no-underline` · `line-through` | with `hover:` variants |
+| `underline-offset-{1,2,4,8}` | |
+| `uppercase` · `lowercase` · `capitalize` · `normal-case` | |
+| `whitespace-{value}` | `normal` `nowrap` `pre` `pre-line` `pre-wrap` `break-spaces` |
+| `break-{value}` | `normal` · `words` (break a word too long for its line) · `all` |
+| `text-{wrap}` | `balance` (even lines, for headings) · `pretty` · `wrap` · `nowrap` |
+| `align-{value}` | vertical-align: `baseline` `top` `middle` `bottom` `text-top` `text-bottom` |
+| `text-truncate` | one line, ellipsis |
+| `line-clamp` | several lines, ellipsis — `style="--lines: 3"` |
 
-```html
-<p class="text-xs">           <!-- 0.75rem -->
-<p class="text-sm">           <!-- 0.875rem -->
-<p class="text-base">         <!-- 1rem -->
-<p class="text-lg">           <!-- 1.125rem -->
-<p class="text-xl">           <!-- 1.25rem -->
-<p class="text-2xl">          <!-- 1.5rem -->
-<p class="text-3xl">          <!-- 1.875rem -->
-<p class="text-4xl">          <!-- 2.25rem -->
-```
+`whitespace-pre-wrap` is what text arriving in chunks needs — a stream, a log,
+generated text: it keeps the line breaks the server sent and still wraps.
 
-`text-5xl` exists **only with a breakpoint prefix** — `md:text-5xl`,
-`lg:text-5xl` — because the responsive layer generates one size beyond the base
-scale.
-
-### Font weight
-
-```html
-<p class="font-normal">       <!-- 400 -->
-<p class="font-semibold">     <!-- 600 -->
-<p class="font-bold">         <!-- 700 -->
-<p class="font-extrabold">    <!-- 800 -->
-```
-
-### Font family
-
-```html
-<p class="font-sans">         <!-- --font-family, the default -->
-<p class="font-mono">         <!-- --font-family-mono -->
-```
-
-`code`, `pre`, `kbd` and `samp` take the monospace family from the base sheet,
-so they need no class.
-
-### Alignment
-
-```html
-<p class="text-left">
-<p class="text-center">
-<p class="text-right">
-<p class="text-justify">
-```
-
-### Transform
-
-```html
-<p class="uppercase">
-<p class="lowercase">
-<p class="capitalize">
-<p class="normal-case">
-```
-
-### Decoration and style
-
-```html
-<a class="underline">
-<a class="no-underline">
-<s class="line-through">
-<p class="italic">
-<p class="not-italic">
-```
+Font sizes and alignment have breakpoint variants: `text-2xl md:text-4xl`,
+`text-center md:text-start`.
 
 ---
 
@@ -305,228 +219,134 @@ so they need no class.
 
 ### The 20 families
 
-| Group | Families |
+`slate` `gray` `zinc` `red` `orange` `amber` `yellow` `lime` `green` `emerald`
+`teal` `cyan` `sky` `blue` `indigo` `violet` `purple` `fuchsia` `pink` `rose` —
+each with the shades `50` `100` `200` `300` `400` `500` `600` `700` `800` `900`,
+as `text-`, `bg-` and `border-`, each with a `hover:` variant:
+
+```html
+<p class="text-slate-600">
+<div class="bg-blue-50 border border-blue-200">
+<a class="text-blue-600 hover:text-blue-800">
+```
+
+These are fixed colours and keep their value in the dark theme.
+
+### Role colours
+
+For every colour in `config.colors` — by default `primary` `secondary` `success`
+`danger` `warning` `info` `light` `dark` (`white` and `black` get only `text-`,
+`bg-` and `border-`):
+
+| Class | Uses |
 |---|---|
-| Neutral | `slate` `gray` `zinc` |
-| Blue | `blue` `indigo` `sky` `cyan` |
-| Green | `green` `emerald` `teal` |
-| Yellow | `lime` `yellow` `amber` |
-| Warm | `orange` `red` |
-| Purple and pink | `purple` `violet` `fuchsia` `pink` `rose` |
+| `text-{c}` · `bg-{c}` · `border-{c}` | the colour itself |
+| `text-bg-{c}` | the colour as background, with the text colour that reads on it |
+| `bg-{c}-subtle` · `border-{c}-subtle` · `text-{c}-emphasis` | the pale background, its border, and the text that reads on it — they follow the dark theme |
+| `link-{c}` | the colour as readable text (`warning`, for instance, darkened until it reads on the page) |
 
-Each has ten shades: `50 100 200 300 400 500 600 700 800 900`.
-
-### Three prefixes
-
-```html
-<!-- Text -->
-<p class="text-blue-50 text-blue-100 text-blue-200 text-blue-300">
-<p class="text-blue-400 text-blue-500 text-blue-600 text-blue-700">
-<p class="text-blue-800 text-blue-900">
-
-<!-- Background -->
-<div class="bg-blue-50 bg-blue-100 bg-blue-200 bg-blue-300">
-<div class="bg-blue-400 bg-blue-500 bg-blue-600 bg-blue-700">
-<div class="bg-blue-800 bg-blue-900">
-
-<!-- Border -->
-<div class="border-blue-50 border-blue-100 border-blue-200 border-blue-300">
-```
-
-### The count
-
-- 20 families × 10 shades × 3 prefixes (`text` `bg` `border`) = **600 classes**
-- Each of those 600 has a matching `hover:` variant — **600 more**
-- Plus **25 theme classes** drawn from the CSS variables:
-
-```html
-<p class="text-primary text-secondary text-success text-danger">
-<p class="text-warning text-info text-white text-dark">
-<div class="bg-primary bg-secondary bg-success bg-danger">
-<div class="bg-warning bg-info bg-light bg-dark bg-white">
-<div class="border-primary border-secondary border-success border-danger">
-<div class="border-warning border-info border-white border-black">
-```
-
-The theme classes read the CSS variables, so overriding `--primary` changes
-every one of them. The palette classes are generated as literal colour values —
-changing those means editing `sfcss.config.json` and rebuilding.
+And the page's own: `text-body`, `text-muted`, `bg-body`, `bg-body-raised`,
+`bg-body-sunken`, `bg-transparent`, `bg-current`.
 
 ---
 
 ## Borders and radius
 
-### Border
-
-```html
-<div class="border">          <!-- 1px solid -->
-<div class="border-0">        <!-- none -->
-
-<!-- One side -->
-<div class="border-t">        <!-- top -->
-<div class="border-r">        <!-- right -->
-<div class="border-b">        <!-- bottom -->
-<div class="border-l">        <!-- left -->
-
-<!-- Per-side widths -->
-<div class="border-t-0 border-t-1 border-t-2 border-t-4 border-t-8">
-<div class="border-r-0 border-r-1 border-r-2 border-r-4 border-r-8">
-<div class="border-b-0 border-b-1 border-b-2 border-b-4 border-b-8">
-<div class="border-l-0 border-l-1 border-l-2 border-l-4 border-l-8">
-```
-
-### Border colour
-
-```html
-<div class="border-primary border-secondary border-success">
-<div class="border-danger border-warning border-info">
-
-<!-- and all 600 palette border classes -->
-<div class="border-blue-500 border-red-300 border-slate-200">
-```
-
-### Radius
-
-```html
-<div class="rounded-sm">      <!-- 0.125rem -->
-<div class="rounded">         <!-- 0.375rem -->
-<div class="rounded-md">      <!-- 0.5rem -->
-<div class="rounded-lg">      <!-- 0.75rem -->
-<div class="rounded-xl">      <!-- 1rem -->
-<div class="rounded-full">    <!-- 9999px -->
-```
+| Utility | Values |
+|---|---|
+| `border` · `border-0` | a border on every side / none |
+| `border-{t,r,b,l,s,e}` | one side (`s` and `e` are start and end) |
+| `border-{t,r,b,l,s,e}-0` | remove one side |
+| `border-{1,2,4,8}` · `border-{side}-{1,2,4,8}` | a width in pixels |
+| `border-{colour}` | palette and role colours, `transparent`, `current` |
+| `rounded-{key}` | the radius scale |
+| `rounded-{corner}-{key}` | `t` `r` `b` `l` (two corners), `tl` `tr` `br` `bl` (one), `s` `e` (start and end sides) — `rounded-t-md` for the top of a card header |
 
 ---
 
-## Shadows and effects
+## Effects
 
-### Shadow
-
-```html
-<div class="shadow-none">
-<div class="shadow-sm">
-<div class="shadow">
-<div class="shadow-lg">
-```
-
-### Opacity
+| Utility | Values |
+|---|---|
+| `shadow-sm` · `shadow` · `shadow-lg` · `shadow-none` | with `hover:` variants |
+| `opacity-{n}` | `0`–`100` in steps of 5, with `hover:` variants |
+| `bg-gradient-to-{t,tr,r,br,b,bl,l,tl}` | a linear gradient in that direction… |
+| `from-{family}-{shade}` · `to-{family}-{shade}` | …between these two stops (shades from `options.gradientShades`, `500` `600` `700` by default), plus `from-`/`to-` `white` `black` `transparent` |
+| `transition` · `transition-none` | the default transition, or none |
 
 ```html
-<div class="opacity-0">
-<div class="opacity-25">
-<div class="opacity-50">
-<div class="opacity-75">
-<div class="opacity-100">
+<header class="bg-gradient-to-r from-indigo-600 to-blue-600 text-white">
 ```
+
+A gradient with only `from-` fades to transparent.
 
 ---
 
-## Position and visibility
+## Position
 
-```html
-<div class="static">
-<div class="relative">
-<div class="absolute">
-<div class="fixed">
-<div class="sticky">
-
-<div class="visible">
-<div class="invisible">       <!-- hidden, but still occupies space -->
-```
-
-`invisible` differs from `d-none`: the first keeps the box in the layout, the
-second removes it.
+| Utility | Values |
+|---|---|
+| `static` `relative` `absolute` `fixed` `sticky` | position |
+| `inset-0` · `inset-auto` | all four offsets |
+| `top-{0,50,100,auto}` · `bottom-{…}` | percentages |
+| `start-{0,50,100,auto}` · `end-{…}` | along the writing direction |
+| `z-{0,10,20,30,40,50,auto}` | z-index |
+| `sticky-top` · `sticky-bottom` · `fixed-top` · `fixed-bottom` | pinned bars with their own z-index |
 
 ---
 
-## Overflow and cursor
+## Interaction
 
-```html
-<div class="overflow-auto">
-<div class="overflow-hidden">
-<div class="overflow-visible">
-<div class="overflow-scroll">
-<div class="overflow-x-auto">
-<div class="overflow-y-auto">
-
-<div class="cursor-auto">
-<div class="cursor-default">
-<div class="cursor-pointer">
-<div class="cursor-wait">
-<div class="cursor-text">
-<div class="cursor-move">
-<div class="cursor-not-allowed">
-```
-
-`overflow-x-auto` is what keeps a wide table from stretching the page.
+| Utility | Values |
+|---|---|
+| `overflow-{value}` | `auto` `hidden` `visible` `scroll` `clip` |
+| `overflow-x-{value}` · `overflow-y-{value}` | `auto` `hidden` `scroll` |
+| `visible` · `invisible` | visibility (keeps its space, unlike `d-none`) |
+| `object-{value}` | object-fit: `contain` `cover` `fill` `none` `scale-down` |
+| `aspect-{value}` | `auto` `square` `video` (16/9) `4/3` `21/9` |
+| `cursor-{value}` | `auto` `default` `pointer` `wait` `text` `move` `not-allowed` `grab` `help` |
+| `pointer-events-{none,auto}` | |
+| `select-{none,text,all,auto}` | user-select |
 
 ---
 
-## Responsive
+## Variants
+
+### `hover:`
+
+Palette colours, underline, opacity and shadow: `hover:bg-blue-700`,
+`hover:underline`, `hover:opacity-80`, `hover:shadow-lg`. Off with
+`options.hoverVariants: false`.
 
 ### Breakpoints
 
-The prefixes come from `breakpoints` in `sfcss.config.json` and are
-**`min-width`**: the unprefixed class applies at every width, and each prefix
-takes over from its own width upward.
+Mobile-first — `md:` applies **from** 768px up:
 
-| Prefix | From | Example |
-|---|---|---|
-| *(none)* | every width | `p-3` |
-| `sm:` | 480px | `sm:p-4` |
-| `md:` | 768px | `md:p-5` |
-| `lg:` | 1024px | `lg:p-6` |
-| `xl:` | 1280px | `xl:p-8` |
-
-### Which utilities have variants
-
-132 utilities are generated at each of the four breakpoints — 528 classes:
-
-| Group | Classes |
+| Prefix | From |
 |---|---|
-| Grid columns | `grid-cols-1` … `grid-cols-6`, `grid-cols-12` |
-| Display | `block` `inline` `inline-block` `flex` `inline-flex` `grid` `none`, and the `d-` forms |
-| Flex | `flex-row` `flex-column` `flex-wrap` `flex-nowrap` |
-| Padding | `p-*` `px-*` `py-*` |
-| Margin | `m-*` `mx-*` `my-*` |
-| Gap | `gap-*` |
-| Font size | `text-xs` … `text-5xl` |
-| Width | `w-auto` `w-full` `w-1/2` `w-1/3` `w-2/3` `w-1/4` `w-3/4` |
+| `sm:` | 640px |
+| `md:` | 768px |
+| `lg:` | 1024px |
+| `xl:` | 1280px |
 
-Colours, borders, shadows, position and cursor have **no** responsive variants:
-generating every utility at every breakpoint would multiply the stylesheet
-several times over for classes nobody writes responsively.
+These have breakpoint variants:
 
-### Examples
+- **Display:** `d-*` and the bare names
+- **Flexbox:** direction, wrap, `flex-{n}`, `justify-*`, `items-*`, `order-*`
+- **Grid:** `grid-cols-*`, `grid-auto-*`, `col-span-*`
+- **Spacing:** `gap-*`, and margin and padding on all sides, top, bottom, `x`
+  and `y` (`md:m-4`, `md:px-6`, `md:mt-0`) — not `l`, `r`, `s`, `e`
+- **Width:** the keywords and fractions (`md:w-1/2`, `lg:w-auto`)
+- **Typography:** font size and text alignment
 
-```html
-<!-- One column on a phone, two on a tablet, three on a desktop -->
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-  <div class="card">Card 1</div>
-  <div class="card">Card 2</div>
-  <div class="card">Card 3</div>
-</div>
+Breakpoints come from `config.breakpoints`; the container and the responsive
+components (`navbar-expand-{bp}`, `table-responsive-{bp}`) read the same
+numbers. Another utility gets them with `"responsive": true` in its map entry.
 
-<!-- Padding that grows with the screen -->
-<div class="p-2 sm:p-3 md:p-4 lg:p-6">Content</div>
+### `print:`
 
-<!-- Type that grows with the screen -->
-<h1 class="text-lg md:text-2xl lg:text-3xl">Heading</h1>
-
-<!-- Stacked on a phone, side by side from the tablet up -->
-<div class="block md:flex">
-  <div class="w-full md:w-1/2">Column 1</div>
-  <div class="w-full md:w-1/2">Column 2</div>
-</div>
-```
-
-### Container
-
-```html
-<div class="container">
-  <!-- 100% wide, with padding and a max-width that steps up per breakpoint -->
-</div>
-```
+`print:d-none`, `print:d-block` and the other display values apply only when
+the page is printed.
 
 ---
 
@@ -534,16 +354,17 @@ several times over for classes nobody writes responsively.
 
 | | |
 |---|---|
-| Unique selectors | **2,339** |
-| Base utilities and components | 1,209 |
-| `hover:` variants | 600 |
-| Responsive variants | 528 |
+| Unique selectors | **3,836** |
+| Base utilities and components | 2,091 |
+| `hover:` variants | 628 |
+| Breakpoint variants | 1,096 (274 per breakpoint) |
+| `print:` variants | 21 |
 | Colour families | 20 |
 | Shades per family | 10 |
 | Palette colour classes | 600 |
-| Theme colour classes | 25 |
 | Breakpoint prefixes | 4 |
-| Raw · minified · gzipped | 110KB · 92KB · **16.1KB** |
+| CSS variables | 194 |
+| Raw · minified · gzipped | 237KB · 195KB · **33.1KB** |
 
-Components — buttons, cards, forms, tables, badges, alerts — are documented in
-[SFCSS](SFCSS.md).
+Components — buttons, forms, tables, navs, modals, dropdowns, toasts — are
+documented in [SFCSS](SFCSS.md).

@@ -39,7 +39,7 @@
                 <p class="text-slate-600">Dependencies</p>
             </div>
             <div class="text-center">
-                <p class="text-4xl font-bold text-amber-500 mb-2">17KB</p>
+                <p class="text-4xl font-bold text-amber-500 mb-2">33KB</p>
                 <p class="text-slate-600">CSS gzipped</p>
             </div>
         </div>
@@ -88,11 +88,11 @@
                     <h3 class="text-purple-600 font-bold text-lg">SFCSS Framework</h3>
                 </div>
                 <div class="card-body">
-                    <p class="text-slate-600 mb-4">Utility CSS with 620 color classes, hover and responsive variants.</p>
+                    <p class="text-slate-600 mb-4">Components and utilities generated from one config, with a dark theme.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
-                        <li class="mb-1">✓ ~17KB gzipped</li>
-                        <li class="mb-1">✓ 20 color families</li>
-                        <li>✓ sm, md, lg and xl breakpoints</li>
+                        <li class="mb-1">✓ Forms, navs, modals, dropdowns</li>
+                        <li class="mb-1">✓ Contrast computed to WCAG AA</li>
+                        <li>✓ ~33KB gzipped</li>
                     </ul>
                 </div>
             </div>
@@ -151,8 +151,8 @@
                     <p class="text-slate-600 mb-4">Lightweight JavaScript for AJAX, DOM work and form validation.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
                         <li class="mb-1">✓ Declarative AJAX attributes</li>
-                        <li class="mb-1">✓ Client-side validation</li>
-                        <li>✓ ~6KB gzipped</li>
+                        <li class="mb-1">✓ Modal, dropdown, tabs, toasts</li>
+                        <li>✓ ~14KB gzipped, one file</li>
                     </ul>
                 </div>
             </div>
@@ -380,7 +380,7 @@
         </p>
         <div class="d-flex gap-4 justify-center flex-wrap">
             <a href="/phpx" class="btn btn-lg bg-violet-600 text-white font-bold rounded-md">View Examples</a>
-            <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/PHPX_COMPONENTS.md" class="btn btn-lg bg-white text-violet-600 font-bold rounded-md border-2 border-violet-600">Learn More</a>
+            <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/en/PHPX_COMPONENTS.md" class="btn btn-lg bg-white text-violet-600 font-bold rounded-md border-2 border-violet-600">Learn More</a>
         </div>
     </div>
 </section>
@@ -389,7 +389,7 @@
 <section class="bg-slate-900 text-white py-16 px-4">
     <div class="container mx-auto">
         <h2 class="text-3xl font-bold text-center mb-2">20 Color Families</h2>
-        <p class="text-center opacity-90 mb-12">620 color utilities (20 families × 10 shades × bg/text/border)</p>
+        <p class="text-center opacity-90 mb-12">600 color utilities (20 families × 10 shades × bg/text/border)</p>
 
         <div class="grid grid-cols-3 md:grid-cols-6 gap-4">
             <!-- Color swatches -->

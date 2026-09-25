@@ -15,7 +15,7 @@ use function SfphpProject\src\Async\{async, syncRun};
  *       use AsyncAware;
  *
  *       public function getUser($id) {
- *           return $this->async(fn () => User::query()->findAsync($id));
+ *           return $this->withAsync(fn () => await(User::query()->findAsync($id)));
  *       }
  *   }
  */

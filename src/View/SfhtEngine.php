@@ -360,7 +360,68 @@ final class SfhtEngine
      */
     private function registerDefaultFilters(): void
     {
-        $this->filters = [
+        $this->filters = self::standardFilters();
+    }
+
+    /**
+     * Apply one of the standard filters, with no engine instance.
+     *
+     * This is what a filter in a .phpx component compiles to. A component is
+     * a function call, not a template render, so there is no engine in scope
+     * to ask — and the standard filters need none.
+     *
+     * @internal Called by compiled components.
+     * @param string $name The filter name
+     * @param mixed $value The value to filter
+     * @param array<int, mixed> $args Extra filter arguments
+     * @return mixed The filtered value
+     * @throws RuntimeException If the filter is not a standard one
+     */
+    public static function standardFilter(string $name, mixed $value, array $args = []): mixed
+    {
+        $filters = self::standardFilters();
+
+        if (!isset($filters[$name])) {
+            throw new RuntimeException("Filter not registered: {$name}");
+        }
+
+        return ($filters[$name])($value, ...$args);
+    }
+
+    /**
+     * Whether a name is one of the standard filters.
+     *
+     * @param string $name The filter name
+     * @return bool
+     */
+    public static function hasStandardFilter(string $name): bool
+    {
+        return isset(self::standardFilters()[$name]);
+    }
+
+    /**
+     * The names of the standard filters.
+     *
+     * @return list<string>
+     */
+    public static function standardFilterNames(): array
+    {
+        return array_keys(self::standardFilters());
+    }
+
+    /**
+     * The filters every template and every component can use.
+     *
+     * Built once per process: they are stateless closures, and a component
+     * applying a filter per row of a table should not rebuild the table.
+     *
+     * @return array<string, callable>
+     */
+    private static function standardFilters(): array
+    {
+        static $filters = null;
+
+        return $filters ??= [
             'upper' => static fn (mixed $v): string => Str::upper((string) $v),
             'lower' => static fn (mixed $v): string => Str::lower((string) $v),
             'capitalize' => static fn (mixed $v): string => Str::ucfirst((string) $v),

@@ -24,7 +24,10 @@
 
 const DOCS_ROOT = __DIR__ . '/../docs';
 const LANGUAGES = ['en', 'pt-BR', 'es'];
-const DOCUMENTS = ['DOCUMENTATION', 'SFCSS', 'SFCSS_UTILITIES'];
+// Every document in the language folders. The list used to stop at the first
+// three, so the streaming, PWA, async and .phpx guides drifted unchecked — one
+// was a third shorter in Spanish, two existed only in English.
+const DOCUMENTS = ['DOCUMENTATION', 'SFCSS', 'SFCSS_UTILITIES', 'STREAMING', 'PWA_GUIDE', 'ASYNC', 'PHPX_COMPONENTS'];
 
 /** The reference language: the other two are compared against it. */
 const PRIMARY = 'en';
@@ -83,11 +86,18 @@ function documentShape(string $path): array
  */
 function anchor(string $heading): string
 {
-    $text = strtolower(trim($heading));
-    $text = str_replace(['`', '*', '_'], '', $text);
-    $text = preg_replace('/[^\p{L}\p{N}\s-]/u', '', $text);
+    /*
+     * GitHub's rule: lower-case, drop everything that is not a letter, digit,
+     * space, hyphen or underscore, then turn each space into a hyphen — each
+     * one, so "Icons & Installation" becomes "icons--installation". Collapsing
+     * the spaces reported working links as broken.
+     */
+    $text = trim($heading);
+    $text = function_exists('mb_strtolower') ? mb_strtolower($text) : strtolower($text);
+    $text = str_replace(['`', '*'], '', $text);
+    $text = preg_replace('/[^\p{L}\p{N}\s_-]/u', '', $text);
 
-    return preg_replace('/\s+/u', '-', trim($text));
+    return str_replace(' ', '-', $text);
 }
 
 /**
@@ -180,6 +190,34 @@ foreach (DOCUMENTS as $document) {
                 );
             }
         }
+    }
+}
+
+/*
+ * The READMEs are held to the same standard. They were checked for links
+ * only, so the Portuguese and Spanish ones stayed a quarter of the English
+ * one's length without anything noticing.
+ */
+$readme = documentShape(__DIR__ . '/../README.md');
+
+foreach (['pt-BR' => 'README.pt-BR.md', 'es' => 'README.es.md'] as $language => $file) {
+    $path = __DIR__ . '/../' . $file;
+
+    if (!is_file($path)) {
+        $problems[] = sprintf('%s does not exist.', $file);
+        continue;
+    }
+
+    $shape = documentShape($path);
+
+    foreach (['h2' => 'sections', 'h3' => 'subsections', 'tables' => 'tables'] as $key => $label) {
+        if ($shape[$key] !== $readme[$key]) {
+            $problems[] = sprintf('%s has %d %s, README.md has %d.', $file, $shape[$key], $label, $readme[$key]);
+        }
+    }
+
+    if (count($shape['fences']) !== count($readme['fences'])) {
+        $problems[] = sprintf('%s has %d code blocks, README.md has %d.', $file, count($shape['fences']), count($readme['fences']));
     }
 }
 

@@ -10,6 +10,14 @@ use SfphpProject\src\Async\Future;
  * Allows cache get/set/delete operations to be used with async/await syntax.
  * Currently uses lazy execution (actual operation happens when getValue() called),
  * but API is ready for truly non-blocking cache drivers.
+ *
+ * The operation blocks when it runs: awaiting several of these runs them one
+ * after another. What this adds is the Future shape, not concurrency.
+ *
+ * The driver is the framework's cache — `cache()`, a CacheManager or any
+ * {@see \SfphpProject\src\Cache\Cache} — whose methods are put() and forget().
+ * A PSR-16 style object with set() and delete() is accepted too, so code
+ * written against one keeps working, but the framework's names are tried first.
  */
 class CacheFuture implements Future
 {
@@ -27,7 +35,7 @@ class CacheFuture implements Future
     /**
      * Create a CacheFuture for a cache operation
      *
-     * @param string $operation get|set|delete|forget
+     * @param string $operation get|set|put|delete|forget|has|exists|increment|decrement|flush
      * @param string $key Cache key
      * @param mixed $value Value for set operation
      * @param int $ttl TTL in seconds for set operation
@@ -76,16 +84,59 @@ class CacheFuture implements Future
             throw new \Exception("Cache driver not provided");
         }
 
+        /*
+         * These used to call set() and delete() only, which the framework's
+         * cache does not have: every write or delete made through this adapter
+         * with `cache()` failed with "Call to undefined method".
+         */
         return match ($this->operation) {
             'get' => $this->driver->get($this->key),
-            'set' => $this->driver->set($this->key, $this->value, $this->ttl),
-            'delete', 'forget' => $this->driver->delete($this->key),
+            'set', 'put' => $this->write(),
+            'delete', 'forget' => $this->remove(),
             'has', 'exists' => $this->driver->has($this->key),
             'increment' => $this->driver->increment($this->key, $this->value ?? 1),
-            'decrement' => $this->driver->decrement($this->key, $this->value ?? 1),
+            'decrement' => method_exists($this->driver, 'decrement')
+                ? $this->driver->decrement($this->key, $this->value ?? 1)
+                // The Cache interface has no decrement; a negative increment is the same atomic step.
+                : $this->driver->increment($this->key, -($this->value ?? 1)),
             'flush' => $this->driver->flush(),
             default => throw new \Exception("Unknown cache operation: {$this->operation}"),
         };
+    }
+
+    /**
+     * Store the value, through put() when the driver has it.
+     *
+     * A TTL of zero or less means "no expiry" to put(), which takes null for
+     * that; passing 0 through would store an entry that is already expired.
+     *
+     * @return mixed True for put(), which reports nothing and throws on failure; the driver's own answer for set()
+     */
+    private function write(): mixed
+    {
+        if (method_exists($this->driver, 'put')) {
+            $this->driver->put($this->key, $this->value, $this->ttl > 0 ? $this->ttl : null);
+
+            return true;
+        }
+
+        return $this->driver->set($this->key, $this->value, $this->ttl);
+    }
+
+    /**
+     * Remove the key, through forget() when the driver has it.
+     *
+     * @return mixed True for forget(), which reports nothing; the driver's own answer for delete()
+     */
+    private function remove(): mixed
+    {
+        if (method_exists($this->driver, 'forget')) {
+            $this->driver->forget($this->key);
+
+            return true;
+        }
+
+        return $this->driver->delete($this->key);
     }
 
     public function isPending(): bool

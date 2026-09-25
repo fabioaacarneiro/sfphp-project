@@ -6,7 +6,8 @@ use SfphpProject\src\View\Sfht;
 
 function HowItWorks(): Sfht
 {
-    return (static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="mt-12">
+    return 
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="mt-12">
             <h2 class="text-2xl font-bold mb-6">How It Works</h2>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -92,25 +93,17 @@ function HowItWorks(): Sfht
                         <h4 class="font-bold text-gray-900 mb-2">Client-Side (JavaScript)</h4>
                         <p class="text-sm text-gray-600 mb-2">Use SFJS attributes in HTML:</p>
                         <pre class="bg-white border border-gray-300 rounded p-3 text-xs overflow-x-auto"><code class="text-gray-800">&lt;!-- Text streaming --&gt;
-&lt;button ';
-echo '@stream';
-echo '="/stream" ';
-echo '@target';
-echo '="#output"&gt;
+&lt;button '; echo '@stream'; echo '="/stream" '; echo '@target'; echo '="#output"&gt;
     Stream Text
 &lt;/button&gt;
 
 &lt;!-- Server-Sent Events --&gt;
-&lt;div ';
-echo '@sse';
-echo '="/events" ';
-echo '@events';
-echo '="progress,complete"&gt;
+&lt;div '; echo '@stream'; echo '="/events" '; echo '@sse'; echo ' '; echo '@events'; echo '="progress,complete" '; echo '@trigger'; echo '="load"&gt;
     Events here
 &lt;/div&gt;</code></pre>
                     </div>
                 </div>
             </div>
-        </div>';
- return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars());
+        </div>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+;
 }
