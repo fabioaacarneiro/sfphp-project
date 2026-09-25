@@ -12,8 +12,9 @@ class Dotenv
     /**
      * Load environment variables from .env file
      *
-     * Values already present in $_ENV or $_SERVER win, so real environment
-     * variables set by the server are never overwritten by the file.
+     * Real environment variables set by the server or process always win,
+     * regardless of php.ini variables_order setting or SAPI.
+     * The .env file only fills what the environment did not define.
      *
      * @param string $filePath Path to the .env file
      * @param bool $required Whether a missing file is an error
@@ -63,7 +64,9 @@ class Dotenv
                 continue;
             }
 
-            if (!array_key_exists($key, $_ENV) && !array_key_exists($key, $_SERVER)) {
+            // Check with getenv() which works regardless of variables_order.
+            // A real environment variable (even empty string) wins over .env.
+            if (getenv($key) === false) {
                 $_ENV[$key] = $value;
                 $_SERVER[$key] = $value;
                 putenv("$key=$value");

@@ -255,7 +255,7 @@ final class Application
             $this->writeLine('  queue:failed          List failed jobs');
             $this->writeLine('');
             $this->writeLine('Server & CSS Commands:');
-            $this->writeLine('  serve                 Start development server (localhost:8000)');
+            $this->writeLine('  serve                 Start development server (127.0.0.1:8000; --host/--port override)');
             $this->writeLine('  env:example           Create .env from .env-example');
             $this->writeLine('  routes                List all registered routes');
             $this->writeLine('  build --phpx          Compile .phpx components into PHP');
@@ -866,8 +866,8 @@ final class Application
      */
     private function serve(array $arguments): int
     {
-        $host = 'localhost';
-        $port = 8000;
+        $host = $this->option($arguments, 'host') ?? '127.0.0.1';
+        $port = (int)($this->option($arguments, 'port') ?? '8000');
 
         /*
          * The stylesheet and the script live in the package and are copied into
