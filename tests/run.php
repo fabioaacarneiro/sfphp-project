@@ -1412,7 +1412,14 @@ $tests->run('the framework error page makes no external requests', function () u
     $response = (new Router(new Container()))->dispatch(Request::create('GET', '/rota-que-nao-existe'));
 
     $tests->assertSame(HTTP_NOT_FOUND, $response->status());
-    $tests->assertSame(0, preg_match_all('#https?://#', $response->body()));
+
+    /*
+     * The inlined stylesheet draws its icons with SVGs in data: URIs, and an
+     * SVG must name its XML namespace, which is written as a URL. It is an
+     * identifier the browser never fetches — the image is already in the
+     * URI — so it is the one address allowed; any other would be a request.
+     */
+    $tests->assertSame(0, preg_match_all('#https?://(?!www\.w3\.org/2000/svg)#', $response->body()));
     $tests->assertTrue(str_contains($response->body(), '<style>'));
 });
 
@@ -1798,6 +1805,147 @@ $tests->run('the built stylesheet is css, not the builder log', function () use 
 
     $source = file_get_contents(dirname(__DIR__) . '/src/Console/Application.php');
     $tests->assertSame(false, str_contains($source, "file_put_contents(\$outputPath, \$css)"));
+});
+
+/**
+ * Build SFCSS from a project config and return the stylesheet and the warnings.
+ *
+ * @return array{css: string, stderr: string, status: int}
+ */
+$buildSfcss = static function (array $config): array {
+    $directory = sys_get_temp_dir() . '/sfcss-test-' . bin2hex(random_bytes(4));
+    mkdir($directory);
+    file_put_contents($directory . '/config.json', json_encode($config === [] ? new stdClass() : $config));
+
+    $process = proc_open(
+        [PHP_BINARY, dirname(__DIR__) . '/tools/css-builder/sfcss-builder.php', $directory . '/config.json', $directory],
+        [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+        $pipes
+    );
+    stream_get_contents($pipes[1]);
+    $stderr = (string) stream_get_contents($pipes[2]);
+    $status = proc_close($process);
+
+    $css = (string) @file_get_contents($directory . '/sfcss.css');
+    array_map('unlink', glob($directory . '/*') ?: []);
+    rmdir($directory);
+
+    return ['css' => $css, 'stderr' => $stderr, 'status' => $status];
+};
+
+$tests->run('a project sfcss config holds only what it changes', function () use ($tests, $buildSfcss): void {
+    /*
+     * A project config used to have to be a full copy of the default one:
+     * leaving "spacing" out to change one colour broke the build. It is merged
+     * over the defaults now, so three lines are a complete config.
+     */
+    $build = $buildSfcss(['colors' => ['primary' => '#7c3aed']]);
+
+    $tests->assertSame(0, $build['status']);
+    $tests->assertTrue(str_contains($build['css'], '--primary: #7c3aed;'));
+    $tests->assertTrue(str_contains($build['css'], '.p-3 { padding: 1rem; }'));
+    $tests->assertTrue(str_contains($build['css'], '.text-blue-600 { color: #2563eb; }'));
+});
+
+$tests->run('sfcss picks readable text for every colour, and says when it cannot', function () use ($tests, $buildSfcss): void {
+    /*
+     * White on the default blue-500 was 3.7:1, below the 4.5:1 WCAG AA asks
+     * for. The text colour on a colour is computed now: white where it reads,
+     * dark where white would not.
+     */
+    $build = $buildSfcss(['colors' => ['primary' => '#3b82f6', 'warning' => '#facc15']]);
+
+    $tests->assertTrue(str_contains($build['css'], '--primary-contrast: #111827;'));
+    $tests->assertTrue(str_contains($build['css'], '--warning-contrast: #111827;'));
+    $tests->assertSame('', trim($build['stderr']));
+
+    // A mid-grey that neither white nor near-black reaches 4.5:1 on is reported.
+    $grey = $buildSfcss(['colors' => ['primary' => '#777777'], 'contrast' => ['dark' => '#555555']]);
+    $tests->assertTrue(str_contains($grey['stderr'], 'colors.primary'));
+});
+
+$tests->run('a colour added to the sfcss config gets every variant', function () use ($tests, $buildSfcss): void {
+    // A new colour used to produce a custom property and nothing else.
+    $css = $buildSfcss(['colors' => ['brand' => '#0f766e']])['css'];
+
+    foreach (['.btn-brand {', '.btn-outline-brand {', '.badge-brand {', '.alert-brand {', '.text-brand {', '.bg-brand-subtle {', '--brand-emphasis:'] as $needle) {
+        $tests->assertTrue(str_contains($css, $needle), "missing {$needle}");
+    }
+});
+
+$tests->run('the sfcss utility map takes additions and removals from the config', function () use ($tests, $buildSfcss): void {
+    $css = $buildSfcss(['utilities' => [
+        'cursor' => false,
+        'tab-size' => ['class' => 'tab', 'property' => 'tab-size', 'values' => ['2' => '2', '4' => '4'], 'responsive' => true],
+    ]])['css'];
+
+    $tests->assertSame(false, str_contains($css, '.cursor-pointer'));
+    $tests->assertTrue(str_contains($css, '.tab-4 { tab-size: 4; }'));
+    $tests->assertTrue(str_contains($css, '.md\:tab-4 { tab-size: 4; }'));
+});
+
+$tests->run('sfcss options prefix variables and switch features off', function () use ($tests, $buildSfcss): void {
+    $css = $buildSfcss(['options' => [
+        'prefix' => 'sf',
+        'components' => false,
+        'responsiveVariants' => false,
+        'reducedMotion' => false,
+    ]])['css'];
+
+    $tests->assertTrue(str_contains($css, '--sf-primary:'));
+    $tests->assertTrue(str_contains($css, 'var(--sf-surface)'));
+    $tests->assertSame(false, str_contains($css, 'var(--primary)'));
+    $tests->assertSame(false, str_contains($css, '.btn {'));
+    $tests->assertSame(false, str_contains($css, '.md\:'));
+    $tests->assertSame(false, str_contains($css, 'prefers-reduced-motion'));
+
+    // The accessibility baseline is not a component and stays.
+    $tests->assertTrue(str_contains($css, ':focus-visible'));
+
+    // Role colours are utilities, not components, so they stay too.
+    $tests->assertTrue(str_contains($css, '.text-primary {'));
+});
+
+$tests->run('an sfcss prefix leaves the anchor SFJS writes alone', function () use ($tests, $buildSfcss): void {
+    // SFJS sets --sf-anchor on every popover it positions; renaming it to
+    // --acme-sf-anchor left every dropdown and tooltip unanchored.
+    $css = $buildSfcss(['options' => ['prefix' => 'acme']])['css'];
+
+    $tests->assertTrue(str_contains($css, '--acme-primary:'));
+    $tests->assertTrue(str_contains($css, 'var(--sf-anchor)'));
+    $tests->assertSame(false, str_contains($css, '--acme-sf-anchor'));
+});
+
+$tests->run('sfcss rounded:false squares the radius utilities too', function () use ($tests, $buildSfcss): void {
+    // The rounded-* classes used literal values, so turning rounding off
+    // squared the components and left every rounded-lg on the page round.
+    $css = $buildSfcss(['options' => ['rounded' => false]])['css'];
+
+    $tests->assertTrue(str_contains($css, '--radius-lg: 0;'));
+    $tests->assertTrue(str_contains($css, '.rounded-lg { border-radius: var(--radius-lg); }'));
+    $tests->assertTrue(str_contains($css, '--radius-full: 9999px;'));
+});
+
+$tests->run('an sfcss palette class wins over the component it is written on', function () use ($tests): void {
+    // class="card bg-blue-50" kept the card's own background because the
+    // palette was emitted before the components.
+    $css = file_get_contents(dirname(__DIR__) . '/resources/assets/css/sfcss.css');
+
+    $tests->assertTrue(strpos($css, '.card {') < strpos($css, '.bg-blue-50 {'));
+    $tests->assertTrue(strpos($css, '.btn {') < strpos($css, '.hover\:bg-blue-700:hover {'));
+});
+
+$tests->run('sfcss spacing means the same with and without a breakpoint', function () use ($tests): void {
+    /*
+     * p-3 was 1rem and md:p-3 was 0.75rem: the base classes and the
+     * breakpoint variants came from two different scales. One scale produces
+     * both now.
+     */
+    $css = file_get_contents(dirname(__DIR__) . '/resources/assets/css/sfcss.css');
+
+    $tests->assertTrue(str_contains($css, '.p-3 { padding: 1rem; }'));
+    $tests->assertTrue(str_contains($css, '.md\:p-3 { padding: 1rem; }'));
+    $tests->assertSame(false, str_contains($css, '@media (max-width: 768px)'));
 });
 
 $tests->run('request is built from injected arrays, never from globals', function () use ($tests): void {
@@ -5176,7 +5324,7 @@ $tests->run('client state survives a refresh that came from the server', functio
 
         q('log').textContent = [
           'mark=' + q('mark').textContent,
-          'hidden=' + (q('body').style.display === 'none'),
+          'hidden=' + q('body').hidden,
           'state=' + q('panel').__sfState.open,
           'clicks=' + q('count').textContent
         ].join(' | ');
@@ -5275,11 +5423,11 @@ $tests->run('a scope holds state in the browser, and the page follows it', funct
         const q = (id) => document.getElementById(id);
         const steps = [];
 
-        steps.push('hidden=' + (q('panel').style.display === 'none'));
+        steps.push('hidden=' + q('panel').hidden);
         steps.push('class=' + q('styled').className);
 
         q('toggle').click();
-        steps.push('shown=' + (q('panel').style.display !== 'none'));
+        steps.push('shown=' + !q('panel').hidden);
         steps.push('class2=' + q('styled').className);
 
         q('field').value = 'Fabio';
@@ -5315,7 +5463,7 @@ $tests->run('a scope holds state in the browser, and the page follows it', funct
         preg_match('/<div id="log">([^<]*)</', $dom, $matches);
         $log = $matches[1] ?? '';
 
-        // @show follows a boolean, and @on:click can flip it.
+        // @show follows a boolean through the hidden attribute, and @on:click can flip it.
         $tests->assertTrue(str_contains($log, 'hidden=true'));
         $tests->assertTrue(str_contains($log, 'shown=true'));
 
@@ -6718,6 +6866,840 @@ $tests->run('the client talks to a real server', function () use ($tests): void 
         if ($pid > 0) {
             exec('kill ' . $pid . ' 2>/dev/null');
         }
+    }
+});
+
+
+/*
+ * The async helpers beyond the scheduler — events, streams, cache adapters,
+ * reactive state. Each test names the defect it guards: these classes shipped
+ * with none, and every one of the bugs below was reachable from its first call.
+ */
+$tests->run('a synchronous broadcast waits for its listeners instead of throwing', function () use ($tests): void {
+    $events = new SfphpProject\src\Async\EventBroadcaster();
+    $events->subscribe('user.created', static fn (string $event, mixed $payload): string => 'hello ' . $payload['name']);
+
+    $result = $events->broadcastSync('user.created', ['name' => 'Ana']);
+
+    $tests->assertSame(1, $result['listeners_count']);
+    $tests->assertSame(['hello Ana'], array_values($result['results']));
+    $tests->assertSame([], $result['errors']);
+});
+
+$tests->run('event wildcards match exact, leading, middle and trailing patterns', function () use ($tests): void {
+    $events = new SfphpProject\src\Async\EventBroadcaster();
+    $heard = [];
+
+    foreach (['user.created', 'user.*', '*.created', 'order.*.shipped'] as $pattern) {
+        $events->subscribe($pattern, static function (string $event) use (&$heard, $pattern): void {
+            $heard[$pattern][] = $event;
+        });
+    }
+
+    foreach (['user.created', 'user.profile.updated', 'order.created', 'order.42.shipped', 'users.created', 'user'] as $event) {
+        $events->broadcastSync($event);
+    }
+
+    $tests->assertSame(['user.created'], $heard['user.created']);
+    $tests->assertSame(['user.created', 'user.profile.updated'], $heard['user.*']);
+    $tests->assertSame(['user.created', 'order.created', 'users.created'], $heard['*.created']);
+    $tests->assertSame(['order.42.shipped'], $heard['order.*.shipped']);
+});
+
+$tests->run('a listener can be unsubscribed with the id subscribe returned', function () use ($tests): void {
+    $events = new SfphpProject\src\Async\EventBroadcaster();
+    $calls = [];
+
+    $low = $events->subscribe('ping', static function () use (&$calls): void { $calls[] = 'low'; }, 1);
+    $events->subscribe('ping', static function () use (&$calls): void { $calls[] = 'high'; }, 10);
+
+    $events->broadcastSync('ping');
+    $tests->assertSame(['high', 'low'], $calls);
+
+    $tests->assertSame(true, $events->unsubscribe('ping', $low));
+    $tests->assertSame(1, $events->getListenerCount('ping'));
+
+    // A scope shares the listeners and prefixes the names.
+    $billing = $events->scope('billing');
+    $billing->subscribe('paid', static function (string $event) use (&$calls): void { $calls[] = $event; });
+    $events->broadcastSync('billing.paid');
+    $tests->assertSame('billing.paid', end($calls));
+});
+
+$tests->run('a stream reduces across every chunk, not only the first', function () use ($tests): void {
+    $sum = static fn (?int $carry, int $item): int => ($carry ?? 0) + $item;
+
+    $tests->assertSame(55, (new SfphpProject\src\Async\StreamFuture(range(1, 10), 3))->reduce($sum, 0));
+
+    $stream = (new SfphpProject\src\Async\StreamFuture(range(1, 10), 3))
+        ->filter(static fn (int $n): bool => $n % 2 === 0)
+        ->map(static fn (int $n): int => $n * 10);
+
+    $tests->assertSame(300, $stream->reduce($sum, 0));
+    $tests->assertSame([20, 40, 60, 80, 100], $stream->getValue());
+});
+
+$tests->run('the cache adapters work with the framework cache', function () use ($tests): void {
+    $cache = new CacheManager(new MemoryDriver());
+
+    SfphpProject\src\Async\await(SfphpProject\src\Async\Adapters\CacheFuture::set('greeting', 'olá', 60, $cache));
+    $tests->assertSame('olá', SfphpProject\src\Async\await(SfphpProject\src\Async\Adapters\CacheFuture::get('greeting', $cache)));
+    $tests->assertSame(true, SfphpProject\src\Async\await(SfphpProject\src\Async\Adapters\CacheFuture::has('greeting', $cache)));
+    $tests->assertSame(3, SfphpProject\src\Async\await(SfphpProject\src\Async\Adapters\CacheFuture::increment('hits', 3, $cache)));
+    // A bare driver has no decrement(), so the adapter increments by the negative.
+    $tests->assertSame(-1, SfphpProject\src\Async\await(SfphpProject\src\Async\Adapters\CacheFuture::decrement('left', 1, new MemoryDriver())));
+
+    SfphpProject\src\Async\await(SfphpProject\src\Async\Adapters\CacheFuture::delete('greeting', $cache));
+    $tests->assertSame(false, $cache->has('greeting'));
+
+    // Awaiting an adapter that has already run returns its value again.
+    $read = SfphpProject\src\Async\Adapters\CacheFuture::get('hits', $cache);
+    $read->getValue();
+    $tests->assertSame(3, SfphpProject\src\Async\await($read));
+
+    $cache->put('user:1', 'a');
+    $cache->put('user:1:posts', 'b');
+    $cache->put('user:1:followers', 'c');
+
+    $invalidator = (new SfphpProject\src\Async\CacheInvalidator($cache))
+        ->registerDependency('user:1', ['user:1:posts'])
+        ->registerDependency('user:1:posts', ['user:1']);
+
+    // The cycle is deliberate: it used to recurse until the stack ran out.
+    $invalidator->invalidate('user:1');
+    $tests->assertSame([false, false, true], [$cache->has('user:1'), $cache->has('user:1:posts'), $cache->has('user:1:followers')]);
+});
+
+$tests->run('reactive state takes its value from a Future that is still pending', function () use ($tests): void {
+    $state = new SfphpProject\src\Async\ReactiveState();
+    $seen = [];
+    $state->onChange(static function (SfphpProject\src\Async\ReactiveState $s) use (&$seen): void {
+        $seen[] = [$s->getValue(), $s->isLoading()];
+    });
+
+    $state->updateFromFuture(SfphpProject\src\Async\delay(10, 'ready'));
+
+    $tests->assertSame('ready', $state->getValue());
+    $tests->assertSame(false, $state->hasError());
+    $tests->assertSame([['ready', false]], $seen);
+});
+
+$tests->run('a component with fallbacks renders, retries and falls back', function () use ($tests): void {
+    $tests->assertSame('<p>ok</p>', SfphpProject\src\Async\ComponentFuture::withFallbacks(static fn (): string => '<p>ok</p>')->getValue());
+
+    $attempts = 0;
+    $flaky = SfphpProject\src\Async\ComponentFuture::withFallbacks(
+        static function () use (&$attempts): string {
+            if (++$attempts < 3) {
+                throw new RuntimeException('not yet');
+            }
+
+            return 'third time';
+        },
+        null,
+        null,
+        2
+    );
+    $tests->assertSame('third time', $flaky->getValue());
+
+    $broken = SfphpProject\src\Async\ComponentFuture::withFallbacks(
+        static fn () => throw new RuntimeException('down'),
+        null,
+        static fn (Throwable $e): string => 'fallback: ' . $e->getMessage()
+    );
+    $tests->assertSame('fallback: down', $broken->getValue());
+});
+
+$tests->run('a WebSocketFuture refuses wss:// instead of connecting in the clear', function () use ($tests): void {
+    $socket = new SfphpProject\src\Async\WebSocketFuture('wss://example.invalid/socket');
+
+    $tests->assertSame(false, $socket->connect());
+    $tests->assertSame(true, $socket->isRejected());
+    $tests->assertSame(false, $socket->isConnected());
+});
+
+$tests->run('a deadlock is reported once, and the next await is not blamed for it', function () use ($tests): void {
+    $never = new class extends SfphpProject\src\Async\Pending {};
+    $stuck = SfphpProject\src\Async\async(static fn () => SfphpProject\src\Async\await($never));
+
+    $tests->assertThrows(static fn () => SfphpProject\src\Async\await($stuck), SfphpProject\src\Async\AsyncException::class);
+    $tests->assertSame(true, $stuck->isCancelled());
+
+    // The stuck task used to stay parked and fail this unrelated await too.
+    $tests->assertSame('fine', SfphpProject\src\Async\await(SfphpProject\src\Async\delay(1, 'fine')));
+});
+
+/*
+ * Jobs for the queue tests below. Declared at the top level, not as anonymous
+ * classes, because a queued payload names its class and the worker rebuilds
+ * the job from that name.
+ */
+final class QueueProbeInvoiceJob extends \SfphpProject\src\Queue\Job
+{
+    public static array $sent = [];
+
+    public function __construct(private readonly int $invoiceId, private string $to)
+    {
+    }
+
+    public function handle(): void
+    {
+        self::$sent[] = $this->invoiceId . ':' . $this->to;
+    }
+}
+
+final class QueueProbeFailingJob extends \SfphpProject\src\Queue\Job
+{
+    public static int $runs = 0;
+
+    public function handle(): void
+    {
+        self::$runs++;
+        throw new RuntimeException('always fails');
+    }
+}
+
+final class QueueProbeSlowJob extends \SfphpProject\src\Queue\Job
+{
+    public function handle(): void
+    {
+        sleep(5);
+    }
+}
+
+/**
+ * A queue kept in memory that stores what the real drivers store: the JSON
+ * payload, not the object, so every pop() goes through Job::fromPayload().
+ * When it runs dry it sends the process SIGTERM, which is how a test finds
+ * out whether the worker listens.
+ */
+final class QueueProbeDriver implements \SfphpProject\src\Queue\Queue
+{
+    /** @var list<array{id: string, attempts: int, payload: string}> */
+    public array $jobs = [];
+
+    /** @var list<array{id: string, exception: string}> */
+    public array $failures = [];
+
+    public bool $terminateWhenEmpty = true;
+
+    public function push(\SfphpProject\src\Queue\Job $job, ?int $delay = null): string
+    {
+        $id = 'probe_' . count($this->jobs) . '_' . bin2hex(random_bytes(3));
+        $this->jobs[] = ['id' => $id, 'attempts' => 0, 'payload' => $this->encode($job)];
+
+        return $id;
+    }
+
+    public function pop(): ?\SfphpProject\src\Queue\Job
+    {
+        $row = array_shift($this->jobs);
+
+        if ($row === null) {
+            if ($this->terminateWhenEmpty) {
+                posix_kill(getmypid(), SIGTERM);
+            }
+
+            return null;
+        }
+
+        return \SfphpProject\src\Queue\Job::fromPayload(json_decode($row['payload'], true), $row['id'], $row['attempts']);
+    }
+
+    public function failed(\SfphpProject\src\Queue\Job $job, \Throwable $exception): void
+    {
+        $this->failures[] = ['id' => (string) $job->getId(), 'exception' => get_class($exception)];
+    }
+
+    public function failedJobs(): array
+    {
+        return [];
+    }
+
+    public function retry(\SfphpProject\src\Queue\Job $job): void
+    {
+        // What both real drivers do: count the attempt, then put it back.
+        $job->setAttempts($job->getAttempts() + 1);
+        $this->jobs[] = ['id' => (string) $job->getId(), 'attempts' => $job->getAttempts(), 'payload' => $this->encode($job)];
+    }
+
+    public function release(\SfphpProject\src\Queue\Job $job, ?int $delay = null): void
+    {
+    }
+
+    public function delete(\SfphpProject\src\Queue\Job $job): void
+    {
+    }
+
+    public function flush(): void
+    {
+        $this->jobs = [];
+    }
+
+    public function size(): int
+    {
+        return count($this->jobs);
+    }
+
+    private function encode(\SfphpProject\src\Queue\Job $job): string
+    {
+        return json_encode(['class' => get_class($job), 'data' => $job->payload(), 'options' => $job->options()]);
+    }
+}
+
+$tests->run('validated() hands back only the fields that had rules', function () use ($tests): void {
+    /*
+     * The whole input used to come back, so a smuggled is_admin rode along
+     * into whatever validated() was handed to.
+     */
+    $result = Validator::validate(
+        ['name' => 'Joana', 'email' => 'joana@example.com', 'is_admin' => '1', 'tags' => ['a', 'b']],
+        ['name' => 'required|min:3', 'email' => 'required|email', 'tags' => 'required']
+    );
+
+    $tests->assertSame(true, $result->passes());
+    $tests->assertSame(
+        ['name' => 'Joana', 'email' => 'joana@example.com', 'tags' => ['a', 'b']],
+        $result->validated()
+    );
+
+    // Through the request, which is how a controller gets there.
+    $request = Request::create('POST', '/users', [
+        'body' => ['name' => 'Joana', 'role' => 'admin'],
+    ]);
+    $tests->assertSame(['name' => 'Joana'], $request->validate(['name' => 'required'])->validated());
+});
+
+$tests->run('a queued job with constructor arguments comes back whole, with its dispatch options', function () use ($tests): void {
+    $job = (new QueueProbeInvoiceJob(42, 'ana@example.com'))->tries(5)->timeout(120);
+    $payload = json_decode(json_encode([
+        'class' => get_class($job),
+        'data' => $job->payload(),
+        'options' => $job->options(),
+    ]), true);
+
+    // new $class() used to throw ArgumentCountError here and kill the worker.
+    $restored = \SfphpProject\src\Queue\Job::fromPayload($payload, 'job_1', 2);
+
+    $tests->assertSame('job_1', $restored->getId());
+    $tests->assertSame(2, $restored->getAttempts());
+    $tests->assertSame(5, $restored->getTries());
+    $tests->assertSame(120, $restored->getTimeout());
+
+    QueueProbeInvoiceJob::$sent = [];
+    $restored->handle();
+    $tests->assertSame(['42:ana@example.com'], QueueProbeInvoiceJob::$sent);
+
+    // A payload stored before options were recorded keeps the class defaults.
+    unset($payload['options']);
+    $old = \SfphpProject\src\Queue\Job::fromPayload($payload, 'job_2', 0);
+    $tests->assertSame(3, $old->getTries());
+    $tests->assertSame(60, $old->getTimeout());
+
+    // A payload that names something other than a job is never instantiated.
+    $tests->assertThrows(
+        fn () => \SfphpProject\src\Queue\Job::fromPayload(['class' => ArrayObject::class, 'data' => []], 'job_3', 0),
+        UnexpectedValueException::class
+    );
+});
+
+/**
+ * An in-memory stand-in for the phpredis methods the queue driver uses, so the
+ * driver is tested here without a Redis server or ext-redis.
+ */
+$fakeRedis = static fn (): object => new class () {
+    /** @var array<string, array<string, float>> */
+    public array $sorted = [];
+
+    /** @var array<string, array<string, string>> */
+    public array $hashes = [];
+
+    public function zAdd(string $key, float $score, string $member): int
+    {
+        $new = !isset($this->sorted[$key][$member]);
+        $this->sorted[$key][$member] = $score;
+
+        return $new ? 1 : 0;
+    }
+
+    public function zRangeByScore(string $key, $min, $max, array $options = []): array
+    {
+        $members = array_filter($this->sorted[$key] ?? [], fn (float $score): bool => $score >= $min && $score <= $max);
+        asort($members);
+        [$offset, $count] = $options['limit'] ?? [0, null];
+
+        return array_slice(array_keys($members), $offset, $count);
+    }
+
+    public function zRem(string $key, string $member): int
+    {
+        if (!isset($this->sorted[$key][$member])) {
+            return 0;
+        }
+
+        unset($this->sorted[$key][$member]);
+
+        return 1;
+    }
+
+    public function zCard(string $key): int
+    {
+        return count($this->sorted[$key] ?? []);
+    }
+
+    public function hSet(string $key, string $field, string $value): int
+    {
+        $this->hashes[$key][$field] = $value;
+
+        return 1;
+    }
+
+    public function hGet(string $key, string $field): string|false
+    {
+        return $this->hashes[$key][$field] ?? false;
+    }
+
+    public function hDel(string $key, string $field): int
+    {
+        $had = isset($this->hashes[$key][$field]);
+        unset($this->hashes[$key][$field]);
+
+        return $had ? 1 : 0;
+    }
+
+    public function hGetAll(string $key): array
+    {
+        return $this->hashes[$key] ?? [];
+    }
+
+    public function del(string ...$keys): int
+    {
+        foreach ($keys as $key) {
+            unset($this->sorted[$key], $this->hashes[$key]);
+        }
+
+        return count($keys);
+    }
+
+    public function keys(string $pattern): array
+    {
+        $all = array_unique(array_merge(array_keys($this->sorted), array_keys($this->hashes)));
+
+        return array_values(array_filter($all, fn (string $key): bool => fnmatch($pattern, $key)));
+    }
+};
+
+$tests->run('the redis queue deletes a job, and flushing it touches nothing else', function () use ($tests, $fakeRedis): void {
+    $redis = $fakeRedis();
+    $redis->hSet('cache:user:1', 'name', 'Ana');                      // someone else's data
+    $redis->hSet('failed:login-attempts', 'ip', '10.0.0.1');          // a failed:* key that is not ours
+
+    $queue = new \SfphpProject\src\Queue\RedisDriver($redis);
+
+    $first = $queue->push(new QueueProbeInvoiceJob(1, 'a@example.com'));
+    $queue->push(new QueueProbeInvoiceJob(2, 'b@example.com'));
+    $tests->assertSame(2, $queue->size());
+
+    // delete() removed a key that never existed, so the job stayed queued.
+    $job = \SfphpProject\src\Queue\Job::fromPayload(
+        json_decode((string) $redis->hGet('queue:jobs', $first), true),
+        $first,
+        0
+    );
+    $queue->delete($job);
+    $tests->assertSame(1, $queue->size());
+    $tests->assertSame(false, $redis->hGet('queue:jobs', $first));
+
+    // A popped job comes back whole, and releasing it reschedules the same id.
+    $popped = $queue->pop();
+    $tests->assertTrue($popped instanceof QueueProbeInvoiceJob);
+    $tests->assertSame(0, $queue->size());
+    $queue->release($popped, 0);
+    $tests->assertSame(1, $queue->size());
+
+    // A job queued by the previous layout — payload as the member — still runs.
+    $redis->zAdd('queue:default', time(), json_encode([
+        'id' => 'job_legacy', 'class' => QueueProbeInvoiceJob::class,
+        'data' => (new QueueProbeInvoiceJob(3, 'c@example.com'))->payload(), 'attempts' => 0,
+    ]));
+    $tests->assertSame(2, $queue->size());
+
+    $queue->failed($popped, new RuntimeException('gateway down'));
+    $tests->assertSame('gateway down', $queue->failedJobs()[0]['exception']);
+
+    // flushDb() used to erase the whole database, cache and sessions included.
+    $queue->flush();
+    $tests->assertSame(0, $queue->size());
+    $tests->assertSame([], $queue->failedJobs());
+    $tests->assertSame('Ana', $redis->hGet('cache:user:1', 'name'));
+    $tests->assertSame('10.0.0.1', $redis->hGet('failed:login-attempts', 'ip'));
+});
+
+$tests->run('the worker honours tries, enforces timeouts and stops on SIGTERM', function () use ($tests): void {
+    if (!function_exists('pcntl_async_signals') || !function_exists('posix_kill')) {
+        return;
+    }
+
+    $driver = new QueueProbeDriver();
+    $queue = new QueueManager($driver);
+
+    // tries(4) set at dispatch: four runs, one failure — not the class's 3, and not one run short.
+    QueueProbeFailingJob::$runs = 0;
+    $queue->push((new QueueProbeFailingJob())->tries(4));
+
+    // A job that overruns its timeout fails that attempt instead of holding the worker.
+    $queue->push((new QueueProbeSlowJob())->tries(1)->timeout(1));
+
+    /*
+     * When the queue runs dry the driver sends SIGTERM. The handlers used to
+     * be installed but never dispatched, so the worker ignored it and ran
+     * until its own 30 s timeout.
+     */
+    ob_start();
+    $startedAt = microtime(true);
+
+    try {
+        $queue->work(30);
+    } finally {
+        ob_end_clean();
+    }
+
+    $elapsed = microtime(true) - $startedAt;
+
+    $failures = array_column($driver->failures, 'exception');
+    sort($failures);
+
+    $tests->assertSame(4, QueueProbeFailingJob::$runs);
+    $tests->assertSame([RuntimeException::class, \SfphpProject\src\Queue\JobTimedOutException::class], $failures);
+    $tests->assertTrue($elapsed < 4.0);
+});
+
+$tests->run('rate limiting uses the application cache unless given one', function () use ($tests): void {
+    /*
+     * It used to build its own file cache, so CACHE_DRIVER=redis still left
+     * one counter per instance. The store is whatever cache() is.
+     */
+    $limit = new RateLimit(maxAttempts: 100, decaySeconds: 60, name: 'shared-' . bin2hex(random_bytes(4)));
+    $request = Request::create('GET', '/', ['server' => ['REMOTE_ADDR' => '203.0.113.77']]);
+    $limit->handle($request, static fn (Request $passed): Response => Response::text('ok'));
+
+    $property = new ReflectionProperty(RateLimit::class, 'cache');
+    $property->setAccessible(true);
+    $tests->assertTrue($property->getValue($limit) === cache());
+});
+
+$tests->run('the client refuses https-to-http redirects and follows http-to-http ones', function () use ($tests): void {
+    $protocols = new ReflectionMethod(\SfphpProject\src\Http\Client::class, 'redirectProtocols');
+    $protocols->setAccessible(true);
+
+    if (!extension_loaded('curl')) {
+        return;
+    }
+
+    // A request that starts on https:// may only be redirected to https://.
+    $tests->assertSame(CURLPROTO_HTTPS, $protocols->invoke(null, 'https://api.example.com/x'));
+    $tests->assertSame(CURLPROTO_HTTP | CURLPROTO_HTTPS, $protocols->invoke(null, 'http://127.0.0.1/x'));
+
+    // And on the wire: a plain-http service that redirects is followed.
+    $port = 9000 + (getmypid() % 900);
+    $root = __DIR__ . '/fixtures';
+    $pid = (int) trim((string) shell_exec(sprintf(
+        'php -S 127.0.0.1:%d -t %s %s/http-server.php > /dev/null 2>&1 & echo $!',
+        $port,
+        escapeshellarg($root),
+        escapeshellarg($root)
+    )));
+
+    try {
+        for ($attempt = 0; $attempt < 50; $attempt++) {
+            $probe = @fsockopen('127.0.0.1', $port, $code, $message, 0.1);
+
+            if ($probe !== false) {
+                fclose($probe);
+                break;
+            }
+
+            usleep(100_000);
+        }
+
+        $response = Http::get('http://127.0.0.1:' . $port . '/redirect');
+        $tests->assertSame(200, $response->status());
+        $tests->assertSame('Redirected successfully', $response->body());
+    } finally {
+        if ($pid > 0) {
+            exec('kill ' . $pid . ' 2>/dev/null');
+        }
+    }
+});
+
+$tests->run('make:pwa builds from app/pwa/config.php, and flags override it', function () use ($tests): void {
+    $base = sys_get_temp_dir() . '/sfphp-pwa-' . bin2hex(random_bytes(6));
+    mkdir($base . '/app/pwa', 0777, true);
+    mkdir($base . '/public', 0777, true);
+
+    file_put_contents($base . '/app/pwa/config.php', '<?php return ' . var_export([
+        'name' => "Joe's Café",
+        'short_name' => 'Joe',
+        'theme_color' => '#112233',
+        'background_color' => '#445566',
+        'service_worker' => [
+            'version' => 'v7',
+            'static_assets' => ['/offline.html'],
+            'api_routes' => ['/api/*'],
+            'enable_background_sync' => true,
+        ],
+    ], true) . ';');
+
+    Bootstrap::load($base, ['env' => null]);
+
+    try {
+        ob_start();
+        $status = (new Application(['sfphp', 'make:pwa']))->run();
+        ob_end_clean();
+
+        $tests->assertSame(0, $status);
+
+        $manifest = json_decode((string) file_get_contents($base . '/public/manifest.json'), true);
+        $tests->assertSame("Joe's Café", $manifest['name']);
+        $tests->assertSame('Joe', $manifest['short_name']);
+        $tests->assertSame('#112233', $manifest['theme_color']);
+        $tests->assertSame('#445566', $manifest['background_color']);
+        $tests->assertSame('/assets/icons/icon-192x192.png', $manifest['icons'][0]['src']);
+
+        // The version names the cache, and the name is encoded, not pasted between quotes.
+        $worker = (string) file_get_contents($base . '/public/service-worker.js');
+        $tests->assertTrue(str_contains($worker, 'const CACHE_NAME = "joe\'s-café-v7";'));
+        $tests->assertTrue(str_contains($worker, 'const STATIC_ASSETS = ["\/offline.html"];'));
+        $tests->assertTrue(str_contains($worker, "addEventListener('sync'"));
+        $tests->assertTrue(!str_contains($worker, "addEventListener('push'"));
+
+        // A flag wins over the file, for that run.
+        ob_start();
+        (new Application(['sfphp', 'make:pwa', '--name=Other App', '--color=#000000', '--enable-push']))->run();
+        ob_end_clean();
+
+        $manifest = json_decode((string) file_get_contents($base . '/public/manifest.json'), true);
+        $tests->assertSame('Other App', $manifest['name']);
+        $tests->assertSame('Other App', $manifest['short_name']);
+        $tests->assertSame('#000000', $manifest['theme_color']);
+        $tests->assertTrue(str_contains((string) file_get_contents($base . '/public/service-worker.js'), "addEventListener('push'"));
+
+        // install-sw.js points at the icons where they are generated.
+        $installer = (string) file_get_contents($base . '/public/install-sw.js');
+        $tests->assertTrue(!str_contains($installer, "'/icon-192x192.png'"));
+        $tests->assertTrue(str_contains($installer, '/assets/icons/icon-192x192.png'));
+
+        // A logo that cannot become icons is a warning, never a fatal error.
+        file_put_contents($base . '/not-an-image.png', 'plain text');
+        $status = (new Application(['sfphp', 'make:pwa', '--logo=' . $base . '/not-an-image.png']))->run();
+        $tests->assertSame(0, $status);
+        $tests->assertTrue(!is_file($base . '/public/assets/icons/icon-192x192.png'));
+    } finally {
+        Bootstrap::load(dirname(__DIR__), ['env' => null]);
+        exec('rm -rf ' . escapeshellarg($base));
+    }
+
+    // Without a config file, --name is required.
+    $empty = sys_get_temp_dir() . '/sfphp-pwa-' . bin2hex(random_bytes(6));
+    mkdir($empty . '/public', 0777, true);
+    Bootstrap::load($empty, ['env' => null]);
+
+    try {
+        ob_start();
+        $status = (new Application(['sfphp', 'make:pwa']))->run();
+        ob_end_clean();
+        $tests->assertSame(1, $status);
+    } finally {
+        Bootstrap::load(dirname(__DIR__), ['env' => null]);
+        exec('rm -rf ' . escapeshellarg($empty));
+    }
+});
+
+$tests->run('a PWA config list replaces the default list instead of merging into it', function () use ($tests): void {
+    $config = new \SfphpProject\src\Pwa\PwaConfig([
+        'service_worker' => ['static_assets' => ['/a.css']],
+        'icons' => [['src' => '/one.png', 'sizes' => '64x64']],
+    ]);
+
+    $tests->assertSame(['/a.css'], $config->staticAssets());
+    $tests->assertSame(1, count($config->icons()));
+    // A keyed section still merges: the version default survives.
+    $tests->assertSame('v1', $config->version());
+});
+
+$tests->run('phpx ends a region by its markup, whatever the text inside holds', function () use ($tests): void {
+    /*
+     * The end of a region used to be found by counting parentheses and
+     * stepping over quotes, as if the markup were PHP. The apostrophe in
+     * "Don't" then opened a quote that never closed, and the ")" in "Step 1)"
+     * closed the region in the middle of a paragraph. Text is text: only the
+     * markup's own structure may end it.
+     */
+    $source = <<<'PHPX'
+    <?php
+    namespace SfphpTest\PhpxText;
+
+    function Notes(string $step): \SfphpProject\src\View\Sfht
+    {
+        return sfht(
+            <section title="a)b" data-x='it"s'>
+                <p>Don't panic</p>
+                <p>Step 1) open the {{ $step === 'x)' ? "lid" : 'box' }}</p>
+                <ul><li>one (1<li>two</ul>
+                <br>
+                <!-- a comment with ) and ' in it -->
+                <script>if (a < b) { c('it\'s'); }</script>
+                @if ($step !== ')')<i>{{ $step }}</i>@endif
+            </section>
+        );
+    }
+    PHPX;
+
+    $file = sys_get_temp_dir() . '/sfphp-phpx-' . bin2hex(random_bytes(6)) . '.php';
+    file_put_contents($file, (new Phpx())->compile($source));
+
+    try {
+        exec('php -l ' . escapeshellarg($file) . ' 2>&1', $output, $status);
+        $tests->assertSame(0, $status);
+
+        require $file;
+
+        $html = (string) SfphpTest\PhpxText\Notes('lid');
+        $tests->assertTrue(str_contains($html, "<p>Don't panic</p>"));
+        $tests->assertTrue(str_contains($html, '<p>Step 1) open the box</p>'));
+        $tests->assertTrue(str_contains($html, "c('it\\'s');"));
+        $tests->assertTrue(str_contains($html, '<i>lid</i>'));
+        $tests->assertTrue(str_ends_with($html, '</section>'));
+    } finally {
+        @unlink($file);
+    }
+
+    // An element left open is named, because it is why the ) was never seen.
+    try {
+        (new Phpx())->compile("<?php\nfunction U() {\n    return sfht(\n        <div><p>x</p>\n    );\n}\n");
+        $tests->assertTrue(false);
+    } catch (RuntimeException $exception) {
+        $tests->assertTrue(str_contains($exception->getMessage(), '<div> on line 4 is still open'));
+    }
+});
+
+$tests->run('phpx runs filters and refuses @include with the line of the .phpx', function () use ($tests): void {
+    /*
+     * A component is a function call with no template engine around it, so a
+     * filter compiled to $__engine->filter() failed on null the first time it
+     * ran, and @include did the same. Filters now apply directly; what cannot
+     * work in a function is refused at build time, on the author's line.
+     */
+    $source = <<<'PHPX'
+    <?php
+    namespace SfphpTest\PhpxFilters;
+
+    function Shout(string $name, array $items): \SfphpProject\src\View\Sfht
+    {
+        return sfht(
+            <b>{{ $name | upper }}</b><i>{{ $name | truncate(3, '…') }}</i><s>{{ $items | length }}</s>
+        );
+    }
+    PHPX;
+
+    $file = sys_get_temp_dir() . '/sfphp-phpx-' . bin2hex(random_bytes(6)) . '.php';
+    file_put_contents($file, (new Phpx())->compile($source));
+
+    try {
+        require $file;
+
+        $tests->assertSame(
+            '<b>ÁGUA &amp; SAL</b><i>ág…</i><s>2</s>',
+            (string) SfphpTest\PhpxFilters\Shout('água & sal', ['a', 'b'])
+        );
+    } finally {
+        @unlink($file);
+    }
+
+    $messageOf = static function (string $markup): string {
+        try {
+            (new Phpx())->compile("<?php\nfunction I() {\n    return sfht(\n        <div>\n            {$markup}\n        </div>\n    );\n}\n");
+        } catch (RuntimeException $exception) {
+            return $exception->getMessage();
+        }
+
+        return '';
+    };
+
+    // Line 5 of the .phpx, not line 2 of the markup.
+    $tests->assertTrue(str_contains($messageOf("@include('card')"), '@include on line 5 cannot be used in a .phpx component'));
+    $tests->assertTrue(str_contains($messageOf('@extends(\'layout\')'), 'on line 5'));
+    $tests->assertTrue(str_contains($messageOf('{{ $a | shout }}'), 'Unknown filter "shout" on line 5'));
+    $tests->assertTrue(str_contains($messageOf('@if (true)'), 'Unclosed @if opened on line 5'));
+});
+
+$tests->run('phpx keeps the author\'s lines inside a region and after it', function () use ($tests): void {
+    /*
+     * Every {{ }} and directive used to compile to a statement of its own
+     * line, so a region grew as it compiled and every line after it shifted
+     * down: php -l named a line of the compiled file, not of the .phpx.
+     */
+    $source = implode("\n", [
+        '<?php',                                                  // 1
+        'function L(array $rows, string $a): \SfphpProject\src\View\Sfht',
+        '{',
+        '    return sfht(',
+        '        <ul>',                                           // 5
+        '            {{-- a comment',
+        '                 over two lines --}}',
+        '            @foreach ($rows as $row)',
+        '                <li>{{ $row }} {{ $a | upper }}</li>',
+        '            @endforeach',                                // 10
+        '            @php $n = 1; // counted',
+        '            @endphp',
+        '            @forelse ($rows as $r) {{ $r }} @empty none @endforelse',
+        '            {{',
+        '                $a',                                     // 15
+        '            }}',
+        '            <b>{{ $marker }}</b>',
+        '        </ul>',
+        '    );',
+        '}',                                                      // 20
+        '// after',
+        '',
+    ]);
+
+    $compiled = explode("\n", (new Phpx())->compile($source));
+
+    $tests->assertSame(substr_count($source, "\n"), count($compiled) - 1);
+    $tests->assertSame(20, array_search('// after', $compiled, true));
+    $tests->assertTrue(str_contains($compiled[8], '($row)'));
+    $tests->assertTrue(str_contains($compiled[16], '($marker)'));
+});
+
+$tests->run('a template imports a component with @use and calls it by its bare name', function () use ($tests): void {
+    /*
+     * A compiled template runs in the global namespace and a component is a
+     * namespaced function, so {{ Card() }} was "Call to undefined function".
+     * @use is PHP's own import, hoisted to the top of the compiled file, so
+     * it works even written inside @if or @block.
+     */
+    eval('namespace SfphpTest\UseComponents; function Card(string $t): \SfphpProject\src\View\Sfht { return new \SfphpProject\src\View\Sfht("<b>" . $t . "</b>"); }');
+
+    $directory = sys_get_temp_dir() . '/sfphp-use-' . bin2hex(random_bytes(6));
+    mkdir($directory . '/views', 0777, true);
+    file_put_contents(
+        $directory . '/views/page.sfht',
+        "<p>mail someone@use.example</p>\n@if (true)\n@use(function SfphpTest\\UseComponents\\Card)\n@use('function SfphpTest\\UseComponents\\Card')\n{{ Card(\$title) }}\n@endif"
+    );
+
+    try {
+        $engine = new SfhtEngine([$directory . '/views'], $directory . '/cache');
+        $html = $engine->render('page', ['title' => 'Hi']);
+
+        $tests->assertTrue(str_contains($html, '<b>Hi</b>'));
+        $tests->assertTrue(str_contains($html, 'someone@use.example'));
+        $tests->assertThrows(
+            fn () => (new \SfphpProject\src\View\Compiler())->compile('@use(1 + 1)'),
+            RuntimeException::class
+        );
+    } finally {
+        exec('rm -rf ' . escapeshellarg($directory));
     }
 });
 
