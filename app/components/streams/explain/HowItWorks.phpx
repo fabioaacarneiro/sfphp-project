@@ -98,7 +98,7 @@ function HowItWorks(): Sfht
 &lt;/button&gt;
 
 &lt;!-- Server-Sent Events --&gt;
-&lt;div @sse="/events" @events="progress,complete"&gt;
+&lt;div @stream="/events" @sse @events="progress,complete" @trigger="load"&gt;
     Events here
 &lt;/div&gt;</code></pre>
                     </div>

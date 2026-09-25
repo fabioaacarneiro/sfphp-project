@@ -9,11 +9,10 @@ use SfphpProject\src\View\Sfht;
  */
 function SseExample(): Sfht
 {
-    return (static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="card">
+    return 
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="card">
             <div class="card-header">
-                <h2 class="text-lg font-bold">Server-Sent Events (';
-echo '@sse';
-echo ')</h2>
+                <h2 class="text-lg font-bold">Server-Sent Events ('; echo '@sse'; echo ')</h2>
                 <p class="text-sm text-gray-600 mt-1">Real-time event delivery</p>
             </div>
 
@@ -22,22 +21,17 @@ echo ')</h2>
                     Listen to named events from the server (perfect for notifications, live updates, or progress).
                 </p>
 
-                <div class="bg-white border border-gray-300 rounded p-4 font-mono text-sm min-h-40 max-h-64 overflow-y-auto" id="sse-output">
-                    <span class="text-gray-400">Click "Connect" to receive events...</span>
-                </div>
+                <div
+                    id="sse-output"
+                    class="bg-white border border-gray-300 rounded p-4 font-mono text-sm min-h-40 max-h-64 overflow-y-auto whitespace-pre-wrap break-words"
+                ><span class="text-gray-400">Click "Connect" to receive events...</span></div>
 
                 <button
                     class="btn btn-success w-full mt-4"
-                    ';
-echo '@sse';
-echo '="/stream/sse"
-                    ';
-echo '@events';
-echo '="progress,complete,status"
-                    ';
-echo '@target';
-echo '="#sse-output"
-                    onclick="connectSSE()"
+                    '; echo '@stream'; echo '="/stream/sse"
+                    '; echo '@sse'; echo '
+                    '; echo '@events'; echo '="status,progress,data,complete"
+                    '; echo '@target'; echo '="#sse-output"
                 >
                     Connect to Events
                 </button>
@@ -46,73 +40,11 @@ echo '="#sse-output"
             <div class="card-footer text-xs">
                 <p><strong>HTML:</strong></p>
                 <code class="block bg-gray-50 p-2 rounded mt-2 overflow-x-auto">
-&lt;div ';
-echo '@sse';
-echo '="/events" ';
-echo '@events';
-echo '="progress,complete"&gt;
-  Events appear here
-&lt;/div&gt;
+&lt;button '; echo '@stream'; echo '="/events" '; echo '@sse'; echo ' '; echo '@events'; echo '="progress,complete" '; echo '@target'; echo '="#output"&gt;
+  Connect
+&lt;/button&gt;
                 </code>
             </div>
-        </div>';
- return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars());
+        </div>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+;
 }
-
-?>
-
-<script>
-function connectSSE() {
-    const output = document.getElementById('sse-output');
-    output.innerHTML = '<span class="text-blue-600">Connecting...</span>';
-
-    const es = new EventSource('/stream/sse');
-
-    es.addEventListener('status', (e) => {
-        addSSEEvent(output, 'status', e.data);
-    });
-
-    es.addEventListener('progress', (e) => {
-        addSSEEvent(output, 'progress', e.data);
-    });
-
-    es.addEventListener('data', (e) => {
-        addSSEEvent(output, 'data', e.data);
-    });
-
-    es.addEventListener('complete', (e) => {
-        addSSEEvent(output, 'complete', e.data);
-        es.close();
-    });
-
-    es.onerror = () => {
-        addSSEEvent(output, 'error', 'Connection closed');
-        es.close();
-    };
-}
-
-function addSSEEvent(container, eventName, data) {
-    const time = new Date().toLocaleTimeString();
-    const line = document.createElement('div');
-    line.className = getSSEEventClass(eventName);
-    line.textContent = `[${time}] ${eventName}: ${data}`;
-
-    if (container.firstChild?.classList?.contains('text-gray-400')) {
-        container.innerHTML = '';
-    }
-
-    container.appendChild(line);
-    container.scrollTop = container.scrollHeight;
-}
-
-function getSSEEventClass(eventName) {
-    const classes = {
-        'status': 'text-blue-600 font-bold',
-        'progress': 'text-green-600',
-        'data': 'text-purple-600',
-        'complete': 'text-indigo-600 font-bold',
-        'error': 'text-red-600 font-bold'
-    };
-    return classes[eventName] || 'text-gray-700';
-}
-</script>

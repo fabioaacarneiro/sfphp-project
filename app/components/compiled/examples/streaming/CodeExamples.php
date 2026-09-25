@@ -9,40 +9,24 @@ use SfphpProject\src\View\Sfht;
  */
 function CodeExamples(): Sfht
 {
-    return (static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div>
+    return 
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div>
             <h2 class="text-2xl font-bold mb-6">Implementation Examples</h2>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- HTML: ';
-echo '@stream';
-echo ' example -->
+                <!-- HTML: '; echo '@stream'; echo ' example -->
                 <div class="bg-white border border-gray-300 rounded-lg p-6">
-                    <h3 class="text-lg font-bold mb-3">HTML: ';
-echo '@stream';
-echo ' Directive</h3>
+                    <h3 class="text-lg font-bold mb-3">HTML: '; echo '@stream'; echo ' Directive</h3>
                     <pre class="bg-gray-50 p-3 rounded text-xs overflow-x-auto"><code class="language-html">&lt;!-- Simple button --&gt;
-&lt;button ';
-echo '@stream';
-echo '="/api/data"
-        ';
-echo '@target';
-echo '="#output"
-        ';
-echo '@swap';
-echo '="innerHTML"&gt;
+&lt;button '; echo '@stream'; echo '="/api/data"
+        '; echo '@target'; echo '="#output"&gt;
   Load Data
 &lt;/button&gt;
 
 &lt;!-- Form with streaming POST --&gt;
-&lt;form ';
-echo '@stream';
-echo '="/api/upload"
-      ';
-echo '@method';
-echo '="POST"
-      ';
-echo '@target';
-echo '="#result"&gt;
+&lt;form '; echo '@stream'; echo '="/api/upload"
+      '; echo '@method'; echo '="POST"
+      '; echo '@target'; echo '="#result"&gt;
   &lt;input type="file" name="file"&gt;
   &lt;button type="submit"&gt;Upload&lt;/button&gt;
 &lt;/form&gt;</code></pre>
@@ -74,23 +58,13 @@ public function stream(): Response
 }</code></pre>
                 </div>
 
-                <!-- HTML: ';
-echo '@sse';
-echo ' example -->
+                <!-- HTML: '; echo '@sse'; echo ' example -->
                 <div class="bg-white border border-gray-300 rounded-lg p-6">
-                    <h3 class="text-lg font-bold mb-3">HTML: ';
-echo '@sse';
-echo ' Directive</h3>
+                    <h3 class="text-lg font-bold mb-3">HTML: '; echo '@sse'; echo ' Directive</h3>
                     <pre class="bg-gray-50 p-3 rounded text-xs overflow-x-auto"><code class="language-html">&lt;!-- Listen to events --&gt;
-&lt;div ';
-echo '@sse';
-echo '="/api/events"
-     ';
-echo '@events';
-echo '="progress,complete,error"
-     ';
-echo '@target';
-echo '="#output"&gt;
+&lt;div '; echo '@stream'; echo '="/api/events" '; echo '@sse'; echo '
+     '; echo '@events'; echo '="progress,complete,error"
+     '; echo '@target'; echo '="#output"&gt;
   Waiting for events...
 &lt;/div&gt;
 
@@ -180,6 +154,6 @@ public function events(): Response
                     <li><strong>📦 Large Exports:</strong> Export data without buffering entire result in memory</li>
                 </ul>
             </div>
-        </div>';
- return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars());
+        </div>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+;
 }

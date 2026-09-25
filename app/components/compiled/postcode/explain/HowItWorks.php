@@ -17,7 +17,8 @@ function HowItWorks(): Sfht
 {
     $source = (string) file_get_contents(Bootstrap::basePath('app/components/postcode/lookup/Field.phpx'));
 
-    return (static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<section class="card">
+    return 
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<section class="card">
             <div class="card-header">
                 <h2 class="text-lg font-semibold m-0">What is going on here</h2>
             </div>
@@ -29,14 +30,10 @@ function HowItWorks(): Sfht
                     returns <code>Sfht</code> — markup that is already safe:
                 </p>
 
-                <pre class="bg-light p-3 rounded-md overflow-auto"><code>';
-echo \SfphpProject\src\View\Compiler::text(($source));
-echo '</code></pre>
+                <pre class="bg-light p-3 rounded-md overflow-auto"><code>'; echo \SfphpProject\src\View\Compiler::text(($source)); echo '</code></pre>
 
                 <p class="mt-4">
-                    The form carries <code>';
-echo '@hxGet';
-echo '</code>, so SFJS sends it and
+                    The form carries <code>'; echo '@hxGet'; echo '</code>, so SFJS sends it and
                     swaps the answer into place. The answer is markup rendered
                     by these same components, which is why this page has no
                     JavaScript of its own: there is nothing for it to rebuild.
@@ -49,6 +46,6 @@ echo '</code>, so SFJS sends it and
                     error shows up at build time rather than in production.
                 </p>
             </div>
-        </section>';
- return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars());
+        </section>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+;
 }
