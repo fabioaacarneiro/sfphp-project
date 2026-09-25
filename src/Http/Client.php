@@ -291,16 +291,18 @@ final class Client
             CURLOPT_SSL_VERIFYPEER => $this->verify,
             CURLOPT_SSL_VERIFYHOST => $this->verify ? 2 : 0,
             CURLOPT_HTTPHEADER => $this->headerLines($bodyHeaders),
-            CURLOPT_HEADERFUNCTION => static function ($handle, string $line) use (&$responseHeaders, &$statusCode, $listener, &$statusNotified, &$headerBlockComplete, &$continueStream): int {
+            CURLOPT_HEADERFUNCTION => static function ($handle, string $line) use (&$responseHeaders, &$statusCode, $listener, &$statusNotified, &$headerBlockComplete, &$continueStream, &$abortedByListener): int {
                 $trimmed = trim($line);
 
                 if ($trimmed === '') {
                     // Blank line = end of header block. Notify onStatus now (headers complete).
                     $headerBlockComplete = true;
-                    if (!$statusNotified && $statusCode > 0) {
+                    // Skip notification for 1xx (interim) and 3xx (redirect) responses — they're not final
+                    if (!$statusNotified && $statusCode > 0 && ($statusCode < 100 || $statusCode >= 200)) {
                         $statusNotified = true;
                         $continueStream = $listener->onStatus($statusCode, $responseHeaders);
                         if (!$continueStream) {
+                            $abortedByListener = true;
                             return 0; // Abort
                         }
                     }

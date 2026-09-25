@@ -206,6 +206,7 @@
     const controller = new AbortController();
     let content = '';
     const eventTypes = element.getAttribute('@events')?.split(',').map(e => e.trim()) || [];
+    let currentEvent = null; // Keep across chunks to handle events split between reads
 
     const headers = {
       'Accept': 'text/event-stream',
@@ -242,29 +243,30 @@
 
         const readChunk = () => {
           reader.read().then(({ done, value }) => {
-            if (done) {
-              target.textContent += '\n\n[Connection closed]';
-              return;
+            if (!done) {
+              buffer += decoder.decode(value, { stream: true });
+            } else {
+              // On stream end, decode any remaining bytes and flush buffer
+              buffer += decoder.decode(); // Final flush
             }
 
-            buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
-            buffer = lines.pop(); // Keep incomplete line for next iteration
+            buffer = done ? '' : lines.pop(); // On done, process all lines
 
             // Parse SSE lines
-            const events = {};
-            let currentEvent = null;
-
             lines.forEach((line) => {
               if (line.trim() === '') {
                 // Blank line = end of event. Dispatch it.
                 if (currentEvent) {
                   const eventName = currentEvent.event || 'message';
-                  content += (eventName !== 'message' ? `[${eventName}] ` : '') + (currentEvent.data || '') + '\n';
-                  target.textContent = content;
+                  // Only show if no @events filter, or if this event type is in the list
+                  if (!eventTypes.length || eventTypes.includes(eventName)) {
+                    content += (eventName !== 'message' ? `[${eventName}] ` : '') + (currentEvent.data || '') + '\n';
+                    target.textContent = content;
 
-                  if (target.scrollHeight > target.clientHeight) {
-                    target.scrollTop = target.scrollHeight;
+                    if (target.scrollHeight > target.clientHeight) {
+                      target.scrollTop = target.scrollHeight;
+                    }
                   }
 
                   currentEvent = null;
@@ -272,11 +274,37 @@
               } else if (line.startsWith(':')) {
                 // Comment (heartbeat) — ignore
               } else if (line.includes(':')) {
-                const [key, val] = line.split(':', 2);
+                // Parse "key: value" correctly: handle colons in values (e.g., data: 10:30)
+                const colonIndex = line.indexOf(':');
+                const key = line.slice(0, colonIndex).trim();
+                let val = line.slice(colonIndex + 1);
+                // Remove only leading space per SSE spec (not all trim)
+                if (val.startsWith(' ')) val = val.slice(1);
+
                 if (!currentEvent) currentEvent = {};
-                currentEvent[key.trim()] = val.trim();
+
+                // Multi-line data: values accumulate with newlines
+                if (key === 'data') {
+                  currentEvent.data = (currentEvent.data ? currentEvent.data + '\n' : '') + val;
+                } else {
+                  currentEvent[key] = val;
+                }
               }
             });
+
+            // Handle pending event at stream end
+            if (done) {
+              if (currentEvent) {
+                const eventName = currentEvent.event || 'message';
+                if (!eventTypes.length || eventTypes.includes(eventName)) {
+                  content += (eventName !== 'message' ? `[${eventName}] ` : '') + (currentEvent.data || '') + '\n';
+                  target.textContent = content;
+                }
+                currentEvent = null;
+              }
+              target.textContent += '\n\n[Connection closed]';
+              return;
+            }
 
             readChunk();
           }).catch((error) => {
@@ -316,7 +344,9 @@
       if (element.__sfStreamBound) return;
       element.__sfStreamBound = true;
 
-      const trigger = element.getAttribute('@trigger') || element.getAttribute('@hxtrigger') || 'load';
+      // Default trigger: 'submit' for forms, 'load' for other elements
+      const defaultTrigger = (element.tagName === 'FORM' || element.closest('form')) ? 'submit' : 'load';
+      const trigger = element.getAttribute('@trigger') || element.getAttribute('@hxtrigger') || defaultTrigger;
 
       if (trigger === 'load') {
         handleStream(element);
