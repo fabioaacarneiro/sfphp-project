@@ -63,7 +63,6 @@ cd mi-app
 
 - **Guía PWA Completa** — [Progressive Web Apps, offline, notificaciones push](docs/PWA_GUIDE.es.md)
 - **Documentación Completa** — [Framework completo documentado](docs/es/DOCUMENTATION.md)
-- **Sistema Async/Await** — [Async, streams, eventos y real-time](docs/es/ASYNC.md)
 
 ---
 

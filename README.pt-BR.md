@@ -63,7 +63,6 @@ Visite `http://localhost:8000` e comece a codificar! 🚀
 
 - **Guia PWA Completo** — [Progressive Web Apps, offline, notificações push](docs/PWA_GUIDE.pt-BR.md)
 - **Guia Completo** — [Framework inteiro documentado](docs/pt-BR/DOCUMENTATION.md)
-- **Sistema Async/Await** — [Async, streams, eventos e real-time](docs/pt-BR/ASYNC.md)
 
 ---
 

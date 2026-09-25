@@ -243,7 +243,7 @@ is the right shape.
 
 **Quick start?**
 - 📱 [PWA setup guide](docs/PWA_GUIDE.md)
-- 📖 [Full documentation](docs/DOCUMENTATION.md)
+- 📖 [Full documentation](docs/en/DOCUMENTATION.md)
 
 ---
 
