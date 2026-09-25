@@ -144,14 +144,24 @@ class ComponentFuture implements Future
 
     /**
      * Create component future with loading and error fallback templates
+     *
+     * The component is retried up to $maxRetries times; when it still fails,
+     * $errorFallback receives the exception and its return value becomes the
+     * result. $loadingFallback is accepted for compatibility and not called:
+     * a server-side render produces one answer, so there is no moment at
+     * which a loading state could be shown.
+     *
+     * The inner closure used to read $maxRetries without capturing it, so the
+     * inner future was built with null and failed with a TypeError before the
+     * component ever ran — and the outer future then retried that failure too.
      */
     public static function withFallbacks(
         callable $component,
-        callable $loadingFallback = null,
-        callable $errorFallback = null,
+        ?callable $loadingFallback = null,
+        ?callable $errorFallback = null,
         int $maxRetries = 0
     ): ComponentFuture {
-        return new self(function () use ($component, $loadingFallback, $errorFallback) {
+        return new self(function () use ($component, $errorFallback, $maxRetries) {
             $future = new self($component, $maxRetries);
 
             try {
@@ -162,6 +172,6 @@ class ComponentFuture implements Future
                 }
                 throw $e;
             }
-        }, $maxRetries);
+        });
     }
 }

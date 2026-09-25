@@ -33,6 +33,13 @@ class ReactiveState
      */
     public function setValue(mixed $value): self
     {
+        /*
+         * A new value starts a new lifetime. The TTL used to be counted from
+         * construction only, so once it had passed, every value set afterwards
+         * read back as null.
+         */
+        $this->createdAt = time();
+
         if ($this->value !== $value) {
             $this->value = $value;
             $this->error = null;
@@ -172,13 +179,25 @@ class ReactiveState
         $this->loading = true;
 
         try {
-            $value = $future->getValue();
-            $this->setValue($value);
+            /*
+             * Awaited, not read. getValue() on a Future that has not settled
+             * throws, so every in-flight Future — an HTTP request, a query, a
+             * Task — used to land here as an error instead of a value.
+             */
+            $value = await($future);
         } catch (\Throwable $e) {
-            $this->setError($e);
-        } finally {
             $this->loading = false;
+            $this->setError($e);
+
+            return $this;
         }
+
+        /*
+         * Loading ends before listeners are told, so a listener that renders
+         * the state sees the value, not a spinner next to it.
+         */
+        $this->loading = false;
+        $this->setValue($value);
 
         return $this;
     }

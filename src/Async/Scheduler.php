@@ -142,16 +142,7 @@ final class Scheduler
                 }
 
                 if ($this->waiting->count() > 0) {
-                    /*
-                     * Every Task is waiting for something nothing is going to
-                     * deliver. Saying so beats hanging: a program that stops
-                     * with a message can be fixed, and one that stops silently
-                     * is reported as "the server is slow".
-                     */
-                    throw new AsyncException(sprintf(
-                        'Deadlock: %d task(s) are waiting and nothing is pending that could wake them.',
-                        $this->waiting->count()
-                    ));
+                    $this->failStuckTasks();
                 }
 
                 return;
@@ -159,6 +150,51 @@ final class Scheduler
         } finally {
             $this->running = $reentrant;
         }
+    }
+
+    /**
+     * Give up on every parked Task, because nothing is left that could wake one.
+     *
+     * Every Task is waiting for something nothing is going to deliver. Saying
+     * so beats hanging: a program that stops with a message can be fixed, and
+     * one that stops silently is reported as "the server is slow".
+     *
+     * The stuck Tasks are also cancelled with that same exception and taken
+     * off the waiting list. They used to stay parked, so the scheduler — the
+     * one shared by the whole process, outside a request — reported the same
+     * deadlock again on every later await, however unrelated. A Task that was
+     * cancelled while parked is not stuck, only finished, and is dropped
+     * without counting.
+     *
+     * @return void
+     * @throws AsyncException When a Task was still waiting
+     */
+    private function failStuckTasks(): void
+    {
+        $stuck = [];
+
+        foreach ($this->waiting as $task) {
+            if (!$task->isSettled()) {
+                $stuck[] = $task;
+            }
+        }
+
+        $this->waiting = new SplObjectStorage();
+
+        if ($stuck === []) {
+            return;
+        }
+
+        $deadlock = new AsyncException(sprintf(
+            'Deadlock: %d task(s) are waiting and nothing is pending that could wake them.',
+            count($stuck)
+        ));
+
+        foreach ($stuck as $task) {
+            $task->cancel($deadlock);
+        }
+
+        throw $deadlock;
     }
 
     /**

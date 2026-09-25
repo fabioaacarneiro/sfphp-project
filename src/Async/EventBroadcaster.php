@@ -5,14 +5,29 @@ namespace SfphpProject\src\Async;
 /**
  * Event Broadcaster for pub/sub async event handling
  *
- * Manages event subscriptions and broadcasts with async callbacks
+ * Manages event subscriptions and broadcasts with async callbacks.
+ *
+ * A listener's pattern may contain `*`, which stands for one or more of any
+ * character, dots included: `user.*` receives `user.created` and
+ * `user.profile.updated`, `*.created` receives `order.created`, and
+ * `order.*.shipped` receives `order.42.shipped`. Listeners run one after
+ * another inside a single Task, highest priority first; the broadcast itself
+ * is what runs alongside other work, not each listener.
  */
 class EventBroadcaster
 {
-    private array $listeners = []; // event => [callbacks]
+    private array $listeners = []; // event => [listener id => listener]
     private array $eventHistory = [];
     private bool $recordHistory = false;
     private int $historyLimit = 100;
+
+    /*
+     * A scoped broadcaster shares its parent's listeners and history and puts
+     * this prefix in front of every event name it is given, so a module can
+     * subscribe to "created" and broadcast "created" while the application
+     * sees "billing.created".
+     */
+    private string $prefix = '';
 
     /**
      * Subscribe to an event
@@ -23,6 +38,8 @@ class EventBroadcaster
      */
     public function subscribe(string $event, callable $callback, int $priority = 0): string
     {
+        $event = $this->qualify($event);
+
         if (!isset($this->listeners[$event])) {
             $this->listeners[$event] = [];
         }
@@ -34,8 +51,12 @@ class EventBroadcaster
             'created_at' => time(),
         ];
 
-        // Sort by priority (highest first)
-        usort($this->listeners[$event], fn($a, $b) => $b['priority'] <=> $a['priority']);
+        /*
+         * uasort, not usort. usort renumbers the array, which threw away the
+         * listener ids this method returns — so unsubscribe() could never find
+         * the listener it was handed back.
+         */
+        uasort($this->listeners[$event], fn($a, $b) => $b['priority'] <=> $a['priority']);
 
         return $id;
     }
@@ -45,6 +66,8 @@ class EventBroadcaster
      */
     public function unsubscribe(string $event, string $listenerId): bool
     {
+        $event = $this->qualify($event);
+
         if (!isset($this->listeners[$event][$listenerId])) {
             return false;
         }
@@ -58,7 +81,7 @@ class EventBroadcaster
      */
     public function unsubscribeAll(string $event): void
     {
-        unset($this->listeners[$event]);
+        unset($this->listeners[$this->qualify($event)]);
     }
 
     /**
@@ -66,6 +89,8 @@ class EventBroadcaster
      */
     public function broadcast(string $event, mixed $payload = null): Future
     {
+        $event = $this->qualify($event);
+
         return async(function () use ($event, $payload) {
             $startTime = microtime(true);
             $results = [];
@@ -106,8 +131,12 @@ class EventBroadcaster
      */
     public function broadcastSync(string $event, mixed $payload = null): array
     {
-        $future = $this->broadcast($event, $payload);
-        $result = $future->getValue();
+        /*
+         * Awaited, not read. broadcast() only queues the Task, so reading its
+         * value straight away found it still pending and threw every time.
+         */
+        $result = await($this->broadcast($event, $payload));
+
         return is_array($result) ? $result : [];
     }
 
@@ -120,9 +149,13 @@ class EventBroadcaster
 
         foreach ($this->listeners as $pattern => $listeners) {
             if ($this->eventMatches($event, $pattern)) {
-                $matching = array_merge($matching, $listeners);
+                // The + keeps the listener ids; they are unique across patterns.
+                $matching += $listeners;
             }
         }
+
+        // Priority holds across patterns, not only within each one.
+        uasort($matching, fn($a, $b) => $b['priority'] <=> $a['priority']);
 
         return $matching;
     }
@@ -137,9 +170,17 @@ class EventBroadcaster
         }
 
         // Handle wildcards: user.* matches user.created, user.deleted, etc
-        if (strpos($pattern, '*') !== false) {
-            $regex = str_replace('*', '.*', preg_quote($pattern, '/'));
-            return preg_match("/^$regex$/", $event) === 1;
+        if (str_contains($pattern, '*')) {
+            /*
+             * The pattern is quoted first so that its dots are literal, and
+             * preg_quote() turns each "*" into "\*" — so it is that escaped
+             * form that has to be replaced. Replacing the bare "*" left its
+             * backslash behind, so "user.*" became "user\.\.*" — "user"
+             * followed by nothing but dots — and no real event matched it.
+             */
+            $regex = str_replace('\\*', '.+', preg_quote($pattern, '/'));
+
+            return preg_match('/^' . $regex . '$/u', $event) === 1;
         }
 
         return false;
@@ -192,13 +233,13 @@ class EventBroadcaster
     /**
      * Get listener count for event
      */
-    public function getListenerCount(string $event = null): int
+    public function getListenerCount(?string $event = null): int
     {
         if ($event === null) {
             return array_reduce($this->listeners, fn($sum, $list) => $sum + count($list), 0);
         }
 
-        $matching = $this->getMatchingListeners($event);
+        $matching = $this->getMatchingListeners($this->qualify($event));
         return count($matching);
     }
 
@@ -215,21 +256,47 @@ class EventBroadcaster
      */
     public function clear(): self
     {
-        $this->listeners = [];
+        if ($this->prefix === '') {
+            $this->listeners = [];
+
+            return $this;
+        }
+
+        // A scope clears its own listeners, not the whole application's.
+        foreach (array_keys($this->listeners) as $event) {
+            if (str_starts_with($event, $this->prefix)) {
+                unset($this->listeners[$event]);
+            }
+        }
+
         return $this;
     }
 
     /**
      * Create scoped broadcaster
+     *
+     * The scoped broadcaster shares this one's listeners and history, and
+     * prefixes every event name with "$prefix.". It used to return a fresh,
+     * unconnected broadcaster, so nothing subscribed through a scope ever
+     * heard anything broadcast outside it.
      */
     public function scope(string $prefix): EventBroadcaster
     {
         $scoped = new self();
-        $scoped->recordHistory = $this->recordHistory;
-        $scoped->historyLimit = $this->historyLimit;
+        $scoped->listeners = &$this->listeners;
+        $scoped->eventHistory = &$this->eventHistory;
+        $scoped->recordHistory = &$this->recordHistory;
+        $scoped->historyLimit = &$this->historyLimit;
+        $scoped->prefix = $this->qualify($prefix) . '.';
 
-        // Proxy subscriptions to parent with prefix
-        // This allows namespacing of events
         return $scoped;
+    }
+
+    /**
+     * The full name of an event, with this broadcaster's scope in front.
+     */
+    private function qualify(string $event): string
+    {
+        return $this->prefix . $event;
     }
 }

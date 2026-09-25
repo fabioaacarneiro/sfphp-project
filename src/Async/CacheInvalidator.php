@@ -6,6 +6,10 @@ namespace SfphpProject\src\Async;
  * Manages cache invalidation based on dependencies
  *
  * Allows automatic invalidation of related cache entries when data changes
+ *
+ * The cache is the framework's — `cache()`, a CacheManager or any
+ * {@see \SfphpProject\src\Cache\Cache} — and keys are removed with forget().
+ * An object that only has delete() (PSR-16 style) is accepted as well.
  */
 class CacheInvalidator
 {
@@ -45,18 +49,56 @@ class CacheInvalidator
      */
     public function invalidate(string $key): self
     {
-        if ($this->cache) {
-            $this->cache->delete($key);
-        }
-
-        // Invalidate all dependents
-        if (isset($this->dependencies[$key])) {
-            foreach ($this->dependencies[$key] as $dependent) {
-                $this->invalidate($dependent);
-            }
-        }
+        $this->invalidateOnce($key, []);
 
         return $this;
+    }
+
+    /**
+     * Invalidate a key and its dependents, visiting each key only once.
+     *
+     * The set of keys already visited is what stops a cycle — a depends on b
+     * and b on a — from recursing until the stack runs out.
+     *
+     * @param array<string, true> $visited Keys already invalidated in this pass
+     * @return array<string, true> The keys visited so far
+     */
+    private function invalidateOnce(string $key, array $visited): array
+    {
+        if (isset($visited[$key])) {
+            return $visited;
+        }
+
+        $visited[$key] = true;
+        $this->forget($key);
+
+        foreach ($this->dependencies[$key] ?? [] as $dependent) {
+            $visited = $this->invalidateOnce($dependent, $visited);
+        }
+
+        return $visited;
+    }
+
+    /**
+     * Remove one key from the cache.
+     *
+     * forget() is the framework cache's name for it. This used to call
+     * delete(), which the framework cache does not have, so invalidating with
+     * `cache()` failed with "Call to undefined method".
+     */
+    private function forget(string $key): void
+    {
+        if (!$this->cache) {
+            return;
+        }
+
+        if (method_exists($this->cache, 'forget')) {
+            $this->cache->forget($key);
+
+            return;
+        }
+
+        $this->cache->delete($key);
     }
 
     /**
@@ -83,11 +125,15 @@ class CacheInvalidator
             return $this;
         }
 
-        // Fallback: iterate through dependencies
-        $regex = str_replace('*', '.*', preg_quote($pattern, '/'));
+        /*
+         * Fallback: iterate through dependencies. preg_quote() escapes each
+         * "*" to "\*", so it is the escaped form that becomes the wildcard;
+         * replacing the bare "*" left a backslash behind and matched nothing.
+         */
+        $regex = str_replace('\\*', '.*', preg_quote($pattern, '/'));
 
         foreach ($this->dependencies as $source => $dependents) {
-            if (preg_match("/^$regex$/", $source)) {
+            if (preg_match('/^' . $regex . '$/u', (string) $source)) {
                 $this->invalidate($source);
             }
         }

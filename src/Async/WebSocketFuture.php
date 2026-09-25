@@ -3,10 +3,29 @@
 namespace SfphpProject\src\Async;
 
 /**
- * WebSocket Future for async real-time communication
+ * WebSocket Future — EXPERIMENTAL, and not a working WebSocket client.
  *
- * Handles WebSocket connections asynchronously with message queuing
- * and event-driven callbacks.
+ * What it does: open a plain TCP connection to the URL's host and port
+ * (port 80 when none is given), settle once that connection is open or has
+ * failed, and write text frames to it, masked as RFC 6455 requires of a
+ * client. Messages can be queued and flushed, and the connection closed.
+ *
+ * What it does not do, and why that matters:
+ *
+ * - **No opening handshake.** It never sends the HTTP `Upgrade: websocket`
+ *   request, so a real WebSocket server sees frames arrive on a connection
+ *   that never became a WebSocket, and closes it. The headers passed to the
+ *   constructor are stored and never sent.
+ * - **No TLS.** A `wss://` URL is refused, rather than connected to in the
+ *   clear on port 80 as it used to be.
+ * - **No receiving.** Nothing reads the socket, so callbacks registered with
+ *   onMessage() are never called; there are no ping/pong or close frames.
+ * - **Not on the event loop.** Connecting and writing block, so this does not
+ *   overlap with other work the way an HTTP request does.
+ *
+ * It is kept because it is public API and something may construct it; it is
+ * not a basis for real-time features. For pushing to browsers, use the
+ * framework's server-sent events (see STREAMING.md).
  */
 class WebSocketFuture implements Future
 {
@@ -44,6 +63,10 @@ class WebSocketFuture implements Future
         }
 
         try {
+            if (parse_url($this->url, PHP_URL_SCHEME) === 'wss') {
+                throw new \Exception('WebSocketFuture does not support TLS, so a wss:// URL cannot be opened.');
+            }
+
             $this->connection = fsockopen(
                 parse_url($this->url, PHP_URL_HOST),
                 parse_url($this->url, PHP_URL_PORT) ?: 80,
@@ -91,6 +114,9 @@ class WebSocketFuture implements Future
 
     /**
      * Listen for WebSocket messages
+     *
+     * Experimental: nothing reads the socket yet, so these callbacks are
+     * stored and never called. See the class description.
      */
     public function onMessage(callable $callback): self
     {
@@ -124,7 +150,12 @@ class WebSocketFuture implements Future
         } elseif ($len < 65536) {
             $header = pack('CCn', 0x81, 0xFE | 0x80, $len);
         } else {
-            $header = pack('CCCCCCCC', 0x81, 0xFF | 0x80, 0, 0, 0, 0, ($len >> 8) & 0xFF, $len & 0xFF);
+            /*
+             * A 64-bit length is eight bytes. This used to write six, holding
+             * only the low sixteen bits, so any frame of 64 KiB or more
+             * announced the wrong length and corrupted the stream.
+             */
+            $header = pack('CCJ', 0x81, 0x7F | 0x80, $len);
         }
 
         $mask = pack('N', random_int(0, 0xFFFFFFFF));
