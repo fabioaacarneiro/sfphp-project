@@ -36,7 +36,48 @@ final class Compiler
         'endblock' => 'block',
     ];
 
+    /**
+     * Directives a .phpx markup region cannot use, with what to write instead.
+     *
+     * They all need the template engine — a layout to extend, a block table,
+     * a directory of partials — and a component runs as a plain function call,
+     * with no engine around it. Refusing them at build time, with the line,
+     * is kinder than the "Call to a member function on null" they used to
+     * produce the first time the component ran.
+     */
+    private const COMPONENT_REJECTS = [
+        'extends' => 'a component is called, it does not extend a layout',
+        'block' => 'a component is called, it does not fill a layout',
+        'endblock' => 'a component is called, it does not fill a layout',
+        'include' => 'call the other component instead, as {{ Card(...) }}',
+        'includeWhen' => 'call the other component inside @if instead',
+        'component' => 'call the other component instead, as {{ Card(...) }}',
+        'use' => 'import it with `use function` at the top of the .phpx file',
+    ];
+
     private Parser $parser;
+
+    /**
+     * Whether this compiles a .phpx markup region rather than a template.
+     */
+    private bool $component = false;
+
+    /**
+     * What ends each statement the compiler writes.
+     *
+     * A newline for a template, where the compiled file is only ever read by
+     * PHP. A space for a component region, whose compiled lines have to stay
+     * the lines the author wrote: the only newlines left are the ones in the
+     * markup itself, so an error in the generated PHP names the .phpx line.
+     */
+    private string $eol = "\n";
+
+    /**
+     * The imports a template declared with @use, keyed to drop duplicates.
+     *
+     * @var array<string, string>
+     */
+    private array $uses = [];
 
     /**
      * Open control structures, innermost last.
@@ -54,6 +95,25 @@ final class Compiler
     }
 
     /**
+     * A compiler for the markup regions of a .phpx component.
+     *
+     * The output is the same PHP, with three differences a function call
+     * needs: filters run without an engine, the directives that need one are
+     * refused at build time, and the statements keep the lines of the markup
+     * they came from.
+     *
+     * @return self The compiler
+     */
+    public static function forComponents(): self
+    {
+        $compiler = new self();
+        $compiler->component = true;
+        $compiler->eol = ' ';
+
+        return $compiler;
+    }
+
+    /**
      * Compile template source to PHP.
      *
      * @param string $content The template source
@@ -68,15 +128,26 @@ final class Compiler
          * whatever was compiled next through the same engine.
          */
         $this->stack = [];
+        $this->uses = [];
 
-        $code = "<?php\n";
+        $code = '';
 
         foreach ($this->parser->parse($content) as $token) {
+            /*
+             * A component's statements end in spaces, so the newlines the
+             * parser trimmed away — around an expression, inside a comment —
+             * are put back before the next token that knows its line. The
+             * compiled region then has the markup's line structure exactly.
+             */
+            if ($this->component && isset($token['line'])) {
+                $code .= str_repeat("\n", max(0, $token['line'] - 1 - substr_count($code, "\n")));
+            }
+
             $code .= match ($token['type']) {
                 'text' => $this->compileText($token['value']),
-                'php' => rtrim($token['code']) . "\n",
-                'echo' => $this->compileEcho($token['expression'], true),
-                'raw' => $this->compileEcho($token['expression'], false),
+                'php' => $this->compilePhp($token['code']),
+                'echo' => $this->compileEcho($token['expression'], true, $token['line']),
+                'raw' => $this->compileEcho($token['expression'], false, $token['line']),
                 'directive' => $this->compileDirective($token),
                 default => '',
             };
@@ -90,7 +161,47 @@ final class Compiler
             );
         }
 
-        return $code;
+        /*
+         * An import has to sit at the top level of the file, and a template
+         * can ask for one inside @if or @block. Hoisting every @use onto the
+         * opening line makes it valid wherever it was written.
+         */
+        $imports = $this->uses === [] ? '' : ' ' . implode(' ', $this->uses);
+
+        return "<?php{$imports}\n" . $code;
+    }
+
+    /**
+     * Compile a raw "@php" region.
+     *
+     * @param string $code The PHP between @php and @endphp
+     * @return string The compiled PHP code
+     */
+    private function compilePhp(string $code): string
+    {
+        if (!$this->component) {
+            return rtrim($code) . "\n";
+        }
+
+        /*
+         * Kept byte for byte, newlines included, so the lines stay the
+         * author's. The one newline added is after a trailing // comment,
+         * which would otherwise swallow the statement written after it.
+         */
+        $tokens = token_get_all('<?php ' . $code);
+        $last = null;
+
+        foreach ($tokens as $token) {
+            if (!is_array($token) || $token[0] !== T_WHITESPACE) {
+                $last = $token;
+            }
+        }
+
+        $lineComment = is_array($last) && $last[0] === T_COMMENT && !str_starts_with($last[1], '/*');
+
+        $endsOnItsLine = $lineComment && preg_match('/\n\s*$/', $code) !== 1;
+
+        return $code . ($endsOnItsLine ? "\n" : ' ');
     }
 
     /**
@@ -107,7 +218,7 @@ final class Compiler
 
         $escaped = str_replace(['\\', '\''], ['\\\\', '\\\''], $text);
 
-        return "echo '{$escaped}';\n";
+        return "echo '{$escaped}';{$this->eol}";
     }
 
     /**
@@ -115,16 +226,38 @@ final class Compiler
      *
      * @param string $expression The expression source
      * @param bool $escape Whether to HTML-escape the result
+     * @param int $line The line the expression starts on
      * @return string The compiled PHP code
+     * @throws RuntimeException If a component uses a filter that does not exist
      */
-    private function compileEcho(string $expression, bool $escape): string
+    private function compileEcho(string $expression, bool $escape, int $line): string
     {
         $parsed = $this->parser->extractFilters($expression);
         $code = '(' . $parsed['expression'] . ')';
 
         foreach ($parsed['filters'] as $filter) {
             $arguments = $filter['args'] === '' ? '[]' : '[' . $filter['args'] . ']';
-            $code = "\$__engine->filter('{$filter['name']}', {$code}, {$arguments})";
+
+            if (!$this->component) {
+                $code = "\$__engine->filter('{$filter['name']}', {$code}, {$arguments})";
+
+                continue;
+            }
+
+            /*
+             * A component is a function call, with no engine in scope to ask,
+             * so its filters are the standard ones, applied directly. Which
+             * ones exist is known now, and a misspelt name is a build error
+             * rather than an exception on the first request that renders it.
+             */
+            if (!SfhtEngine::hasStandardFilter($filter['name'])) {
+                throw new RuntimeException(
+                    "Unknown filter \"{$filter['name']}\" on line {$line}; a component can use "
+                    . implode(', ', SfhtEngine::standardFilterNames()) . '.'
+                );
+            }
+
+            $code = "\\SfphpProject\\src\\View\\SfhtEngine::standardFilter('{$filter['name']}', {$code}, {$arguments})";
         }
 
         if ($escape) {
@@ -137,7 +270,7 @@ final class Compiler
             $code = "\SfphpProject\src\View\Compiler::text({$code})";
         }
 
-        return "echo {$code};\n";
+        return "echo {$code};{$this->eol}";
     }
 
     /**
@@ -168,42 +301,94 @@ final class Compiler
         $args = $token['args'];
         $line = $token['line'];
 
+        /*
+         * "@use" with no argument list is text, as it is in a template, so it
+         * is not refused here either.
+         */
+        $refused = isset(self::COMPONENT_REJECTS[$name]) && !($name === 'use' && $args === '');
+
+        if ($this->component && $refused) {
+            throw new RuntimeException(
+                "@{$name} on line {$line} cannot be used in a .phpx component: "
+                . self::COMPONENT_REJECTS[$name] . '.'
+            );
+        }
+
         if (isset(self::CLOSERS[$name])) {
             $this->closeBlock($name, $line);
         }
 
         return match ($name) {
-            'if' => $this->openBlock('if', $line, "if ({$args}) {\n"),
-            'elseif' => $this->requireOpen(['if'], $name, $line, "} elseif ({$args}) {\n"),
-            'else' => $this->requireOpen(['if', 'unless'], $name, $line, "} else {\n"),
-            'endif' => "}\n",
+            'if' => $this->openBlock('if', $line, "if ({$args}) {{$this->eol}"),
+            'elseif' => $this->requireOpen(['if'], $name, $line, "} elseif ({$args}) {{$this->eol}"),
+            'else' => $this->requireOpen(['if', 'unless'], $name, $line, "} else {{$this->eol}"),
+            'endif' => "}{$this->eol}",
 
-            'unless' => $this->openBlock('unless', $line, "if (!({$args})) {\n"),
-            'endunless' => "}\n",
+            'unless' => $this->openBlock('unless', $line, "if (!({$args})) {{$this->eol}"),
+            'endunless' => "}{$this->eol}",
 
-            'foreach' => $this->openBlock('foreach', $line, "foreach ({$args}) {\n"),
-            'endforeach' => "}\n",
+            'foreach' => $this->openBlock('foreach', $line, "foreach ({$args}) {{$this->eol}"),
+            'endforeach' => "}{$this->eol}",
 
             'forelse' => $this->compileForelse($args, $line),
-            'empty' => $this->requireOpen(['forelse'], $name, $line, "}\nif (!\$__forelse) {\n"),
-            'endforelse' => "}\n",
+            'empty' => $this->requireOpen(['forelse'], $name, $line, "}{$this->eol}if (!\$__forelse) {{$this->eol}"),
+            'endforelse' => "}{$this->eol}",
 
-            'for' => $this->openBlock('for', $line, "for ({$args}) {\n"),
-            'endfor' => "}\n",
+            'for' => $this->openBlock('for', $line, "for ({$args}) {{$this->eol}"),
+            'endfor' => "}{$this->eol}",
 
-            'while' => $this->openBlock('while', $line, "while ({$args}) {\n"),
-            'endwhile' => "}\n",
+            'while' => $this->openBlock('while', $line, "while ({$args}) {{$this->eol}"),
+            'endwhile' => "}{$this->eol}",
 
-            'extends' => "\$__engine->extend({$args});\n",
-            'block' => $this->openBlock('block', $line, "\$__engine->startBlock({$args});\n"),
-            'endblock' => "\$__engine->endBlock();\n",
+            'extends' => "\$__engine->extend({$args});{$this->eol}",
+            'block' => $this->openBlock('block', $line, "\$__engine->startBlock({$args});{$this->eol}"),
+            'endblock' => "\$__engine->endBlock();{$this->eol}",
 
             'include' => $this->compileInclude($args),
             'includeWhen' => $this->compileIncludeWhen($args, $line),
             'component' => $this->compileInclude($args),
 
+            'use' => $this->compileUse($args, $line),
+
             default => '',
         };
+    }
+
+    /**
+     * Compile "@use(function App\\Card)", an import for the template.
+     *
+     * A compiled template runs in the global namespace, so a component —
+     * a namespaced function — is not found by its bare name. This is the
+     * `use` statement PHP already has, spelled as a directive so that it can
+     * be written anywhere in the template: it is hoisted to the top of the
+     * compiled file, the only place PHP accepts it.
+     *
+     * Written without an argument list, "@use" is text, so an address such as
+     * "someone@use.example" still reaches the page.
+     *
+     * @param string $args The directive arguments
+     * @param int $line The directive line
+     * @return string The compiled PHP code
+     * @throws RuntimeException If the argument is not a name to import
+     */
+    private function compileUse(string $args, int $line): string
+    {
+        if ($args === '') {
+            return $this->compileText('@use');
+        }
+
+        $import = trim($args, " \t\n\r'\"");
+        $name = '\\\\?[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*';
+
+        if (preg_match('/^(?:(?:function|const)\s+)?' . $name . '(?:\s+as\s+[A-Za-z_][A-Za-z0-9_]*)?$/', $import) !== 1) {
+            throw new RuntimeException(
+                "@use on line {$line} needs a name to import, as @use(function App\\Components\\Card)."
+            );
+        }
+
+        $this->uses[strtolower($import)] = 'use ' . preg_replace('/\s+/', ' ', $import) . ';';
+
+        return '';
     }
 
     /**
@@ -218,7 +403,7 @@ final class Compiler
         return $this->openBlock(
             'forelse',
             $line,
-            "\$__forelse = false;\nforeach ({$args}) {\n    \$__forelse = true;\n"
+            "\$__forelse = false;{$this->eol}foreach ({$args}) {{$this->eol}    \$__forelse = true;{$this->eol}"
         );
     }
 
@@ -240,7 +425,7 @@ final class Compiler
          * and the explicit array wins over it.
          */
         return "echo \$__engine->renderPartial({$template}, "
-            . "array_merge(get_defined_vars(), {$data}));\n";
+            . "array_merge(get_defined_vars(), {$data}));{$this->eol}";
     }
 
     /**
@@ -265,10 +450,10 @@ final class Compiler
         $template = $parts[0];
         $data = $parts[1] ?? '[]';
 
-        return "if ({$condition}) {\n"
+        return "if ({$condition}) {{$this->eol}"
             . "echo \$__engine->renderPartial({$template}, "
-            . "array_merge(get_defined_vars(), {$data}));\n"
-            . "}\n";
+            . "array_merge(get_defined_vars(), {$data}));{$this->eol}"
+            . "}{$this->eol}";
     }
 
     /**

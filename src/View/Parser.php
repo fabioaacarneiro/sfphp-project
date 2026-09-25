@@ -33,7 +33,7 @@ final class Parser
         'while', 'endwhile',
         'extends', 'block', 'endblock',
         'include', 'includeWhen',
-        'component',
+        'component', 'use',
         'php', 'endphp',
     ];
 
