@@ -18,9 +18,9 @@ interface ClientStreamListener
      *
      * @param int $statusCode The HTTP status code
      * @param array<string, string> $headers The response headers
-     * @return void
+     * @return bool True to continue receiving, false to abort the transfer
      */
-    public function onStatus(int $statusCode, array $headers): void;
+    public function onStatus(int $statusCode, array $headers): bool;
 
     /**
      * Receive a chunk of the response body.

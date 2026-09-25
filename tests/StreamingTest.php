@@ -80,7 +80,7 @@ class StreamingTest
 
         $listener = new class($chunks) implements ClientStreamListener {
             public function __construct(private array &$chunks) {}
-            public function onStatus(int $statusCode, array $headers): void {}
+            public function onStatus(int $statusCode, array $headers): bool { return true; }
             public function onChunk(string $chunk): bool {
                 $this->chunks[] = $chunk;
                 return true;
@@ -110,7 +110,7 @@ class StreamingTest
         $chunks = [];
         $listener = new class($chunks) implements ClientStreamListener {
             public function __construct(private array &$chunks) {}
-            public function onStatus(int $statusCode, array $headers): void {}
+            public function onStatus(int $statusCode, array $headers): bool { return true; }
             public function onChunk(string $chunk): bool {
                 $this->chunks[] = $chunk;
                 return true;
@@ -139,7 +139,7 @@ class StreamingTest
         $chunks = [];
         $listener = new class($chunks) implements ClientStreamListener {
             public function __construct(private array &$chunks) {}
-            public function onStatus(int $statusCode, array $headers): void {}
+            public function onStatus(int $statusCode, array $headers): bool { return true; }
             public function onChunk(string $chunk): bool {
                 $this->chunks[] = $chunk;
                 return true;
@@ -174,7 +174,7 @@ class StreamingTest
         $chunks = [];
         $listener = new class($chunks) implements ClientStreamListener {
             public function __construct(private array &$chunks) {}
-            public function onStatus(int $statusCode, array $headers): void {}
+            public function onStatus(int $statusCode, array $headers): bool { return true; }
             public function onChunk(string $chunk): bool {
                 $this->chunks[] = $chunk;
                 // Abort after 2 chunks

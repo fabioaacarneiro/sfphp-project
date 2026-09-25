@@ -44,6 +44,9 @@ final class Client
     /** How many redirects to follow before giving up. */
     private const MAX_REDIRECTS = 5;
 
+    /** Seconds of inactivity (< 1 byte/sec) before aborting a stream. */
+    private const IDLE_TIMEOUT = 30;
+
     /** @var array<string, string> */
     private array $headers = [];
 
@@ -52,6 +55,8 @@ final class Client
     private int $timeout = self::TIMEOUT;
 
     private int $connectTimeout = self::CONNECT_TIMEOUT;
+
+    private int $idleTimeout = self::IDLE_TIMEOUT;
 
     private bool $asForm = false;
 
@@ -190,6 +195,24 @@ final class Client
     }
 
     /**
+     * How long to wait for activity on a stream before aborting.
+     *
+     * For streaming responses, the total timeout is often long, but inactivity
+     * (no bytes received) for too long indicates a stalled connection.
+     * Detects silence, not slowness: a stream at 100 bytes/sec is fine.
+     *
+     * @param int $seconds Seconds of inactivity (< 1 byte/sec), or 0 to disable
+     * @return self A new client
+     */
+    public function idleTimeout(int $seconds): self
+    {
+        $client = clone $this;
+        $client->idleTimeout = max(0, $seconds);
+
+        return $client;
+    }
+
+    /**
      * Send the body as a form rather than as JSON.
      *
      * @return self A new client
@@ -244,6 +267,7 @@ final class Client
         $statusNotified = false;
         $abortedByListener = false;
         $headerBlockComplete = false;
+        $continueStream = true;
 
         $manager = new ClientStream($listener);
         [$encodedBody, $bodyHeaders] = $this->payload($body);
@@ -258,8 +282,8 @@ final class Client
             CURLOPT_RETURNTRANSFER => false,
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
             CURLOPT_TIMEOUT => $streamTimeout,
-            CURLOPT_LOW_SPEED_TIME => 30,
-            CURLOPT_LOW_SPEED_LIMIT => 1, // 1 byte/sec for 30s, not total bytes
+            CURLOPT_LOW_SPEED_TIME => $this->idleTimeout,
+            CURLOPT_LOW_SPEED_LIMIT => $this->idleTimeout > 0 ? 1 : 0, // 1 byte/sec min, disabled if timeout=0
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => self::MAX_REDIRECTS,
             CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
@@ -267,7 +291,7 @@ final class Client
             CURLOPT_SSL_VERIFYPEER => $this->verify,
             CURLOPT_SSL_VERIFYHOST => $this->verify ? 2 : 0,
             CURLOPT_HTTPHEADER => $this->headerLines($bodyHeaders),
-            CURLOPT_HEADERFUNCTION => static function ($handle, string $line) use (&$responseHeaders, &$statusCode, $listener, &$statusNotified, &$headerBlockComplete): int {
+            CURLOPT_HEADERFUNCTION => static function ($handle, string $line) use (&$responseHeaders, &$statusCode, $listener, &$statusNotified, &$headerBlockComplete, &$continueStream): int {
                 $trimmed = trim($line);
 
                 if ($trimmed === '') {
@@ -275,7 +299,10 @@ final class Client
                     $headerBlockComplete = true;
                     if (!$statusNotified && $statusCode > 0) {
                         $statusNotified = true;
-                        $listener->onStatus($statusCode, $responseHeaders);
+                        $continueStream = $listener->onStatus($statusCode, $responseHeaders);
+                        if (!$continueStream) {
+                            return 0; // Abort
+                        }
                     }
                 } elseif (str_starts_with($trimmed, 'HTTP/')) {
                     // New response line (redirect or 1xx). Reset headers for this block.
@@ -293,14 +320,17 @@ final class Client
 
                 return strlen($line);
             },
-            CURLOPT_WRITEFUNCTION => static function (mixed $handle, string $chunk) use ($manager, &$receivedFirstChunk, &$abortedByListener, $listener, &$statusCode, &$responseHeaders, &$statusNotified): int {
+            CURLOPT_WRITEFUNCTION => static function (mixed $handle, string $chunk) use ($manager, &$receivedFirstChunk, &$abortedByListener, $listener, &$statusCode, &$responseHeaders, &$statusNotified, &$continueStream): int {
                 if (!$receivedFirstChunk) {
                     $receivedFirstChunk = true;
                     // If we're here, headers are complete but onStatus hasn't fired yet (no blank line?)
                     // This can happen with some servers. Fire it now.
-                    if (!$statusNotified && $statusCode > 0) {
+                    if (!$statusNotified && $statusCode > 0 && $continueStream) {
                         $statusNotified = true;
-                        $listener->onStatus($statusCode, $responseHeaders);
+                        $continueStream = $listener->onStatus($statusCode, $responseHeaders);
+                        if (!$continueStream) {
+                            return 0; // Abort
+                        }
                     }
                 }
 
@@ -334,9 +364,9 @@ final class Client
         }
 
         // Ensure onStatus was called, even for responses without body
-        if (!$statusNotified && $statusCode > 0) {
+        if (!$statusNotified && $statusCode > 0 && $continueStream) {
             $statusNotified = true;
-            $listener->onStatus($statusCode, $responseHeaders);
+            $continueStream = $listener->onStatus($statusCode, $responseHeaders);
         }
 
         $remainder = $manager->finalize();

@@ -24,7 +24,25 @@
     const target = element.getAttribute('@target') || element.getAttribute('@hxtarget');
     const targetEl = target ? document.querySelector(target) : element;
     const method = (element.getAttribute('@method') || 'GET').toUpperCase();
-    const body = element.getAttribute('@body') ? JSON.parse(element.getAttribute('@body')) : null;
+
+    // Body can come from @body attribute (JSON) or from a parent form (serialized)
+    let body = null;
+    const bodyAttr = element.getAttribute('@body');
+
+    if (bodyAttr) {
+      try {
+        body = JSON.parse(bodyAttr);
+      } catch (e) {
+        console.error('SFJS Stream: Invalid JSON in @body:', e.message);
+        return;
+      }
+    }
+
+    // If element is or is inside a form, serialize it as POST body
+    const form = element.tagName === 'FORM' ? element : element.closest('form');
+    if (form && !body && ['POST', 'PUT', 'PATCH'].includes(method)) {
+      body = Object.fromEntries(new FormData(form));
+    }
 
     if (!url || !targetEl) {
       console.warn('SFJS Stream: Missing @stream URL or @target element');
@@ -34,7 +52,7 @@
     const isSSE = element.getAttribute('@sse') !== null || element.getAttribute('@hxsse') !== null;
 
     if (isSSE) {
-      handleSSE(url, targetEl, element);
+      handleSSE(url, targetEl, element, method, body);
     } else {
       handleTextStream(url, targetEl, element, method, body);
     }
@@ -130,10 +148,20 @@
    * @param {string} url The SSE endpoint
    * @param {Element} target The target element
    * @param {Element} element The original element with @stream (for @events/@abort binding)
+   * @param {string} method The HTTP method (GET, POST, etc) — only GET works with EventSource
+   * @param {?Object} body The request body for POST (must use fetch for SSE)
    */
-  function handleSSE(url, target, element) {
-    const es = new EventSource(url);
+  function handleSSE(url, target, element, method = 'GET', body = null) {
     let content = '';
+    const eventTypes = element.getAttribute('@events')?.split(',').map(e => e.trim()) || [];
+
+    // EventSource only supports GET. For POST, use fetch with manual SSE parsing.
+    if (body || method !== 'GET') {
+      handleSSEviafetch(url, target, element, method, body);
+      return;
+    }
+
+    const es = new EventSource(url);
 
     // Default message event
     es.addEventListener('message', (event) => {
@@ -145,8 +173,7 @@
       }
     });
 
-    // Handle custom event types (e.g., @event="progress")
-    const eventTypes = element.getAttribute('@events')?.split(',').map(e => e.trim()) || [];
+    // Handle custom event types (e.g., @events="progress,complete")
     eventTypes.forEach((eventType) => {
       es.addEventListener(eventType, (event) => {
         content += `[${eventType}] ${event.data}\n`;
@@ -168,6 +195,112 @@
     if (abortBtn) {
       document.querySelector(abortBtn)?.addEventListener('click', () => {
         es.close();
+      });
+    }
+  }
+
+  /**
+   * Handle SSE via fetch (supports POST)
+   */
+  function handleSSEviafetch(url, target, element, method, body) {
+    const controller = new AbortController();
+    let content = '';
+    const eventTypes = element.getAttribute('@events')?.split(',').map(e => e.trim()) || [];
+
+    const headers = {
+      'Accept': 'text/event-stream',
+      'X-Requested-With': 'XMLHttpRequest',
+    };
+
+    // Add CSRF token for state-changing requests
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      const token = document.querySelector('meta[name="csrf-token"]')?.content;
+      if (token) {
+        headers['X-CSRF-Token'] = token;
+      }
+    }
+
+    const fetchOptions = {
+      method,
+      signal: controller.signal,
+      headers,
+    };
+
+    if (body && ['POST', 'PUT', 'PATCH'].includes(method)) {
+      headers['Content-Type'] = 'application/json';
+      fetchOptions.body = JSON.stringify(body);
+    }
+
+    fetch(url, fetchOptions)
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.body.getReader();
+      })
+      .then((reader) => {
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        const readChunk = () => {
+          reader.read().then(({ done, value }) => {
+            if (done) {
+              target.textContent += '\n\n[Connection closed]';
+              return;
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // Keep incomplete line for next iteration
+
+            // Parse SSE lines
+            const events = {};
+            let currentEvent = null;
+
+            lines.forEach((line) => {
+              if (line.trim() === '') {
+                // Blank line = end of event. Dispatch it.
+                if (currentEvent) {
+                  const eventName = currentEvent.event || 'message';
+                  content += (eventName !== 'message' ? `[${eventName}] ` : '') + (currentEvent.data || '') + '\n';
+                  target.textContent = content;
+
+                  if (target.scrollHeight > target.clientHeight) {
+                    target.scrollTop = target.scrollHeight;
+                  }
+
+                  currentEvent = null;
+                }
+              } else if (line.startsWith(':')) {
+                // Comment (heartbeat) — ignore
+              } else if (line.includes(':')) {
+                const [key, val] = line.split(':', 2);
+                if (!currentEvent) currentEvent = {};
+                currentEvent[key.trim()] = val.trim();
+              }
+            });
+
+            readChunk();
+          }).catch((error) => {
+            if (error.name !== 'AbortError') {
+              console.error('SFJS SSE Error:', error);
+              target.textContent += `\n\n[Error: ${error.message}]`;
+            }
+          });
+        };
+
+        readChunk();
+      })
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          console.error('SFJS SSE Error:', error);
+          target.textContent = `Error: ${error.message}`;
+        }
+      });
+
+    // Allow closing via @abort attribute
+    const abortBtn = element.getAttribute('@abort');
+    if (abortBtn) {
+      document.querySelector(abortBtn)?.addEventListener('click', () => {
+        controller.abort();
       });
     }
   }
