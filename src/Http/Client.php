@@ -241,6 +241,7 @@ final class Client
         $responseHeaders = [];
         $statusCode = 0;
         $receivedFirstChunk = false;
+        $statusNotified = false;
 
         $manager = new ClientStream($listener);
         [$encodedBody, $bodyHeaders] = $this->payload($body);
@@ -260,23 +261,24 @@ final class Client
             CURLOPT_SSL_VERIFYPEER => $this->verify,
             CURLOPT_SSL_VERIFYHOST => $this->verify ? 2 : 0,
             CURLOPT_HTTPHEADER => $this->headerLines($bodyHeaders),
-            CURLOPT_HEADERFUNCTION => static function ($handle, string $line) use (&$responseHeaders, &$statusCode): int {
+            CURLOPT_HEADERFUNCTION => static function ($handle, string $line) use (&$responseHeaders, &$statusCode, $listener, &$statusNotified): int {
                 $parts = explode(':', $line, 2);
 
                 if (count($parts) === 2) {
                     $responseHeaders[trim($parts[0])] = trim($parts[1]);
                 } elseif (str_starts_with($line, 'HTTP/')) {
                     $statusCode = (int) explode(' ', $line)[1] ?? 0;
+                    // Notify status/headers as soon as we know them, even before body arrives
+                    if (!$statusNotified) {
+                        $statusNotified = true;
+                        $listener->onStatus($statusCode, $responseHeaders);
+                    }
                 }
 
                 return strlen($line);
             },
-            CURLOPT_WRITEFUNCTION => static function (mixed $handle, string $chunk) use ($manager, &$receivedFirstChunk, $listener, &$statusCode, &$responseHeaders): int {
-                if (!$receivedFirstChunk) {
-                    $receivedFirstChunk = true;
-                    // Notify status/headers BEFORE first chunk
-                    $listener->onStatus($statusCode, $responseHeaders);
-                }
+            CURLOPT_WRITEFUNCTION => static function (mixed $handle, string $chunk) use ($manager, &$receivedFirstChunk): int {
+                $receivedFirstChunk = true;
                 return $manager->receive($chunk);
             },
         ]);
