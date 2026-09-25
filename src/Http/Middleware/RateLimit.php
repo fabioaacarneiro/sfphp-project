@@ -16,7 +16,7 @@ use SfphpProject\src\Http\Response;
  * exist, but it does nothing about simply trying passwords — without a limit,
  * they do not need to enumerate anything.
  *
- *     Router::post('/login', 'AuthController', 'login')
+ *     Router::post('/login', [AuthController::class, 'login'])
  *         ->middleware(new RateLimit(maxAttempts: 5, decaySeconds: 60));
  *
  * Counters live in the application's cache — the one CACHE_DRIVER selects,

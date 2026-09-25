@@ -1,29 +1,19 @@
 <?php
 
 /**
- * This file is responsible for defining all routes of the system.
+ * The example application's routes.
  *
- * Here you can define all routes of the system. The routes are defined
- * using the Router class of the SFPHP framework. The syntax is very
- * simple and intuitive.
+ * A route is a method, a path and an action — the controller class and the
+ * method to call, as a pair:
  *
- * Example:
- *   Router::get("/users", "UserController", "getAll");
- *   Router::post("/users", "UserController", "createUser");
- *   Router::put("/users/id:number", "UserController", "updateUser");
- *   Router::delete("/users/id:number", "UserController", "deleteUser");
+ *   Router::get('/users', [UserController::class, 'index']);
+ *   Router::post('/users', [UserController::class, 'store']);
+ *   Router::put('/users/id:number', [UserController::class, 'update']);
+ *   Router::delete('/users/id:number', [UserController::class, 'destroy']);
  *
- * The first parameter is the route path, the second parameter is the
- * controller name and the third parameter is the controller method.
+ * A path parameter is name:type, with number, alpha or alphanum as the type:
  *
- * The routes can also be defined using regular expressions.
- *
- * Example:
- *   Router::get("/users/name:alpha", "UserController", "getUserByName");
- *
- * The regular expression is defined using the syntax of the PHP
- * language. The regular expression is used to validate the route
- * parameters.
+ *   Router::get('/users/name:alpha', [UserController::class, 'byName']);
  *
  * @package SfphpProject
  * @subpackage src
@@ -32,8 +22,10 @@
  * @license https://opensource.org/licenses/MIT MIT License
  */
 
+use SfphpProject\app\controllers\MainController;
+use SfphpProject\app\controllers\PhpxController;
 use SfphpProject\src\Router;
 
-Router::get("/", "MainController", "index");
-Router::get('/phpx', 'PhpxController', 'index')->name('phpx');
-Router::get('/phpx/postcode', 'PhpxController', 'postcode')->name('phpx.postcode');
+Router::get("/", [MainController::class, 'index']);
+Router::get('/phpx', [PhpxController::class, 'index'])->name('phpx');
+Router::get('/phpx/postcode', [PhpxController::class, 'postcode'])->name('phpx.postcode');

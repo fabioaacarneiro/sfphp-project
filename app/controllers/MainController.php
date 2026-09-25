@@ -21,7 +21,7 @@ final class MainController
      */
     public function index(Request $request): Response
     {
-        return Response::view('home', [
+        return Response::sfht('home', [
             'title' => 'SFPHP - Modern PHP Framework',
         ]);
     }

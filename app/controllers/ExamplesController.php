@@ -18,6 +18,6 @@ final class ExamplesController
      */
     public function streaming(): Response
     {
-        return Response::html((string) StreamingExamples());
+        return Response::phpx(StreamingExamples());
     }
 }

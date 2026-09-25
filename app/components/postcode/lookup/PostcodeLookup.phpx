@@ -18,7 +18,7 @@ use SfphpProject\src\View\Sfht;
  */
 function PostcodeLookup(?Sfht $result = null): Sfht
 {
-    return sfht(
+    return Sfht(
         <section class="card mb-8">
             <div class="card-header">
                 <h2 class="text-lg font-semibold m-0">Look up a postcode</h2>

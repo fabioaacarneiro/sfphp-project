@@ -6,7 +6,7 @@ use SfphpProject\src\View\Sfht;
 
 function HowItWorks(): Sfht
 {
-    return sfht(
+    return Sfht(
         <div class="mt-12">
             <h2 class="text-2xl font-bold mb-6">How It Works</h2>
 

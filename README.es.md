@@ -167,8 +167,8 @@ Eso es todo. Abre `http://localhost:8000` y tendrás:
 ### Define una ruta
 
 ```php
-Router::get('/products', 'ProductController', 'index');
-Router::get('/products/id:number', 'ProductController', 'show');   // add show() to the controller
+Router::get('/products', [ProductController::class, 'index']);
+Router::get('/products/id:number', [ProductController::class, 'show']);   // add show() to the controller
 ```
 
 ### Llama a tres servicios a la vez

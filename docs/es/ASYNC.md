@@ -613,7 +613,7 @@ function UserPanel(string $url): Sfht
 {
     $data = await(Http::getAsync($url))->json();
 
-    return sfht(
+    return Sfht(
         <div class="card"><p>{{ $data['name'] ?? '' }}</p></div>
     );
 }

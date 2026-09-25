@@ -8,6 +8,7 @@ use LogicException;
 use Stringable;
 use SfphpProject\src\Router;
 use SfphpProject\src\View;
+use SfphpProject\src\View\Sfht;
 
 /**
  * An outgoing HTTP response.
@@ -154,16 +155,40 @@ final class Response
     }
 
     /**
-     * Render a view into an HTML response.
+     * Render an .sfht template into an HTML response.
      *
-     * @param string $view The view name
-     * @param array<string, mixed> $data The data passed to the view
+     *     return Response::sfht('posts/show', ['post' => $post]);
+     *
+     * Named after what it renders, like phpx() beside it: a page is either a
+     * template in a file or a component written as a function, and the method
+     * says which. It was view(), a name that fitted both and so said neither.
+     *
+     * @param string $template The template name, under app/resources/views
+     * @param array<string, mixed> $data The data passed to the template
      * @param int $status The HTTP status code
      * @return self The response
      */
-    public static function view(string $view, array $data = [], int $status = HTTP_OK): self
+    public static function sfht(string $template, array $data = [], int $status = HTTP_OK): self
     {
-        return self::html(View::make($view, $data), $status);
+        return self::html(View::make($template, $data), $status);
+    }
+
+    /**
+     * Answer with a .phpx component.
+     *
+     *     return Response::phpx(PostcodePage());
+     *
+     * Takes the component's Sfht as it is, so a controller no longer casts it
+     * to a string to hand it to html() — the cast worked, and said nothing
+     * about what was being sent.
+     *
+     * @param Sfht $component The rendered component
+     * @param int $status The HTTP status code
+     * @return self The response
+     */
+    public static function phpx(Sfht $component, int $status = HTTP_OK): self
+    {
+        return self::html((string) $component, $status);
     }
 
     /**

@@ -17,7 +17,7 @@ function HowItWorks(): Sfht
 {
     $source = (string) file_get_contents(Bootstrap::basePath('app/components/postcode/lookup/Field.phpx'));
 
-    return sfht(
+    return Sfht(
         <section class="card">
             <div class="card-header">
                 <h2 class="text-lg font-semibold m-0">What is going on here</h2>

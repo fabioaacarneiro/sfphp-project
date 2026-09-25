@@ -15,7 +15,7 @@ use Throwable;
  * The framework ships the checks and not the route, because where it lives and
  * who may see it are the application's to decide:
  *
- *     Router::get('/health', 'HealthController', 'show');
+ *     Router::get('/health', [HealthController::class, 'show']);
  *
  *     public function show(Request $request): Response
  *     {

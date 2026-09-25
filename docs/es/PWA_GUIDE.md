@@ -429,7 +429,7 @@ Y una ruta que la guarda:
 // app/routes/api.php
 use SfphpProject\src\Router;
 
-Router::post('/api/push/subscriptions', 'PushSubscriptionController', 'store');
+Router::post('/api/push/subscriptions', [PushSubscriptionController::class, 'store']);
 ```
 
 ```php

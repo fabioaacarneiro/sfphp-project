@@ -39,14 +39,16 @@ final class {CLASS}Controller
      *
      * Register it in your route file:
      *
-     *     Router::get('/{ROUTE}', '{CLASS}Controller', 'index');
+     *     use {NAMESPACE}\{CLASS}Controller;
+     *
+     *     Router::get('/{ROUTE}', [{CLASS}Controller::class, 'index']);
      *
      * @param Request $request The incoming request
      * @return Response The response
      */
     public function index(Request $request): Response
     {
-        return Response::view('{ROUTE}/index', ['title' => '{CLASS}']);
+        return Response::sfht('{ROUTE}/index', ['title' => '{CLASS}']);
 
         // JSON instead:
         // return Response::json(['message' => 'It works.']);

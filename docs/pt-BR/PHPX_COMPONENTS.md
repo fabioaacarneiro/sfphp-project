@@ -34,7 +34,7 @@ use SfphpProject\src\View\Sfht;
  */
 function Card(string $title, string $body, string $colour = 'blue'): Sfht
 {
-    return sfht(
+    return Sfht(
         <div class="card mb-4 border-{{ $colour }}-500">
             <div class="card-header">
                 <h3 class="m-0 text-{{ $colour }}-600">{{ $title }}</h3>
@@ -47,12 +47,12 @@ function Card(string $title, string $body, string $colour = 'blue'): Sfht
 }
 ```
 
-Tudo o que está fora de `sfht( … )` é PHP comum: o namespace, os `use`, o
-docblock, a assinatura tipada, o tipo de retorno. O `sfht(` abre uma **região
+Tudo o que está fora de `Sfht( … )` é PHP comum: o namespace, os `use`, o
+docblock, a assinatura tipada, o tipo de retorno. O `Sfht(` abre uma **região
 de markup** e o `)` que o equilibra a fecha — encontrado lendo o markup como
 markup, então o texto dentro dela pode conter qualquer caractere (veja
 [Aspas e parênteses no texto](#aspas-e-parênteses-no-texto)). Não existe função
-chamada `sfht()` em tempo de execução — o build substitui a região inteira por
+chamada `Sfht()` em tempo de execução — o build substitui a região inteira por
 PHP que a renderiza.
 
 Chamado a partir de PHP, ele devolve o card:
@@ -85,7 +85,7 @@ O markup mantém a indentação que tinha no fonte.
 A região é compilada pelo mesmo compilador SFHT que compila os templates
 `.sfht`, então a mesma sintaxe funciona:
 
-| Sintaxe | Dentro de `sfht( … )` |
+| Sintaxe | Dentro de `Sfht( … )` |
 |---|---|
 | `{{ $value }}` | Imprime o valor, **escapado** — a não ser que seja um `Sfht` (veja [Escape](#escape)) |
 | `{!! $html !!}` | Imprime o valor como está, sem escape |
@@ -114,7 +114,7 @@ use SfphpProject\src\View\Sfht;
  */
 function BulletList(array $items): Sfht
 {
-    return sfht(
+    return Sfht(
         <ul class="list-unstyled">
             @foreach ($items as $item)
                 <li class="py-1">{{ $item }}</li>
@@ -131,7 +131,7 @@ Os filtros padrão funcionam como em um template: `upper`, `lower`,
 `trim`, `abs`, `round` e `default`.
 
 ```php
-return sfht(
+return Sfht(
     <h3>{{ $title | upper }}</h3>
     <p>{{ $body | truncate(80) }}</p>
 );
@@ -158,7 +158,7 @@ Error in app/components/Card.phpx: @include on line 9 cannot be used in a .phpx 
 
 ### O que o markup enxerga
 
-A região enxerga as variáveis da função **como estão quando o `sfht(` é
+A região enxerga as variáveis da função **como estão quando o `Sfht(` é
 alcançado**: os parâmetros, e qualquer variável local atribuída antes dele. Nada
 de mais longe — nem globais, nem variáveis de quem chamou. É isso que faz da
 assinatura o contrato do componente.
@@ -172,7 +172,7 @@ function HowItWorks(): Sfht
 {
     $source = (string) file_get_contents(Bootstrap::basePath('app/components/postcode/lookup/Field.phpx'));
 
-    return sfht(
+    return Sfht(
         <section class="card">
             …
                 <pre class="bg-light p-3 rounded-md overflow-auto"><code>{{ $source }}</code></pre>
@@ -201,7 +201,7 @@ elemento é texto, seja o que for que ele contenha:
 ```
 
 Só **fora de todo elemento** um parêntese conta, e ali ele precisa estar
-equilibrado, como em PHP: o `)` que equilibra o `sfht(` é o que fecha a região.
+equilibrado, como em PHP: o `)` que equilibra o `Sfht(` é o que fecha a região.
 Elementos vazios (`<br>`, `<img>`, `<input>` …) e tags autofechadas não abrem
 nada, e uma tag de fechamento também fecha qualquer elemento deixado aberto
 dentro dela, do jeito que o HTML trata um `<li>` sem `</li>`.
@@ -455,7 +455,7 @@ use SfphpProject\src\View\Sfht;
  */
 function Field(string $label, string $value): Sfht
 {
-    return sfht(
+    return Sfht(
         <div class="py-1">
             <span class="text-xs text-muted d-block">{{ $label }}</span>
             <span class="font-semibold">{{ $value }}</span>
@@ -480,7 +480,7 @@ use SfphpProject\src\View\Sfht;
  */
 function Address(string $street, string $district, string $city, string $state): Sfht
 {
-    return sfht(
+    return Sfht(
         <div class="card">
             <div class="card-body">
                 {{ Field('Street', $street) }}
@@ -510,7 +510,7 @@ use function SfphpProject\app\components\postcode\lookup\PostcodeLookup;
 
 function PostcodePage(?Sfht $result = null): Sfht
 {
-    return sfht(
+    return Sfht(
         <!DOCTYPE html>
         <html lang="{{ lang_tag() }}">
         <head>
@@ -548,7 +548,7 @@ quando ainda não há nada:
 ```php
 function PostcodeLookup(?Sfht $result = null): Sfht
 {
-    return sfht(
+    return Sfht(
         <section class="card mb-8">
             …
                 <form method="get" action="/phpx/postcode" @get="/phpx/postcode" @target="#result">
@@ -574,23 +574,68 @@ string sem escape na página.
 ### A partir de um controller
 
 Um componente devolve um `Sfht`, e uma action de controller devolve um
-`Response`. O `app/controllers/PhpxController.php` renderiza a página com
-`Response::html()`:
+`Response`. O `Response::phpx()` transforma um no outro — o
+`app/controllers/PhpxController.php` renderiza a página com ele:
 
 ```php
 use function SfphpProject\app\components\postcode\PostcodePage;
 
 public function index(Request $request): Response
 {
-    return Response::html((string) PostcodePage());
+    return Response::phpx(PostcodePage());
 }
 ```
 
-O cast `(string)` é obrigatório: `Response::html()` recebe uma string. Devolver
-o próprio `Sfht` de uma action também não funciona — o roteador transforma uma
-string em HTML e um array em JSON, e qualquer outra coisa é erro
-(*"PhpxController::index() must return SfphpProject\src\Http\Response, a string
-or an array; got SfphpProject\src\View\Sfht"*).
+O `Response::phpx()` recebe o que o componente **devolve** — a chamada, não o
+nome da função. Devolver o próprio `Sfht` de uma action é erro (*"… must return
+SfphpProject\src\Http\Response, a string or an array; got
+SfphpProject\src\View\Sfht"*): o `phpx()` é a única forma de responder com um
+componente, como o `sfht()` é para um template.
+
+**Os dados chegam ao componente como argumentos.** Os parâmetros são as suas
+props, então o controller busca o que a página precisa e passa na chamada:
+
+```php
+use function SfphpProject\app\components\posts\PostPage;
+
+public function show(Request $request, string $id): Response
+{
+    $post = Post::query()->find($id);
+
+    return Response::phpx(PostPage($post, $request->user()));
+}
+```
+
+```php
+function PostPage(Post $post, ?User $user = null): Sfht
+{
+    return Sfht(
+        <article>
+            <h1>{{ $post->title }}</h1>
+            @if ($user)
+                <p>Signed in as {{ $user->name }}</p>
+            @endif
+        </article>
+    );
+}
+```
+
+Qualquer valor PHP serve — strings, números, arrays, models, coleções — com
+valores padrão e argumentos nomeados (`PostPage(post: $post)`). A assinatura diz
+exatamente do que o componente precisa, então o editor completa a chamada e o
+PHP recusa um tipo errado. O `{{ }}` escapa o que imprime, então um título vindo
+do banco não injeta marcação. Um componente repassa dados aos que o compõem do
+mesmo jeito — o `PostPage` chamando `Comment($comment)`.
+
+Essa é a diferença para um template: `Response::sfht('post', ['post' =>
+$post])` entrega os dados como um array de nomes, enquanto um componente os
+recebe como argumentos tipados que o editor consegue conferir.
+
+> **Migrando da 0.30.** O `Response::view()` agora é `Response::sfht()`, e um
+> componente é respondido com `Response::phpx(PostcodePage())` em vez de
+> `Response::html((string) PostcodePage())`. Uma região de marcação abre com
+> `Sfht(` — o nome do tipo que ela devolve — em vez de `sfht(`; o build recusa a
+> grafia antiga com a linha e a correção.
 
 A action de consulta responde com um **fragmento** quando o SFJS pediu um, e com
 a página inteira quando um navegador enviou o formulário sem JavaScript:
@@ -630,8 +675,8 @@ duas respostas, então elas não têm como divergir. Veja
 As rotas, em `app/routes/web.php`:
 
 ```php
-Router::get('/phpx', 'PhpxController', 'index')->name('phpx');
-Router::get('/phpx/postcode', 'PhpxController', 'postcode')->name('phpx.postcode');
+Router::get('/phpx', [PhpxController::class, 'index'])->name('phpx');
+Router::get('/phpx/postcode', [PhpxController::class, 'postcode'])->name('phpx.postcode');
 ```
 
 ### A partir de um template SFHT
@@ -664,7 +709,7 @@ O nome totalmente qualificado dispensa import.
 
 ```php
 // No controller
-return Response::view('home', ['card' => Card('Hello', $body)]);
+return Response::sfht('home', ['card' => Card('Hello', $body)]);
 ```
 
 ```sfht

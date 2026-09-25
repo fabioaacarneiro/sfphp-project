@@ -855,7 +855,7 @@ $tests->run('csrf tokens persist and validate requests', function () use ($tests
 });
 
 $tests->run('named routes generate validated URLs', function () use ($tests): void {
-    Router::get('/tests/id:number', 'TestController', 'show')->name('tests.show');
+    Router::get('/tests/id:number', [TestController::class, 'show'])->name('tests.show');
     $tests->assertSame('/tests/7?page=2', Router::url(
         'tests.show',
         ['id' => 7],
@@ -1556,14 +1556,14 @@ $tests->run('phpx compiles markup that lives inside a function', function () use
 
     function Badge(string $label): Sfht
     {
-        return sfht(
+        return Sfht(
             <span class="badge" title="a)b">{{ $label }}</span>
         );
     }
 
     function Panel(string $text): Sfht
     {
-        return sfht(
+        return Sfht(
             <div>
                 @php $count = 2; @endphp
                 {{ Badge('ok') }}
@@ -1620,7 +1620,7 @@ $tests->run('phpx keeps the line numbers of the file the author wrote', function
      * one — which is the only thing standing between a syntax error and a
      * useless error message.
      */
-    $source = "<?php\nfunction A(): \\SfphpProject\\src\\View\\Sfht\n{\n    return sfht(\n        <p>one</p>\n        <p>two</p>\n    );\n}\n// marker\n";
+    $source = "<?php\nfunction A(): \\SfphpProject\\src\\View\\Sfht\n{\n    return Sfht(\n        <p>one</p>\n        <p>two</p>\n    );\n}\n// marker\n";
     $compiled = (new Phpx())->compile($source);
 
     $tests->assertSame(substr_count($source, "\n"), substr_count($compiled, "\n"));
@@ -1639,11 +1639,11 @@ $tests->run('build --phpx mirrors the folders the components live in', function 
 
     file_put_contents(
         $root . '/src/Loose.phpx',
-        "<?php\nfunction Loose(): \\SfphpProject\\src\\View\\Sfht\n{\n    return sfht(<p>loose</p>);\n}\n"
+        "<?php\nfunction Loose(): \\SfphpProject\\src\\View\\Sfht\n{\n    return Sfht(<p>loose</p>);\n}\n"
     );
     file_put_contents(
         $root . '/src/page/Nested.phpx',
-        "<?php\nfunction Nested(): \\SfphpProject\\src\\View\\Sfht\n{\n    return sfht(<p>nested</p>);\n}\n"
+        "<?php\nfunction Nested(): \\SfphpProject\\src\\View\\Sfht\n{\n    return Sfht(<p>nested</p>);\n}\n"
     );
 
     try {
@@ -1671,7 +1671,7 @@ $tests->run('build --phpx mirrors the folders the components live in', function 
 
 $tests->run('phpx refuses a markup region that is never closed', function () use ($tests): void {
     $tests->assertThrows(
-        fn () => (new Phpx())->compile("<?php\n\nfunction B() { return sfht(\n  <p>x</p>\n; }\n"),
+        fn () => (new Phpx())->compile("<?php\n\nfunction B() { return Sfht(\n  <p>x</p>\n; }\n"),
         RuntimeException::class
     );
 });
@@ -2210,11 +2210,11 @@ Router::reset();
 
 $tests->run('dispatch turns a request into a response through a controller', function () use ($tests): void {
     Router::reset();
-    Router::get('/', 'DispatchTestController', 'home');
-    Router::get('/posts/id:number', 'DispatchTestController', 'show');
-    Router::post('/posts', 'DispatchTestController', 'store');
+    Router::get('/', [DispatchTestController::class, 'home']);
+    Router::get('/posts/id:number', [DispatchTestController::class, 'show']);
+    Router::post('/posts', [DispatchTestController::class, 'store']);
 
-    $router = new Router(new Container(), '');
+    $router = new Router(new Container());
 
     $home = $router->dispatch(Request::create('GET', '/'));
     $tests->assertSame(HTTP_OK, $home->status());
@@ -2236,10 +2236,10 @@ $tests->run('dispatch turns a request into a response through a controller', fun
 
 $tests->run('dispatch answers 404, 405 and OPTIONS with the right headers', function () use ($tests): void {
     Router::reset();
-    Router::get('/posts', 'DispatchTestController', 'home');
-    Router::delete('/posts', 'DispatchTestController', 'home');
+    Router::get('/posts', [DispatchTestController::class, 'home']);
+    Router::delete('/posts', [DispatchTestController::class, 'home']);
 
-    $router = new Router(new Container(), '');
+    $router = new Router(new Container());
 
     $tests->assertSame(HTTP_NOT_FOUND, $router->dispatch(Request::create('GET', '/nada'))->status());
 
@@ -2269,11 +2269,11 @@ $tests->run('middleware runs global first, then group, then route', function () 
             ));
 
     Router::group('/admin', function () use ($stamp): void {
-        Router::get('/panel', 'DispatchTestController', 'trail')
+        Router::get('/panel', [DispatchTestController::class, 'trail'])
             ->middleware($stamp('route'));
     }, 'admin.', [$stamp('group')]);
 
-    $router = (new Router(new Container(), ''))->middleware($stamp('global'));
+    $router = (new Router(new Container()))->middleware($stamp('global'));
 
     $tests->assertSame(
         'global group route',
@@ -2283,14 +2283,14 @@ $tests->run('middleware runs global first, then group, then route', function () 
 
 $tests->run('middleware can refuse a request before the controller runs', function () use ($tests): void {
     Router::reset();
-    Router::get('/private', 'DispatchTestController', 'home');
+    Router::get('/private', [DispatchTestController::class, 'home']);
 
     $deny = static fn (Request $request, callable $next): Response
         => $request->bearerToken() === null
             ? Response::json(['message' => 'Unauthorized'], HTTP_UNAUTHORIZED)
             : $next($request);
 
-    $router = (new Router(new Container(), ''))->middleware($deny);
+    $router = (new Router(new Container()))->middleware($deny);
 
     $refused = $router->dispatch(Request::create('GET', '/private'));
     $tests->assertSame(HTTP_UNAUTHORIZED, $refused->status());
@@ -2306,7 +2306,7 @@ $tests->run('global middleware also wraps requests that match no route', functio
     // CORS headers and request logging that skip 404s are a bug.
     Router::reset();
 
-    $router = (new Router(new Container(), ''))->middleware(
+    $router = (new Router(new Container()))->middleware(
         static fn (Request $request, callable $next): Response
             => $next($request)->withHeader('X-Served-By', 'sfphp')
     );
@@ -2319,11 +2319,11 @@ $tests->run('global middleware also wraps requests that match no route', functio
 
 $tests->run('a failing action becomes a 500 instead of a blank page', function () use ($tests): void {
     Router::reset();
-    Router::get('/boom', 'DispatchTestController', 'boom');
-    Router::get('/silent', 'DispatchTestController', 'returnsNothing');
-    Router::get('/missing', 'DispatchTestController', 'naoExiste');
+    Router::get('/boom', [DispatchTestController::class, 'boom']);
+    Router::get('/silent', [DispatchTestController::class, 'returnsNothing']);
+    Router::get('/missing', [DispatchTestController::class, 'naoExiste']);
 
-    $router = new Router(new Container(), '');
+    $router = new Router(new Container());
 
     $tests->assertSame(HTTP_INTERNAL_SERVER_ERROR, $router->dispatch(Request::create('GET', '/boom'))->status());
 
@@ -2345,13 +2345,13 @@ $tests->run('csrf verification finally applies by default', function () use ($te
      * apply by default.
      */
     Router::reset();
-    Router::get('/form', 'DispatchTestController', 'home');
-    Router::post('/form', 'DispatchTestController', 'home');
+    Router::get('/form', [DispatchTestController::class, 'home']);
+    Router::post('/form', [DispatchTestController::class, 'home']);
 
     Csrf::startSession();
     $token = Csrf::token();
 
-    $router = (new Router(new Container(), ''))->middleware(VerifyCsrfToken::class);
+    $router = (new Router(new Container()))->middleware(VerifyCsrfToken::class);
 
     // Safe methods are never blocked.
     $tests->assertSame(HTTP_OK, $router->dispatch(Request::create('GET', '/form'))->status());
@@ -2389,7 +2389,7 @@ $tests->run('csrf verification finally applies by default', function () use ($te
     )->status());
 
     // Exempt prefixes let a token-authenticated API opt out.
-    $exempt = (new Router(new Container(), ''))->middleware(new VerifyCsrfToken(['/form']));
+    $exempt = (new Router(new Container()))->middleware(new VerifyCsrfToken(['/form']));
     $tests->assertSame(HTTP_OK, $exempt->dispatch(Request::create('POST', '/form'))->status());
 });
 
@@ -2889,7 +2889,7 @@ $tests->run('a 404 is rendered in the visitor language', function () use ($tests
      */
     Router::reset();
 
-    $router = (new Router(new Container(), ''))
+    $router = (new Router(new Container()))
         ->middleware(new SetLocale(['en', 'pt_BR'], 'en'));
 
     $portugues = $router->dispatch(Request::create('GET', '/nada', [
@@ -3035,13 +3035,13 @@ $tests->run('the authenticate middleware resolves, and refuses when required', f
     Auth::guard('api', new TokenGuard(Auth::provider()));
 
     Router::reset();
-    Router::get('/aberta', 'AuthControllerTest', 'open');
-    Router::get('/secreta', 'AuthControllerTest', 'secret')
+    Router::get('/aberta', [AuthControllerTest::class, 'open']);
+    Router::get('/secreta', [AuthControllerTest::class, 'secret'])
         ->middleware(new Authenticate('api', required: true));
 
     try {
         $token = JWT::generate(['id' => 1, 'email' => 'ana@exemplo.com']);
-        $router = (new Router(new Container(), ''))->middleware(new Authenticate('api'));
+        $router = (new Router(new Container()))->middleware(new Authenticate('api'));
 
         $withToken = ['headers' => ['Authorization' => 'Bearer ' . $token]];
 
@@ -3594,9 +3594,9 @@ $tests->run('a failing request is reported once, with its id, by the router', fu
     $log = logger()->driver($driver)->forgetContext();
 
     Router::reset();
-    Router::get('/boom', 'DispatchTestController', 'boom');
+    Router::get('/boom', [DispatchTestController::class, 'boom']);
 
-    $router = (new Router(new Container(), ''))->middleware(new LogRequests($log));
+    $router = (new Router(new Container()))->middleware(new LogRequests($log));
     $response = $router->dispatch(Request::create('GET', '/boom'));
 
     $tests->assertSame(HTTP_INTERNAL_SERVER_ERROR, $response->status());
@@ -6188,7 +6188,7 @@ $tests->run('reset removes the example application and refuses to do it in silen
         file_put_contents($root . '/' . $file, '<?php // example');
     }
 
-    file_put_contents($root . '/app/routes/web.php', "<?php\n\nRouter::get('/', 'MainController', 'index');\n");
+    file_put_contents($root . '/app/routes/web.php', "<?php\n\nRouter::get('/', [MainController::class, 'index']);\n");
     file_put_contents($root . '/app/routes/api.php', "<?php\n\n// API routes\n");
 
     $binary = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/sfphp');
@@ -6327,7 +6327,7 @@ $tests->run('generators write into the project that ran them', function () use (
          */
         $tests->assertSame(false, str_contains($source, 'SfphpProject\\app'));
         $tests->assertSame(false, str_contains($source, 'extends'));
-        $tests->assertSame(true, str_contains($source, 'Response::view('));
+        $tests->assertSame(true, str_contains($source, 'Response::sfht('));
 
         // And it is a real action: a Response, not a string.
         $tests->assertSame(true, str_contains($source, 'public function index(Request $request): Response'));
@@ -6390,7 +6390,7 @@ $tests->run('a response can be built from anywhere, including back to where you 
 
     // And a named route, which is the other redirect an application writes by hand.
     Router::reset();
-    Router::get('/posts/id:number', 'PostController', 'show')->name('posts.show');
+    Router::get('/posts/id:number', [PostController::class, 'show'])->name('posts.show');
     $tests->assertSame('/posts/7', Response::route('posts.show', ['id' => 7])->header('Location'));
     Router::reset();
 });
@@ -7187,6 +7187,64 @@ $tests->run('required is judged first, and an optional field is judged only when
     );
 });
 
+$tests->run('a route names its action as [Controller::class, method], from any namespace', function () use ($tests): void {
+    /*
+     * The router used to prepend app\controllers\ to a controller given as a
+     * string, so PostController::class — the spelling an editor can follow —
+     * became app\controllers\app\controllers\PostController and was not found.
+     */
+    if (!class_exists('Acme\\Web\\PingController', false)) {
+        eval('namespace Acme\\Web; final class PingController { public function ping($request, string $id): string { return "pong " . $id; } }');
+    }
+
+    Router::reset();
+    Router::get('/ping/id:number', [\Acme\Web\PingController::class, 'ping'])->name('ping');
+
+    $response = (new Router(new Container()))->dispatch(Request::create('GET', '/ping/7'));
+    $tests->assertSame(200, $response->status());
+    $tests->assertSame('pong 7', $response->body());
+
+    // The old spelling is refused at boot, with the new one in the message.
+    try {
+        Router::get('/posts', 'PostController', 'index');
+        $tests->assertTrue(false, 'the string form should have been refused');
+    } catch (InvalidArgumentException $e) {
+        $tests->assertTrue(str_contains($e->getMessage(), "[PostController::class, 'index']"));
+    }
+
+    // Anything that is not a [class, method] pair is refused too.
+    foreach ([[\Acme\Web\PingController::class], ['', 'ping'], ['class' => 'X', 'method' => 'y']] as $bad) {
+        $tests->assertThrows(fn () => Router::get('/bad', $bad), InvalidArgumentException::class);
+    }
+
+    Router::reset();
+});
+
+$tests->run('a template answers with sfht(), a component with phpx()', function () use ($tests): void {
+    $directory = sys_get_temp_dir() . '/sfphp-response-' . bin2hex(random_bytes(4));
+    mkdir($directory);
+    file_put_contents($directory . '/hello.sfht', '<p>Hello, {{ $name }}</p>');
+
+    try {
+        View::setPaths([$directory], $directory . '/cache');
+
+        $page = Response::sfht('hello', ['name' => '<Ana>'], 201);
+        $tests->assertSame(201, $page->status());
+        $tests->assertSame('<p>Hello, &lt;Ana&gt;</p>', $page->body());
+        $tests->assertSame(false, method_exists(Response::class, 'view'));
+
+        $component = Response::phpx(new \SfphpProject\src\View\Sfht('<b>ok</b>'));
+        $tests->assertSame('<b>ok</b>', $component->body());
+        $tests->assertTrue(str_starts_with((string) $component->header('Content-Type'), 'text/html'));
+    } finally {
+        View::setPaths([]);
+        array_map('unlink', glob($directory . '/cache/*') ?: []);
+        @rmdir($directory . '/cache');
+        array_map('unlink', glob($directory . '/*.sfht') ?: []);
+        rmdir($directory);
+    }
+});
+
 $tests->run('validated() hands back only the fields that had rules', function () use ($tests): void {
     /*
      * The whole input used to come back, so a smuggled is_admin rode along
@@ -7567,6 +7625,29 @@ $tests->run('a PWA config list replaces the default list instead of merging into
     $tests->assertSame('v1', $config->version());
 });
 
+$tests->run('a phpx region is opened with Sfht(, the type it returns', function () use ($tests): void {
+    $compiled = (new Phpx())->compile(
+        "<?php\nfunction Hi(string \$n): \\SfphpProject\\src\\View\\Sfht\n{\n    return Sfht(<p>Hi {{ \$n }}</p>);\n}\n"
+    );
+    $tests->assertTrue(str_contains($compiled, 'new \\SfphpProject\\src\\View\\Sfht('));
+
+    // The old opening is refused with the fix, not left to PHP as a syntax error.
+    try {
+        (new Phpx())->compile("<?php\nfunction Old() {\n    return sfht(<p>x</p>);\n}\n");
+        $tests->assertTrue(false, 'sfht( should have been refused');
+    } catch (RuntimeException $e) {
+        $tests->assertTrue(str_contains($e->getMessage(), 'Line 3'));
+        $tests->assertTrue(str_contains($e->getMessage(), 'Write Sfht('));
+    }
+
+    // Built by hand, called as a method, or named Response::sfht — none of
+    // these is a markup region, and none is rewritten.
+    $plain = "<?php\nfunction Manual() { return new Sfht('<b>x</b>'); }\n"
+        . "function Page() { return \\SfphpProject\\src\\Http\\Response::sfht('home'); }\n"
+        . "function Chain(\$o) { return \$o->Sfht('x'); }\n";
+    $tests->assertSame($plain, (new Phpx())->compile($plain));
+});
+
 $tests->run('phpx ends a region by its markup, whatever the text inside holds', function () use ($tests): void {
     /*
      * The end of a region used to be found by counting parentheses and
@@ -7581,7 +7662,7 @@ $tests->run('phpx ends a region by its markup, whatever the text inside holds', 
 
     function Notes(string $step): \SfphpProject\src\View\Sfht
     {
-        return sfht(
+        return Sfht(
             <section title="a)b" data-x='it"s'>
                 <p>Don't panic</p>
                 <p>Step 1) open the {{ $step === 'x)' ? "lid" : 'box' }}</p>
@@ -7616,7 +7697,7 @@ $tests->run('phpx ends a region by its markup, whatever the text inside holds', 
 
     // An element left open is named, because it is why the ) was never seen.
     try {
-        (new Phpx())->compile("<?php\nfunction U() {\n    return sfht(\n        <div><p>x</p>\n    );\n}\n");
+        (new Phpx())->compile("<?php\nfunction U() {\n    return Sfht(\n        <div><p>x</p>\n    );\n}\n");
         $tests->assertTrue(false);
     } catch (RuntimeException $exception) {
         $tests->assertTrue(str_contains($exception->getMessage(), '<div> on line 4 is still open'));
@@ -7636,7 +7717,7 @@ $tests->run('phpx runs filters and refuses @include with the line of the .phpx',
 
     function Shout(string $name, array $items): \SfphpProject\src\View\Sfht
     {
-        return sfht(
+        return Sfht(
             <b>{{ $name | upper }}</b><i>{{ $name | truncate(3, '…') }}</i><s>{{ $items | length }}</s>
         );
     }
@@ -7658,7 +7739,7 @@ $tests->run('phpx runs filters and refuses @include with the line of the .phpx',
 
     $messageOf = static function (string $markup): string {
         try {
-            (new Phpx())->compile("<?php\nfunction I() {\n    return sfht(\n        <div>\n            {$markup}\n        </div>\n    );\n}\n");
+            (new Phpx())->compile("<?php\nfunction I() {\n    return Sfht(\n        <div>\n            {$markup}\n        </div>\n    );\n}\n");
         } catch (RuntimeException $exception) {
             return $exception->getMessage();
         }
@@ -7683,7 +7764,7 @@ $tests->run('phpx keeps the author\'s lines inside a region and after it', funct
         '<?php',                                                  // 1
         'function L(array $rows, string $a): \SfphpProject\src\View\Sfht',
         '{',
-        '    return sfht(',
+        '    return Sfht(',
         '        <ul>',                                           // 5
         '            {{-- a comment',
         '                 over two lines --}}',

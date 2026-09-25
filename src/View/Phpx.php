@@ -11,9 +11,9 @@ use RuntimeException;
  * parameters, and its markup sits inside the function rather than in a separate
  * file, so the thing you read is the thing that renders.
  *
- *     function Card(string $title, string $body): string
+ *     function Card(string $title, string $body): Sfht
  *     {
- *         return sfht(
+ *         return Sfht(
  *             <div class="card">
  *                 <h3>{{ $title }}</h3>
  *                 <p>{{ $body }}</p>
@@ -21,7 +21,8 @@ use RuntimeException;
  *         );
  *     }
  *
- * `sfht(` opens a region and the `)` that closes it is found by reading the
+ * `Sfht(` opens a region — named after the type the component returns, which
+ * is what the region becomes — and the `)` that closes it is found by reading the
  * markup as markup: tags, quoted attributes, `{{ }}` expressions and directive
  * arguments are stepped over, and a `)` ends the region only outside every
  * element. So text is free to hold an apostrophe or a lone parenthesis. What
@@ -42,8 +43,11 @@ use RuntimeException;
  */
 final class Phpx
 {
-    /** The call that opens a markup region. */
-    private const OPEN = 'sfht(';
+    /** What opens a markup region: the name of the type it produces. */
+    private const OPEN = 'Sfht(';
+
+    /** How a region was opened before 0.31, refused with the new spelling. */
+    private const OLD_OPEN = 'sfht(';
 
     /** Elements that never have a closing tag, so never hold the region open. */
     private const VOID = [
@@ -75,15 +79,18 @@ final class Phpx
      */
     public function compile(string $source): string
     {
+        $this->refuseOldOpening($source);
+
         $out = '';
         $offset = 0;
 
         while (($start = strpos($source, self::OPEN, $offset)) !== false) {
             /*
-             * "sfht(" has to be a call rather than the tail of a longer name,
-             * or a function called mysfht() would be mistaken for one.
+             * "Sfht(" opens a region only as a bare call: not the tail of a
+             * longer name (MySfht()), not a method (->Sfht(), ::Sfht()), and
+             * not "new Sfht(", which is the class itself built by hand.
              */
-            if ($start > 0 && preg_match('/[A-Za-z0-9_\\\\]/', $source[$start - 1]) === 1) {
+            if (!$this->opensRegion($source, $start)) {
                 $out .= substr($source, $offset, $start + strlen(self::OPEN) - $offset);
                 $offset = $start + strlen(self::OPEN);
 
@@ -189,6 +196,53 @@ final class Phpx
         $lost = substr_count($markup, "\n") - substr_count($expression, "\n");
 
         return $expression . str_repeat("\n", max(0, $lost));
+    }
+
+    /**
+     * Whether "Sfht(" at this offset opens a markup region.
+     *
+     * @param string $source The .phpx source
+     * @param int $start Where "Sfht(" begins
+     */
+    private function opensRegion(string $source, int $start): bool
+    {
+        $before = rtrim(substr($source, 0, $start));
+
+        if ($start > 0 && preg_match('/[A-Za-z0-9_\\\\]/', $source[$start - 1]) === 1) {
+            return false;
+        }
+
+        return !str_ends_with($before, '->')
+            && !str_ends_with($before, '::')
+            && preg_match('/(?<![A-Za-z0-9_])new$/i', $before) !== 1;
+    }
+
+    /**
+     * Refuse a region opened the way it was before 0.31.
+     *
+     * "return sfht(" would otherwise reach the PHP compiler as a call with
+     * markup for arguments, and fail as a syntax error that says nothing about
+     * the fix. The region takes the name of the type it returns now.
+     *
+     * @param string $source The .phpx source
+     * @throws RuntimeException When the source still opens a region with sfht(
+     */
+    private function refuseOldOpening(string $source): void
+    {
+        $offset = 0;
+
+        while (($start = strpos($source, self::OLD_OPEN, $offset)) !== false) {
+            $offset = $start + strlen(self::OLD_OPEN);
+
+            if (!$this->opensRegion($source, $start)) {
+                continue;
+            }
+
+            throw new RuntimeException(sprintf(
+                'Line %d opens a markup region with sfht(. Write Sfht( — the region is named after the Sfht it returns.',
+                substr_count($source, "\n", 0, $start) + 1
+            ));
+        }
     }
 
     /**

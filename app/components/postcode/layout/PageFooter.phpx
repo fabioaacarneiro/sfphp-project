@@ -9,7 +9,7 @@ use SfphpProject\src\View\Sfht;
  */
 function PageFooter(): Sfht
 {
-    return sfht(
+    return Sfht(
         <footer class="bg-slate-900 text-white py-8 px-4 mt-12">
             <div class="container mx-auto max-w-2xl">
                 <p class="m-0 text-sm">

@@ -28,7 +28,7 @@ final class PhpxController
      */
     public function index(Request $request): Response
     {
-        return Response::html((string) PostcodePage());
+        return Response::phpx(PostcodePage());
     }
 
     /**

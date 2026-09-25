@@ -141,8 +141,8 @@ it is answered with `405 Method Not Allowed` and `Allow: GET`. To answer `HEAD`,
 register the same action for it:
 
 ```php
-Router::get('/stream', 'StreamController', 'text');
-Router::head('/stream', 'StreamController', 'text');
+Router::get('/stream', [StreamController::class, 'text']);
+Router::head('/stream', [StreamController::class, 'text']);
 ```
 
 For a streaming response to `HEAD`, the emitter sends the status and headers and

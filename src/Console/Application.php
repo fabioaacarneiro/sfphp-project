@@ -135,9 +135,9 @@ final class Application
          * The application's routes.
          *
          * Example:
-         *   Router::get('/', 'HomeController', 'index')->name('home');
-         *   Router::post('/users', 'UserController', 'store');
-         *   Router::get('/users/id:number', 'UserController', 'show');
+         *   Router::get('/', [HomeController::class, 'index'])->name('home');
+         *   Router::post('/users', [UserController::class, 'store']);
+         *   Router::get('/users/id:number', [UserController::class, 'show']);
          *
          * @package SfphpProject
          */
@@ -1093,7 +1093,9 @@ final class Application
                     str_pad(strtoupper($route->getMethod()), $methodWidth) . '  ' .
                     str_pad($route->getPath(), $pathWidth) . '  ' .
                     str_pad($route->getName() ?? '-', $nameWidth) . '  ' .
-                    $route->getAction()
+                    // The class without its namespace: the column is read to
+                    // find the code, and the short name is what one searches for.
+                    substr((string) strrchr('\\' . $route->getController(), '\\'), 1) . '::' . $route->getAction()
                 );
             }
 

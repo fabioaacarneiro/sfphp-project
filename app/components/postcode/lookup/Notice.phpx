@@ -12,7 +12,7 @@ use SfphpProject\src\View\Sfht;
  */
 function Notice(string $message, string $kind = 'warning'): Sfht
 {
-    return sfht(
+    return Sfht(
         <div class="alert alert-{{ $kind }}">{{ $message }}</div>
     );
 }

@@ -16,7 +16,7 @@ use SfphpProject\src\Http\Response;
  * request instead.
  *
  *     $router->middleware(new Authenticate());              // resolve only
- *     Router::get('/admin', 'AdminController', 'index')
+ *     Router::get('/admin', [AdminController::class, 'index'])
  *         ->middleware(new Authenticate(required: true));   // refuse anonymous
  *
  * It clears the previously resolved user before doing anything. Auth holds the
