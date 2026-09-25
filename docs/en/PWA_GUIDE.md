@@ -415,7 +415,7 @@ And a route that stores it:
 // app/routes/api.php
 use SfphpProject\src\Router;
 
-Router::post('/api/push/subscriptions', 'PushSubscriptionController', 'store');
+Router::post('/api/push/subscriptions', [PushSubscriptionController::class, 'store']);
 ```
 
 ```php

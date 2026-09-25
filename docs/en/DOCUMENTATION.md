@@ -333,23 +333,30 @@ Routes live in `app/routes/web.php` (pages) and `app/routes/api.php` (JSON
 endpoints), both required by the front controller. The API is **static**.
 
 ```php
+use SfphpProject\app\controllers\MainController;
+use SfphpProject\app\controllers\UserController;
 use SfphpProject\src\Router;
 
-Router::get('/', 'MainController', 'index')->name('home');
-Router::post('/users', 'UserController', 'store')->name('users.store');
+Router::get('/', [MainController::class, 'index'])->name('home');
+Router::post('/users', [UserController::class, 'store'])->name('users.store');
 ```
 
-The signature is always `(string $url, string $controller, string $action)` —
-three separate arguments, not `'Controller@action'`.
+A route is a path and an **action**: the controller class and its method, as a
+pair — `[UserController::class, 'store']`. The class is imported with `use`
+like any other, so the editor follows it, renames it with the rest of the code
+and flags one that does not exist; the router adds no namespace of its own, so
+controllers can live anywhere.
 
-The controller is resolved under `SfphpProject\app\controllers\{Controller}`,
-and that namespace is a constructor parameter, so an application can put its
-controllers elsewhere.
+> **Upgrading from 0.30.** Routes used to name the controller as a string —
+> `Router::get('/users', 'UserController', 'index')`, resolved under
+> `SfphpProject\app\controllers\`. That form is refused when the route is
+> registered, and the message gives the new spelling:
+> `[UserController::class, 'index']`.
 
 ### Methods
 
 ```php
-Router::get($url, $controller, $action);
+Router::get($url, [Controller::class, 'method']);
 Router::post(...);
 Router::put(...);
 Router::patch(...);
@@ -367,9 +374,9 @@ when a path has routes.
 The syntax is `name:type`, **without braces**:
 
 ```php
-Router::get('/posts/id:number', 'PostController', 'show');
-Router::get('/users/username:alpha', 'UserController', 'profile');
-Router::get('/codes/code:alphanum', 'CodeController', 'show');
+Router::get('/posts/id:number', [PostController::class, 'show']);
+Router::get('/users/username:alpha', [UserController::class, 'profile']);
+Router::get('/codes/code:alphanum', [CodeController::class, 'show']);
 ```
 
 | Type | Matches | Note |
@@ -382,7 +389,7 @@ Values reach the action **positionally**, in the order they appear in the URL,
 after the request:
 
 ```php
-Router::get('/tenant/tenantId:number/posts/postId:number', 'PostController', 'show');
+Router::get('/tenant/tenantId:number/posts/postId:number', [PostController::class, 'show']);
 
 public function show(Request $request, string $tenantId, string $postId): Response
 {
@@ -409,8 +416,8 @@ prefix:
 
 ```php
 Router::group('/api', function (): void {
-    Router::get('/posts', 'ApiPostController', 'index')->name('posts.index');
-    Router::post('/posts', 'ApiPostController', 'store')->name('posts.store');
+    Router::get('/posts', [ApiPostController::class, 'index'])->name('posts.index');
+    Router::post('/posts', [ApiPostController::class, 'store'])->name('posts.store');
 }, 'api.');
 ```
 
@@ -451,7 +458,7 @@ final class PostController
 {
     public function show(Request $request, string $id): Response
     {
-        return Response::view('posts/show', ['id' => (int) $id]);
+        return Response::sfht('posts/show', ['id' => (int) $id]);
     }
 
     public function store(Request $request): Response
@@ -538,7 +545,7 @@ and what a persistent runtime needs.
 Response::html('<h1>Hello</h1>');
 Response::text('ok');
 Response::json(['id' => 1], HTTP_CREATED);
-Response::view('posts/index', ['posts' => $posts]);
+Response::sfht('posts/index', ['posts' => $posts]);
 Response::redirect('/posts');
 Response::noContent();
 
@@ -564,14 +571,15 @@ final class PostController
 {
     public function index(Request $request): Response
     {
-        return Response::view('posts/index', ['posts' => $posts]);
+        return Response::sfht('posts/index', ['posts' => $posts]);
     }
 }
 ```
 
 | | |
 |---|---|
-| `Response::view($view, $data, $status)` | An HTML page |
+| `Response::sfht($template, $data, $status)` | A page from an `.sfht` template |
+| `Response::phpx($component, $status)` | A page from a `.phpx` component: `Response::phpx(PostPage($post))` |
 | `Response::json($data, $status)` | JSON |
 | `Response::html($html, $status)` · `Response::text()` | A body you built |
 | `Response::redirect($url, $status)` | A redirect |
@@ -605,7 +613,7 @@ what the pipeline is for:
 use SfphpProject\src\Http\Middleware\RequireJson;
 
 Router::group('/api', function (): void {
-    Router::post('/posts', 'PostController', 'store');
+    Router::post('/posts', [PostController::class, 'store']);
 }, 'api.', [new RequireJson()]);
 ```
 
@@ -716,11 +724,11 @@ $router = (new Router($container))->middleware(
 
 // Per group, in app/routes/web.php (or api.php)
 Router::group('/admin', function (): void {
-    Router::get('/panel', 'AdminController', 'index');
+    Router::get('/panel', [AdminController::class, 'index']);
 }, 'admin.', [RequireTokenMiddleware::class]);
 
 // Per route
-Router::get('/report', 'ReportController', 'show')
+Router::get('/report', [ReportController::class, 'show'])
     ->middleware(RequireTokenMiddleware::class)
     ->name('report');
 ```
@@ -772,7 +780,7 @@ View::make('posts/index', ['posts' => $posts]);    // returns a string
 View::makePartial('header', ['title' => 'My Site']);
 
 // Or straight into a response:
-Response::view('posts/index', ['posts' => $posts]);
+Response::sfht('posts/index', ['posts' => $posts]);
 ```
 
 `View::render()` and `View::partial()` still exist and echo, but they are
@@ -1021,7 +1029,7 @@ use SfphpProject\src\View\Sfht;
 
 function Card(string $title, string $body, string $colour = 'blue'): Sfht
 {
-    return sfht(
+    return Sfht(
         <div class="card border-{{ $colour }}-500">
             <div class="card-header"><h3 class="m-0">{{ $title }}</h3></div>
             <div class="card-body"><p>{{ $body }}</p></div>
@@ -1030,7 +1038,7 @@ function Card(string $title, string $body, string $colour = 'blue'): Sfht
 }
 ```
 
-`sfht(` opens a markup region, and the `)` that balances it outside every
+`Sfht(` opens a markup region, and the `)` that balances it outside every
 element closes it, so text inside may hold an apostrophe or a lone parenthesis.
 Between them is SFHT, so `{{ }}`, `{!! !!}`, the standard filters, `@if` and
 `@foreach` all work and escaping is the same as everywhere else in the
@@ -1082,6 +1090,18 @@ use function SfphpProject\app\components\postcode\lookup\Address;
 
 From a `.sfht` template, import it with
 `@use(function SfphpProject\app\components\Card)` and call it by name.
+
+A controller answers with a component through `Response::phpx()`, and hands it
+its data as arguments — the component's parameters are its props:
+
+```php
+public function show(Request $request, string $id): Response
+{
+    return Response::phpx(PostPage(Post::query()->find($id), $request->user()));
+}
+```
+
+See [.phpx components](PHPX_COMPONENTS.md#from-a-controller) for the whole of it.
 
 ### Why a component returns Sfht
 
@@ -3385,7 +3405,7 @@ if (Auth::attempt(['email' => $email, 'password' => $password])) {
     return Response::redirect('/dashboard');
 }
 
-return Response::view('login', ['error' => __('auth.failed')]);
+return Response::sfht('login', ['error' => __('auth.failed')]);
 ```
 
 ```php
@@ -3402,7 +3422,7 @@ Inside a controller the user also arrives on the request:
 ```php
 public function dashboard(Request $request): Response
 {
-    return Response::view('dashboard', ['user' => $request->user()]);
+    return Response::sfht('dashboard', ['user' => $request->user()]);
 }
 ```
 
@@ -3440,12 +3460,12 @@ if (Auth::attempt($credentials) && Hash::needsRehash($user->password)) {
 $router->middleware(new Authenticate('web'));
 
 // Per route: refuses an anonymous request
-Router::get('/dashboard', 'DashboardController', 'index')
+Router::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(new Authenticate('web', required: true));
 
 // An API uses the token guard
 Router::group('/api', function (): void {
-    Router::get('/me', 'ApiController', 'me');
+    Router::get('/me', [ApiController::class, 'me']);
 }, 'api.', [new Authenticate('api', required: true)]);
 ```
 
@@ -3711,7 +3731,7 @@ anything rate limits or logs by IP.
 ### Rate limiting
 
 ```php
-Router::post('/login', 'AuthController', 'login')
+Router::post('/login', [AuthController::class, 'login'])
     ->middleware(new RateLimit(maxAttempts: 5, decaySeconds: 60));
 ```
 
@@ -4228,7 +4248,7 @@ function UserPanel(string $url): Sfht
 {
     $data = await(Http::getAsync($url))->json();
 
-    return sfht(
+    return Sfht(
         <div class="card"><p>{{ $data['name'] }}</p></div>
     );
 }
@@ -4440,7 +4460,7 @@ The framework ships the checks and not the route, because where it lives and who
 may see it are the application's to decide:
 
 ```php
-Router::get('/health', 'HealthController', 'show');
+Router::get('/health', [HealthController::class, 'show']);
 
 public function show(Request $request): Response
 {
@@ -4997,7 +5017,7 @@ closed stays closed while the numbers inside it change.
 ```php
 function CartPanel(array $items): Sfht
 {
-    return sfht(
+    return Sfht(
         <div @state="{{ state(['open' => false, 'items' => $items]) }}">
             <button @on:click="open = !open">
                 Cart: <span @text="items.length"></span>

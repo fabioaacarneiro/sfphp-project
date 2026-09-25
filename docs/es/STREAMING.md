@@ -147,8 +147,8 @@ Una ruta registrada con `Router::get()` responde solo a `GET`. Una petición
 a `HEAD`, registra la misma acción para él:
 
 ```php
-Router::get('/stream', 'StreamController', 'text');
-Router::head('/stream', 'StreamController', 'text');
+Router::get('/stream', [StreamController::class, 'text']);
+Router::head('/stream', [StreamController::class, 'text']);
 ```
 
 En una respuesta de streaming a un `HEAD`, el emitter envía el status y las

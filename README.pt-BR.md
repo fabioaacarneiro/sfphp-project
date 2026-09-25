@@ -167,8 +167,8 @@ cd my-app
 ### Monte uma rota
 
 ```php
-Router::get('/products', 'ProductController', 'index');
-Router::get('/products/id:number', 'ProductController', 'show');   // add show() to the controller
+Router::get('/products', [ProductController::class, 'index']);
+Router::get('/products/id:number', [ProductController::class, 'show']);   // add show() to the controller
 ```
 
 ### Chame três serviços de uma vez
