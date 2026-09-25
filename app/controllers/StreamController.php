@@ -33,9 +33,11 @@ final class StreamController
     {
         return Response::stream(
             function (StreamWriter $out): void {
-                $out->write("<html><body><h1>Streaming Text</h1>\n");
-                $out->write("<p>This demonstrates server-to-client streaming:</p>\n");
-                $out->write("<pre>\n");
+                /*
+                 * Plain text, not an HTML page: the demo box writes what
+                 * arrives as text, so markup would show up tag by tag.
+                 */
+                $out->write("Streaming started.\n\n");
 
                 // Simulate text generation (e.g., LLM output)
                 for ($i = 1; $i <= 10; $i++) {
@@ -48,10 +50,9 @@ final class StreamController
                 }
 
                 $out->write("\nDone!\n");
-                $out->write("</pre></body></html>\n");
             },
             status: 200,
-            headers: ['Content-Type' => 'text/html; charset=utf-8']
+            headers: ['Content-Type' => 'text/plain; charset=utf-8']
         );
     }
 

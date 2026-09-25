@@ -245,6 +245,74 @@ Heartbeat (mantiene vivo, navegador ignora):
 
 ---
 
+## Streaming en el navegador (SFJS `@stream`)
+
+`sfjs-stream.js` lee una respuesta en stream dentro de un elemento de la
+página, sin JavaScript propio. Cárguelo después de `sfjs.js`:
+
+```html
+<script src="{{ asset('js/sfjs.min.js') }}"></script>
+<script src="{{ asset('js/sfjs-stream.min.js') }}"></script>
+```
+
+### Streams de texto
+
+```html
+<div id="output">La salida aparece aquí...</div>
+
+<button @stream="/stream" @target="#output">Iniciar stream</button>
+```
+
+Cada fragmento se añade al destino a medida que llega. El destino recibe los
+fragmentos como **texto**, no como HTML, así que el endpoint debe responder con
+texto plano (`Content-Type: text/plain`). El marcado enviado por el stream
+aparecería etiqueta por etiqueta.
+
+### Server-Sent Events
+
+Añada `@sse` para leer el endpoint como un stream de eventos. `@events` indica
+los tipos de evento a mostrar, además del `message` por defecto:
+
+```html
+<button @stream="/stream/sse" @sse @events="status,progress,complete" @target="#events">
+    Conectar
+</button>
+```
+
+Un `GET` sin cuerpo usa `EventSource`. Cualquier otro método, o una solicitud
+con cuerpo, lee el stream de eventos mediante `fetch`.
+
+### Atributos
+
+| Atributo | Significado |
+|---|---|
+| `@stream` | La URL desde la que hacer el stream |
+| `@target` | El elemento que recibe la salida (por defecto: el propio elemento) |
+| `@sse` | Leer la respuesta como Server-Sent Events |
+| `@events` | Tipos de evento SSE a mostrar, separados por comas |
+| `@method` | Método HTTP (por defecto `GET`) |
+| `@body` | Cuerpo de la solicitud en JSON |
+| `@trigger` | El evento que inicia el stream |
+| `@abort` | Selector de un elemento cuyo clic detiene el stream |
+
+### Cuándo empieza un stream
+
+Sin `@trigger`, la regla es la misma que en el resto de SFJS: **un clic inicia
+un botón o enlace, un submit inicia un formulario**. Cualquier otro elemento
+empieza el stream por sí solo, cuando carga la página. Un botón dentro de un
+formulario hace el stream al hacer clic y envía los campos del formulario como
+cuerpo cuando el método es `POST`, `PUT` o `PATCH`.
+
+Iniciar de nuevo reemplaza la ejecución en curso. Un segundo clic detiene el
+stream que todavía está llegando, limpia el destino y vuelve a empezar desde el
+principio, así que la salida de dos ejecuciones nunca se mezcla en la misma
+caja. `@abort` detiene la ejecución actual y conserva lo que ya llegó.
+
+Los métodos que cambian estado envían el `<meta name="csrf-token">` de la
+página como `X-CSRF-Token`.
+
+---
+
 ## Streaming en Cliente (HTTP → PHP)
 
 Reciba respuestas grandes de servicios upstream en fragmentos, sin almacenar el cuerpo completo.
