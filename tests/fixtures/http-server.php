@@ -40,6 +40,52 @@ if ($path === '/not-json') {
     return;
 }
 
+// Bug #4: Test redirect (301 -> 200)
+if ($path === '/redirect') {
+    http_response_code(301);
+    header('Location: /redirect-target');
+    echo 'Redirecting...';
+
+    return;
+}
+
+if ($path === '/redirect-target') {
+    http_response_code(200);
+    echo 'Redirected successfully';
+
+    return;
+}
+
+// Bug #5: Test chunked streaming (for testing abort in onStatus)
+if ($path === '/stream-chunked') {
+    header('Content-Type: text/plain');
+    header('Transfer-Encoding: chunked');
+
+    for ($i = 1; $i <= 10; $i++) {
+        echo "Chunk $i\n";
+        flush();
+        usleep(100000); // 100ms between chunks
+    }
+
+    return;
+}
+
+// Bug #6: Test timeout (slow response)
+if ($path === '/slow-stream') {
+    header('Content-Type: text/plain');
+
+    // Send first chunk immediately
+    echo "Starting...\n";
+    flush();
+
+    // Then delay before next chunk
+    sleep(8);
+    echo "Done (after 8s delay)\n";
+    flush();
+
+    return;
+}
+
 header('Content-Type: application/json');
 
 echo json_encode([

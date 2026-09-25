@@ -335,6 +335,7 @@ final class Client
                         $statusNotified = true;
                         $continueStream = $listener->onStatus($statusCode, $responseHeaders);
                         if (!$continueStream) {
+                            $abortedByListener = true;
                             return 0; // Abort
                         }
                     }
