@@ -201,6 +201,10 @@ final class Client
      * (no bytes received) for too long indicates a stalled connection.
      * Detects silence, not slowness: a stream at 100 bytes/sec is fine.
      *
+     * Note: Curl measures inactivity in ~5 second windows, so the actual abort
+     * may occur N + 5 seconds after the last byte was received. This is curl's
+     * behavior and cannot be changed without implementing a custom timer.
+     *
      * @param int $seconds Seconds of inactivity (< 1 byte/sec), or 0 to disable
      * @return self A new client
      */

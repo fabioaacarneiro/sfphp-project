@@ -9,7 +9,8 @@
 
 use SfphpProject\src\Config;
 
-$appName = Config::get('app.name') ?? 'SFPHP Application';
+$appName = Config::get('APP_NAME', 'SFPHP Application');
+$appDescription = Config::get('APP_DESCRIPTION', '');
 
 return [
     /**
@@ -28,7 +29,7 @@ return [
      * Description
      * Describes your app purpose
      */
-    'description' => Config::get('app.description') ?? '',
+    'description' => $appDescription,
 
     /**
      * Start URL

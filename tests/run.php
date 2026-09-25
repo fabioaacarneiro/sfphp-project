@@ -6000,7 +6000,7 @@ $tests->run('reset removes the example application and refuses to do it in silen
 
     foreach ([
         'vendor', 'src', 'app/config', 'app/components/page', 'app/controllers',
-        'app/models', 'app/Jobs', 'app/resources/views/partials',
+        'app/models', 'app/Jobs', 'app/resources/views/partials', 'app/routes',
         'database/seeders', 'database/factories', 'database/migrations',
     ] as $directory) {
         mkdir($root . '/' . $directory, 0755, true);
@@ -6038,7 +6038,8 @@ $tests->run('reset removes the example application and refuses to do it in silen
         file_put_contents($root . '/' . $file, '<?php // example');
     }
 
-    file_put_contents($root . '/src/routes.php', "<?php\n\nRouter::get('/', 'MainController', 'index');\n");
+    file_put_contents($root . '/app/routes/web.php', "<?php\n\nRouter::get('/', 'MainController', 'index');\n");
+    file_put_contents($root . '/app/routes/api.php', "<?php\n\n// API routes\n");
 
     $binary = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/sfphp');
 
@@ -6319,8 +6320,8 @@ $tests->run('the console finds a project laid out like a project, not like this 
     $source = (string) file_get_contents(__DIR__ . '/../src/Console/Application.php');
 
     $tests->assertSame(false, str_contains($source, "rootPath() . '/src/routes.php'"));
-    $tests->assertSame(true, str_contains($source, "projectPath('routes.php')"));
-    $tests->assertSame(true, str_contains($source, "projectPath('routes/web.php')"));
+    $tests->assertSame(true, str_contains($source, "projectPath('app/routes/web.php')"));
+    $tests->assertSame(true, str_contains($source, "projectPath('app/routes/api.php')"));
 
     $project = sys_get_temp_dir() . '/sfphp-paths-' . bin2hex(random_bytes(4));
     mkdir($project, 0755, true);
