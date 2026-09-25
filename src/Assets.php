@@ -203,8 +203,6 @@ final class Assets
             'css/sfcss.min.css',
             'js/sfjs.js',
             'js/sfjs.min.js',
-            'js/sfjs-stream.js',
-            'js/sfjs-stream.min.js',
         ];
     }
 

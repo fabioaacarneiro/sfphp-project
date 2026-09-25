@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Minifies SFJS.
+ * Builds SFJS: joins its parts into one bundle and minifies it.
  *
  * SFCSS shipped a .min.css and SFJS shipped nothing, which is the kind of gap
  * nobody notices until they look at the directory.
@@ -19,41 +19,69 @@
  * is there, which is what would catch it if that changed.
  */
 
-$files = [
-    [
-        'source' => __DIR__ . '/../../resources/assets/js/sfjs.js',
-        'target' => __DIR__ . '/../../resources/assets/js/sfjs.min.js',
-        'name' => 'SFJS'
-    ],
-    [
-        'source' => __DIR__ . '/../../resources/assets/js/sfjs-stream.js',
-        'target' => __DIR__ . '/../../resources/assets/js/sfjs-stream.min.js',
-        'name' => 'SFJS Stream'
-    ]
-];
+/*
+ * One bundle, from three sources. They were three published files, and the
+ * two extensions only worked when a page loaded them after the core — a page
+ * that got the order wrong, or forgot one, failed with a console message. The
+ * parts stay separate to work on and are joined here, in this order, into the
+ * one script a page includes.
+ */
+$sourceDirectory = __DIR__ . '/../../resources/assets/js/src';
+$outputDirectory = __DIR__ . '/../../resources/assets/js';
+$parts = ['core.js', 'stream.js', 'ui.js'];
 
-foreach ($files as $file) {
-    if (!is_file($file['source'])) {
-        fwrite(STDERR, "{$file['name']} not found at {$file['source']}\n");
-        exit(1);
-    }
+$bundle = '';
 
-    $js = file_get_contents($file['source']);
+foreach ($parts as $part) {
+    $path = $sourceDirectory . '/' . $part;
+    $js = is_file($path) ? file_get_contents($path) : false;
 
     if ($js === false) {
-        fwrite(STDERR, "Could not read {$file['source']}\n");
+        fwrite(STDERR, "SFJS part not found at {$path}\n");
         exit(1);
     }
 
-    $minified = minifyJs($js);
-
-    if (file_put_contents($file['target'], $minified) === false) {
-        fwrite(STDERR, "Could not write {$file['target']}\n");
-        exit(1);
-    }
-
-    printf("✓ Generated: %s (%s bytes, from %s)\n", $file['target'], number_format(strlen($minified)), number_format(strlen($js)));
+    $bundle .= rtrim($js) . "\n\n";
 }
+
+$bundle = rtrim($bundle) . "\n";
+$minified = minifyJs($bundle);
+
+foreach (['sfjs.js' => $bundle, 'sfjs.min.js' => $minified] as $name => $contents) {
+    if (file_put_contents($outputDirectory . '/' . $name, $contents) === false) {
+        fwrite(STDERR, "Could not write {$outputDirectory}/{$name}\n");
+        exit(1);
+    }
+}
+
+/*
+ * The minifier cannot parse JavaScript, so its output is checked by something
+ * that can. node is not a dependency — the check runs only where it is
+ * installed — but where it is, a minifier that broke the syntax fails the
+ * build instead of shipping.
+ */
+$node = trim((string) shell_exec('command -v node 2>/dev/null'));
+
+if ($node !== '') {
+    foreach (['sfjs.js', 'sfjs.min.js'] as $name) {
+        $output = [];
+        $status = 0;
+        exec(escapeshellarg($node) . ' --check ' . escapeshellarg($outputDirectory . '/' . $name) . ' 2>&1', $output, $status);
+
+        if ($status !== 0) {
+            fwrite(STDERR, "{$name} is not valid JavaScript:\n" . implode("\n", $output) . "\n");
+            exit(1);
+        }
+    }
+}
+
+printf(
+    "✓ Generated: %s (%s bytes, from %s in %d parts)\n",
+    realpath($outputDirectory . '/sfjs.min.js'),
+    number_format(strlen($minified)),
+    number_format(strlen($bundle)),
+    count($parts)
+);
 
 /**
  * Strip comments and needless whitespace from JavaScript.
