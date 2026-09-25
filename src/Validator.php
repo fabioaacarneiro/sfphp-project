@@ -13,23 +13,6 @@ final class Validator
     /**
      * Validate data against the given rules.
      *
-     * Rules are pipe separated, and rules that take an argument use a colon:
-     * "required|min:3|alpha".
-     *
-     * Length is counted in characters and the alphabetic rules accept every
-     * script, so "min:3" measures "日本語" as 3 and "alpha" accepts
-     * "José". The byte-based strlen() and ASCII-only ctype_* functions used
-     * before rejected or truncated perfectly valid input outside ASCII.
-     *
-     * @param array $data The data to validate
-     * @param array $rules The validation rules, keyed by field name
-     * @param array $errorMessages Custom error messages for validation failures
-     * @return ValidationResult The result of the validation
-     * @throws InvalidArgumentException If a rule name is not recognised
-     */
-    /**
-     * Validate data against the given rules.
-     *
      * Rules are pipe separated, and a rule that takes an argument uses a
      * colon: `required|min:3|alpha`. Where a pattern needs a pipe of its own,
      * pass the rules as an array instead — `['required', 'pattern:^(a|b)$']` —
@@ -83,7 +66,19 @@ final class Validator
             }
         }
 
-        return new ValidationResult($data, $errors);
+        /*
+         * Only the fields that had rules are handed back as validated. The
+         * whole input used to be returned, so a form that validated "name"
+         * and "email" still delivered a smuggled "is_admin" to whatever the
+         * caller passed validated() to, and $fillable was the only thing
+         * standing in the way. A field that has rules but was not sent stays
+         * out as well, so an optional field is never invented as null.
+         * Rules apply to a top-level key, so an array value under a
+         * validated key comes back whole.
+         */
+        $validated = array_intersect_key($data, $rules);
+
+        return new ValidationResult($validated, $errors);
     }
 
     /**

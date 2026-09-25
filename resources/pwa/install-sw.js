@@ -1,8 +1,11 @@
 /**
  * Service Worker Installation & Registration
  *
- * This script should be included in your HTML:
+ * make:pwa copies this file to public/install-sw.js; it does not edit your
+ * templates, so include it in your layout yourself:
  * <script src="/install-sw.js" defer></script>
+ *
+ * Icons are referenced under /assets/icons/, where make:pwa --logo writes them.
  */
 
 (function() {
@@ -55,12 +58,16 @@
         window.dispatchEvent(new CustomEvent('pwa:update-available'));
 
         // Optional: Show notification to user
-        if (Notification && Notification.permission === 'granted') {
-            new Notification('App Update Available', {
+        // Checked with `in`: where the API is missing (Safari outside an
+        // installed app), naming Notification throws a ReferenceError.
+        if ('Notification' in window && Notification.permission === 'granted') {
+            // Through the registration, not `new Notification()`, which
+            // Chrome on Android refuses with "Illegal constructor".
+            navigator.serviceWorker.ready.then(registration => registration.showNotification('App Update Available', {
                 body: 'A new version of the app is available. Please refresh to update.',
-                icon: '/icon-192x192.png',
+                icon: '/assets/icons/icon-192x192.png',
                 tag: 'app-update',
-            });
+            }));
         }
     }
 
@@ -120,8 +127,8 @@
             const registration = await navigator.serviceWorker.ready;
             await registration.showNotification('SFPHP PWA', {
                 body: 'This is a test notification',
-                icon: '/icon-192x192.png',
-                badge: '/icon-192x192.png',
+                icon: '/assets/icons/icon-192x192.png',
+                badge: '/assets/icons/badge-72x72.png',
                 tag: 'test-notification',
             });
         },

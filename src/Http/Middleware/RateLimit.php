@@ -19,9 +19,10 @@ use SfphpProject\src\Http\Response;
  *     Router::post('/login', 'AuthController', 'login')
  *         ->middleware(new RateLimit(maxAttempts: 5, decaySeconds: 60));
  *
- * Counters live in the cache, so the limit holds across processes when a
- * shared driver is configured. With the default file driver it holds across
- * requests on one machine, which is already the common case.
+ * Counters live in the application's cache — the one CACHE_DRIVER selects,
+ * through cache() — so with CACHE_DRIVER=redis the limit holds across every
+ * instance behind the load balancer. With the default file driver it holds
+ * across requests on one machine only.
  *
  * The count is an atomic Cache::increment(), not a read followed by a write.
  * That distinction is the whole middleware: concurrent requests counted with
@@ -35,7 +36,7 @@ use SfphpProject\src\Http\Response;
  */
 final class RateLimit implements Middleware
 {
-    private CacheManager $cache;
+    private ?CacheManager $cache;
 
     /**
      * Create the middleware.
@@ -43,7 +44,7 @@ final class RateLimit implements Middleware
      * @param int $maxAttempts How many requests are allowed in the window
      * @param int $decaySeconds How long the window lasts
      * @param string $name A name for the bucket, when several limits share a route
-     * @param CacheManager|null $cache The store, or null for the default
+     * @param CacheManager|null $cache The store, or null for the application's cache()
      */
     public function __construct(
         private int $maxAttempts = 60,
@@ -51,7 +52,16 @@ final class RateLimit implements Middleware
         private string $name = 'default',
         ?CacheManager $cache = null
     ) {
-        $this->cache = $cache ?? new CacheManager();
+        /*
+         * Resolved on first use rather than here. This used to default to
+         * new CacheManager(), which is always the file driver whatever
+         * CACHE_DRIVER says, so a deployment configured for Redis still kept
+         * one counter per machine and an attacker spread over N instances got
+         * N times the attempts. Waiting for handle() also keeps route
+         * registration — which runs for `sfphp routes` too — from opening a
+         * Redis connection it does not need.
+         */
+        $this->cache = $cache;
     }
 
     /**
@@ -78,9 +88,11 @@ final class RateLimit implements Middleware
          * that keeps knocking hold its own window open forever, and the
          * counter would never forgive.
          */
-        $hits = $this->cache->increment($key, 1, $this->decaySeconds);
+        $cache = $this->cache ??= cache();
 
-        $remainingSeconds = max(1, $this->cache->ttl($key) ?? $this->decaySeconds);
+        $hits = $cache->increment($key, 1, $this->decaySeconds);
+
+        $remainingSeconds = max(1, $cache->ttl($key) ?? $this->decaySeconds);
         $remaining = max(0, $this->maxAttempts - $hits);
 
         if ($hits > $this->maxAttempts) {

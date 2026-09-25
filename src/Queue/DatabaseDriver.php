@@ -73,6 +73,7 @@ class DatabaseDriver implements Queue
             'payload' => json_encode([
                 'class' => get_class($job),
                 'data' => $job->payload(),
+                'options' => $job->options(),
             ]),
             'attempts' => 0,
             'reserved_at' => null,
@@ -140,12 +141,7 @@ class DatabaseDriver implements Queue
 
             $payload = json_decode($job['payload'], true);
 
-            $instance = new $payload['class']();
-            $instance->setId($job['id']);
-            $instance->setAttempts($job['attempts']);
-            $instance->restore($payload['data']);
-
-            return $instance;
+            return Job::fromPayload(is_array($payload) ? $payload : [], (string) $job['id'], (int) $job['attempts']);
         }
 
         return null;
@@ -181,6 +177,7 @@ class DatabaseDriver implements Queue
             'payload' => json_encode([
                 'class' => get_class($job),
                 'data' => $job->payload(),
+                'options' => $job->options(),
             ]),
             'exception' => $exception->getMessage(),
             'failed_at' => time(),

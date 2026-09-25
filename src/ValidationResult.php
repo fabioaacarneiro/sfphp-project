@@ -18,7 +18,7 @@ use LogicException;
 final class ValidationResult
 {
     /**
-     * @param array $data The data that was validated
+     * @param array $data The input restricted to the fields that had rules
      * @param array $errors Errors found, keyed by field name
      */
     public function __construct(
@@ -57,7 +57,9 @@ final class ValidationResult
     }
 
     /**
-     * The validated data.
+     * The validated data: only the fields that had rules and were present in
+     * the input. Anything else the client sent is left out, so the result is
+     * safe to hand to a model without trusting $fillable alone.
      *
      * @return array
      * @throws LogicException If validation failed; check passes() first
