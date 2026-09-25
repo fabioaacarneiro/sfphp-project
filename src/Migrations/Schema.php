@@ -107,6 +107,11 @@ final class Schema
                 . $this->schemaExpression('current_schema()', $schema, $bindings) . ' AND table_name = :table',
                 $bindings
             ),
+            // The database queue asks this, and SQLite is a common development database.
+            'sqlite' => $this->exists(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :table",
+                ['table' => $name]
+            ),
             default => $this->unsupportedIntrospection(),
         };
     }

@@ -17,15 +17,25 @@ final class User extends Model implements Authenticatable
     protected static string $table = 'users';
 
     /*
-     * Deliberately omits any column the application decides for itself.
-     * "password" is here because a registration form submits one, but it is
-     * hashed before it reaches the model — never stored as typed.
+     * Deliberately omits any column the application decides for itself. The
+     * password is set with forceFill() after it has been hashed, never filled
+     * from a form as typed.
      */
     protected static array $fillable = ['name', 'email'];
+
+    /*
+     * Never sent in JSON: Response::json($user) would otherwise hand out the
+     * password hash and the remember token.
+     */
+    protected static array $hidden = ['password', 'remember_token'];
+
+    // The migration's timestamps() created both columns.
+    protected static bool $timestamps = true;
 
     protected static array $casts = [
         'email_verified_at' => 'datetime',
         'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
     public function getAuthIdentifierName(): string

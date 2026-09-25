@@ -30,6 +30,9 @@ final class DatabaseHandler implements SessionHandlerInterface, SessionUpdateTim
 {
     private ?PDO $connection = null;
 
+    /** Marks a payload stored as base64. */
+    private const ENCODED = 'b64:';
+
     /**
      * Create the handler.
      *
@@ -40,6 +43,11 @@ final class DatabaseHandler implements SessionHandlerInterface, SessionUpdateTim
         private string $table = 'sessions',
         ?PDO $connection = null
     ) {
+        // Concatenated into every statement below, so it must be a name and nothing else.
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/', $table) !== 1) {
+            throw new \InvalidArgumentException(sprintf('"%s" is not a valid table name for sessions.', $table));
+        }
+
         $this->connection = $connection;
     }
 
@@ -74,7 +82,18 @@ final class DatabaseHandler implements SessionHandlerInterface, SessionUpdateTim
 
         $payload = $statement->fetchColumn();
 
-        return is_string($payload) ? $payload : '';
+        if (!is_string($payload)) {
+            return '';
+        }
+
+        // Rows written before the encoding are read as they are.
+        if (str_starts_with($payload, self::ENCODED)) {
+            $decoded = base64_decode(substr($payload, strlen(self::ENCODED)), true);
+
+            return $decoded === false ? '' : $decoded;
+        }
+
+        return $payload;
     }
 
     /**
@@ -102,7 +121,13 @@ final class DatabaseHandler implements SessionHandlerInterface, SessionUpdateTim
         };
 
         try {
-            $connection->prepare($sql)->execute([$id, $data, $expiresAt]);
+            /*
+             * Encoded, because PHP's session format writes NUL bytes for
+             * private and protected properties, and a PostgreSQL text column
+             * refuses them: the write failed, was logged, and the visitor was
+             * signed out without knowing why.
+             */
+            $connection->prepare($sql)->execute([$id, self::ENCODED . base64_encode($data), $expiresAt]);
         } catch (PDOException $e) {
             /*
              * A session that cannot be written is a visitor who is about to be

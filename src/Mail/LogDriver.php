@@ -33,10 +33,18 @@ final class LogDriver implements Mailer
      */
     public function send(Message $message): void
     {
-        $this->log->info('mail not sent, log driver', [
+        /*
+         * Outside production the body is kept, so a reset link can be followed
+         * from the log. In production it is not: this driver there means mail
+         * is not being sent, and bodies full of reset tokens and magic links
+         * would land in a log aggregator many more people can read.
+         */
+        $production = \SfphpProject\src\Config::get('APP_ENV') === 'production';
+
+        $this->log->{$production ? 'warning' : 'info'}('mail not sent, log driver', [
             'to' => $message->recipients(),
             'subject' => $message->subjectLine(),
-            'body' => $message->textBody() ?? $message->htmlBody(),
+            'body' => $production ? '[not logged in production]' : ($message->textBody() ?? $message->htmlBody()),
         ]);
     }
 }

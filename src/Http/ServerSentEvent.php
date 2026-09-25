@@ -28,6 +28,7 @@ final class ServerSentEvent
      * @param int|null $retry Milliseconds before client retries on disconnect
      * @param string|null $comment Optional comment (starts with ':')
      * @return bool True if sent, false if client aborted
+     * @throws \InvalidArgumentException When the event name, id or comment holds a line break
      */
     public function send(
         string $data,
@@ -37,6 +38,17 @@ final class ServerSentEvent
         ?string $comment = null
     ): bool {
         $lines = [];
+
+        /*
+         * A line break ends a field, so one inside the event name, the id or
+         * a comment wrote fields of its own — event: "x\nid: 99" sent an id
+         * nobody asked for. Refused, since those three are names, not text.
+         */
+        foreach (['event' => $event, 'id' => $id === null ? null : (string) $id, 'comment' => $comment] as $field => $value) {
+            if ($value !== null && preg_match('/[\r\n]/', $value) === 1) {
+                throw new \InvalidArgumentException(sprintf('The SSE %s cannot contain a line break.', $field));
+            }
+        }
 
         if ($comment !== null) {
             $lines[] = ': ' . $comment;
@@ -54,8 +66,12 @@ final class ServerSentEvent
             $lines[] = 'retry: ' . $retry;
         }
 
-        // Data can span multiple lines; each line starts with 'data: '
-        foreach (explode("\n", $data) as $line) {
+        /*
+         * Data can span lines, and each one gets its own "data:". The spec
+         * ends a line at CR, LF or CRLF, so all three split here; splitting
+         * on LF alone let a lone CR start a field the browser would read.
+         */
+        foreach (preg_split('/\r\n|\r|\n/', $data) ?: [$data] as $line) {
             $lines[] = 'data: ' . $line;
         }
 

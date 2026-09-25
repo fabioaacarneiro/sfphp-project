@@ -30,8 +30,10 @@ final class {CLASS}Request
      * Get the validation rules.
      *
      * Rules are a pipe-separated string, and an argument follows a colon.
-     * The available rules are: required, email, min:N, max:N, alpha,
-     * alphanum and number.
+     * The available rules are: required, email, url, number, alpha,
+     * alphanum, min:N, max:N, minLength:N, maxLength:N and pattern:REGEX
+     * (give a pattern with a | in it as an array of rules instead). A field
+     * without required is optional: empty, none of its rules run.
      *
      * @return array<string, string>
      */

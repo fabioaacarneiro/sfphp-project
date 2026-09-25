@@ -13,70 +13,52 @@ final class PolicyGenerator extends GeneratorBase
         $namespace = $this->getNamespace('app/policies');
         $filePath = $this->getFilePath('app/policies', $name, 'Policy');
 
+        /*
+         * Every ability denies until it is written. The stub used to answer
+         * true everywhere, so registering it allowed everything; and it typed
+         * the user as object, so a guest — who arrives as null — was a
+         * TypeError instead of a refusal.
+         */
         $content = <<<'PHP'
 <?php
 
 namespace {NAMESPACE};
 
+use SfphpProject\src\Auth\Authenticatable;
+
 /**
- * {CLASS}Policy authorizes actions on a resource.
+ * {CLASS}Policy decides who may do what with a {CLASS}.
+ *
+ * Register it once, at boot:
+ *
+ *     Gate::policy({CLASS}::class, {CLASS}Policy::class);
+ *
+ * A guest arrives as null. Each ability denies until it says otherwise.
  */
 final class {CLASS}Policy
 {
-    /**
-     * Check if user can view the resource.
-     *
-     * @param object $user The authenticated user
-     * @return bool
-     */
-    public function view(object $user): bool
+    public function view(?Authenticatable $user, object $resource): bool
     {
-        return true;
+        return false;
     }
 
-    /**
-     * Check if user can create the resource.
-     *
-     * @param object $user The authenticated user
-     * @return bool
-     */
-    public function create(object $user): bool
+    public function create(?Authenticatable $user): bool
     {
-        return true;
+        return false;
     }
 
-    /**
-     * Check if user can update the resource.
-     *
-     * @param object $user The authenticated user
-     * @param object $resource The resource instance
-     * @return bool
-     */
-    public function update(object $user, object $resource): bool
+    public function update(?Authenticatable $user, object $resource): bool
     {
-        return true;
+        return false;
     }
 
-    /**
-     * Check if user can delete the resource.
-     *
-     * @param object $user The authenticated user
-     * @param object $resource The resource instance
-     * @return bool
-     */
-    public function delete(object $user, object $resource): bool
+    public function delete(?Authenticatable $user, object $resource): bool
     {
-        return true;
+        return false;
     }
 }
 PHP;
 
-        $content = str_replace(
-            ['{NAMESPACE}', '{CLASS}'],
-            [$namespace, $name],
-            $content
-        );
-
-        return $this->writeFile($filePath, $content);
+        return $this->writeFile($filePath, str_replace(['{NAMESPACE}', '{CLASS}'], [$namespace, $name], $content));
     }
 }

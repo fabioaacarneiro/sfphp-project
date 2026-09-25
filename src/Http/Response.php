@@ -148,7 +148,12 @@ final class Response
          */
         $encoded = json_encode(
             $data,
-            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            /*
+             * A string that is not valid UTF-8 — a column in latin1, bytes
+             * from a file — made the whole response a 500. It is sent with
+             * the broken bytes replaced by U+FFFD instead.
+             */
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE
         );
 
         return new self($encoded, $status, ['Content-Type' => 'application/json; charset=utf-8']);
@@ -237,7 +242,8 @@ final class Response
     {
         $referer = trim((string) $request->header('Referer'));
 
-        if ($referer === '' || str_starts_with($referer, '//')) {
+        // parse_url() quietly turns control characters into "_", so they are refused first.
+        if ($referer === '' || str_starts_with($referer, '//') || preg_match('/[\x00-\x1F\x7F]/', $referer) === 1) {
             // "//evil.example/x" has no scheme and is still another origin to a
             // browser, which is why it is refused before anything is parsed.
             return self::redirect($fallback);
@@ -256,14 +262,36 @@ final class Response
          * though only its path would be used: a visitor arriving from a search
          * engine would be sent to whatever that engine's path happens to spell
          * on this site.
+         *
+         * The port is part of the comparison, because the Host header carries
+         * it: on `./sfphp serve`, at 127.0.0.1:8000, comparing the bare host
+         * never matched and back() always went to the fallback.
          */
-        if ($host !== null && strcasecmp($host, (string) $request->header('Host')) !== 0) {
-            return self::redirect($fallback);
+        if ($host !== null) {
+            $origin = strtolower($host) . (isset($parts['port']) ? ':' . $parts['port'] : '');
+            $ours = strtolower((string) $request->header('Host'));
+
+            if ($origin !== $ours && strtolower($host) !== $ours) {
+                return self::redirect($fallback);
+            }
         }
 
         $path = $parts['path'] ?? '';
 
-        if ($path === '' || !str_starts_with($path, '/')) {
+        /*
+         * Only a path a browser reads as this site's. "//evil.example" and
+         * "/\evil.example" are both read as another host, and a referer of
+         * "http://this-site//evil.example" used to hand exactly that path to
+         * Location. A backslash or a control character has no business in a
+         * path anyway.
+         */
+        if (
+            $path === ''
+            || !str_starts_with($path, '/')
+            || str_starts_with($path, '//')
+            || str_contains($path, '\\')
+            || preg_match('/[\x00-\x1F\x7F]/', $path) === 1
+        ) {
             return self::redirect($fallback);
         }
 

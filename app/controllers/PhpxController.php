@@ -44,6 +44,11 @@ final class PhpxController
      */
     public function postcode(Request $request): Response
     {
+        // The page opened without a search is the empty form, not a warning.
+        if ($request->query('postcode') === null) {
+            return Response::phpx(PostcodePage());
+        }
+
         $digits = preg_replace('/\D/', '', (string) $request->query('postcode', '')) ?? '';
 
         if (strlen($digits) !== 8) {

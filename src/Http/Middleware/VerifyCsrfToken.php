@@ -3,10 +3,10 @@
 namespace SfphpProject\src\Http\Middleware;
 
 use SfphpProject\src\Csrf;
+use SfphpProject\src\Http\ErrorPage;
 use SfphpProject\src\Http\Middleware;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
-use SfphpProject\src\I18n\Translator;
 
 /**
  * Rejects state-changing requests that arrive without a valid CSRF token.
@@ -21,8 +21,13 @@ use SfphpProject\src\I18n\Translator;
  * state and blocking them would break ordinary navigation.
  *
  * Token-authenticated APIs should not be behind this. A request carrying a
- * bearer token is not sent automatically by a browser, which is the attack CSRF
- * describes, so such a request is skipped.
+ * bearer token and no session cookie is not sent automatically by a browser,
+ * which is the attack CSRF describes, so such a request is skipped.
+ *
+ * The token is read from the `_token` form field, from `_token` in a JSON
+ * body, or from the X-CSRF-Token / X-XSRF-Token header. SFJS submits a form
+ * as JSON, and a JSON body used to be the one place the check did not look:
+ * a form with csrf_field() sent through SFJS was refused as expired.
  */
 final class VerifyCsrfToken implements Middleware
 {
@@ -51,23 +56,7 @@ final class VerifyCsrfToken implements Middleware
             return $next($request);
         }
 
-        $title = __('http.csrf_title');
-        $message = __('http.csrf_message');
-
-        if ($request->expectsJson()) {
-            return Response::json(['message' => $message], HTTP_FORBIDDEN);
-        }
-
-        $language = str_replace('_', '-', Translator::locale());
-        $escaped = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $heading = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-
-        return Response::html(
-            '<!doctype html><html lang="' . $language . '"><head><meta charset="UTF-8">'
-            . '<title>' . $heading . '</title></head><body><h1>403</h1>'
-            . '<p>' . $escaped . '</p></body></html>',
-            HTTP_FORBIDDEN
-        );
+        return ErrorPage::response(HTTP_FORBIDDEN, __('http.csrf_message'), $request, __('http.csrf_title'));
     }
 
     /**
@@ -85,13 +74,22 @@ final class VerifyCsrfToken implements Middleware
         /*
          * A bearer token is attached by the client on purpose; a browser never
          * sends one on its own, so there is no cross-site request to forge.
+         * Only when there is no session cookie, though: a request that carries
+         * the session is one a browser can send by itself, and a forged
+         * Authorization header must not switch the check off for it.
          */
-        if ($request->bearerToken() !== null) {
+        if ($request->bearerToken() !== null && $request->cookie(session_name() ?: 'PHPSESSID') === null) {
             return true;
         }
 
+        /*
+         * By path segment. A plain prefix let "/api" exempt "/apikeys" and
+         * "/api-admin" as well.
+         */
         foreach ($this->except as $prefix) {
-            if (str_starts_with($request->path, $prefix)) {
+            $prefix = rtrim($prefix, '/');
+
+            if ($prefix === '' || $request->path === $prefix || str_starts_with($request->path, $prefix . '/')) {
                 return true;
             }
         }
@@ -107,8 +105,19 @@ final class VerifyCsrfToken implements Middleware
      */
     private function token(Request $request): ?string
     {
+        $json = null;
+
+        if (str_contains(strtolower((string) $request->header('Content-Type')), 'json')) {
+            try {
+                $json = $request->json()['_token'] ?? null;
+            } catch (\JsonException) {
+                $json = null;
+            }
+        }
+
         foreach ([
             $request->body('_token'),
+            $json,
             $request->header('X-CSRF-Token'),
             $request->header('X-XSRF-Token'),
         ] as $candidate) {

@@ -37,7 +37,10 @@ interface ClientStreamListener
     /**
      * The transfer completed or was aborted.
      *
-     * Called after the last onChunk() or if an error occurs.
+     * Called after the last onChunk(), when the transfer ended normally or
+     * the listener stopped it. A transfer that fails — a timeout, a reset
+     * connection — throws a ClientException from stream() instead, and this
+     * is not called.
      *
      * @param int $statusCode The HTTP status code (same as onStatus)
      * @param array<string, string> $headers The response headers (same as onStatus)

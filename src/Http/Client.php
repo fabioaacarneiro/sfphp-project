@@ -280,9 +280,8 @@ final class Client
         // and rely on the inactivity timeout (LOW_SPEED) to detect stalled connections.
         $streamTimeout = $this->timeout === self::TIMEOUT ? 0 : $this->timeout;
 
-        curl_setopt_array($handle, [
+        curl_setopt_array($handle, Curl::methodOptions($method) + [
             CURLOPT_URL => $url,
-            CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_RETURNTRANSFER => false,
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
             CURLOPT_TIMEOUT => $streamTimeout,
@@ -294,15 +293,23 @@ final class Client
             CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
             CURLOPT_SSL_VERIFYPEER => $this->verify,
             CURLOPT_SSL_VERIFYHOST => $this->verify ? 2 : 0,
-            CURLOPT_HTTPHEADER => $this->headerLines($bodyHeaders),
+            CURLOPT_HTTPHEADER => $this->headerLines($bodyHeaders, $url),
             CURLOPT_HEADERFUNCTION => static function ($handle, string $line) use (&$responseHeaders, &$statusCode, $listener, &$statusNotified, &$headerBlockComplete, &$continueStream, &$abortedByListener): int {
                 $trimmed = trim($line);
 
                 if ($trimmed === '') {
                     // Blank line = end of header block. Notify onStatus now (headers complete).
                     $headerBlockComplete = true;
-                    // Skip notification for 1xx (interim) and 3xx (redirect) responses — they're not final
-                    if (!$statusNotified && $statusCode > 0 && ($statusCode < 100 || $statusCode >= 200)) {
+                    /*
+                     * Only the final response is reported: not a 1xx, and not
+                     * a 3xx that cURL is about to follow — one that carries a
+                     * Location. The comment here always said so; the condition
+                     * reported every redirect as a status of its own.
+                     */
+                    $followed = $statusCode >= 300 && $statusCode < 400
+                        && array_filter(array_keys($responseHeaders), static fn ($name): bool => strcasecmp((string) $name, 'Location') === 0) !== [];
+
+                    if (!$statusNotified && $statusCode >= 200 && !$followed) {
                         $statusNotified = true;
                         $continueStream = $listener->onStatus($statusCode, $responseHeaders);
                         if (!$continueStream) {
@@ -417,9 +424,8 @@ final class Client
         $handle = curl_init();
         $responseHeaders = [];
 
-        curl_setopt_array($handle, [
+        curl_setopt_array($handle, Curl::methodOptions($method) + [
             CURLOPT_URL => $url,
-            CURLOPT_CUSTOMREQUEST => strtoupper($method),
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
             CURLOPT_TIMEOUT => $this->timeout,
@@ -430,16 +436,8 @@ final class Client
             CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
             CURLOPT_SSL_VERIFYPEER => $this->verify,
             CURLOPT_SSL_VERIFYHOST => $this->verify ? 2 : 0,
-            CURLOPT_HTTPHEADER => $this->headerLines($headers),
-            CURLOPT_HEADERFUNCTION => static function ($handle, string $line) use (&$responseHeaders): int {
-                $parts = explode(':', $line, 2);
-
-                if (count($parts) === 2) {
-                    $responseHeaders[trim($parts[0])] = trim($parts[1]);
-                }
-
-                return strlen($line);
-            },
+            CURLOPT_HTTPHEADER => $this->headerLines($headers, $url),
+            CURLOPT_HEADERFUNCTION => Curl::headerCollector($responseHeaders),
         ]);
 
         if ($payload !== null) {
@@ -450,6 +448,8 @@ final class Client
         $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
         $error = curl_error($handle);
         $errno = curl_errno($handle);
+        // Where the response came from, after any redirects — what url() promises.
+        $effective = (string) (curl_getinfo($handle, CURLINFO_EFFECTIVE_URL) ?: $url);
 
         curl_close($handle);
 
@@ -465,40 +465,30 @@ final class Client
             );
         }
 
-        return new ClientResponse($status, (string) $body, $responseHeaders, $url);
+        return new ClientResponse($status, (string) $body, $responseHeaders, $effective);
     }
 
     /**
      * Stream a GET response in chunks.
      *
-     * The listener receives chunks as they arrive, before the entire response
-     * is buffered. Status and headers are sent to onComplete() after the body,
-     * and onChunk() is called for each piece of data.
-     *
-     * This is useful for large responses, real-time data, or proxying
-     * streams to the client.
+     * The listener hears the final status and headers in onStatus(), before
+     * the body; each piece of the body in onChunk() as it arrives, without
+     * the whole response being buffered; and onComplete() once the transfer
+     * ends. Extending AbstractClientStreamListener gives onStatus() and
+     * onComplete() empty defaults, so only onChunk() has to be written:
      *
      *     Http::base('https://api.example.com')
-     *         ->stream('/export', new class implements ClientStreamListener {
+     *         ->stream('/export', new class extends AbstractClientStreamListener {
      *             public function onChunk(string $chunk): bool {
      *                 echo $chunk;
-     *                 return true; // continue receiving
-     *             }
-     *             public function onComplete(int $statusCode, array $headers): void {
-     *                 // handle completion
+     *                 return true; // keep receiving
      *             }
      *         });
      *
      * @param string $url The URL, absolute or relative to the base
-     * @param ClientStreamListener $listener Receives chunks and completion
-     * @throws ClientException When the request fails or curl is unavailable
-     */
-    /**
-     * Stream a GET request (simple case).
-     *
-     * @param string $url The URL
-     * @param ClientStreamListener $listener Callback for chunks
+     * @param ClientStreamListener $listener Receives the status, the chunks and the end
      * @return void
+     * @throws ClientException When the request fails or curl is unavailable
      */
     public function stream(string $url, ClientStreamListener $listener): void
     {
@@ -583,16 +573,24 @@ final class Client
      * @param array<string, string> $defaults Headers the body implies
      * @return list<string> The header lines
      */
-    private function headerLines(array $defaults): array
+    private function headerLines(array $defaults, string $url): array
     {
         // The caller's headers win: a Content-Type set explicitly is a decision.
         $headers = array_merge($defaults, $this->headers);
-        $lines = [];
 
-        foreach ($headers as $name => $value) {
-            $lines[] = $name . ': ' . $value;
+        /*
+         * A client made for one API sends its credentials to that API only.
+         * With base() and token() set, an absolute URL to another host used
+         * to carry the Authorization header along with it.
+         */
+        if ($this->base !== '' && !Curl::sameOrigin($url, $this->base)) {
+            foreach (array_keys($headers) as $name) {
+                if (strcasecmp((string) $name, 'Authorization') === 0) {
+                    unset($headers[$name]);
+                }
+            }
         }
 
-        return $lines;
+        return Curl::headerLines($headers);
     }
 }

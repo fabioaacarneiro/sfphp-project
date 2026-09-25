@@ -17,12 +17,14 @@ function StreamingExamples(): Sfht
 {
     return Sfht(
         <!DOCTYPE html>
-        <html lang="{{ lang_tag() }}">
+        <html lang="en">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>@stream & @sse Examples — SFPHP</title>
             <link rel="stylesheet" href="{{ asset('css/sfcss.min.css') }}">
+            <link rel="icon" href="data:,">
+            {!! csrf_meta() !!}
         </head>
         <body class="bg-light">
             {{ PageHeader() }}

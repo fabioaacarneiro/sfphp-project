@@ -4,6 +4,7 @@ namespace SfphpProject\src\Http\Middleware;
 
 use SfphpProject\src\Auth\Auth;
 use SfphpProject\src\Cache\CacheManager;
+use SfphpProject\src\Http\ErrorPage;
 use SfphpProject\src\Http\Middleware;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
@@ -117,7 +118,14 @@ final class RateLimit implements Middleware
     {
         $identity = Auth::id() ?? $request->ip() ?? 'unknown';
 
-        return 'ratelimit:' . $this->name . ':' . sha1($request->path . '|' . $identity);
+        /*
+         * By the route's pattern, not the path it was reached with. A limit on
+         * /reset/{code} keyed by the concrete path gave every code its own
+         * counter, so trying codes was never limited at all.
+         */
+        $scope = $request->routePattern() ?? $request->path;
+
+        return 'ratelimit:' . $this->name . ':' . sha1($request->method . ' ' . $scope . '|' . $identity);
     }
 
     /**
@@ -131,16 +139,7 @@ final class RateLimit implements Middleware
     {
         $message = __('http.too_many_requests_message');
 
-        $response = $request->expectsJson()
-            ? Response::json(['message' => $message], HTTP_TOO_MANY_REQUESTS)
-            : Response::html(
-                '<!doctype html><html lang="' . str_replace('_', '-', locale()) . '">'
-                . '<head><meta charset="UTF-8"><title>429</title></head>'
-                . '<body><h1>429</h1><p>'
-                . htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
-                . '</p></body></html>',
-                HTTP_TOO_MANY_REQUESTS
-            );
+        $response = ErrorPage::response(HTTP_TOO_MANY_REQUESTS, $message, $request);
 
         return $response
             ->withHeader('Retry-After', (string) $retryAfter)

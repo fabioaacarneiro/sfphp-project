@@ -10,7 +10,7 @@ use SfphpProject\src\View\Sfht;
 function SseExample(): Sfht
 {
     return 
-(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="card">
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); $__level = ob_get_level(); ob_start(); try { echo '<div class="card">
             <div class="card-header">
                 <h2 class="text-lg font-bold">Server-Sent Events ('; echo '@sse'; echo ')</h2>
                 <p class="text-sm text-gray-600 mt-1">Real-time event delivery</p>
@@ -24,7 +24,7 @@ function SseExample(): Sfht
                 <div
                     id="sse-output"
                     class="bg-white border border-gray-300 rounded p-4 font-mono text-sm min-h-40 max-h-64 overflow-y-auto whitespace-pre-wrap break-words"
-                ><span class="text-gray-400">Click "Connect" to receive events...</span></div>
+                ><span class="text-muted">Click "Connect" to receive events...</span></div>
 
                 <button
                     class="btn btn-success w-full mt-4"
@@ -45,6 +45,6 @@ function SseExample(): Sfht
 &lt;/button&gt;
                 </code>
             </div>
-        </div>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+        </div>';  } catch (\Throwable $__e) { while (ob_get_level() > $__level) { ob_end_clean(); } throw $__e; } return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
 ;
 }

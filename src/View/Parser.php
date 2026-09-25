@@ -65,7 +65,8 @@ final class Parser
         $tokens = [];
         $offset = 0;
         $length = strlen($content);
-        $pattern = '/\{\{--|\{!!|\{\{|@[A-Za-z_][A-Za-z0-9_]*/';
+        // "@@" writes a literal "@", for text that needs "@if" to show as it is.
+        $pattern = '/\{\{--|\{!!|\{\{|@@|@[A-Za-z_][A-Za-z0-9_]*/';
 
         while (
             $offset < $length
@@ -83,6 +84,7 @@ final class Parser
             $line = substr_count($content, "\n", 0, $position) + 1;
 
             $offset = match (true) {
+                $marker === '@@' => $this->literalAt($position, $tokens),
                 $marker === '{{--' => $this->skipComment($content, $position, $line),
                 $marker === '{!!' => $this->readEcho($content, $position, $line, $tokens, true),
                 $marker === '{{' => $this->readEcho($content, $position, $line, $tokens, false),
@@ -95,6 +97,20 @@ final class Parser
         }
 
         return $tokens;
+    }
+
+    /**
+     * Write the "@" that "@@" stands for.
+     *
+     * @param int $position The offset of "@@"
+     * @param array<int, array<string, mixed>> $tokens The token stream, appended to
+     * @return int The offset just past "@@"
+     */
+    private function literalAt(int $position, array &$tokens): int
+    {
+        $tokens[] = ['type' => 'text', 'value' => '@'];
+
+        return $position + 2;
     }
 
     /**
@@ -138,8 +154,8 @@ final class Parser
         $close = $raw ? '!!}' : '}}';
         $start = $position + strlen($open);
 
-        $end = strpos($content, $close, $start);
-        if ($end === false) {
+        $end = $this->findClose($content, $close, $start);
+        if ($end === null) {
             throw new RuntimeException(
                 "Unclosed \"{$open}\" expression on line {$line}."
             );
@@ -184,7 +200,19 @@ final class Parser
          * is what lets "wght@300", "@media" in an inline stylesheet and an
          * e-mail address pass through untouched.
          */
-        if (!in_array($name, self::DIRECTIVES, true)) {
+        /*
+         * An e-mail address is text too, even when its domain begins with a
+         * directive's name: "webmaster@php.net" used to open a @php block and
+         * "me@if.io" was an @if with no condition. The tell is both sides — a
+         * word character before the "@" and the domain carrying on after the
+         * name with "." or "-". "sim@endif" right against a word is still
+         * the directive.
+         */
+        $before = $position > 0 ? $content[$position - 1] : '';
+        $next = $content[$position + strlen($marker)] ?? '';
+        $inAddress = preg_match('/[A-Za-z0-9._%+\-]/', $before) === 1 && ($next === '.' || $next === '-');
+
+        if ($inAddress || !in_array($name, self::DIRECTIVES, true)) {
             $tokens[] = ['type' => 'text', 'value' => $marker];
 
             return $position + strlen($marker);
@@ -218,8 +246,17 @@ final class Parser
         }
 
         $cursor = $after;
-        while ($cursor < strlen($content) && ($content[$cursor] === ' ' || $content[$cursor] === "\t")) {
-            $cursor++;
+
+        /*
+         * A directive that takes no arguments reads a "(" only when it is
+         * right against the name. "@else (optional)" is the word else
+         * followed by text in brackets, and it used to fail as arguments
+         * given to @else.
+         */
+        if (!in_array($name, self::REJECT_ARGUMENTS, true)) {
+            while ($cursor < strlen($content) && ($content[$cursor] === ' ' || $content[$cursor] === "\t")) {
+                $cursor++;
+            }
         }
 
         $arguments = null;
@@ -247,6 +284,49 @@ final class Parser
         ];
 
         return $end;
+    }
+
+    /**
+     * Find where an expression closes, stepping over quoted strings.
+     *
+     * A "}}" inside a string — {{ $open ? '}}' : '' }} — used to end the
+     * expression there, and the PHP that came out did not parse.
+     *
+     * @param string $content The template source
+     * @param string $close The closing marker
+     * @param int $start Where the expression starts
+     * @return int|null The offset of the closing marker, or null when there is none
+     */
+    private function findClose(string $content, string $close, int $start): ?int
+    {
+        $length = strlen($content);
+        $quote = null;
+
+        for ($i = $start; $i < $length; $i++) {
+            $character = $content[$i];
+
+            if ($quote !== null) {
+                if ($character === '\\') {
+                    $i++;
+                } elseif ($character === $quote) {
+                    $quote = null;
+                }
+
+                continue;
+            }
+
+            if ($character === '"' || $character === "'") {
+                $quote = $character;
+
+                continue;
+            }
+
+            if (substr_compare($content, $close, $i, strlen($close)) === 0) {
+                return $i;
+            }
+        }
+
+        return null;
     }
 
     /**

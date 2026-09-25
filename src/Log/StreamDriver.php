@@ -95,6 +95,9 @@ final class StreamDriver implements Logger
         $this->writeLine($line . PHP_EOL);
     }
 
+    /** Whether the fallback to error_log() has been announced. */
+    private bool $warnedFallback = false;
+
     /**
      * Put one already-encoded line on the stream.
      *
@@ -104,7 +107,25 @@ final class StreamDriver implements Logger
      */
     private function writeLine(string $line): void
     {
-        $handle = $this->handle();
+        /*
+         * A destination that cannot be opened — LOG_PATH pointing at a
+         * directory the web server may not write — used to throw from here,
+         * and since every request logs, every request became a 500 over a
+         * log line. The line goes to PHP's own error log instead, with a
+         * note the first time saying why.
+         */
+        try {
+            $handle = $this->handle();
+        } catch (RuntimeException $exception) {
+            if (!$this->warnedFallback) {
+                $this->warnedFallback = true;
+                error_log('sfphp: ' . $exception->getMessage() . ' Writing to the PHP error log instead.');
+            }
+
+            error_log(rtrim($line, "\n"));
+
+            return;
+        }
 
         if ($this->lockable) {
             flock($handle, LOCK_EX);

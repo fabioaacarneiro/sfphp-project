@@ -70,6 +70,7 @@ use SfphpProject\src\Http\Pipeline;
 use SfphpProject\src\Http\ClientException;
 use SfphpProject\src\Http\ClientResponse;
 use SfphpProject\src\Http\Http;
+use SfphpProject\src\Http\Emitter;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\UploadException;
 use SfphpProject\src\Http\UploadedFile;
@@ -214,8 +215,13 @@ final class ModelStatementTest extends PDOStatement
     public string $sql = '';
     public array $rows = [];
 
+    /** Every value bound, across statements, for tests that inspect them. */
+    public static array $bound = [];
+
     public function bindValue(string|int $param, mixed $value, int $type = PDO::PARAM_STR): bool
     {
+        self::$bound[] = $value;
+
         return true;
     }
 
@@ -1989,7 +1995,8 @@ $tests->run('request attributes copy on write', function () use ($tests): void {
     $withMore = $withId->withAttributes(['user' => 'ana']);
 
     $tests->assertSame(null, $request->attribute('id'));
-    $tests->assertSame('7', $withId->route('id'));
+    $tests->assertSame('7', $withId->attribute('id'));
+    $tests->assertSame('7', $request->withRouteParameters(['id' => '7'])->route('id'));
     $tests->assertSame(null, $withId->attribute('user'));
     $tests->assertSame(['id' => '7', 'user' => 'ana'], $withMore->attributes());
 
@@ -2250,11 +2257,11 @@ $tests->run('dispatch answers 404, 405 and OPTIONS with the right headers', func
      */
     $notAllowed = $router->dispatch(Request::create('PUT', '/posts'));
     $tests->assertSame(HTTP_METHOD_NOT_ALLOWED, $notAllowed->status());
-    $tests->assertSame('GET, DELETE', $notAllowed->header('Allow'));
+    $tests->assertSame('GET, DELETE, HEAD, OPTIONS', $notAllowed->header('Allow'));
 
     $options = $router->dispatch(Request::create('OPTIONS', '/posts'));
     $tests->assertSame(HTTP_NO_CONTENT, $options->status());
-    $tests->assertSame('GET, DELETE', $options->header('Allow'));
+    $tests->assertSame('GET, DELETE, HEAD, OPTIONS', $options->header('Allow'));
     $tests->assertSame('', $options->body());
 });
 
@@ -2432,7 +2439,8 @@ $tests->run('saving writes only what changed', function () use ($tests): void {
 
         $novo->save();
         $tests->assertTrue($novo->exists());
-        $tests->assertSame('99', $novo->id);
+        // lastInsertId() is a string; the key is an int, as find() returns it.
+        $tests->assertSame(99, $novo->id);
 
         $pdo->queries = [];
         $user = UserModelTest::all()[0];
@@ -2561,6 +2569,10 @@ $tests->run('every generator produces a class that actually loads', function () 
         foreach ($created as $path) {
             @unlink($path);
         }
+
+        // make:controller writes the view its action renders, too.
+        @unlink($root . '/app/resources/views/genprobe/index.sfht');
+        @rmdir($root . '/app/resources/views/genprobe');
 
         foreach (array_unique(array_map(
             static fn (string $relative): string => $root . '/' . dirname($relative),
@@ -2739,6 +2751,30 @@ $tests->run('transactions commit, roll back and preserve the original error', fu
 
         $tests->assertSame(['begin', 'rollback'], $pdo->calls);
         $tests->assertSame(false, Database::inTransaction());
+
+        /*
+         * Even when the outer callback catches the inner failure and carries
+         * on: the inner work was already committed along with the outer work,
+         * which is the opposite of what a transaction promises.
+         */
+        $pdo->calls = [];
+        $tests->assertThrows(fn () => Database::transaction(function (): void {
+            try {
+                Database::transaction(function (): void {
+                    throw new RuntimeException('interno');
+                });
+            } catch (RuntimeException) {
+                // swallowed on purpose
+            }
+        }), \SfphpProject\src\Database\NestedTransactionFailed::class);
+        $tests->assertSame(['begin', 'rollback'], $pdo->calls);
+
+        // A transaction someone else opened is joined, not begun again.
+        $pdo->calls = [];
+        $pdo->beginTransaction();
+        Database::transaction(fn () => null);
+        $tests->assertSame(['begin'], $pdo->calls);
+        $pdo->commit();
     } finally {
         $instance->setValue(null, $previous);
     }
@@ -2749,11 +2785,11 @@ $tests->run('translations resolve, fall back and interpolate', function () use (
 
     try {
         Translator::setLocale('en');
-        $tests->assertSame('404 - Page Not Found', __('http.not_found_title'));
+        $tests->assertSame('404 - Page not found', __('http.not_found_title'));
 
         Translator::setLocale('pt-BR');
         $tests->assertSame('pt_BR', Translator::locale());   // normalizado
-        $tests->assertSame('404 - Página Não Encontrada', __('http.not_found_title'));
+        $tests->assertSame('404 - Página não encontrada', __('http.not_found_title'));
 
         // A aplicação sobrescreve o catálogo do framework, chave a chave.
         $tests->assertSame('Bem-vindo, Ana!', __('app.welcome', ['name' => 'Ana']));
@@ -2767,7 +2803,7 @@ $tests->run('translations resolve, fall back and interpolate', function () use (
         $tests->assertTrue(Translator::has('http.not_found_title'));
 
         // Um locale que a aplicação não tem cai no fallback.
-        $tests->assertSame('404 - Page Not Found', __('http.not_found_title', [], 'de'));
+        $tests->assertSame('404 - Page not found', __('http.not_found_title', [], 'de'));
 
         $tests->assertThrows(
             fn () => Translator::setLocale('não é um locale'),
@@ -3289,6 +3325,109 @@ $tests->run('security headers are added, and the risky ones only on request', fu
         $destination
     );
     $tests->assertSame('max-age=31536000', $overHttps->header('Strict-Transport-Security'));
+});
+
+$tests->run('every cache driver keeps an entry stored without a lifetime, and agrees on what a lifetime means', function () use ($tests): void {
+    /*
+     * The file driver — the default — read an entry stored without a TTL as
+     * missing, because it checked isset($data['expires']) and that is false
+     * for null. put() without a lifetime, remember() with null and a counter
+     * without a window were all written and never found.
+     */
+    $directory = sys_get_temp_dir() . '/sfphp-cache-contract-' . bin2hex(random_bytes(6));
+
+    foreach ([new MemoryDriver(), new FileDriver($directory)] as $driver) {
+        $cache = new CacheManager($driver);
+        $name = get_class($driver);
+
+        $cache->put('forever', 'v');
+        $tests->assertSame('v', $cache->get('forever'), $name);
+        $tests->assertTrue($cache->has('forever'), $name);
+
+        $cache->put('zero', 'z', 0);
+        $tests->assertSame('z', $cache->get('zero'), $name);
+
+        $tests->assertSame(1, $cache->increment('ctr'), $name);
+        $tests->assertSame(2, $cache->increment('ctr'), $name);
+        $tests->assertSame(2, $cache->get('ctr'), $name);
+
+        $calls = 0;
+        $cache->remember('r', null, function () use (&$calls): string { $calls++; return 'x'; });
+        $cache->remember('r', null, function () use (&$calls): string { $calls++; return 'x'; });
+        $tests->assertSame(1, $calls, $name);
+
+        // A stored null is an entry: has() says so in every driver.
+        $cache->put('nothing', null);
+        $tests->assertTrue($cache->has('nothing'), $name);
+        $tests->assertSame('default', $cache->get('absent', 'default'), $name);
+
+        // Values are what JSON holds, the same in every driver.
+        $cache->put('obj', (object) ['a' => 1]);
+        $tests->assertSame(['a' => 1], $cache->get('obj'), $name);
+        $cache->put('float', 1.0);
+        $tests->assertSame(1.0, $cache->get('float'), $name);
+
+        $tests->assertThrows(fn () => $cache->put('neg', 'x', -1), InvalidArgumentException::class);
+
+        $cache->flush();
+    }
+
+    exec('rm -rf ' . escapeshellarg($directory));
+});
+
+$tests->run('cache:clear removes only what has expired; cache:flush removes everything', function () use ($tests): void {
+    /*
+     * cache:clear used to flush. The cache holds the revoked-token list, the
+     * rate-limit counters and cache-held sessions, so "clear expired entries"
+     * brought revoked tokens back to life and logged everyone out.
+     */
+    $directory = sys_get_temp_dir() . '/sfphp-cache-prune-' . bin2hex(random_bytes(6));
+
+    foreach ([new MemoryDriver(), new FileDriver($directory)] as $driver) {
+        $driver->put('live', 'yes', 3600);
+        $driver->put('kept', 'yes');
+        $driver->put('gone', 'no', 1);
+
+        // Age the entry without sleeping: rewrite its expiry into the past.
+        if ($driver instanceof FileDriver) {
+            $file = $directory . '/' . md5('gone') . '.cache';
+            file_put_contents($file, json_encode(['value' => 'no', 'expires' => time() - 10]));
+        } else {
+            (fn () => $this->store['gone']['expires'] = time() - 10)->call($driver);
+        }
+
+        $tests->assertSame(1, $driver->prune());
+        $tests->assertSame('yes', $driver->get('live'));
+        $tests->assertSame('yes', $driver->get('kept'));
+        $driver->flush();
+        $tests->assertSame(null, $driver->get('live'));
+    }
+
+    exec('rm -rf ' . escapeshellarg($directory));
+});
+
+$tests->run('the file cache lives in a private directory inside the project', function () use ($tests): void {
+    /*
+     * It used to be sys_get_temp_dir()/sfphp-cache, created 0755 with files
+     * 0644: shared by every application and readable by every user on the
+     * machine, sessions included.
+     */
+    $directory = sys_get_temp_dir() . '/sfphp-private-' . bin2hex(random_bytes(6));
+    $driver = new FileDriver($directory);
+    $driver->put('k', 'v');
+
+    $tests->assertSame('0700', substr(sprintf('%o', fileperms($directory)), -4));
+    $tests->assertSame('0600', substr(sprintf('%o', fileperms($directory . '/' . md5('k') . '.cache')), -4));
+
+    // A directory others can write to is tightened before it is used.
+    chmod($directory, 0777);
+    new FileDriver($directory);
+    $tests->assertSame('0700', substr(sprintf('%o', fileperms($directory)), -4));
+
+    // A relative CACHE_PATH resolves against the project, not the working directory.
+    $tests->assertSame(Bootstrap::basePath('storage/x'), \SfphpProject\src\PrivateDirectory::resolve('storage/x'));
+
+    exec('rm -rf ' . escapeshellarg($directory));
 });
 
 $tests->run('the cache counts atomically and does not move the window', function () use ($tests): void {
@@ -3976,10 +4115,8 @@ $tests->run('the package is a project somebody can start developing in', functio
      * application inside the consumer's vendor/, which is exactly what this
      * layout exists to avoid.
      */
-    $tests->assertSame(
-        ['@php sfphp env:example', '@php sfphp assets:publish'],
-        $composer['scripts']['post-create-project-cmd']
-    );
+    // init writes .env, publishes the assets, and adds the project's .gitignore and scripts.
+    $tests->assertSame(['@php sfphp init'], $composer['scripts']['post-create-project-cmd']);
     $tests->assertSame(null, $composer['scripts']['post-install-cmd'] ?? null);
 
     // And excluded from what a `composer require` downloads.
@@ -4421,12 +4558,13 @@ $tests->run('a stored file gets a name the framework chose', function () use ($t
     $stored = $file->store($directory . '/kept');
 
     /*
-     * The client's name is nowhere in the path. It is random, with the
-     * extension carried over only because it is plain alphanumeric.
+     * The client's name is nowhere in the path. It is random, and the
+     * extension comes from what the file contains — text here — never the
+     * ".php" the client sent, which a server might run.
      */
     $tests->assertSame(true, str_starts_with($stored, $directory . '/kept/'));
     $tests->assertSame(false, str_contains($stored, 'evil'));
-    $tests->assertSame(1, preg_match('#/[0-9a-f]{32}\.php$#', $stored));
+    $tests->assertSame(1, preg_match('#/[0-9a-f]{32}\.txt$#', $stored));
     $tests->assertSame('conteúdo', file_get_contents($stored));
 
     // A caller-supplied name is still reduced to something that is not a path.
@@ -4657,7 +4795,7 @@ $tests->run('metrics count and time, including the call that failed', function (
     Metrics::reset();
     Metrics::count('a.metric', ['label' => 'with "quote"']);
     $tests->assertSame(true, str_contains(Metrics::prometheus(), 'with \"quote\"'));
-    $tests->assertSame(true, str_starts_with(Metrics::prometheus(), 'a_metric{label='));
+    $tests->assertSame(true, str_starts_with(Metrics::prometheus(), "# TYPE a_metric counter\na_metric{label="));
 
     Metrics::reset();
     $tests->assertSame('', Metrics::prometheus());
@@ -6544,16 +6682,11 @@ $tests->run('the console reports the version it actually is', function () use ($
      * Composer's InstalledVersions is generated into the autoloader rather than
      * required as a package, so asking it costs no dependency.
      */
-    $source = (string) file_get_contents(__DIR__ . '/../src/Console/Application.php');
+    $composer = json_decode((string) file_get_contents(__DIR__ . '/../composer.json'), true);
 
-    $tests->assertSame(false, str_contains($source, "'SFPHP v1.0.0'"));
-    $tests->assertSame(true, str_contains($source, 'InstalledVersions'));
-
-    $version = SfphpProject\src\Console\Application::version();
-
-    // Always something, and never a number nobody set.
-    $tests->assertSame(true, $version !== '');
-    $tests->assertSame(false, str_contains($version, 'no-version-set'));
+    // The constant upgrade replaces, and composer.json, name the same release.
+    $tests->assertSame($composer['version'], SfphpProject\src\Console\Application::version());
+    $tests->assertSame($composer['version'], \SfphpProject\src\Sfphp::VERSION);
 });
 
 $tests->run('a response describes what came back without pretending it is an error', function () use ($tests): void {
@@ -7523,6 +7656,32 @@ $tests->run('the client refuses https-to-http redirects and follows http-to-http
         $response = Http::get('http://127.0.0.1:' . $port . '/redirect');
         $tests->assertSame(200, $response->status());
         $tests->assertSame('Redirected successfully', $response->body());
+
+        $origin = 'http://127.0.0.1:' . $port;
+
+        // A POST answered with 302 is followed with a GET, and only the final response's headers come back.
+        $moved = Http::post($origin . '/post-redirect', ['a' => 1]);
+        $tests->assertSame('GET', $moved->json()['method']);
+        $tests->assertSame('application/json', $moved->header('Content-Type'));
+        $tests->assertSame(null, $moved->header('X-From-Redirect'));
+        $tests->assertSame('a, b', $moved->header('X-Multi'));
+        $tests->assertSame($origin . '/echo-method', $moved->url());
+
+        // HEAD returns at once instead of waiting for a body.
+        $started = microtime(true);
+        $tests->assertSame(200, Http::timeout(3)->send('HEAD', $origin . '/echo-method')->status());
+        $tests->assertTrue(microtime(true) - $started < 2);
+
+        // A line break in a header value would add headers of its own.
+        $tests->assertThrows(
+            fn () => Http::withHeaders(['X-A' => "v\r\nX-Injected: yes"])->get($origin . '/echo-method'),
+            ClientException::class
+        );
+
+        // A client made for one origin keeps its token to that origin.
+        $client = Http::base($origin)->token('secret');
+        $tests->assertSame('Bearer secret', $client->get('/echo-method')->json()['authorization']);
+        $tests->assertSame(null, $client->get('http://localhost:' . $port . '/echo-method')->json()['authorization']);
     } finally {
         if ($pid > 0) {
             exec('kill ' . $pid . ' 2>/dev/null');
@@ -7822,6 +7981,572 @@ $tests->run('a template imports a component with @use and calls it by its bare n
     } finally {
         exec('rm -rf ' . escapeshellarg($directory));
     }
+});
+
+$tests->run('a model keeps its secrets out of JSON and never runs a method because a property was read', function () use ($tests): void {
+    eval('namespace SfphpTest\Hidden; final class Account extends \SfphpProject\src\Database\Model {
+        protected static string $table = "users";
+        protected static array $fillable = ["name"];
+        protected static array $hidden = ["password"];
+        public function wipe(): bool { throw new \RuntimeException("wipe ran"); }
+    }');
+
+    $account = \SfphpTest\Hidden\Account::hydrate(['id' => 1, 'name' => 'Ana', 'password' => '$2y$hash', \SfphpProject\src\Database\Model::PIVOT_KEY => 7]);
+
+    $tests->assertSame(['id' => 1, 'name' => 'Ana'], $account->toArray());
+    $tests->assertSame('{"id":1,"name":"Ana"}', json_encode($account));
+    $tests->assertSame('$2y$hash', $account->password);
+
+    // Reading $model->delete used to run delete(); only Relation methods are called.
+    $tests->assertSame(null, $account->wipe);
+    $tests->assertSame(null, $account->delete);
+    $tests->assertTrue($account->exists());
+});
+
+$tests->run('an update is addressed by the key the row had, and timestamps are kept when asked for', function () use ($tests): void {
+    eval('namespace SfphpTest\Stamped; final class Note extends \SfphpProject\src\Database\Model {
+        protected static string $table = "notes";
+        protected static array $fillable = ["body"];
+        protected static bool $timestamps = true;
+    }');
+
+    $pdo = new ModelPdoTest(['notes' => [['id' => 10, 'body' => 'a']]]);
+    Model::useConnection($pdo);
+    Time::freeze('2026-09-25 12:00:00');
+
+    try {
+        $note = \SfphpTest\Stamped\Note::find(10);
+        $pdo->queries = [];
+        ModelStatementTest::$bound = [];
+        $note->id = 11;
+        $note->save();
+
+        $tests->assertTrue(str_contains($pdo->queries[0], 'UPDATE `notes` SET'));
+        $tests->assertTrue(str_contains($pdo->queries[0], '`updated_at`'));
+        // WHERE id = 10, SET id = 11: the row changed is the one that was read.
+        $tests->assertSame([10, 11, '2026-09-25 12:00:00'], ModelStatementTest::$bound);
+
+        $pdo->queries = [];
+        $created = \SfphpTest\Stamped\Note::create(['body' => 'b']);
+        $tests->assertTrue(str_contains($pdo->queries[0], '`created_at`'));
+        $tests->assertSame('2026-09-25 12:00:00', $created->getAttribute('updated_at'));
+    } finally {
+        Time::unfreeze();
+        Model::useConnection(null);
+    }
+});
+
+$tests->run('an exception that names a status is answered with it, not with 500', function () use ($tests): void {
+    Router::reset();
+
+    eval('namespace SfphpTest\Status; final class StatusController {
+        public function missing(\SfphpProject\src\Http\Request $r): never { throw new \SfphpProject\src\Database\ModelNotFoundException("No Post 5"); }
+        public function refused(\SfphpProject\src\Http\Request $r): never { throw new \SfphpProject\src\Auth\AuthorizationException("no"); }
+        public function body(\SfphpProject\src\Http\Request $r): \SfphpProject\src\Http\Response { return \SfphpProject\src\Http\Response::json($r->json()); }
+        public function conflict(\SfphpProject\src\Http\Request $r): never { throw new \SfphpProject\src\Http\HttpException(409, "That slug is taken."); }
+        public function user(\SfphpProject\src\Http\Request $r, string $user): \SfphpProject\src\Http\Response { return \SfphpProject\src\Http\Response::text(var_export($r->user(), true) . "|" . $r->route("user")); }
+        public function page(\SfphpProject\src\Http\Request $r): \SfphpProject\src\Http\Response { return \SfphpProject\src\Http\Response::text("page"); }
+    }');
+
+    $c = \SfphpTest\Status\StatusController::class;
+    Router::get('/missing', [$c, 'missing']);
+    Router::get('/refused', [$c, 'refused']);
+    Router::post('/body', [$c, 'body']);
+    Router::get('/conflict', [$c, 'conflict']);
+    Router::get('/profile/user:alpha', [$c, 'user']);
+    Router::get('/page', [$c, 'page']);
+
+    $router = new Router(new Container());
+    $json = ['headers' => ['Accept' => 'application/json']];
+
+    $tests->assertSame(404, $router->dispatch(Request::create('GET', '/missing'))->status());
+    $tests->assertSame(403, $router->dispatch(Request::create('GET', '/refused'))->status());
+    $tests->assertSame(400, $router->dispatch(Request::create('POST', '/body', ['rawBody' => '{nope', 'headers' => ['Content-Type' => 'application/json']]))->status());
+
+    $conflict = $router->dispatch(Request::create('GET', '/conflict', $json));
+    $tests->assertSame(409, $conflict->status());
+    $tests->assertSame('{"message":"That slug is taken."}', $conflict->body());
+
+    // 404 and 405 answer JSON to a client that asks for it, like every other error.
+    $notFound = $router->dispatch(Request::create('GET', '/nowhere', $json));
+    $tests->assertSame(404, $notFound->status());
+    $tests->assertSame('application/json', explode(';', (string) $notFound->header('Content-Type'))[0]);
+    $tests->assertSame(405, $router->dispatch(Request::create('DELETE', '/page', $json))->status());
+
+    // HEAD is answered by a GET route; Allow names HEAD and OPTIONS.
+    $tests->assertSame(200, $router->dispatch(Request::create('HEAD', '/page'))->status());
+    $tests->assertSame('GET, HEAD, OPTIONS', $router->dispatch(Request::create('DELETE', '/page'))->header('Allow'));
+
+    // A route parameter named "user" no longer replaces the authenticated user.
+    $withUser = Request::create('GET', '/profile/admin')->withAttribute('user', 'ana');
+    $tests->assertSame("'ana'|admin", $router->dispatch($withUser)->body());
+
+    // An error page inlines only the part of SFCSS it uses.
+    $page = $router->dispatch(Request::create('GET', '/nowhere'));
+    $tests->assertTrue(strlen($page->body()) < 20000);
+    $tests->assertTrue(str_contains($page->body(), '.btn-primary'));
+
+    Router::reset();
+});
+
+$tests->run('the CSRF check reads a JSON body, exempts by path segment and does not trust a bearer header next to a session', function () use ($tests): void {
+    $_SESSION = [];
+    $token = Csrf::token();
+    $middleware = new VerifyCsrfToken(['/api']);
+    $ok = static fn (Request $r): Response => Response::text('ok');
+
+    // SFJS sends a form as JSON; the token inside it used to be ignored.
+    $json = Request::create('POST', '/form', [
+        'rawBody' => json_encode(['_token' => $token, 'name' => 'Ana']),
+        'headers' => ['Content-Type' => 'application/json'],
+    ]);
+    $tests->assertSame(200, $middleware->handle($json, $ok)->status());
+
+    $tests->assertSame(200, $middleware->handle(Request::create('POST', '/api/posts'), $ok)->status());
+    $tests->assertSame(403, $middleware->handle(Request::create('POST', '/apikeys'), $ok)->status());
+
+    $bearerOnly = Request::create('POST', '/form', ['headers' => ['Authorization' => 'Bearer x']]);
+    $tests->assertSame(200, $middleware->handle($bearerOnly, $ok)->status());
+
+    $bearerAndSession = Request::create('POST', '/form', [
+        'headers' => ['Authorization' => 'Bearer x'],
+        'cookies' => [session_name() ?: 'PHPSESSID' => 'abc'],
+    ]);
+    $tests->assertSame(403, $middleware->handle($bearerAndSession, $ok)->status());
+
+    // The refusal is the shared error page, styled, with a way home.
+    $refused = $middleware->handle(Request::create('POST', '/form'), $ok);
+    $tests->assertTrue(str_contains($refused->body(), 'btn btn-primary'));
+});
+
+$tests->run('a rate limit counts a route, not each path that reaches it', function () use ($tests): void {
+    $limit = new RateLimit(maxAttempts: 2, decaySeconds: 60, name: 'pattern', cache: new CacheManager(new MemoryDriver()));
+    $ok = static fn (Request $r): Response => Response::text('ok');
+    $statuses = [];
+
+    foreach (['a', 'b', 'c'] as $code) {
+        $request = Request::create('POST', '/reset/' . $code, ['server' => ['REMOTE_ADDR' => '203.0.113.5']])
+            ->withRouteParameters(['code' => $code], '/reset/code:alphanum');
+        $statuses[] = $limit->handle($request, $ok)->status();
+    }
+
+    $tests->assertSame([200, 200, 429], $statuses);
+});
+
+$tests->run('a factory builds each row afresh and saves columns outside $fillable', function () use ($tests): void {
+    $pdo = new ModelPdoTest();
+    Model::useConnection($pdo);
+    ModelStatementTest::$bound = [];
+
+    try {
+        $users = (new \Database\Factories\UserFactory())->count(3)->create(['kind' => 'key', 'n' => fn ($f, int $i): int => $i]);
+
+        $tests->assertSame(3, count($users));
+        $tests->assertSame(3, count(array_filter($pdo->queries, fn (string $q): bool => str_starts_with($q, 'INSERT'))));
+
+        // The password is not fillable on User, and it is saved all the same.
+        $tests->assertTrue(str_contains($pdo->queries[0], '`password`'));
+
+        $emails = array_map(fn ($u) => $u->getAttribute('email'), $users);
+        $tests->assertSame(3, count(array_unique($emails)));
+
+        // "key" names a PHP function and stays a string; a closure gets the row index.
+        $tests->assertSame('key', $users[0]->getAttribute('kind'));
+        $tests->assertSame([0, 1, 2], array_map(fn ($u) => $u->getAttribute('n'), $users));
+
+        $one = (new \Database\Factories\UserFactory())->make();
+        $tests->assertTrue(isset($one['email']));
+    } finally {
+        Model::useConnection(null);
+    }
+});
+
+$tests->run('a job refuses a property the queue cannot bring back, and a stale payload fails instead of killing the worker', function () use ($tests): void {
+    eval('namespace SfphpTest\Jobs; final class Invoice extends \SfphpProject\src\Queue\Job {
+        public function __construct(public mixed $due, public array $lines = []) {}
+        public function handle(): void {}
+    }
+    final class Typed extends \SfphpProject\src\Queue\Job {
+        public int $count = 0;
+        public function handle(): void {}
+    }');
+
+    $tests->assertThrows(fn () => (new \SfphpTest\Jobs\Invoice(new DateTimeImmutable()))->payload(), InvalidArgumentException::class);
+    $tests->assertThrows(fn () => (new \SfphpTest\Jobs\Invoice('2026-10-01', [new stdClass()]))->payload(), InvalidArgumentException::class);
+    $tests->assertSame(['due' => '2026-10-01', 'lines' => [1, 2]], (new \SfphpTest\Jobs\Invoice('2026-10-01', [1, 2]))->payload());
+
+    // A payload whose type no longer fits says so, as an exception the driver can fail the job with.
+    $tests->assertThrows(
+        fn () => \SfphpProject\src\Queue\Job::fromPayload(['class' => \SfphpTest\Jobs\Typed::class, 'data' => ['count' => ['a']]], 'j1', 0),
+        UnexpectedValueException::class
+    );
+
+    $tests->assertSame('gateway down', \SfphpProject\src\Queue\DatabaseDriver::messageOf(
+        \SfphpProject\src\Queue\DatabaseDriver::describe(new RuntimeException('gateway down'))
+    ));
+});
+
+$tests->run('with() refuses a relation that does not exist instead of falling back to one query per row', function () use ($tests): void {
+    Model::useConnection(new ModelPdoTest());
+
+    try {
+        $tests->assertThrows(fn () => PostModelTest::query()->with('autor'), InvalidArgumentException::class);
+        $tests->assertThrows(fn () => PostModelTest::query()->with('delete'), InvalidArgumentException::class);
+        PostModelTest::query()->with('author');
+    } finally {
+        Model::useConnection(null);
+    }
+});
+
+$tests->run('a closure groups conditions in parentheses, so an OR stays inside its group', function () use ($tests): void {
+    $pdo = new ModelPdoTest();
+    $builder = (new QueryBuilder($pdo))->from('posts')
+        ->where('user_id', 7)
+        ->where(function (QueryBuilder $q): void {
+            $q->where('status', 'draft')->orWhere('status', 'review');
+        });
+    $builder->get();
+
+    $tests->assertTrue(str_contains(end($pdo->queries), 'WHERE `user_id` = :binding_0 AND (`status` = :binding_1 OR `status` = :binding_2)'));
+
+    // An offset without a limit is valid SQL on MySQL.
+    $pdo->queries = [];
+    (new QueryBuilder($pdo))->from('posts')->offset(5)->get();
+    $tests->assertTrue(str_contains(end($pdo->queries), 'LIMIT 18446744073709551615 OFFSET 5'));
+});
+
+$tests->run('back() stays on this site, port included, and the client address cannot be forged', function () use ($tests): void {
+    $back = fn (string $referer, string $host = 'app.test'): ?string => Response::back(
+        Request::create('GET', '/', ['headers' => ['Referer' => $referer, 'Host' => $host]])
+    )->header('Location');
+
+    $tests->assertSame('/', $back('http://app.test//evil.example/x'));
+    $tests->assertSame('/', $back('/\\evil.example/x'));
+    $tests->assertSame('/', $back("http://app.test/a\x01b"));
+    $tests->assertSame('/', $back('https://evil.example/form'));
+    $tests->assertSame('/form?x=1', $back('http://app.test/form?x=1'));
+    $tests->assertSame('/form', $back('http://127.0.0.1:8000/form', '127.0.0.1:8000'));
+
+    Request::setTrustedProxies(['10.0.0.1']);
+
+    try {
+        $forged = Request::create('GET', '/', [
+            'server' => ['REMOTE_ADDR' => '10.0.0.1'],
+            'headers' => ['X-Forwarded-For' => '1.2.3.4, 203.0.113.9', 'X-Forwarded-Proto' => 'https, http'],
+        ]);
+        // The proxy appended 203.0.113.9; "1.2.3.4" is what the client wrote.
+        $tests->assertSame('203.0.113.9', $forged->ip());
+        $tests->assertSame(false, $forged->isSecure());
+
+        $untrusted = Request::create('GET', '/', ['server' => ['REMOTE_ADDR' => '198.51.100.7'], 'headers' => ['X-Forwarded-For' => '1.2.3.4']]);
+        $tests->assertSame('198.51.100.7', $untrusted->ip());
+    } finally {
+        Request::setTrustedProxies([]);
+    }
+
+    // "//admin/panel" is the path /admin/panel, not the host "admin".
+    $tests->assertSame('/admin/panel', Request::create('GET', '//admin/panel')->path);
+    $tests->assertSame('/x', Request::create('GET', '///x?y=1')->path);
+    $tests->assertSame('/', Request::create('GET', '?a=1')->path);
+});
+
+$tests->run('a dump made while the action runs is put into the page instead of breaking the response', function () use ($tests): void {
+    \SfphpProject\src\Debug\PendingDumps::add('<pre class="sf-dump">X</pre>');
+
+    ob_start();
+    (new Emitter())->emit(Response::html('<html><body><p>page</p></body></html>'));
+    $sent = (string) ob_get_clean();
+
+    $tests->assertSame('<html><body><p>page</p><pre class="sf-dump">X</pre></body></html>', $sent);
+
+    // A JSON body is never corrupted by a dump.
+    \SfphpProject\src\Debug\PendingDumps::add('<pre>X</pre>');
+    ob_start();
+    (new Emitter())->emit(Response::json(['ok' => true]));
+    $tests->assertSame('{"ok":true}', (string) ob_get_clean());
+    $tests->assertSame([], \SfphpProject\src\Debug\PendingDumps::take());
+});
+
+$tests->run('the validator counts arrays by their items, accepts addresses in any script and reads patterns as written', function () use ($tests): void {
+    $previous = Translator::locale();
+    Translator::setLocale('en');
+
+    try {
+        $errors = fn (array $data, array $rules): array => Validator::validate($data, $rules)->errors();
+
+        // An array used to read as "", so it passed every text rule.
+        $tests->assertTrue(isset($errors(['tags' => ['a', 'b', 'c']], ['tags' => 'max:2'])['tags']));
+        $tests->assertSame([], $errors(['tags' => ['a', 'b']], ['tags' => 'max:2']));
+        $tests->assertTrue(isset($errors(['name' => ['x']], ['name' => 'maxLength:5|alpha'])['name']));
+
+        $tests->assertSame([], $errors(['e' => 'josé@exemplo.com.br'], ['e' => 'email']));
+        $tests->assertSame([], $errors(['u' => 'https://exemplo.com.br/café'], ['u' => 'url']));
+        $tests->assertTrue(isset($errors(['u' => 'javascript:alert(1)'], ['u' => 'url'])['u']));
+        $tests->assertTrue(isset($errors(['u' => 'foo:bar'], ['u' => 'url'])['u']));
+        $tests->assertTrue(isset($errors(['e' => 'a@b..com'], ['e' => 'email'])['e']));
+
+        // Letters written with combining marks are letters.
+        $tests->assertSame([], $errors(['n' => 'हिन्दी', 'm' => "Jose\u{0301}"], ['n' => 'alpha', 'm' => 'alpha|maxLength:4']));
+
+        // An escaped slash stays escaped; an invalid pattern is a programming error.
+        $tests->assertSame([], $errors(['p' => 'a/b'], ['p' => ['pattern:^a\/b$']]));
+        $tests->assertThrows(fn () => $errors(['p' => 'x'], ['p' => ['pattern:(']]), InvalidArgumentException::class);
+
+        // A count no plural form covers gets the general form, not the raw catalog string.
+        $message = $errors(['n' => 'x'], ['n' => 'max:0'])['n'][0];
+        $tests->assertTrue(!str_contains($message, '|') && !str_contains($message, '[2,*]'));
+
+        // The field's name in the visitor's language.
+        Translator::setLocale('pt_BR');
+        $dir = sys_get_temp_dir() . '/sfphp-attr-' . bin2hex(random_bytes(4));
+        mkdir($dir . '/pt_BR', 0777, true);
+        file_put_contents($dir . '/pt_BR/validation.php', "<?php return ['attributes' => ['name' => 'nome']];");
+        Translator::addPath($dir);
+        $tests->assertSame('nome é obrigatório.', $errors([], ['name' => 'required'])['name'][0]);
+        exec('rm -rf ' . escapeshellarg($dir));
+    } finally {
+        Translator::setLocale($previous);
+    }
+});
+
+$tests->run('a regional locale reads its base language before the fallback', function () use ($tests): void {
+    $dir = sys_get_temp_dir() . '/sfphp-base-' . bin2hex(random_bytes(4));
+    mkdir($dir . '/es', 0777, true);
+    mkdir($dir . '/en', 0777, true);
+    file_put_contents($dir . '/es/greet.php', "<?php return ['hi' => 'Hola'];");
+    file_put_contents($dir . '/en/greet.php', "<?php return ['hi' => 'Hello'];");
+    Translator::addPath($dir);
+
+    $tests->assertSame('Hola', __('greet.hi', [], 'es_MX'));
+    exec('rm -rf ' . escapeshellarg($dir));
+});
+
+$tests->run('a date is read as written or not at all, and .env reads quoted values and export lines', function () use ($tests): void {
+    $tests->assertSame(null, Time::parse('2026-02-30'));
+    $tests->assertSame(null, Time::parse('next monday'));
+    $tests->assertSame(null, Time::parse('2026-09-21 25:00:00'));
+    $tests->assertSame('2026-09-21T23:00:00+00:00', Time::parse('2026-09-21 23:00:00+00')->format(DATE_ATOM));
+    $tests->assertSame('2026-09-21T00:00:00+00:00', Time::parse('2026-09-21')->format(DATE_ATOM));
+
+    $file = sys_get_temp_dir() . '/sfphp-env-' . bin2hex(random_bytes(4));
+    $key = 'SFPHP_TEST_' . strtoupper(bin2hex(random_bytes(3)));
+    file_put_contents($file, "{$key}_A=\"My App\" # the name\nexport {$key}_B=x\n");
+    Dotenv::loadEnv($file);
+
+    $tests->assertSame('My App', getenv($key . '_A'));
+    $tests->assertSame('x', getenv($key . '_B'));
+    unlink($file);
+});
+
+$tests->run('an id too large to be an int is a 404, a deprecation is not an exception, and a JWT needs no e-mail', function () use ($tests): void {
+    $route = new Route(GET, '/posts/id:number', 'X', 'show');
+    $tests->assertSame(null, $route->match('/posts/99999999999999999999'));
+    $tests->assertSame(['id' => '42'], $route->match('/posts/42'));
+
+    $tests->assertSame(true, ErrorHandler::handlePhpError(E_USER_DEPRECATED, 'old api', __FILE__, __LINE__));
+
+    $token = JWT::generate(['id' => 7, 'role' => 'editor']);
+    $claims = JWT::claims($token);
+    $tests->assertSame(7, $claims['id']);
+    $tests->assertSame('editor', $claims['role']);
+    $tests->assertSame(false, array_key_exists('email', $claims));
+
+    $tests->assertThrows(fn () => new \SfphpProject\src\Session\DatabaseHandler('sessions; DROP TABLE users'), InvalidArgumentException::class);
+});
+
+$tests->run('mail keeps blind copies blind, quotes names, folds long subjects and never sends a password in the clear', function () use ($tests): void {
+    $message = (new Message())
+        ->from('app@example.com', 'Support <ceo@bank.com>')
+        ->to('x@example.com')
+        ->bcc('secret@example.com')
+        ->replyTo('visitor@example.com', 'Visitor, attacker@evil.com')
+        ->subject(str_repeat('Relatório mensal — ', 40))
+        ->text('hi')
+        ->attach('evil".exe; x="y', 'data')
+        ->attach('relatório.pdf', 'data');
+
+    $raw = $message->toString();
+
+    $tests->assertTrue(str_contains($raw, 'Reply-To: "Visitor, attacker@evil.com" <visitor@example.com>'));
+    $tests->assertTrue(str_contains($raw, 'From: "Support <ceo@bank.com>" <app@example.com>'));
+    $tests->assertTrue(str_contains($raw, 'filename="evil\".exe; x=\"y"'));
+    $tests->assertTrue(str_contains($raw, "filename*=UTF-8''relat%C3%B3rio.pdf"));
+    $tests->assertSame(false, str_contains($raw, 'secret@example.com'));
+
+    foreach (explode("\r\n", substr($raw, 0, (int) strpos($raw, "\r\n\r\n"))) as $line) {
+        $tests->assertTrue(strlen($line) <= 998);
+    }
+
+    // mail(): the To header names only the real recipients; the blind copy rides in Bcc for sendmail -t.
+    $capture = sys_get_temp_dir() . '/sfphp-sendmail-' . bin2hex(random_bytes(4));
+    $script = $capture . '.sh';
+    file_put_contents($script, "#!/bin/sh\ncat > " . escapeshellarg($capture) . "\n");
+    chmod($script, 0700);
+
+    $result = shell_exec(sprintf(
+        '%s -d sendmail_path=%s -r %s',
+        escapeshellarg(PHP_BINARY),
+        escapeshellarg($script . ' -t -i'),
+        escapeshellarg('require ' . var_export(__DIR__ . '/../vendor/autoload.php', true) . ';'
+            . '(new SfphpProject\src\Mail\MailDriver())->send((new SfphpProject\src\Mail\Message())'
+            . '->from("a@example.com")->to("x@example.com")->cc("c@example.com")->bcc("secret@example.com")->subject("s")->text("t")); echo "ok";')
+    ));
+    $sent = (string) @file_get_contents($capture);
+    @unlink($capture);
+    @unlink($script);
+
+    $tests->assertSame('ok', trim((string) $result));
+    $tests->assertTrue(str_contains($sent, 'To: x@example.com'));
+    $tests->assertSame(false, (bool) preg_match('/^To:.*secret/m', $sent));
+    $tests->assertTrue(str_contains($sent, 'Bcc: secret@example.com'));
+
+    // "TLS" is tls; a value that is none of the three is refused.
+    $tests->assertThrows(fn () => new \SfphpProject\src\Mail\SmtpDriver(encryption: 'tsl'), InvalidArgumentException::class);
+    new \SfphpProject\src\Mail\SmtpDriver(encryption: 'TLS');
+    new \SfphpProject\src\Mail\SmtpDriver(encryption: 'starttls');
+
+    // Staging redirection keeps the attachments and the Reply-To.
+    $array = new MailArrayDriver();
+    (new MailManager($array, 'app@example.com'))->alwaysTo('qa@example.com')->send($message);
+    $delivered = $array->messages()[0];
+    $tests->assertSame(['qa@example.com'], $delivered->recipients());
+    $tests->assertTrue(str_contains($delivered->toString(), 'relat%C3%B3rio.pdf'));
+    $tests->assertTrue(str_contains($delivered->toString(), 'X-Intended-For: x@example.com, secret@example.com'));
+    $tests->assertSame(['x@example.com', 'secret@example.com'], $message->recipients());
+});
+
+$tests->run('an SSE field cannot write fields of its own, and an upload never keeps an extension a server would run', function () use ($tests): void {
+    $out = new class implements \SfphpProject\src\Http\StreamWriter {
+        public string $sent = '';
+        public function write(string $chunk): bool { $this->sent .= $chunk; return true; }
+        public function aborted(): bool { return false; }
+        public function flush(): void {}
+    };
+    $sse = new \SfphpProject\src\Http\ServerSentEvent($out);
+
+    $tests->assertThrows(fn () => $sse->send('x', event: "x\nid: 99"), InvalidArgumentException::class);
+    $sse->send("a\rb\r\nc");
+    $tests->assertSame("data: a\ndata: b\ndata: c\n\n", $out->sent);
+
+    $tmp = tempnam(sys_get_temp_dir(), 'up');
+    file_put_contents($tmp, "\x89PNG\r\n\x1a\n" . str_repeat("\0", 64) . '<?php echo 1;');
+    $file = UploadedFile::fromArray(['name' => '../../evil.PHP', 'tmp_name' => $tmp, 'size' => filesize($tmp), 'error' => UPLOAD_ERR_OK]);
+    $generated = (new ReflectionMethod($file, 'generatedName'))->invoke($file);
+    $tests->assertSame(false, str_ends_with($generated, '.php'));
+
+    $safe = new ReflectionMethod($file, 'safeName');
+    $tests->assertSame('relatório.pdf', $safe->invoke($file, 'relatório.pdf'));
+    $tests->assertSame('shell.php.txt', $safe->invoke($file, 'shell.php'));
+    unlink($tmp);
+
+    $latin1 = UploadedFile::fromArray(['name' => "caf\xE9.txt", 'tmp_name' => '', 'size' => 0, 'error' => UPLOAD_ERR_NO_FILE]);
+    $tests->assertTrue($latin1->clientName() !== '');
+
+    $empty = Request::create('POST', '/', ['files' => ['photos' => ['name' => [''], 'tmp_name' => [''], 'size' => [0], 'error' => [UPLOAD_ERR_NO_FILE]]]]);
+    $tests->assertSame([], $empty->files('photos'));
+});
+
+$tests->run('sfht leaves e-mail addresses alone, lets default() cover a missing variable and nests forelse', function () use ($tests, $sfht): void {
+    $tests->assertSame('Write to webmaster@php.net or me@if.io, hi@block.xyz', $sfht('Write to webmaster@php.net or me@if.io, hi@block.xyz'));
+    $tests->assertSame('<p>Ola sim</p>', $sfht('<p>Ola @if($x)sim@endif</p>', ['x' => true]));
+    $tests->assertSame('Type @if to start', $sfht('Type @@if to start'));
+    $tests->assertSame('Anonymous', $sfht('{{ $name | default("Anonymous") }}'));
+    $tests->assertSame('&lt;b&gt;', $sfht('{{ $x | escape }}', ['x' => '<b>']));
+    $tests->assertSame('}}', $sfht("{{ \$x ? '}}' : 'no' }}", ['x' => true]));
+    // Text in brackets after a directive that takes none is text.
+    $tests->assertSame(' (maybe)', $sfht('@if(false)no@else (maybe)@endif'));
+    $tests->assertSame(
+        '[A:1][B: none]',
+        $sfht("@forelse(\$outer as \$o)[{{ \$o['n'] }}:@forelse(\$o['items'] as \$i){{ \$i }}@empty none@endforelse]@empty OUTER@endforelse", ['outer' => [['n' => 'A', 'items' => [1]], ['n' => 'B', 'items' => []]]])
+    );
+});
+
+$tests->run('phpx ignores Sfht( written in a comment or a string, and a component that throws leaves no buffer open', function () use ($tests): void {
+    $source = <<<'PHPX'
+        <?php
+        // Sfht( is how a region opens
+        /** Write Sfht( to start one. */
+        function Hint(string $t): \SfphpProject\src\View\Sfht
+        {
+            $label = "use Sfht( to open";
+            $other = 'or sfht( the old way';
+            return Sfht(<p>{{ $t }} {{ $label }}</p>);
+        }
+        PHPX;
+
+    $compiled = (new Phpx())->compile($source);
+    $tests->assertSame(1, substr_count($compiled, 'get_defined_vars()'));
+
+    eval('namespace SfphpTest\PhpxLiteral; ?>' . $compiled);
+    $tests->assertSame('<p>hi use Sfht( to open</p>', (string) \SfphpTest\PhpxLiteral\Hint('hi'));
+
+    eval('namespace SfphpTest\PhpxThrow; ?>' . (new Phpx())->compile('<?php function Boom(): \SfphpProject\src\View\Sfht { return Sfht(<p>{{ throw new \RuntimeException("x") }}</p>); }'));
+    $level = ob_get_level();
+    $tests->assertThrows(fn () => \SfphpTest\PhpxThrow\Boom(), RuntimeException::class);
+    $tests->assertSame($level, ob_get_level());
+});
+
+$tests->run('every command the console answers is in help and list, and nothing else is', function () use ($tests): void {
+    $source = (string) file_get_contents(__DIR__ . '/../src/Console/Application.php');
+    $start = strpos($source, 'return match ($command) {');
+    $block = substr($source, $start, strpos($source, 'default =>', $start) - $start);
+    preg_match_all("/'([a-z:-]+)'(?:, '[^']+')* =>/", $block, $matches);
+
+    $dispatched = array_values(array_filter($matches[1], static fn (string $name): bool => !str_starts_with($name, '-')));
+    $listed = Application::commandNames();
+    sort($dispatched);
+    sort($listed);
+
+    $tests->assertSame($dispatched, $listed);
+});
+
+$tests->run('a generator never overwrites, trims the suffix it adds, and a generated test runs', function () use ($tests): void {
+    $root = sys_get_temp_dir() . '/sfphp-gen-' . bin2hex(random_bytes(4));
+    mkdir($root, 0777, true);
+    file_put_contents($root . '/composer.json', json_encode(['autoload' => ['psr-4' => ['App\\' => 'app/']]]));
+
+    try {
+        $controller = new \SfphpProject\src\Console\Generators\ControllerGenerator($root);
+        $file = $controller->generate('productController');
+        $tests->assertTrue(str_ends_with($file, '/ProductController.php'));
+        $tests->assertTrue(is_file($root . '/app/resources/views/product/index.sfht'));
+
+        file_put_contents($file, "<?php // mine\n");
+        $tests->assertThrows(fn () => (new \SfphpProject\src\Console\Generators\ControllerGenerator($root))->generate('Product'), \SfphpProject\src\Console\Generators\GeneratorFileExists::class);
+        $tests->assertSame("<?php // mine\n", file_get_contents($file));
+
+        (new \SfphpProject\src\Console\Generators\ControllerGenerator($root, true))->generate('Product');
+        $tests->assertTrue(str_contains((string) file_get_contents($file), 'final class ProductController'));
+
+        $test = (new \SfphpProject\src\Console\Generators\TestGenerator($root))->generate('PostTest');
+        $tests->assertTrue(str_ends_with($test, '/tests/PostTest.php'));
+
+        $policy = (string) file_get_contents((new \SfphpProject\src\Console\Generators\PolicyGenerator($root))->generate('PostPolicy'));
+        $tests->assertTrue(str_contains($policy, 'final class PostPolicy'));
+        $tests->assertTrue(str_contains($policy, '?Authenticatable $user'));
+        $tests->assertSame(false, str_contains($policy, 'return true'));
+
+        $seeder = (new \SfphpProject\src\Console\Generators\SeederGenerator($root))->generate('Product');
+        $tests->assertTrue(str_ends_with($seeder, '/database/seeders/ProductSeeder.php'));
+
+        $lines = [];
+        $passed = (new \SfphpProject\src\Testing\Runner())->run($root . '/tests', null, function (string $line) use (&$lines): void { $lines[] = $line; });
+        $tests->assertTrue($passed);
+        $tests->assertTrue(in_array('PASS Tests\\PostTest::testExample', $lines, true));
+    } finally {
+        exec('rm -rf ' . escapeshellarg($root));
+    }
+});
+
+$tests->run('an option takes its value after = or after a space, and the value is not read as a name', function () use ($tests): void {
+    $app = new Application(['sfphp']);
+    $option = new ReflectionMethod($app, 'option');
+    $positionals = new ReflectionMethod($app, 'positionals');
+
+    $tests->assertSame('8001', $option->invoke($app, ['--port', '8001'], 'port'));
+    $tests->assertSame('8001', $option->invoke($app, ['--port=8001'], 'port'));
+    $tests->assertSame('My App', $option->invoke($app, ['--name', 'My App'], 'name'));
+    $tests->assertSame(['create_posts', 'title:string'], $positionals->invoke($app, ['--path', 'db/m', 'create_posts', '--force', 'title:string']));
 });
 
 $tests->finish();

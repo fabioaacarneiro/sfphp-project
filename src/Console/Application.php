@@ -4,6 +4,7 @@ namespace SfphpProject\src\Console;
 
 use SfphpProject\src\Assets;
 use SfphpProject\src\Bootstrap;
+use SfphpProject\src\Config;
 use SfphpProject\src\Console\Generators\ControllerGenerator;
 use SfphpProject\src\Console\Generators\EventGenerator;
 use SfphpProject\src\Console\Generators\FactoryGenerator;
@@ -71,6 +72,111 @@ final class Application
     private const RESET_KEEP_MIGRATIONS = [
         'create_users_table',
         'create_sessions_table',
+    ];
+
+    /**
+     * Every command, once: what `list`, `help` and `help <command>` print.
+     *
+     * `list` and `help` used to be two lists written by hand, and each had
+     * lost commands the other still had — ten were missing from one and seven
+     * from the other — while `help <command>` knew eight. A test checks this
+     * table against the dispatcher, so a command cannot be added to one and
+     * not the other.
+     *
+     * @var array<string, array{group: string, usage: string, summary: string, details?: list<string>}>
+     */
+    private const COMMANDS = [
+        'serve' => ['group' => 'Server', 'usage' => 'serve [--host=127.0.0.1] [--port=8000]', 'summary' => 'Start the development server',
+            'details' => ['Serves public/ through server.php with PHP\'s built-in server, on 127.0.0.1:8000 unless told otherwise.', 'The port is checked first: a port already in use is an error, not a banner.']],
+        'routes' => ['group' => 'Server', 'usage' => 'routes [--path=app/routes/web.php]', 'summary' => 'List the registered routes',
+            'details' => ['Reads app/routes/web.php and app/routes/api.php, or the file --path names.']],
+        'build' => ['group' => 'Server', 'usage' => 'build --phpx [--from=app/components] [--to=app/components/compiled]', 'summary' => 'Compile .phpx components into PHP',
+            'details' => ['Mirrors the folders the components live in, and runs php -l over every result.']],
+        'env:example' => ['group' => 'Server', 'usage' => 'env:example', 'summary' => 'Create .env from .env-example, with a generated JWT_KEY'],
+        'tinker' => ['group' => 'Server', 'usage' => 'tinker', 'summary' => 'Interactive PHP shell with the framework loaded',
+            'details' => ['Variables last for the session. A line is shown as a value when it is an expression, and run as a statement when it is not.']],
+        'test' => ['group' => 'Server', 'usage' => 'test [filter] [--path=tests]', 'summary' => 'Run the project\'s tests (tests/*Test.php)',
+            'details' => ['Runs every TestCase under tests/ — see make:test. A filter keeps the tests whose class or method name contains it.']],
+
+        'make:controller' => ['group' => 'Generate', 'usage' => 'make:controller <Name> [--force]', 'summary' => 'A controller, and the view its action renders'],
+        'make:model' => ['group' => 'Generate', 'usage' => 'make:model <Name> [--force]', 'summary' => 'A model'],
+        'make:request' => ['group' => 'Generate', 'usage' => 'make:request <Name> [--force]', 'summary' => 'A validation class for a form'],
+        'make:middleware' => ['group' => 'Generate', 'usage' => 'make:middleware <Name> [--force]', 'summary' => 'A middleware'],
+        'make:event' => ['group' => 'Generate', 'usage' => 'make:event <Name> [--force]', 'summary' => 'An event'],
+        'make:listener' => ['group' => 'Generate', 'usage' => 'make:listener <Name> [--force]', 'summary' => 'An event listener'],
+        'make:policy' => ['group' => 'Generate', 'usage' => 'make:policy <Name> [--force]', 'summary' => 'An authorization policy that denies until told otherwise'],
+        'make:repository' => ['group' => 'Generate', 'usage' => 'make:repository <Name> [--force]', 'summary' => 'A repository'],
+        'make:service' => ['group' => 'Generate', 'usage' => 'make:service <Name> [--force]', 'summary' => 'A service'],
+        'make:scaffold' => ['group' => 'Generate', 'usage' => 'make:scaffold <Name> [--force]', 'summary' => 'Controller, view, model, repository and service at once',
+            'details' => ['A part that already exists is kept and named; --force replaces it.']],
+        'make:test' => ['group' => 'Generate', 'usage' => 'make:test <Name> [--force]', 'summary' => 'A test for ./sfphp test'],
+        'make:seeder' => ['group' => 'Generate', 'usage' => 'make:seeder <Name> [--force]', 'summary' => 'A seeder'],
+        'make:factory' => ['group' => 'Generate', 'usage' => 'make:factory <Name> [--force]', 'summary' => 'A factory for a model'],
+        'make:pwa' => ['group' => 'Generate', 'usage' => 'make:pwa [--name="My App"] [--short=] [--description=] [--color=#hex] [--background=#hex] [--logo=path.png] [--enable-push] [--enable-sync]', 'summary' => 'Manifest, service worker and icons for a PWA',
+            'details' => ['Reads app/pwa/config.php when it exists; the flags override it. --name is required without one.']],
+
+        'make:migration' => ['group' => 'Database', 'usage' => 'make:migration <name> [field ...] [--path=database/migrations] [--force]', 'summary' => 'A migration, drafted from its name and fields',
+            'details' => [
+                'The name says what the migration does:',
+                '  create_users            creates the table',
+                '  add_phone_to_users      alters it',
+                '  drop_users_table        drops it',
+                'Anything else gets an empty migration to fill in.',
+                '',
+                'A field is name:type; numbers after it are the type\'s arguments, words are modifiers:',
+                '  surname:string:255             $table->string(\'surname\', 255)',
+                '  email:string:unique            $table->string(\'email\')->unique()',
+                '  price:decimal:8,2              $table->decimal(\'price\', 8, 2)',
+                '  active:boolean:default=true    $table->boolean(\'active\')->default(true)',
+                '  author_id:foreignId:constrained  $table->foreignId(\'author_id\')->constrained()',
+                'A bare word takes no column name: timestamps, softDeletes, rememberToken, id.',
+                '',
+                'Example: ./sfphp make:migration create_posts title:string body:text timestamps',
+            ]],
+        'make:migration:create' => ['group' => 'Database', 'usage' => 'make:migration:create <table>', 'summary' => 'Deprecated: make:migration create_<table> does the same'],
+        'migrate' => ['group' => 'Database', 'usage' => 'migrate [--path=database/migrations] [--step=N]', 'summary' => 'Run the pending migrations'],
+        'rollback' => ['group' => 'Database', 'usage' => 'rollback [--path=database/migrations] [--step=N]', 'summary' => 'Undo the last N migrations (one by default)',
+            'details' => ['--step counts migrations, not batches: --step=3 undoes the three most recent, whichever batch they ran in.']],
+        'status' => ['group' => 'Database', 'usage' => 'status [--path=database/migrations]', 'summary' => 'Which migrations have run'],
+        'db:seed' => ['group' => 'Database', 'usage' => 'db:seed [--class=DatabaseSeeder]', 'summary' => 'Run a seeder'],
+        'db:fresh' => ['group' => 'Database', 'usage' => 'db:fresh [--force]', 'summary' => 'Roll back every migration and run them again',
+            'details' => ['Asks first, and refuses in production without --force. Only what migrations created is dropped.']],
+
+        'cache:clear' => ['group' => 'Cache & queue', 'usage' => 'cache:clear', 'summary' => 'Remove the cache entries that have expired'],
+        'cache:flush' => ['group' => 'Cache & queue', 'usage' => 'cache:flush', 'summary' => 'Remove every cache entry — revoked tokens and rate limits included'],
+        'queue:table' => ['group' => 'Cache & queue', 'usage' => 'queue:table', 'summary' => 'Create the database queue\'s tables'],
+        'queue:work' => ['group' => 'Cache & queue', 'usage' => 'queue:work [--timeout=3600]', 'summary' => 'Run queued jobs'],
+        'queue:failed' => ['group' => 'Cache & queue', 'usage' => 'queue:failed', 'summary' => 'List the jobs that ran out of attempts'],
+
+        'css:build' => ['group' => 'Assets', 'usage' => 'css:build [--config=sfcss.config.json] [--output=dir]', 'summary' => 'Build SFCSS and publish it',
+            'details' => ['Reads sfcss.config.json at the project root, or --config. Writes resources/assets/css and copies the result to public/assets/css.']],
+        'js:build' => ['group' => 'Assets', 'usage' => 'js:build', 'summary' => 'Bundle SFJS and publish it'],
+        'assets:publish' => ['group' => 'Assets', 'usage' => 'assets:publish [--path=public/assets] [--force] [--symlink]', 'summary' => 'Copy SFCSS and SFJS where the browser can reach them',
+            'details' => ['A published file you changed yourself is kept unless --force; one the framework published is replaced.']],
+
+        'init' => ['group' => 'Project', 'usage' => 'init', 'summary' => 'Finish a new project: .env, assets, .gitignore and composer scripts',
+            'details' => ['composer create-project runs it. Safe to run again: it only adds what is missing.']],
+        'reset' => ['group' => 'Project', 'usage' => 'reset [--force]', 'summary' => 'Remove the example application',
+            'details' => [
+                'Empties app/components, app/controllers, app/models, app/Jobs, app/resources/views,',
+                'database/migrations, database/seeders and database/factories, and rewrites the routes file.',
+                'Keeps the users migration and a create_sessions_table migration if you made one.',
+                'It lists what it will delete and asks you to type "reset". There is no undo.',
+            ]],
+        'upgrade' => ['group' => 'Project', 'usage' => 'upgrade [--to=v0.32.0] [--from=dir] [--dry-run] [--force]', 'summary' => 'Replace the framework, keep the application',
+            'details' => [
+                'Replaced whole: src/, sfphp, server.php.',
+                'Merged in:      resources/, lang/, tools/ — your files there stay.',
+                'Compared:       public/index.php, composer.json and sfcss.config.json are written as <file>.new.',
+                'Untouched:      app/, database/, the rest of public/, .env, vendor/.',
+                '',
+                'Without --to, the latest release. --from= is a copy you already have; --dry-run changes nothing.',
+                'Commit before running it: a change you made under src/ is lost.',
+            ]],
+
+        'list' => ['group' => 'Help', 'usage' => 'list', 'summary' => 'Every command, briefly'],
+        'help' => ['group' => 'Help', 'usage' => 'help [command]', 'summary' => 'This screen, or one command in detail'],
+        'version' => ['group' => 'Help', 'usage' => 'version', 'summary' => 'The framework\'s version'],
     ];
 
     /** Where a release is fetched from, when no local copy is given. */
@@ -162,6 +268,14 @@ final class Application
             $command = $args[0] ?? 'help';
             $arguments = array_slice($args, 1);
 
+            /*
+             * "<command> --help" explains the command instead of running it.
+             * No command read --help, so `upgrade --help` fetched a release.
+             */
+            if (isset(self::COMMANDS[$command]) && (in_array('--help', $arguments, true) || in_array('-h', $arguments, true))) {
+                return $this->printHelp([$command]);
+            }
+
             return match ($command) {
                 'help', '--help', '-h' => $this->printHelp($arguments),
                 'list', '--list' => $this->listCommands(),
@@ -170,6 +284,7 @@ final class Application
                 'env:example' => $this->envExample(),
                 'routes' => $this->routes($arguments),
                 'build' => $this->build($arguments),
+                'init' => $this->init(),
                 'reset' => $this->reset($arguments),
                 'upgrade' => $this->upgrade($arguments),
                 'css:build' => $this->cssBuild($arguments),
@@ -200,6 +315,8 @@ final class Application
                 'cache:flush' => $this->cacheFlush($arguments),
                 'queue:work' => $this->queueWork($arguments),
                 'queue:failed' => $this->queueFailed($arguments),
+                'queue:table' => $this->queueTable(),
+                'test' => $this->test($arguments),
                 'tinker' => $this->tinker(),
                 default => $this->unknownCommand($command),
             };
@@ -211,8 +328,9 @@ final class Application
     }
 
     /**
-     * Print the CLI help screen.
+     * Print the CLI help screen, or one command's.
      *
+     * @param array<int, string> $arguments The command arguments
      * @return int
      */
     private function printHelp(array $arguments = []): int
@@ -220,235 +338,87 @@ final class Application
         $command = $this->firstArgument($arguments);
 
         if ($command === null) {
-            $this->writeLine('SFPHP CLI');
+            $this->writeLine('SFPHP ' . self::version());
             $this->writeLine('');
             $this->writeLine('Usage: ./sfphp <command> [arguments]');
-            $this->writeLine('');
-            $this->writeLine('Generation Commands:');
-            $this->writeLine('  make:controller <name>     Generate a controller skeleton');
-            $this->writeLine('  make:model <name>          Generate a model skeleton');
-            $this->writeLine('  make:pwa [options]         Generate PWA (Progressive Web App) setup');
-            $this->writeLine('  make:repository <name>     Generate a repository skeleton');
-            $this->writeLine('  make:request <name>        Generate a form request class');
-            $this->writeLine('  make:service <name>        Generate a service skeleton');
-            $this->writeLine('  make:scaffold <name>       Generate full stack (controller, model, repository, service)');
-            $this->writeLine('');
-            $this->writeLine('Migration Commands:');
-            $this->writeLine('  make:migration <name>            [--path=database/migrations]');
-            $this->writeLine('  make:migration:create <table>    [--path=database/migrations]');
-            $this->writeLine('  migrate                          [--path=database/migrations] [--step=N]');
-            $this->writeLine('  rollback                         [--path=database/migrations] [--step=N]');
-            $this->writeLine('  status                           [--path=database/migrations]');
-            $this->writeLine('');
-            $this->writeLine('Seeding & Factory Commands:');
-            $this->writeLine('  make:seeder <name>    Generate a seeder class');
-            $this->writeLine('  make:factory <name>   Generate a factory class');
-            $this->writeLine('  db:seed               Run database seeders');
-            $this->writeLine('');
-            $this->writeLine('Cache Commands:');
-            $this->writeLine('  assets:publish        Copy SFCSS and SFJS into public/assets');
-            $this->writeLine('  cache:clear           Clear expired cache entries');
-            $this->writeLine('  cache:flush           Flush all cache');
-            $this->writeLine('');
-            $this->writeLine('Queue Commands:');
-            $this->writeLine('  queue:work            Start queue worker [--timeout=3600]');
-            $this->writeLine('  queue:failed          List failed jobs');
-            $this->writeLine('');
-            $this->writeLine('Server & CSS Commands:');
-            $this->writeLine('  serve                 Start development server (127.0.0.1:8000; --host/--port override)');
-            $this->writeLine('  env:example           Create .env from .env-example');
-            $this->writeLine('  routes                List all registered routes');
-            $this->writeLine('  build --phpx          Compile .phpx components into PHP');
-            $this->writeLine('  reset                 Remove the example application [--force]');
-            $this->writeLine('  upgrade               Replace the framework, keep the application [--to=]');
-            $this->writeLine('  css:build             Build SFCSS from config.json');
-            $this->writeLine('  js:build              Minify SFJS');
-            $this->writeLine('');
-            $this->writeLine('Utility Commands:');
-            $this->writeLine('  list                  Show all available commands');
-            $this->writeLine('  version               Show framework version');
-            $this->writeLine('  help [command]        Show help for a command');
+            $this->writeLine('       ./sfphp help <command>   (or <command> --help) for one command in detail');
+
+            $group = null;
+
+            foreach (self::COMMANDS as $name => $entry) {
+                if ($entry['group'] !== $group) {
+                    $group = $entry['group'];
+                    $this->writeLine('');
+                    $this->writeLine($group . ':');
+                }
+
+                $this->writeLine(sprintf('  %-22s %s', $name, $entry['summary']));
+            }
+
             $this->writeLine('');
             $this->writeLine('Examples:');
             $this->writeLine('  ./sfphp make:controller Post');
-            $this->writeLine('  ./sfphp make:scaffold User');
-            $this->writeLine('  ./sfphp serve');
-            $this->writeLine('  ./sfphp routes');
-            $this->writeLine('  ./sfphp help migrate');
+            $this->writeLine('  ./sfphp make:migration create_posts title:string timestamps');
+            $this->writeLine('  ./sfphp serve --port=8080');
+            $this->writeLine('  ./sfphp help make:migration');
 
             return 0;
         }
 
-        // Show help for specific command
-        switch ($command) {
-            case 'make:scaffold':
-                $this->writeLine('Usage: ./sfphp make:scaffold <name>');
-                $this->writeLine('');
-                $this->writeLine('Generate a full CRUD stack (controller, model, repository, service)');
-                $this->writeLine('');
-                $this->writeLine('Example: ./sfphp make:scaffold Post');
-                break;
-            case 'make:migration':
-                $this->writeLine('Usage: ./sfphp make:migration <name> [field ...] [--path=dir]');
-                $this->writeLine('');
-                $this->writeLine('The name says what the migration does:');
-                $this->writeLine('  create_users            creates the table');
-                $this->writeLine('  add_phone_to_users      alters it');
-                $this->writeLine('  drop_users_table        drops it');
-                $this->writeLine('Anything else gets an empty migration to fill in.');
-                $this->writeLine('');
-                $this->writeLine('A field is name:type, numbers after it are the type\'s arguments,');
-                $this->writeLine('words after it are modifiers:');
-                $this->writeLine('  surname:string:255           $table->string(\'surname\', 255)');
-                $this->writeLine('  email:string:unique          $table->string(\'email\')->unique()');
-                $this->writeLine('  price:decimal:8,2            $table->decimal(\'price\', 8, 2)');
-                $this->writeLine('  active:boolean:default=true  $table->boolean(\'active\')->default(true)');
-                $this->writeLine('');
-                $this->writeLine('A bare word takes no column name: timestamps, softDeletes,');
-                $this->writeLine('rememberToken, id.');
-                $this->writeLine('');
-                $this->writeLine('Example:');
-                $this->writeLine('  ./sfphp make:migration create_users name:string email:string:unique timestamps');
-                break;
-            case 'make:migration:create':
-                $this->writeLine('Usage: ./sfphp make:migration:create <table> [--path=dir]');
-                $this->writeLine('');
-                $this->writeLine('Create a migration with pre-filled schema (id, timestamps)');
-                $this->writeLine('');
-                $this->writeLine('Example: ./sfphp make:migration:create posts');
-                break;
-            case 'serve':
-                $this->writeLine('Usage: ./sfphp serve');
-                $this->writeLine('');
-                $this->writeLine('Start the built-in PHP development server');
-                $this->writeLine('Server runs on http://localhost:8000');
-                break;
-            case 'routes':
-                $this->writeLine('Usage: ./sfphp routes');
-                $this->writeLine('');
-                $this->writeLine('Display a table of all registered application routes');
-                break;
-            case 'css:build':
-                $this->writeLine('Usage: ./sfphp css:build');
-                $this->writeLine('');
-                $this->writeLine('Build SFCSS stylesheet from tools/css-builder/sfcss.config.json');
-                $this->writeLine('Output: public/assets/css/sfcss.css');
-                $this->writeLine('');
-                $this->writeLine('Edit tools/css-builder/sfcss.config.json to customize colors and spacing.');
-                break;
-            case 'upgrade':
-                $this->writeLine('Usage: ./sfphp upgrade [--to=v0.13.0] [--from=dir] [--dry-run] [--force]');
-                $this->writeLine('');
-                $this->writeLine('Replace the framework inside this project, keeping the application.');
-                $this->writeLine('');
-                $this->writeLine('A project created from this package does not have the framework as a');
-                $this->writeLine('dependency — the framework\'s files are the project — so composer update');
-                $this->writeLine('has nothing to update. This is what upgrading means instead.');
-                $this->writeLine('');
-                $this->writeLine('Replaced whole: src/, sfphp, server.php.');
-                $this->writeLine('Merged in:      resources/, lang/, tools/ — your files there stay.');
-                $this->writeLine('Compared:       public/index.php and composer.json are written as');
-                $this->writeLine('                <file>.new for you to read, never applied.');
-                $this->writeLine('Untouched:      app/, database/, the rest of public/, .env, vendor/.');
-                $this->writeLine('');
-                $this->writeLine('--to= is a tag or branch to fetch with git; --from= is a copy you');
-                $this->writeLine('already have. --dry-run prints the plan and changes nothing.');
-                $this->writeLine('');
-                $this->writeLine('Commit before running it: a change you made under src/ is lost.');
-                break;
-            case 'reset':
-                $this->writeLine('Usage: ./sfphp reset [--force]');
-                $this->writeLine('');
-                $this->writeLine('Remove the example application, so the project starts from its own code.');
-                $this->writeLine('');
-                $this->writeLine('Emptied: app/components, app/controllers, app/models, app/Jobs,');
-                $this->writeLine('         app/resources/views, database/migrations, database/seeders,');
-                $this->writeLine('         database/factories.');
-                $this->writeLine('The routes file is rewritten with no routes.');
-                $this->writeLine('');
-                $this->writeLine('Kept: app/config, lang, public, the framework, and the two migrations');
-                $this->writeLine('the framework ships — users and sessions, which the authentication');
-                $this->writeLine('guard and the database session driver are written against. Migrations');
-                $this->writeLine('you wrote go with everything else.');
-                $this->writeLine('');
-                $this->writeLine('It lists what it will delete and asks you to type "reset" first.');
-                $this->writeLine('--force skips the question, for a script. There is no undo.');
-                break;
-            default:
-                $this->writeLine("Help for command '$command' not available");
-                $this->writeLine("Run './sfphp help' to see all commands");
+        $entry = self::COMMANDS[$command] ?? null;
+
+        if ($entry === null) {
+            fwrite(STDERR, "Unknown command: $command" . PHP_EOL);
+            fwrite(STDERR, 'Run "./sfphp list" to see every command.' . PHP_EOL);
+
+            return 1;
+        }
+
+        $this->writeLine('Usage: ./sfphp ' . $entry['usage']);
+        $this->writeLine('');
+        $this->writeLine($entry['summary'] . '.');
+
+        if (($entry['details'] ?? []) !== []) {
+            $this->writeLine('');
+
+            foreach ($entry['details'] as $line) {
+                $this->writeLine($line);
+            }
         }
 
         return 0;
     }
 
+    /**
+     * Every command, one per line.
+     *
+     * @return int
+     */
     private function listCommands(): int
     {
-        $this->writeLine('Available Commands:');
-        $this->writeLine('');
-        $this->writeLine('Generation:');
-        $this->writeLine('  make:controller');
-        $this->writeLine('  make:model');
-        $this->writeLine('  make:repository');
-        $this->writeLine('  make:request');
-        $this->writeLine('  make:service');
-        $this->writeLine('  make:scaffold');
-        $this->writeLine('');
-        $this->writeLine('Generation Commands:');
-        $this->writeLine('  make:controller <name>     Generate a controller skeleton');
-        $this->writeLine('  make:model <name>          Generate a model skeleton');
-        $this->writeLine('  make:repository <name>     Generate a repository skeleton');
-        $this->writeLine('  make:service <name>        Generate a service skeleton');
-        $this->writeLine('  make:request <name>        Generate a form request validation class');
-        $this->writeLine('  make:scaffold <name>       Generate full stack (controller, model, repository, service)');
-        $this->writeLine('  make:test <name>           Generate a test class');
-        $this->writeLine('  make:middleware <name>     Generate a middleware class');
-        $this->writeLine('  make:event <name>          Generate an event class');
-        $this->writeLine('  make:listener <name>       Generate an event listener');
-        $this->writeLine('  make:policy <name>         Generate an authorization policy');
-        $this->writeLine('');
-        $this->writeLine('Migration Commands:');
-        $this->writeLine('  make:migration <name>            [--path=database/migrations]');
-        $this->writeLine('  make:migration:create <table>    [--path=database/migrations]');
-        $this->writeLine('  migrate                          [--path=database/migrations] [--step=N]');
-        $this->writeLine('  rollback                         [--path=database/migrations] [--step=N]');
-        $this->writeLine('  status                           [--path=database/migrations]');
-        $this->writeLine('');
-        $this->writeLine('Database Commands:');
-        $this->writeLine('  db:seed                    Run database seeders');
-        $this->writeLine('  db:fresh                   Reset database and run migrations');
-        $this->writeLine('');
-        $this->writeLine('Server & Development:');
-        $this->writeLine('  serve                      Start development server (localhost:8000)');
-        $this->writeLine('  env:example                Create .env from .env-example');
-        $this->writeLine('  routes                     List all registered routes');
-        $this->writeLine('  build --phpx               Compile .phpx components into PHP');
-        $this->writeLine('  reset                      Remove the example application [--force]');
-        $this->writeLine('  upgrade                    Replace the framework, keep the application [--to=]');
-        $this->writeLine('  tinker                     Interactive PHP shell');
-        $this->writeLine('');
-        $this->writeLine('Utility Commands:');
-        $this->writeLine('  list                       Show all available commands');
-        $this->writeLine('  version                    Show framework version');
-        $this->writeLine('  help [command]             Show help for a command');
-        $this->writeLine('  tinker                     Interactive PHP shell');
-        $this->writeLine('');
-        $this->writeLine('Examples:');
-        $this->writeLine('  ./sfphp make:scaffold Post');
-        $this->writeLine('  ./sfphp make:test PostTest');
-        $this->writeLine('  ./sfphp migrate');
-        $this->writeLine('  ./sfphp db:fresh');
-        $this->writeLine('  ./sfphp serve');
-        $this->writeLine('  ./sfphp tinker');
+        foreach (self::COMMANDS as $entry) {
+            $this->writeLine('  ./sfphp ' . $entry['usage']);
+        }
 
         return 0;
+    }
+
+    /**
+     * The commands the console answers.
+     *
+     * @internal For the test that keeps COMMANDS and the dispatcher in step.
+     * @return list<string>
+     */
+    public static function commandNames(): array
+    {
+        return array_keys(self::COMMANDS);
     }
 
     private function printVersion(): int
     {
         $this->writeLine('SFPHP ' . self::version());
         $this->writeLine('');
-        $this->writeLine('A minimal, educational PHP microframework');
+        $this->writeLine('A zero-dependency PHP framework');
         $this->writeLine('GitHub: https://github.com/fabioaacarneiro/sfphp-project');
 
         return 0;
@@ -470,27 +440,7 @@ final class Application
      */
     public static function version(): string
     {
-        if (class_exists(\Composer\InstalledVersions::class)) {
-            try {
-                $version = \Composer\InstalledVersions::getPrettyVersion('fabioaacarneiro/sfphp-framework');
-
-                if (is_string($version) && $version !== '') {
-                    return $version;
-                }
-            } catch (\OutOfBoundsException) {
-                // Not installed as a dependency: this is a clone, handled below.
-            }
-
-            $root = \Composer\InstalledVersions::getRootPackage();
-            $version = $root['pretty_version'] ?? '';
-
-            if (is_string($version) && $version !== '' && !str_contains($version, 'no-version-set')) {
-                return $version;
-            }
-        }
-
-        // A clone with no tag reachable. Saying so beats inventing a number.
-        return 'dev';
+        return \SfphpProject\src\Sfphp::VERSION;
     }
 
     /**
@@ -515,11 +465,7 @@ final class Application
         $fields = [];
         $seenName = false;
 
-        foreach ($arguments as $argument) {
-            if (str_starts_with($argument, '--')) {
-                continue;
-            }
-
+        foreach ($this->positionals($arguments) as $argument) {
             if (!$seenName) {
                 $seenName = true;
 
@@ -655,10 +601,14 @@ final class Application
             throw new \InvalidArgumentException('Controller name is required.');
         }
 
-        $generator = new ControllerGenerator($this->rootPath());
+        $generator = new ControllerGenerator($this->rootPath(), in_array('--force', $arguments, true));
         $file = $generator->generate($name);
 
         $this->writeLine('Created controller: ' . $this->relativePath($file));
+
+        if ($generator->view !== null) {
+            $this->writeLine('Created view:       ' . $this->relativePath($generator->view));
+        }
 
         return 0;
     }
@@ -676,7 +626,7 @@ final class Application
             throw new \InvalidArgumentException('Model name is required.');
         }
 
-        $generator = new ModelGenerator($this->rootPath());
+        $generator = new ModelGenerator($this->rootPath(), in_array('--force', $arguments, true));
         $file = $generator->generate($name);
 
         $this->writeLine('Created model: ' . $this->relativePath($file));
@@ -697,7 +647,7 @@ final class Application
             throw new \InvalidArgumentException('Repository name is required.');
         }
 
-        $generator = new RepositoryGenerator($this->rootPath());
+        $generator = new RepositoryGenerator($this->rootPath(), in_array('--force', $arguments, true));
         $file = $generator->generate($name);
 
         $this->writeLine('Created repository: ' . $this->relativePath($file));
@@ -754,6 +704,18 @@ final class Application
         $logo = $this->option($arguments, 'logo');
         $push = in_array('--enable-push', $arguments, true) || $config->pushNotificationsEnabled();
         $sync = in_array('--enable-sync', $arguments, true) || $config->backgroundSyncEnabled();
+
+        /*
+         * The colours go into the manifest and a <meta> tag as they are, so a
+         * typo is caught here rather than by a browser that silently ignores it.
+         */
+        foreach (['color' => $color, 'background' => $background] as $option => $value) {
+            if (preg_match('/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', (string) $value) !== 1) {
+                fwrite(STDERR, "Error: --{$option} must be a hex colour such as #0d6efd, not \"{$value}\"." . PHP_EOL);
+
+                return 1;
+            }
+        }
 
         $publicPath = $this->projectPath('public');
         @mkdir($publicPath . '/assets/icons', 0755, true);
@@ -856,13 +818,19 @@ final class Application
         $this->writeLine('  1. Add to your layout\'s <head>:');
         $this->writeLine('       <link rel="manifest" href="/manifest.json">');
         $this->writeLine('       <meta name="theme-color" content="' . $color . '">');
-        $this->writeLine('       <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">');
+
+        // Only when it was made: the line used to be printed for a file that did not exist.
+        if (is_file($publicPath . '/assets/icons/apple-touch-icon.png')) {
+            $this->writeLine('       <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">');
+        }
+
         $this->writeLine('       <script src="/install-sw.js" defer></script>');
         $this->writeLine($hasConfig
             ? '  2. Settings live in app/pwa/config.php; run make:pwa again after changing it'
             : '  2. Copy resources/pwa/config.php to app/pwa/config.php to keep these settings in a file');
         $this->writeLine('  3. Test in DevTools: F12 → Application → Manifest');
-        $this->writeLine('  4. Read the complete guide: docs/en/PWA_GUIDE.md');
+        // The guide is not shipped inside a project, so the link is to where it lives.
+        $this->writeLine('  4. Read the complete guide: https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/en/PWA_GUIDE.md');
         $this->writeLine('');
 
         return 0;
@@ -881,7 +849,7 @@ final class Application
             throw new \InvalidArgumentException('Service name is required.');
         }
 
-        $generator = new ServiceGenerator($this->rootPath());
+        $generator = new ServiceGenerator($this->rootPath(), in_array('--force', $arguments, true));
         $file = $generator->generate($name);
 
         $this->writeLine('Created service: ' . $this->relativePath($file));
@@ -905,24 +873,33 @@ final class Application
         $this->writeLine('Creating full stack for ' . $name . '...');
         $this->writeLine('');
 
-        $controller = new ControllerGenerator($this->rootPath());
-        $controllerFile = $controller->generate($name);
-        $this->writeLine('✓ Created controller: ' . $this->relativePath($controllerFile));
+        $force = in_array('--force', $arguments, true);
 
-        $model = new ModelGenerator($this->rootPath());
-        $modelFile = $model->generate($name);
-        $this->writeLine('✓ Created model: ' . $this->relativePath($modelFile));
+        /*
+         * A part that already exists is kept and named, and the rest are
+         * still written: scaffolding a model you already have should give you
+         * the controller, not overwrite the model.
+         */
+        foreach ([
+            'controller' => new ControllerGenerator($this->rootPath(), $force),
+            'model' => new ModelGenerator($this->rootPath(), $force),
+            'repository' => new RepositoryGenerator($this->rootPath(), $force),
+            'service' => new ServiceGenerator($this->rootPath(), $force),
+        ] as $part => $generator) {
+            try {
+                $file = $generator->generate($name);
+                $this->writeLine('✓ Created ' . $part . ': ' . $this->relativePath($file));
 
-        $repository = new RepositoryGenerator($this->rootPath());
-        $repositoryFile = $repository->generate($name);
-        $this->writeLine('✓ Created repository: ' . $this->relativePath($repositoryFile));
-
-        $service = new ServiceGenerator($this->rootPath());
-        $serviceFile = $service->generate($name);
-        $this->writeLine('✓ Created service: ' . $this->relativePath($serviceFile));
+                if ($generator instanceof ControllerGenerator && $generator->view !== null) {
+                    $this->writeLine('✓ Created view: ' . $this->relativePath($generator->view));
+                }
+            } catch (\SfphpProject\src\Console\Generators\GeneratorFileExists $exists) {
+                $this->writeLine('• Kept existing ' . $part . ' (--force replaces it)');
+            }
+        }
 
         $this->writeLine('');
-        $this->writeLine('Full stack created successfully!');
+        $this->writeLine('Done.');
 
         return 0;
     }
@@ -936,7 +913,36 @@ final class Application
     private function serve(array $arguments): int
     {
         $host = $this->option($arguments, 'host') ?? '127.0.0.1';
-        $port = (int)($this->option($arguments, 'port') ?? '8000');
+        $portOption = $this->option($arguments, 'port') ?? '8000';
+
+        if (!ctype_digit($portOption) || (int) $portOption < 1 || (int) $portOption > 65535) {
+            fwrite(STDERR, "Error: --port must be a number from 1 to 65535, not \"{$portOption}\"." . PHP_EOL);
+
+            return 1;
+        }
+
+        $port = (int) $portOption;
+
+        if (preg_match('/^[A-Za-z0-9.:\[\]-]+$/', $host) !== 1) {
+            fwrite(STDERR, "Error: --host \"{$host}\" is not a host name or address." . PHP_EOL);
+
+            return 1;
+        }
+
+        /*
+         * The port is tried before announcing anything. The banner used to say
+         * "Server running" and PHP then failed with "Address already in use",
+         * and the command still exited 0.
+         */
+        $probe = @stream_socket_server('tcp://' . $host . ':' . $port, $errorCode, $errorMessage);
+
+        if ($probe === false) {
+            fwrite(STDERR, "Error: cannot listen on {$host}:{$port} ({$errorMessage}). Choose another with --port." . PHP_EOL);
+
+            return 1;
+        }
+
+        fclose($probe);
 
         /*
          * The stylesheet and the script live in the package and are copied into
@@ -964,11 +970,18 @@ final class Application
         $this->writeLine('');
 
         $root = $this->rootPath();
-        $cmd = "php -S $host:$port -t $root/public $root/server.php";
 
-        passthru($cmd);
+        /*
+         * Quoted, so a project in "My Projects" is served rather than read as
+         * two arguments, and with the PHP running this command rather than
+         * whichever `php` comes first on the PATH.
+         */
+        $cmd = escapeshellarg(PHP_BINARY) . ' -S ' . escapeshellarg($host . ':' . $port)
+            . ' -t ' . escapeshellarg($root . '/public') . ' ' . escapeshellarg($root . '/server.php');
 
-        return 0;
+        passthru($cmd, $status);
+
+        return $status;
     }
 
     /**
@@ -1048,7 +1061,7 @@ final class Application
 
                 if (!is_file($webFile) && !is_file($apiFile)) {
                     $this->writeLine('No route file found. Looked for app/routes/web.php and app/routes/api.php.');
-                    $this->writeLine('Pass one with --path=, or run ./sfphp init to scaffold a project.');
+                    $this->writeLine('Pass one with --path=, or create app/routes/web.php.');
 
                     return 1;
                 }
@@ -1120,7 +1133,7 @@ final class Application
             throw new \InvalidArgumentException('Request name is required.');
         }
 
-        $generator = new RequestGenerator($this->rootPath());
+        $generator = new RequestGenerator($this->rootPath(), in_array('--force', $arguments, true));
         $file = $generator->generate($name);
 
         $this->writeLine('Created request: ' . $this->relativePath($file));
@@ -1149,7 +1162,7 @@ final class Application
          * so there is one code path rather than two that drift.
          */
         $this->writeLine('  make:migration:create is deprecated. Use:');
-        $this->writeLine('    ./sfphp make:migration create_' . $table . ' name:string email:string:unique timestamps');
+        $this->writeLine('    ./sfphp make:migration create_' . $table . ' title:string timestamps');
         $this->writeLine('');
 
         $forwarded = ['create_' . $table];
@@ -1159,65 +1172,6 @@ final class Application
         }
 
         return $this->makeMigration($forwarded);
-    }
-
-    /**
-     * The previous implementation, no longer reached.
-     *
-     * @param array<int, string> $arguments The command arguments
-     * @return int
-     */
-    private function makeMigrationCreateLegacy(array $arguments): int
-    {
-        $table = $this->firstArgument($arguments);
-
-        if ($table === null) {
-            throw new \InvalidArgumentException('Table name is required.');
-        }
-
-        $directory = $this->option($arguments, 'path') ?? 'database/migrations';
-        $creator = new \SfphpProject\src\Migrations\MigrationCreator($this->projectPath($directory));
-
-        $timestamp = date('YmdHis');
-        $name = "{$timestamp}_create_{$table}_table";
-        $file = $creator->create($name);
-
-        // Replace the stub with a pre-filled schema
-        $tableSingular = rtrim($table, 's');
-        $content = <<<PHP
-<?php
-
-use SfphpProject\\src\\Migrations\\Blueprint;
-use SfphpProject\\src\\Migrations\\Migration;
-use SfphpProject\\src\\Migrations\\Schema;
-
-return new class extends Migration
-{
-    public function up(Schema \$schema): void
-    {
-        \$schema->create('$table', function (Blueprint \$table): void {
-            \$table->id();
-            // \$table->string('name');
-            \$table->timestamps();
-        });
-    }
-
-    public function down(Schema \$schema): void
-    {
-        \$schema->dropIfExists('$table');
-    }
-};
-PHP;
-
-        file_put_contents($file, $content);
-
-        $this->writeLine('Created migration: ' . $this->relativePath($file));
-        $this->writeLine('');
-        $this->writeLine('Next steps:');
-        $this->writeLine('1. Edit the migration to add your columns');
-        $this->writeLine('2. Run: ./sfphp migrate');
-
-        return 0;
     }
 
     /**
@@ -1241,13 +1195,44 @@ PHP;
      */
     private function firstArgument(array $arguments): ?string
     {
-        foreach ($arguments as $argument) {
-            if (!str_starts_with($argument, '--')) {
-                return $argument;
+        return $this->positionals($arguments)[0] ?? null;
+    }
+
+    /**
+     * The options that take a value, which may follow them after a space.
+     */
+    private const VALUE_OPTIONS = [
+        'background', 'class', 'color', 'config', 'description', 'from', 'host', 'logo',
+        'name', 'output', 'path', 'port', 'short', 'step', 'timeout', 'to', 'filter',
+    ];
+
+    /**
+     * The arguments that are not options, and not an option's value.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return list<string> The positional arguments, in order
+     */
+    private function positionals(array $arguments): array
+    {
+        $positionals = [];
+        $arguments = array_values($arguments);
+
+        for ($i = 0, $count = count($arguments); $i < $count; $i++) {
+            $argument = $arguments[$i];
+
+            if (str_starts_with($argument, '--')) {
+                // "--path dir": the next word is this option's value, not a name.
+                if (!str_contains($argument, '=') && in_array(substr($argument, 2), self::VALUE_OPTIONS, true)) {
+                    $i++;
+                }
+
+                continue;
             }
+
+            $positionals[] = $argument;
         }
 
-        return null;
+        return $positionals;
     }
 
     /**
@@ -1260,10 +1245,20 @@ PHP;
     private function option(array $arguments, string $name): ?string
     {
         $prefix = '--' . $name . '=';
+        $arguments = array_values($arguments);
 
-        foreach ($arguments as $argument) {
+        foreach ($arguments as $index => $argument) {
             if (str_starts_with($argument, $prefix)) {
                 return substr($argument, strlen($prefix));
+            }
+
+            /*
+             * "--port 8001" as well as "--port=8001". The spaced form used to
+             * be ignored without a word — the server started on 8000 and
+             * make:pwa --name "My App" said --name was missing.
+             */
+            if ($argument === '--' . $name && isset($arguments[$index + 1]) && !str_starts_with($arguments[$index + 1], '--')) {
+                return $arguments[$index + 1];
             }
         }
 
@@ -1395,7 +1390,7 @@ PHP;
             throw new \InvalidArgumentException('Test name is required.');
         }
 
-        $generator = new TestGenerator($this->rootPath());
+        $generator = new TestGenerator($this->rootPath(), in_array('--force', $arguments, true));
         $file = $generator->generate($name);
 
         $this->writeLine('Created test: ' . $this->relativePath($file));
@@ -1416,7 +1411,7 @@ PHP;
             throw new \InvalidArgumentException('Middleware name is required.');
         }
 
-        $generator = new MiddlewareGenerator($this->rootPath());
+        $generator = new MiddlewareGenerator($this->rootPath(), in_array('--force', $arguments, true));
         $file = $generator->generate($name);
 
         $this->writeLine('Created middleware: ' . $this->relativePath($file));
@@ -1437,7 +1432,7 @@ PHP;
             throw new \InvalidArgumentException('Event name is required.');
         }
 
-        $generator = new EventGenerator($this->rootPath());
+        $generator = new EventGenerator($this->rootPath(), in_array('--force', $arguments, true));
         $file = $generator->generate($name);
 
         $this->writeLine('Created event: ' . $this->relativePath($file));
@@ -1458,7 +1453,7 @@ PHP;
             throw new \InvalidArgumentException('Listener name is required.');
         }
 
-        $generator = new ListenerGenerator($this->rootPath());
+        $generator = new ListenerGenerator($this->rootPath(), in_array('--force', $arguments, true));
         $file = $generator->generate($name);
 
         $this->writeLine('Created listener: ' . $this->relativePath($file));
@@ -1479,7 +1474,7 @@ PHP;
             throw new \InvalidArgumentException('Policy name is required.');
         }
 
-        $generator = new PolicyGenerator($this->rootPath());
+        $generator = new PolicyGenerator($this->rootPath(), in_array('--force', $arguments, true));
         $file = $generator->generate($name);
 
         $this->writeLine('Created policy: ' . $this->relativePath($file));
@@ -1500,7 +1495,7 @@ PHP;
             throw new \InvalidArgumentException('Seeder name is required.');
         }
 
-        $generator = new SeederGenerator($this->rootPath());
+        $generator = new SeederGenerator($this->rootPath(), in_array('--force', $arguments, true));
         $file = $generator->generate($name);
 
         $this->writeLine('Created seeder: ' . $this->relativePath($file));
@@ -1521,7 +1516,7 @@ PHP;
             throw new \InvalidArgumentException('Factory name is required.');
         }
 
-        $generator = new FactoryGenerator($this->rootPath());
+        $generator = new FactoryGenerator($this->rootPath(), in_array('--force', $arguments, true));
         $file = $generator->generate($name);
 
         $this->writeLine('Created factory: ' . $this->relativePath($file));
@@ -1591,10 +1586,43 @@ PHP;
     private function dbFresh(array $arguments): int
     {
         try {
-            $runner = $this->runner($arguments);
-            $runner->fresh();
+            /*
+             * The one database command that throws data away, and it used to
+             * do so without a word. It asks, like reset and upgrade, and it
+             * will not run in production without --force.
+             */
+            if (!in_array('--force', $arguments, true)) {
+                if (Config::get('APP_ENV') === 'production') {
+                    fwrite(STDERR, 'Refusing to run db:fresh in production. Pass --force if that is what you mean.' . PHP_EOL);
 
-            $this->writeLine('Database dropped and recreated successfully.');
+                    return 1;
+                }
+
+                if (!stream_isatty(STDIN)) {
+                    fwrite(STDERR, 'Refusing to run db:fresh with no terminal to confirm at. Pass --force if that is what you mean.' . PHP_EOL);
+
+                    return 1;
+                }
+
+                fwrite(STDOUT, 'db:fresh rolls back every migration — dropping the tables they created and their data — and runs them again.' . PHP_EOL);
+                fwrite(STDOUT, 'Type "fresh" to confirm: ');
+
+                if (strtolower(trim((string) fgets(STDIN))) !== 'fresh') {
+                    $this->writeLine('Nothing was changed.');
+
+                    return 0;
+                }
+            }
+
+            $runner = $this->runner($arguments);
+            $missing = $runner->fresh();
+
+            $this->writeLine('Every migration was rolled back.');
+
+            foreach ($missing as $migration) {
+                fwrite(STDERR, "Warning: {$migration} was recorded but its file is gone, so what it created was not dropped." . PHP_EOL);
+            }
+
             $this->writeLine('Running migrations...');
 
             $applied = $runner->migrate();
@@ -1676,7 +1704,13 @@ PHP;
     }
 
     /**
-     * Clear expired cache entries.
+     * Remove the cache entries that have expired.
+     *
+     * This used to call flush(), the same as cache:flush, while its help said
+     * "clear expired entries". The cache is not only cached pages: it holds
+     * the revoked-token list, the rate-limit counters and, with
+     * SESSION_DRIVER=cache, every session. Flushing it brought revoked tokens
+     * back, reset every limit and logged everyone out.
      *
      * @param array<int, string> $arguments The command arguments
      * @return int
@@ -1684,10 +1718,9 @@ PHP;
     private function cacheClear(array $arguments): int
     {
         try {
-            $cache = cache();
-            $cache->flush();
+            $removed = cache()->prune();
 
-            $this->writeLine('Cache cleared successfully.');
+            $this->writeLine(sprintf('Removed %d expired cache %s.', $removed, $removed === 1 ? 'entry' : 'entries'));
 
             return 0;
         } catch (Throwable $e) {
@@ -1697,7 +1730,7 @@ PHP;
     }
 
     /**
-     * Flush all cache.
+     * Remove every cache entry.
      *
      * @param array<int, string> $arguments The command arguments
      * @return int
@@ -1705,16 +1738,133 @@ PHP;
     private function cacheFlush(array $arguments): int
     {
         try {
-            $cache = cache();
-            $cache->flush();
+            cache()->flush();
 
-            $this->writeLine('All cache flushed successfully.');
+            $this->writeLine('All cache entries removed. Revoked tokens, rate-limit counters and cache-held sessions were reset with them.');
 
             return 0;
         } catch (Throwable $e) {
             fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
             return 1;
         }
+    }
+
+    /**
+     * Finish a project that was just created.
+     *
+     * The package is the project, so a created project started with the
+     * framework's own repository files: no .gitignore — it is export-ignored —
+     * so the first `git add .` committed .env with its JWT key and vendor/;
+     * and composer scripts that run the framework's test suite, which is not
+     * shipped, so `composer test` failed. This puts the project's versions in
+     * place. Each step only adds what is missing, so running it twice is safe.
+     *
+     * @return int
+     */
+    private function init(): int
+    {
+        $status = $this->envExample();
+        $this->publishAfterBuild();
+
+        $gitignore = $this->projectPath('.gitignore');
+        $stub = $this->rootPath() . '/resources/project/gitignore';
+
+        if (!is_file($gitignore) && is_file($stub) && copy($stub, $gitignore)) {
+            $this->writeLine('Created .gitignore');
+        }
+
+        /*
+         * Only in a created project: the framework's own checkout has its
+         * suite at tests/run.php and keeps its scripts.
+         */
+        $composer = $this->projectPath('composer.json');
+
+        if (!is_file($this->projectPath('tests/run.php')) && is_file($composer)) {
+            $decoded = json_decode((string) file_get_contents($composer), true);
+
+            if (is_array($decoded) && isset($decoded['scripts']) && is_array($decoded['scripts'])) {
+                $scripts = $decoded['scripts'];
+                unset($scripts['test:db'], $scripts['test:all'], $scripts['docs']);
+                $scripts['test'] = '@php sfphp test';
+                $scripts['lint'] = "find app database public -type f -name '*.php' -print0 | xargs -0 -n1 php -l";
+                $decoded['scripts'] = $scripts;
+
+                file_put_contents($composer, json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
+                $this->writeLine('Set the composer scripts for this project (composer test runs ./sfphp test)');
+            }
+        }
+
+        return $status;
+    }
+
+    /**
+     * Publish what a build just wrote, so the browser gets it.
+     *
+     * A build used to end with "run assets:publish", and assets:publish then
+     * kept the old file as if it were the user's own. The build publishes
+     * itself now; a file under public/ that was changed by hand is still kept,
+     * and named.
+     *
+     * @return void
+     */
+    private function publishAfterBuild(): void
+    {
+        $result = Assets::publish($this->projectPath(Assets::PUBLIC_PATH));
+
+        foreach ($result['written'] as $relative) {
+            $this->writeLine('Published public/assets/' . $relative);
+        }
+
+        foreach ($result['kept'] as $relative) {
+            $this->writeLine('Kept public/assets/' . $relative . ' — it was changed by hand. assets:publish --force replaces it.');
+        }
+    }
+
+    /**
+     * Create the database queue's tables.
+     *
+     * @return int
+     */
+    private function queueTable(): int
+    {
+        try {
+            (new \SfphpProject\src\Queue\DatabaseDriver(
+                table: (string) (Config::get('QUEUE_TABLE') ?: 'jobs')
+            ))->createTables();
+
+            $this->writeLine('The queue tables exist.');
+
+            return 0;
+        } catch (Throwable $e) {
+            fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+
+            return 1;
+        }
+    }
+
+    /**
+     * Run the project's tests.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function test(array $arguments): int
+    {
+        $directory = $this->projectPath($this->option($arguments, 'path') ?? 'tests');
+
+        if (!is_dir($directory)) {
+            fwrite(STDERR, 'No tests directory at ' . $this->relativePath($directory) . '. Create one with ./sfphp make:test Example.' . PHP_EOL);
+
+            return 1;
+        }
+
+        $passed = (new \SfphpProject\src\Testing\Runner())->run(
+            $directory,
+            $this->firstArgument($arguments),
+            fn (string $line) => $this->writeLine($line)
+        );
+
+        return $passed ? 0 : 1;
     }
 
     /**
@@ -1802,7 +1952,7 @@ PHP;
 
             $output = [];
             $status = 0;
-            exec('php ' . escapeshellarg($builderPath) . ' 2>&1', $output, $status);
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($builderPath) . ' 2>&1', $output, $status);
 
             if ($status !== 0) {
                 fwrite(STDERR, 'Error: Failed to minify SFJS' . PHP_EOL);
@@ -1813,7 +1963,7 @@ PHP;
 
             $this->writeLine(implode(PHP_EOL, $output));
             $this->writeLine('');
-            $this->writeLine('Run ./sfphp assets:publish to copy it where the browser can reach it.');
+            $this->publishAfterBuild();
 
             return 0;
         } catch (Throwable $e) {
@@ -1902,7 +2052,7 @@ PHP;
                  */
                 $status = 0;
                 $output = [];
-                exec('php -l ' . escapeshellarg($out) . ' 2>&1', $output, $status);
+                exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($out) . ' 2>&1', $output, $status);
 
                 if ($status !== 0) {
                     fwrite(STDERR, 'Error in ' . $this->relativePath($file) . ':' . PHP_EOL);
@@ -2023,9 +2173,9 @@ PHP;
             }
 
             $this->writeLine('');
-            $this->writeLine('  Kept: app/config, lang, public, the framework, and the framework\'s own');
-            $this->writeLine('        migrations — the users and sessions tables the authentication');
-            $this->writeLine('        guard and the database session driver are written against.');
+            $this->writeLine('  Kept: app/config, lang, public, the framework, the users migration the');
+            $this->writeLine('        authentication guard is written against, and a create_sessions_table');
+            $this->writeLine('        migration if you made one for the database session driver.');
             $this->writeLine('  Not kept: your migrations, and anything of your own already living in');
             $this->writeLine('            the directories above.');
             $this->writeLine('');
@@ -2254,7 +2404,19 @@ PHP;
             $temporary = null;
 
             if ($source === null) {
-                $reference = $this->option($arguments, 'to') ?? 'master';
+                /*
+                 * The latest release unless one is named. It used to be
+                 * master — unreleased code — and a plain `upgrade` offered to
+                 * install whatever had been pushed that morning.
+                 */
+                $reference = $this->option($arguments, 'to') ?? $this->latestRelease();
+
+                if ($reference === null) {
+                    fwrite(STDERR, 'Error: could not find the latest release. Name one with --to=v0.32.0, or pass --from=<directory>.' . PHP_EOL);
+
+                    return 1;
+                }
+
                 $temporary = $this->fetchFramework($reference);
 
                 if ($temporary === null) {
@@ -2322,7 +2484,58 @@ PHP;
             return null;
         }
 
+        /*
+         * A clone carries everything in the repository, including what the
+         * package leaves out — the framework's own tests, its tooling, its
+         * documentation. The paths .gitattributes marks export-ignore are
+         * removed, so the upgrade brings what an install would have.
+         */
+        $attributes = $directory . '/.gitattributes';
+
+        if (is_file($attributes)) {
+            foreach (file($attributes, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+                if (preg_match('#^\s*/?([^\s#]+)\s+export-ignore\b#', $line, $match) === 1) {
+                    $path = $directory . '/' . trim($match[1], '/');
+
+                    if (str_starts_with(realpath($path) ?: '', $directory . '/')) {
+                        exec('rm -rf ' . escapeshellarg($path) . ' 2>/dev/null');
+                    }
+                }
+            }
+        }
+
         return $directory;
+    }
+
+    /**
+     * The newest released version, from the repository's tags.
+     *
+     * @return string|null The tag, or null when it cannot be found
+     */
+    private function latestRelease(): ?string
+    {
+        if (trim((string) shell_exec('command -v git 2>/dev/null')) === '') {
+            return null;
+        }
+
+        $output = [];
+        exec('git ls-remote --tags --refs ' . escapeshellarg(self::REPOSITORY) . ' 2>/dev/null', $output);
+
+        $tags = [];
+
+        foreach ($output as $line) {
+            if (preg_match('#refs/tags/(v?\d+\.\d+\.\d+)$#', $line, $match) === 1) {
+                $tags[] = $match[1];
+            }
+        }
+
+        if ($tags === []) {
+            return null;
+        }
+
+        usort($tags, static fn (string $a, string $b): int => version_compare(ltrim($b, 'v'), ltrim($a, 'v')));
+
+        return $tags[0];
     }
 
     /**
@@ -2702,7 +2915,7 @@ PHP;
             $output = [];
             $status = 0;
             exec(
-                'php ' . escapeshellarg($builderPath)
+                escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($builderPath)
                 . ' ' . escapeshellarg($configPath)
                 . ' ' . escapeshellarg($outputPath) . ' 2>&1',
                 $output,
@@ -2751,7 +2964,7 @@ PHP;
             }
 
             $this->writeLine('');
-            $this->writeLine('Run ./sfphp assets:publish to copy it where the browser can reach it.');
+            $this->publishAfterBuild();
 
             return 0;
         } catch (Throwable $e) {

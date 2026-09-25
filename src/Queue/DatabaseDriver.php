@@ -141,7 +141,20 @@ class DatabaseDriver implements Queue
 
             $payload = json_decode($job['payload'], true);
 
-            return Job::fromPayload(is_array($payload) ? $payload : [], (string) $job['id'], (int) $job['attempts']);
+            try {
+                return Job::fromPayload(is_array($payload) ? $payload : [], (string) $job['id'], (int) $job['attempts']);
+            } catch (\Throwable $exception) {
+                /*
+                 * A payload that cannot become a job — a class that was
+                 * renamed, a property whose type changed — used to throw out of
+                 * pop(), outside the worker's try/catch. The worker died, the
+                 * reservation expired, and the same row killed the next worker.
+                 * It goes to the failed jobs instead, and the worker moves on.
+                 */
+                $this->failPayload((string) $job['id'], (string) $job['payload'], $exception);
+
+                continue;
+            }
         }
 
         return null;
@@ -179,11 +192,51 @@ class DatabaseDriver implements Queue
                 'data' => $job->payload(),
                 'options' => $job->options(),
             ]),
-            'exception' => $exception->getMessage(),
+            'exception' => self::describe($exception),
             'failed_at' => time(),
         ]);
 
         $this->delete($job);
+    }
+
+    /**
+     * Move a stored payload that could not be rebuilt to the failed jobs.
+     */
+    private function failPayload(string $id, string $payload, \Throwable $exception): void
+    {
+        $this->query($this->failedTable)->insert([
+            'uuid' => $id,
+            'connection' => 'database',
+            'queue' => 'default',
+            'payload' => $payload,
+            'exception' => self::describe($exception),
+            'failed_at' => time(),
+        ]);
+
+        $this->query($this->table)->where('id', $id)->delete();
+    }
+
+    /**
+     * The failure as it is stored: the class, the message and the trace.
+     *
+     * Only the message used to be kept, which is rarely enough to find where
+     * a job failed.
+     */
+    public static function describe(\Throwable $exception): string
+    {
+        return $exception::class . ': ' . $exception->getMessage() . "\n" . $exception->getTraceAsString();
+    }
+
+    /**
+     * The message part of what describe() stored.
+     *
+     * @internal Also used by the Redis driver.
+     */
+    public static function messageOf(string $stored): string
+    {
+        $first = strtok($stored, "\n") ?: '';
+
+        return preg_match('/^[A-Za-z_\\\\][A-Za-z0-9_\\\\]*: (.*)$/s', $first, $matches) === 1 ? $matches[1] : $first;
     }
 
     public function retry(Job $job): void
@@ -240,6 +293,19 @@ class DatabaseDriver implements Queue
 
 
 
+    /**
+     * Create the queue's tables, if they are not there yet.
+     *
+     * What `./sfphp queue:table` runs, so the tables exist before the first
+     * dispatch instead of being created in the middle of a request.
+     *
+     * @return void
+     */
+    public function createTables(): void
+    {
+        $this->ensureTables();
+    }
+
     protected function ensureTables(): void
     {
         if ($this->tablesEnsured) {
@@ -247,6 +313,19 @@ class DatabaseDriver implements Queue
         }
 
         $schema = new \SfphpProject\src\Migrations\Schema($this->connection());
+
+        /*
+         * Creating a table inside an open transaction commits it on MySQL,
+         * silently. Refused instead: the first dispatch is better made
+         * outside a transaction, or the tables created beforehand with
+         * `./sfphp queue:table`.
+         */
+        if ($this->connection()->inTransaction() && (!$schema->hasTable($this->table) || !$schema->hasTable($this->failedTable))) {
+            throw new \RuntimeException(
+                'The queue tables do not exist yet, and creating them inside a transaction would commit it. '
+                . 'Run ./sfphp queue:table once, before dispatching.'
+            );
+        }
 
         if (!$schema->hasTable($this->table)) {
             $schema->create($this->table, function (\SfphpProject\src\Migrations\Blueprint $table): void {
@@ -296,7 +375,8 @@ class DatabaseDriver implements Queue
 
         return array_map(static fn (array $row): array => [
             'id' => (string) $row['uuid'],
-            'exception' => (string) $row['exception'],
+            'exception' => self::messageOf((string) $row['exception']),
+            'detail' => (string) $row['exception'],
             'failed_at' => (int) $row['failed_at'],
         ], $rows);
     }

@@ -40,6 +40,22 @@ final class Request
      */
     private array $attributes;
 
+    /**
+     * The values the matched route took from the path, kept apart from the
+     * attributes.
+     *
+     * They used to be merged into the attributes, after the global middleware
+     * had run. A route declared as /profile/{user} therefore replaced the
+     * authenticated user with the URL segment, and "locale", "json" and
+     * "request_id" could be overwritten the same way from the address bar.
+     *
+     * @var array<string, string>
+     */
+    private array $routeParameters = [];
+
+    /** The pattern of the route that matched, such as "/reset/{code}". */
+    private ?string $routePattern = null;
+
     private ?array $decodedJson = null;
     private bool $jsonDecoded = false;
 
@@ -82,9 +98,7 @@ final class Request
     public static function fromGlobals(): self
     {
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? GET));
-        $path = self::decodePath(
-            parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '/'
-        );
+        $path = self::decodePath(self::pathOf((string) ($_SERVER['REQUEST_URI'] ?? '/')));
 
         /*
          * php://input is read only when the method can carry a body. For a
@@ -110,6 +124,32 @@ final class Request
     }
 
     /**
+     * The path part of a request target.
+     *
+     * Split by hand rather than with parse_url(), which reads a target that
+     * starts with "//" as a scheme-relative URL: "//admin/panel" came out as
+     * the path "/panel" of the host "admin", and "///x" as "/". A prefix rule
+     * — a CSRF exemption, a proxy's path filter — then saw a different path
+     * from the one the router matched. Repeated slashes are collapsed, which
+     * is how every web server treats them.
+     *
+     * @param string $target The request target, as in REQUEST_URI
+     * @return string The path
+     */
+    private static function pathOf(string $target): string
+    {
+        // Not strtok(), which skips leading delimiters and would read "?a=1" as the path "a=1".
+        $path = (string) preg_split('/[?#]/', $target, 2)[0];
+        $path = $path === '' ? '/' : $path;
+
+        if ($path[0] !== '/') {
+            $path = '/' . $path;
+        }
+
+        return (string) preg_replace('#/{2,}#', '/', $path);
+    }
+
+    /**
      * Build a request directly, for tests and for non-web entry points.
      *
      * @param string $method The HTTP method
@@ -120,7 +160,12 @@ final class Request
      */
     public static function create(string $method, string $uri, array $options = []): self
     {
-        $path = self::decodePath(parse_url($uri, PHP_URL_PATH) ?: '/');
+        // A test passes a full URL now and then; only its path is routed.
+        if (preg_match('#^[a-z][a-z0-9+.-]*://[^/]*#i', $uri, $origin) === 1) {
+            $uri = substr($uri, strlen($origin[0])) ?: '/';
+        }
+
+        $path = self::decodePath(self::pathOf($uri));
 
         $query = $options['query'] ?? [];
         if ($query === []) {
@@ -253,14 +298,18 @@ final class Request
      * Decode the request body as JSON.
      *
      * @return array<string, mixed> The decoded payload
-     * @throws JsonException If the body is not a valid JSON object or array
+     * @throws InvalidJsonException If the body is not a valid JSON object or array, which answers 400
      */
     public function json(): array
     {
-        $decoded = json_decode($this->rawBody, true, 512, JSON_THROW_ON_ERROR);
+        try {
+            $decoded = json_decode($this->rawBody, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException $exception) {
+            throw new InvalidJsonException($exception->getMessage(), $exception->getCode(), $exception);
+        }
 
         if (!is_array($decoded)) {
-            throw new JsonException('JSON body must be an object or array.');
+            throw new InvalidJsonException('JSON body must be an object or array.');
         }
 
         return $decoded;
@@ -375,13 +424,23 @@ final class Request
             return [];
         }
 
+        /*
+         * A file input left empty still submits an entry, with
+         * UPLOAD_ERR_NO_FILE. Those are not files, so they are left out: a
+         * form with an optional photos[] used to hand back one unusable file,
+         * and the loop that stored each one threw on it.
+         */
         if (!is_array($entry['name'] ?? null)) {
-            return [UploadedFile::fromArray($entry)];
+            return ($entry['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE ? [] : [UploadedFile::fromArray($entry)];
         }
 
         $files = [];
 
         foreach (array_keys($entry['name']) as $index) {
+            if (($entry['error'][$index] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+                continue;
+            }
+
             $files[] = UploadedFile::fromArray([
                 'name' => $entry['name'][$index] ?? '',
                 'tmp_name' => $entry['tmp_name'][$index] ?? '',
@@ -490,14 +549,33 @@ final class Request
         }
 
         /*
-         * The header is a chain, oldest first: "client, proxy1, proxy2". The
-         * left-most entry is the original client — and also the only one the
-         * client itself could have written, which is why it is read only after
-         * establishing that a trusted proxy appended to it.
+         * The header is a chain, oldest first: "client, proxy1, proxy2". Each
+         * proxy appends the address it received the connection from, so only
+         * the entries added by proxies we trust are facts — everything to the
+         * left of them is whatever the client wrote. The left-most entry used
+         * to be taken, and that is exactly the one a visitor controls: sending
+         * "X-Forwarded-For: 1.2.3.4" was enough to be 1.2.3.4 to the rate
+         * limiter and the logs.
+         *
+         * So the chain is walked from the right, past the trusted proxies, and
+         * the first address that is not one of them is the client.
          */
-        $first = trim(explode(',', $forwarded)[0]);
+        $hops = array_reverse(array_map('trim', explode(',', $forwarded)));
+        $client = $address;
 
-        return $first === '' ? $address : $first;
+        foreach ($hops as $hop) {
+            if (filter_var($hop, FILTER_VALIDATE_IP) === false) {
+                break;
+            }
+
+            $client = $hop;
+
+            if (!self::isTrusted($hop)) {
+                break;
+            }
+        }
+
+        return $client;
     }
 
     /**
@@ -520,7 +598,10 @@ final class Request
             return false;
         }
 
-        return strtolower(trim(explode(',', $this->header('X-Forwarded-Proto') ?? '')[0])) === 'https';
+        // The entry the nearest proxy wrote: the right-most.
+        $protocols = explode(',', $this->header('X-Forwarded-Proto') ?? '');
+
+        return strtolower(trim((string) end($protocols))) === 'https';
     }
 
     /**
@@ -536,12 +617,19 @@ final class Request
 
         $remote = $this->server['REMOTE_ADDR'] ?? null;
 
-        if (!is_string($remote)) {
-            return false;
-        }
+        return is_string($remote) && self::isTrusted($remote);
+    }
 
+    /**
+     * Whether an address is one of the trusted proxies.
+     *
+     * @param string $address The address
+     * @return bool
+     */
+    private static function isTrusted(string $address): bool
+    {
         foreach (self::$trustedProxies as $proxy) {
-            if (self::addressMatches($remote, $proxy)) {
+            if (self::addressMatches($address, $proxy)) {
                 return true;
             }
         }
@@ -564,8 +652,9 @@ final class Request
 
         [$subnet, $bits] = explode('/', $range, 2);
 
-        $addressBinary = inet_pton($address);
-        $subnetBinary = inet_pton($subnet);
+        // Silenced: an unparsable address is a warning, and warnings are exceptions here.
+        $addressBinary = @inet_pton($address);
+        $subnetBinary = @inet_pton($subnet);
 
         if ($addressBinary === false || $subnetBinary === false
             || strlen($addressBinary) !== strlen($subnetBinary)) {
@@ -760,7 +849,44 @@ final class Request
      */
     public function route(string $name, mixed $default = null): mixed
     {
-        return $this->attributes[$name] ?? $default;
+        return $this->routeParameters[$name] ?? $default;
+    }
+
+    /**
+     * Get every route parameter.
+     *
+     * @return array<string, string> The parameters, in URL order
+     */
+    public function routeParameters(): array
+    {
+        return $this->routeParameters;
+    }
+
+    /**
+     * Get the pattern of the route that matched.
+     *
+     * @return string|null The pattern, or null before routing
+     */
+    public function routePattern(): ?string
+    {
+        return $this->routePattern;
+    }
+
+    /**
+     * Attach the matched route's parameters, returning a new request.
+     *
+     * @internal Called by the router.
+     * @param array<string, string> $parameters The parameters
+     * @param string|null $pattern The route's pattern
+     * @return self A copy carrying them
+     */
+    public function withRouteParameters(array $parameters, ?string $pattern = null): self
+    {
+        $copy = clone $this;
+        $copy->routeParameters = $parameters;
+        $copy->routePattern = $pattern;
+
+        return $copy;
     }
 
     /**

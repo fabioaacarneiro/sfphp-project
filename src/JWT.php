@@ -96,18 +96,28 @@ class JWT
     }
 
     /**
-     * @param array $user The authenticated user data
+     * Sign a token for a user.
+     *
+     *     JWT::generate(['id' => $user->id]);
+     *     JWT::generate(['id' => $user->id, 'role' => 'editor']);
+     *
+     * "id" is required, because it is what TokenGuard looks the user up by.
+     * Every other claim is optional and travels as given. An e-mail used to
+     * be required, which put personal data into every token — a token is
+     * readable by anyone who holds it, signed but not encrypted.
+     *
+     * "iat" and "exp" are the framework's and cannot be overridden.
+     *
+     * @param array<string, mixed> $user The claims, "id" among them
      * @return string The signed token
-     * @throws InvalidArgumentException If the required user claims are absent
+     * @throws InvalidArgumentException If the id claim is absent
      * @throws JsonException If a claim cannot be JSON encoded
      * @throws RuntimeException If JWT_KEY is missing or too short
      */
     public static function generate(array $user): string
     {
-        if (!array_key_exists('id', $user) || !array_key_exists('email', $user)) {
-            throw new InvalidArgumentException(
-                'JWT generation requires user id and email claims.'
-            );
+        if (!array_key_exists('id', $user)) {
+            throw new InvalidArgumentException('JWT generation requires an "id" claim.');
         }
 
         $header = json_encode([
@@ -117,9 +127,10 @@ class JWT
 
         $issuedAt = time();
 
+        unset($user['iat'], $user['exp']);
+
         $payload = json_encode([
-            'id' => $user['id'],
-            'email' => $user['email'],
+            ...$user,
             /*
              * "iat" is what makes "log out everywhere" possible. Revoking a
              * user's tokens records a moment rather than a list — the tokens

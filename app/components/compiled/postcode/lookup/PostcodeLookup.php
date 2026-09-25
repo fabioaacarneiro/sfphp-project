@@ -7,8 +7,8 @@ use SfphpProject\src\View\Sfht;
 /**
  * The form, and the place its answer lands.
  *
- * `@hxGet` is SFJS: it takes over the submit, sends the fields to that URL and
- * swaps the answer into `@hxTarget`. There is no JavaScript of our own on this
+ * `@get` is SFJS: it takes over the submit, sends the fields to that URL and
+ * swaps the answer into `@target`. There is no JavaScript of our own on this
  * page because there is nothing left for it to do — the server already knows
  * how to render an address, since that is what the components are for.
  *
@@ -19,7 +19,7 @@ use SfphpProject\src\View\Sfht;
 function PostcodeLookup(?Sfht $result = null): Sfht
 {
     return 
-(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<section class="card mb-8">
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); $__level = ob_get_level(); ob_start(); try { echo '<section class="card mb-8">
             <div class="card-header">
                 <h2 class="text-lg font-semibold m-0">Look up a postcode</h2>
             </div>
@@ -41,8 +41,8 @@ function PostcodeLookup(?Sfht $result = null): Sfht
                     </div>
                 </form>
 
-                <div id="result" class="mt-4">'; echo \SfphpProject\src\View\Compiler::text(($result)); echo '</div>
+                <div id="result" class="mt-4" aria-live="polite">'; echo \SfphpProject\src\View\Compiler::text(($result)); echo '</div>
             </div>
-        </section>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+        </section>';  } catch (\Throwable $__e) { while (ob_get_level() > $__level) { ob_end_clean(); } throw $__e; } return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
 ;
 }

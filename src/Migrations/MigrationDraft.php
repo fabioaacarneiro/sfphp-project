@@ -321,7 +321,15 @@ final class MigrationDraft
 
         $type = $this->resolveType($type, $field);
 
-        $arguments = ["'" . $head . "'"];
+        // Pasted into PHP source, so it has to be a column name and nothing else.
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $head) !== 1) {
+            throw new InvalidArgumentException(sprintf(
+                '"%s" is not a column name. Use letters, digits and underscores, starting with a letter.',
+                $head
+            ));
+        }
+
+        $arguments = [var_export($head, true)];
         $modifiers = [];
 
         foreach ($parts as $part) {
@@ -444,7 +452,7 @@ final class MigrationDraft
             return $value;
         }
 
-        return "'" . str_replace("'", "\\'", $value) . "'";
+        return var_export($value, true);
     }
 
     /**

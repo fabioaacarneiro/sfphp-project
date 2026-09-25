@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ lang_tag() }}">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -8,6 +8,9 @@
 
     <!-- SFCSS Framework -->
     <link rel="stylesheet" href="{{ asset('css/sfcss.min.css') }}">
+    <link rel="icon" href="data:,">
+    {{-- SFJS sends this token with every request that changes something. --}}
+    {!! csrf_meta() !!}
 
     <!--
         No web fonts and no icon font are loaded from a CDN. A page that

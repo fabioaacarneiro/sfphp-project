@@ -565,8 +565,16 @@ function generateRoleColours(array $config, array $theme): string
 {
     $css = "\n/* Role colours — generated for every entry in config.colors */\n";
 
+    /*
+     * Text takes the readable form, --{name}-text, which the builder darkens
+     * or lightens until it passes AA against the page. The raw colour is made
+     * for backgrounds: .text-warning in #f59e0b on white is 2.15:1, which the
+     * documentation promised it was not. white and black have no -text form
+     * and are their own.
+     */
     foreach ($config['colors'] as $name => $_) {
-        $css .= ".text-{$name} { color: var(--{$name}); }\n";
+        $text = isset($theme['light']["{$name}-text"]) ? "{$name}-text" : $name;
+        $css .= ".text-{$name} { color: var(--{$text}); }\n";
         $css .= ".bg-{$name} { background-color: var(--{$name}); }\n";
         $css .= ".border-{$name} { border-color: var(--{$name}); }\n";
     }

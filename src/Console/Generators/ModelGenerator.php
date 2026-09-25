@@ -12,7 +12,7 @@ final class ModelGenerator extends GeneratorBase
         $name = $this->validateName($name);
         $namespace = $this->getNamespace('app/models');
         $filePath = $this->getFilePath('app/models', $name);
-        $table = strtolower($name) . 's';
+        $table = \SfphpProject\src\Str::plural(strtolower($name));
 
         $content = <<<'PHP'
 <?php
@@ -20,7 +20,6 @@ final class ModelGenerator extends GeneratorBase
 namespace {NAMESPACE};
 
 use SfphpProject\src\Database\Model;
-use SfphpProject\src\Database\Relation;
 
 /**
  * {CLASS} model.
@@ -48,7 +47,19 @@ final class {CLASS} extends Model
     ];
 
     /*
-     * Declare relations as methods returning a Relation. Reading the property
+     * Columns never sent in JSON — a hash, a token:
+     *
+     *     protected static array $hidden = ['password'];
+     *
+     * With the table's created_at and updated_at (a migration's timestamps()),
+     * let save() keep them:
+     *
+     *     protected static bool $timestamps = true;
+     */
+
+    /*
+     * Declare relations as methods returning a Relation (import
+     * SfphpProject\src\Database\Relation). Reading the property
      * of the same name resolves it:
      *
      *     public function author(): Relation

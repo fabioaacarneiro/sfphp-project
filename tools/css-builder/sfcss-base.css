@@ -2101,7 +2101,6 @@ textarea.form-control {
   color: var(--tooltip-color);
   font-size: 0.8125rem;
   line-height: 1.4;
-  pointer-events: none;
 }
 
 @supports (position-area: top) {

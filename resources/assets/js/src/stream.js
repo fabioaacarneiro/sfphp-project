@@ -39,7 +39,12 @@
     // last of a repeated field: three ticked boxes arrived as one.
     const form = element.tagName === 'FORM' ? element : element.closest('form');
     if (form && !body && ['POST', 'PUT', 'PATCH'].includes(method)) {
-      body = sf.form.serialize(form);
+      /*
+       * A file cannot travel inside JSON — it arrived as {} — so a form with
+       * a file input goes as FormData, multipart, the way the core sends it.
+       */
+      const multipart = form.enctype === 'multipart/form-data' || form.querySelector('input[type="file"]') !== null;
+      body = multipart ? new FormData(form) : sf.form.serialize(form);
     }
 
     if (!url || !targetEl) {
@@ -119,8 +124,13 @@
 
     // Add body for state-changing requests
     if (body && ['POST', 'PUT', 'PATCH'].includes(method)) {
-      headers['Content-Type'] = 'application/json';
-      fetchOptions.body = JSON.stringify(body);
+      if (body instanceof FormData) {
+        // The browser writes the multipart Content-Type, with its boundary.
+        fetchOptions.body = body;
+      } else {
+        headers['Content-Type'] = 'application/json';
+        fetchOptions.body = JSON.stringify(body);
+      }
     }
 
     fetch(url, fetchOptions)
@@ -448,10 +458,6 @@
       element.__sfStreamBound = true;
 
       const spec = element.getAttribute('@trigger') || element.getAttribute('@hxtrigger') || defaultTrigger(element);
-      const words = spec.trim().split(/\s+/);
-      const trigger = words[0].toLowerCase();
-      const delayWord = words.find((word) => word.toLowerCase().startsWith('delay:'));
-      const delay = delayWord ? readPeriod(delayWord.slice('delay:'.length)) : 0;
 
       // @abort names the element that stops whatever run is in progress.
       // Bound once here, not per run, so restarting does not stack listeners.
@@ -463,17 +469,57 @@
         });
       }
 
-      if (trigger === 'load') {
-        if (delay > 0) setTimeout(() => { if (element.isConnected) handleStream(element); }, delay);
-        else handleStream(element);
-      } else {
+      /*
+       * The same list the core reads: comma separated, each a word with an
+       * optional value and a delay:. Only the first word used to be read, so
+       * "load, every:10s" loaded once and never refreshed.
+       */
+      spec.split(',').forEach((one) => {
+        const words = one.trim().split(/\s+/);
+        const head = (words[0] || '').split(':');
+        const trigger = (head[0] || '').toLowerCase();
+        const argument = head[1] || '';
+        const delayWord = words.find((word) => word.toLowerCase().startsWith('delay:'));
+        const delay = delayWord ? readPeriod(delayWord.slice('delay:'.length)) : 0;
+
+        if (trigger === '') return;
+
+        if (trigger === 'load') {
+          if (delay > 0) setTimeout(() => { if (element.isConnected) handleStream(element); }, delay);
+          else handleStream(element);
+
+          return;
+        }
+
+        if (trigger === 'every') {
+          const period = readPeriod(argument);
+
+          if (period <= 0) {
+            console.error('SFJS Stream: @trigger="every" needs a period, such as "every:10s"');
+
+            return;
+          }
+
+          const timer = setInterval(() => {
+            if (!element.isConnected) {
+              clearInterval(timer);
+
+              return;
+            }
+
+            handleStream(element);
+          }, period);
+
+          return;
+        }
+
         // Support other triggers like click, input, etc.
         const fire = delay > 0 ? sf.util.debounce(() => handleStream(element), delay) : () => handleStream(element);
         element.addEventListener(trigger, (e) => {
           if (trigger === 'submit' || trigger === 'click') e.preventDefault();
           fire();
         });
-      }
+      });
     });
   }
 

@@ -93,15 +93,34 @@ class RedisDriver implements Queue
             return null;
         }
 
-        return Job::fromPayload($payload, (string) ($payload['id'] ?? ''), (int) ($payload['attempts'] ?? 0));
+        try {
+            return Job::fromPayload($payload, (string) ($payload['id'] ?? $member), (int) ($payload['attempts'] ?? 0));
+        } catch (\Throwable $exception) {
+            // A payload that cannot become a job is failed, not thrown at the worker.
+            $this->redis->hSet($this->key('failed'), $member, json_encode([
+                'uuid' => $member,
+                'class' => (string) ($payload['class'] ?? ''),
+                'payload' => $payload,
+                'exception' => DatabaseDriver::describe($exception),
+                'failed_at' => time(),
+            ]));
+            $this->redis->hDel($this->key('jobs'), $member);
+
+            return null;
+        }
     }
 
     public function failed(Job $job, \Throwable $exception): void
     {
+        /*
+         * The payload is kept with the failure, so the job can be looked at
+         * and dispatched again. Only the class and the message used to be.
+         */
         $failedJob = [
             'uuid' => $job->getId(),
             'class' => get_class($job),
-            'exception' => $exception->getMessage(),
+            'payload' => ['class' => get_class($job), 'data' => $job->payload(), 'options' => $job->options()],
+            'exception' => DatabaseDriver::describe($exception),
             'failed_at' => time(),
         ];
 
@@ -141,7 +160,8 @@ class RedisDriver implements Queue
 
             $jobs[] = [
                 'id' => (string) ($decoded['uuid'] ?? ''),
-                'exception' => (string) ($decoded['exception'] ?? ''),
+                'exception' => DatabaseDriver::messageOf((string) ($decoded['exception'] ?? '')),
+                'detail' => (string) ($decoded['exception'] ?? ''),
                 'failed_at' => (int) ($decoded['failed_at'] ?? 0),
             ];
         }

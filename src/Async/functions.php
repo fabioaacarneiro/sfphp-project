@@ -16,9 +16,10 @@ use Throwable;
  * @return Task The task
  *
  * @example
- *   $a = async(fn () => Http::getAsync($first));
- *   $b = async(fn () => Http::getAsync($second));
- *   [$x, $y] = [await($a), await($b)];
+ *   // Http::getAsync() is already a Future: awaitAll() takes it as it is.
+ *   // async() is for work that is not one yet.
+ *   [$x, $y] = awaitAll(Http::getAsync($first), Http::getAsync($second));
+ *   $report = async(fn () => buildReport($x, $y));
  */
 function async(callable $executor): Task
 {

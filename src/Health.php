@@ -75,6 +75,21 @@ final class Health
         $checks = self::$checks;
 
         if ($only !== null) {
+            /*
+             * A name that is not a check is a mistake in the caller, not a
+             * healthy system: check(['databse']) used to report healthy with
+             * nothing checked at all.
+             */
+            $unknown = array_diff($only, array_keys($checks));
+
+            if ($unknown !== []) {
+                throw new \InvalidArgumentException(sprintf(
+                    'No health check is registered as %s. The registered ones are: %s.',
+                    implode(', ', $unknown),
+                    implode(', ', array_keys($checks)) ?: 'none'
+                ));
+            }
+
             $checks = array_intersect_key($checks, array_flip($only));
         }
 

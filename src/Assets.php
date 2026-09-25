@@ -65,6 +65,116 @@ final class Assets
     }
 
     /**
+     * The part of SFCSS a page needs, given the classes it uses.
+     *
+     * The framework's own screens — the error pages above all — inline their
+     * stylesheet, and inlining all of SFCSS made every 404 weigh 195 KB: every
+     * missing favicon, every scanner probing for wp-admin. This keeps the
+     * design tokens, the dark theme, the element rules and the rules for the
+     * listed classes, and drops the rest.
+     *
+     * @param list<string> $classes The classes the page uses, without the dot
+     * @return string The stylesheet
+     */
+    public static function cssFor(array $classes): string
+    {
+        static $memo = [];
+
+        $key = implode(' ', $classes);
+
+        if (!isset($memo[$key])) {
+            $memo[$key] = self::subset(self::css(), array_fill_keys($classes, true));
+        }
+
+        return $memo[$key];
+    }
+
+    /**
+     * Keep the rules of a stylesheet that apply to a set of classes.
+     *
+     * @param string $css Minified CSS
+     * @param array<string, true> $allowed The classes to keep
+     * @return string The kept rules
+     */
+    private static function subset(string $css, array $allowed): string
+    {
+        $out = '';
+        $length = strlen($css);
+        $i = 0;
+
+        while ($i < $length) {
+            $open = strpos($css, '{', $i);
+
+            if ($open === false) {
+                break;
+            }
+
+            $prelude = trim(substr($css, $i, $open - $i));
+            $close = self::matchingBrace($css, $open);
+            $body = substr($css, $open + 1, $close - $open - 1);
+            $i = $close + 1;
+
+            if (str_starts_with($prelude, '@media') || str_starts_with($prelude, '@supports')) {
+                $inner = self::subset($body, $allowed);
+
+                if ($inner !== '') {
+                    $out .= $prelude . '{' . $inner . '}';
+                }
+
+                continue;
+            }
+
+            if ($prelude === '' || $prelude[0] === '@') {
+                continue;
+            }
+
+            $kept = [];
+
+            foreach (explode(',', $prelude) as $selector) {
+                preg_match_all('/\.((?:\\.|[A-Za-z0-9_-])+)/', $selector, $matches);
+                $wanted = true;
+
+                foreach ($matches[1] as $class) {
+                    if (!isset($allowed[stripslashes($class)])) {
+                        $wanted = false;
+
+                        break;
+                    }
+                }
+
+                if ($wanted) {
+                    $kept[] = $selector;
+                }
+            }
+
+            if ($kept !== []) {
+                $out .= implode(',', $kept) . '{' . $body . '}';
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The offset of the brace that closes the one at $open.
+     */
+    private static function matchingBrace(string $css, int $open): int
+    {
+        $depth = 0;
+        $length = strlen($css);
+
+        for ($j = $open; $j < $length; $j++) {
+            if ($css[$j] === '{') {
+                $depth++;
+            } elseif ($css[$j] === '}' && --$depth === 0) {
+                return $j;
+            }
+        }
+
+        return $length - 1;
+    }
+
+    /**
      * SFJS, as bytes.
      *
      * @param bool $minified Whether to read the minified build
@@ -89,26 +199,38 @@ final class Assets
         $written = [];
         $kept = [];
 
+        /*
+         * What the last publish wrote, by hash. A published file that still
+         * matches is the framework's own and is replaced; one that differs was
+         * changed by hand and is kept. "Different from the package" used to be
+         * read as "yours" — true when css:build wrote into public/, and wrong
+         * once it wrote into resources/: a rebuilt stylesheet was then always
+         * different, so assets:publish kept the old one and the new colours
+         * never reached a browser.
+         */
+        $manifestPath = $target . '/.sfphp-published.json';
+        $manifest = is_file($manifestPath) ? (json_decode((string) file_get_contents($manifestPath), true) ?: []) : [];
+
         foreach (self::files() as $relative) {
             $source = self::path() . '/' . $relative;
             $destination = $target . '/' . $relative;
 
             if (!$force && is_file($destination)) {
-                if (md5_file($destination) === md5_file($source)) {
+                $current = md5_file($destination);
+
+                if ($current === md5_file($source)) {
                     // Already the same file. Saying nothing beats reporting
                     // work that did not happen.
+                    $manifest[$relative] = $current;
+
                     continue;
                 }
 
-                /*
-                 * Different, so somebody changed it — `css:build` against their
-                 * own config writes here. Overwriting would throw their palette
-                 * away on the next composer install, silently, which is the
-                 * worst way to lose work. It is reported instead.
-                 */
-                $kept[] = $relative;
+                if (($manifest[$relative] ?? null) !== $current) {
+                    $kept[] = $relative;
 
-                continue;
+                    continue;
+                }
             }
 
             $directory = dirname($destination);
@@ -121,7 +243,12 @@ final class Assets
                 throw new RuntimeException('Could not write ' . $destination . '.');
             }
 
+            $manifest[$relative] = md5_file($destination);
             $written[] = $relative;
+        }
+
+        if (is_dir($target)) {
+            @file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
         }
 
         return ['written' => $written, 'kept' => $kept];

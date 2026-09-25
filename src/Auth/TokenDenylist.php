@@ -96,7 +96,7 @@ final class TokenDenylist
      * @param array<string, mixed>|null $claims Its claims, when already read
      * @return bool True when the token must be refused
      */
-    public static function isRevoked(string $token, ?array $claims = null): bool
+    public static function isRevoked(string $token, ?array $claims = null, string $claim = 'id'): bool
     {
         if (self::cache()->has(self::key($token))) {
             return true;
@@ -108,7 +108,12 @@ final class TokenDenylist
             return false;
         }
 
-        $identifier = $claims['id'] ?? null;
+        /*
+         * The claim the guard identifies users by. It was always "id" here,
+         * so a TokenGuard configured with another claim revoked nothing when
+         * revokeUser() was called.
+         */
+        $identifier = $claims[$claim] ?? null;
 
         if ($identifier === null) {
             return false;

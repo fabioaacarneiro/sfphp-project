@@ -2,31 +2,31 @@
 
 namespace SfphpProject\src\Cache;
 
+/**
+ * A cache held in this process's memory.
+ *
+ * Values go through the same JSON round trip as the file and Redis drivers,
+ * so a test written against this driver sees what production will: an object
+ * put in comes back as an array, and a value JSON cannot hold is refused
+ * here rather than in production.
+ */
 class MemoryDriver implements Cache
 {
+    /** @var array<string, array{value: string, expires: int|null}> */
     protected array $store = [];
 
     public function get(string $key, mixed $default = null): mixed
     {
-        if (!isset($this->store[$key])) {
-            return $default;
-        }
+        $item = $this->live($key);
 
-        $item = $this->store[$key];
-
-        if ($item['expires'] !== null && $item['expires'] < time()) {
-            unset($this->store[$key]);
-            return $default;
-        }
-
-        return $item['value'] ?? $default;
+        return $item === null ? $default : json_decode($item['value'], true);
     }
 
     public function put(string $key, mixed $value, ?int $seconds = null): void
     {
         $this->store[$key] = [
-            'value' => $value,
-            'expires' => $seconds ? time() + $seconds : null,
+            'value' => json_encode($value, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION),
+            'expires' => Ttl::expiresAt($seconds),
         ];
     }
 
@@ -42,7 +42,21 @@ class MemoryDriver implements Cache
 
     public function has(string $key): bool
     {
-        return $this->get($key) !== null;
+        return $this->live($key) !== null;
+    }
+
+    public function prune(): int
+    {
+        $removed = 0;
+
+        foreach (array_keys($this->store) as $key) {
+            if (Ttl::expired($this->store[$key]['expires'])) {
+                unset($this->store[$key]);
+                $removed++;
+            }
+        }
+
+        return $removed;
     }
 
     /**
@@ -60,16 +74,17 @@ class MemoryDriver implements Cache
      */
     public function increment(string $key, int $by = 1, ?int $seconds = null): int
     {
-        $current = $this->get($key);
+        $expiresAt = Ttl::expiresAt($seconds);
+        $item = $this->live($key);
 
-        if ($current === null) {
-            $this->put($key, $by, $seconds);
+        if ($item === null) {
+            $this->store[$key] = ['value' => (string) $by, 'expires' => $expiresAt];
 
             return $by;
         }
 
-        $value = (int) $current + $by;
-        $this->store[$key]['value'] = $value;
+        $value = (int) json_decode($item['value'], true) + $by;
+        $this->store[$key]['value'] = (string) $value;
 
         return $value;
     }
@@ -82,12 +97,26 @@ class MemoryDriver implements Cache
      */
     public function ttl(string $key): ?int
     {
-        if ($this->get($key) === null) {
+        $item = $this->live($key);
+
+        return $item === null || $item['expires'] === null ? null : max(0, $item['expires'] - time());
+    }
+
+    /**
+     * @return array{value: string, expires: int|null}|null
+     */
+    private function live(string $key): ?array
+    {
+        if (!array_key_exists($key, $this->store)) {
             return null;
         }
 
-        $expires = $this->store[$key]['expires'] ?? null;
+        if (Ttl::expired($this->store[$key]['expires'])) {
+            unset($this->store[$key]);
 
-        return $expires === null ? null : max(0, $expires - time());
+            return null;
+        }
+
+        return $this->store[$key];
     }
 }

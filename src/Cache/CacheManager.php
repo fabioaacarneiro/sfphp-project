@@ -88,6 +88,16 @@ class CacheManager
     }
 
     /**
+     * Remove the entries that have expired.
+     *
+     * @return int How many entries were removed
+     */
+    public function prune(): int
+    {
+        return $this->driver->prune();
+    }
+
+    /**
      * Add to a counter and return its new value, atomically.
      *
      * @param string $key The counter's key

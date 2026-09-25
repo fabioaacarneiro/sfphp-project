@@ -132,7 +132,17 @@ final class UploadedFile
          * check and land as "shell.php". Control characters go too, because a
          * name is eventually written into a log or a header.
          */
-        $name = preg_replace('/[\x00-\x1F\x7F]/u', '', $this->clientName) ?? '';
+        $name = preg_replace('/[\x00-\x1F\x7F]/', '', $this->clientName) ?? '';
+
+        /*
+         * A name that is not UTF-8 — a Windows client sending Latin-1 — used
+         * to come back as "", because the /u pattern above refused the whole
+         * string. The broken bytes are replaced and the rest is kept.
+         */
+        if (preg_match('//u', $name) !== 1) {
+            $name = function_exists('mb_scrub') ? mb_scrub($name, 'UTF-8') : (string) preg_replace('/[\x80-\xFF]/', '?', $name);
+        }
+
         $name = str_replace('\\', '/', $name);
 
         return basename($name);
@@ -388,9 +398,50 @@ final class UploadedFile
     private function generatedName(): string
     {
         $extension = $this->clientExtension();
-        $safe = preg_match('/^[a-z0-9]{1,16}$/', $extension) === 1;
+        $safe = preg_match('/^[a-z0-9]{1,16}$/', $extension) === 1 && !in_array($extension, self::EXECUTABLE, true);
+
+        /*
+         * The extension decides how a web server treats the file, and it was
+         * the client's: an image uploaded as avatar.php was stored as
+         * <random>.php, and a PNG with PHP after its pixels passed every
+         * content check. An extension a server might execute or render as a
+         * page is never kept; for anything else the extension the content
+         * type implies is preferred to the one the client sent.
+         */
+        $fromType = self::extensionFor($this->mimeType());
+
+        if ($fromType !== null) {
+            return bin2hex(random_bytes(16)) . '.' . $fromType;
+        }
 
         return bin2hex(random_bytes(16)) . ($safe ? '.' . $extension : '');
+    }
+
+    /** Extensions a web server may run or render, which a stored upload never keeps. */
+    private const EXECUTABLE = ['php', 'php3', 'php4', 'php5', 'php7', 'php8', 'phtml', 'phar', 'pht', 'phps', 'cgi', 'pl', 'py', 'sh', 'asp', 'aspx', 'jsp', 'html', 'htm', 'xhtml', 'shtml', 'svg', 'svgz', 'xml', 'js', 'mjs', 'htaccess'];
+
+    /**
+     * The usual extension of a media type, for the common ones.
+     *
+     * @param string|null $type The media type
+     * @return string|null The extension, or null when the type is not one of these
+     */
+    private static function extensionFor(?string $type): ?string
+    {
+        return match ($type) {
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp',
+            'image/avif' => 'avif',
+            'application/pdf' => 'pdf',
+            'text/plain' => 'txt',
+            'text/csv' => 'csv',
+            'application/zip' => 'zip',
+            'audio/mpeg' => 'mp3',
+            'video/mp4' => 'mp4',
+            default => null,
+        };
     }
 
     /**
@@ -404,8 +455,21 @@ final class UploadedFile
     {
         $name = preg_replace('/[\x00-\x1F\x7F]/u', '', $name) ?? '';
         $name = basename(str_replace('\\', '/', $name));
-        $name = preg_replace('/[^A-Za-z0-9._-]/', '_', $name) ?? '';
+
+        /*
+         * Letters and digits in any script are kept — "relatório" used to
+         * become "relat__rio", one underscore per byte. Anything else becomes
+         * a single underscore.
+         */
+        $name = preg_replace('/[^\p{L}\p{M}\p{N}._-]+/u', '_', $name) ?? '';
         $name = ltrim($name, '.');
+
+        // An extension a server might run is not kept, whoever chose the name.
+        $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+
+        if (in_array($extension, self::EXECUTABLE, true)) {
+            $name .= '.txt';
+        }
 
         if ($name === '' || $name === '.' || $name === '..') {
             throw new UploadException('The name given for the uploaded file leaves nothing usable.');

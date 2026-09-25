@@ -74,6 +74,13 @@ final class SessionGuard implements Guard
             session_regenerate_id(true);
         }
 
+        /*
+         * A new CSRF token as well as a new id. The token issued before login
+         * may have been seen by whoever planted the session, and it kept
+         * working for the authenticated session afterwards.
+         */
+        Csrf::rotate();
+
         Session::put(self::SESSION_KEY, $user->getAuthIdentifier());
     }
 
@@ -86,14 +93,12 @@ final class SessionGuard implements Guard
     {
         Csrf::startSession();
 
-        Session::forget(self::SESSION_KEY);
-
         /*
-         * A new id is issued on the way out too: the old one was seen by the
-         * browser, and possibly by whatever shared the machine with it.
+         * Everything goes, not only the user id: a cart, a flash message or
+         * anything else the application kept for this user would otherwise
+         * be handed to whoever uses the browser next. A new id is issued too,
+         * because the old one was seen by the browser.
          */
-        if (PHP_SAPI !== 'cli' && session_status() === PHP_SESSION_ACTIVE) {
-            session_regenerate_id(true);
-        }
+        Session::invalidate();
     }
 }

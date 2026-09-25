@@ -160,7 +160,7 @@ final class ClientResponse
      * Opt-in, because a 404 is often an expected answer rather than a failure.
      * Where it is a failure, this keeps the call readable:
      *
-     *     $invoice = Client::get($url)->throw()->json();
+     *     $invoice = Http::get($url)->throw()->json();
      *
      * @return self This response, when it is not an error
      * @throws ClientException When the status is 4xx or 5xx

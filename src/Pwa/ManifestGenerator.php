@@ -168,7 +168,8 @@ final class ManifestGenerator
             $manifest['categories'] = array_keys($this->categories);
         }
 
-        return json_encode($manifest, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . "\n";
+        // Unicode as it is: "Café" rather than "Caf\u00e9" in a file people read.
+        return json_encode($manifest, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . "\n";
     }
 
     public function save(string $path): bool

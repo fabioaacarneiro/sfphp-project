@@ -27,19 +27,19 @@
     <div class="container mx-auto">
         <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div class="text-center">
-                <p class="text-4xl font-bold text-blue-500 mb-2">38</p>
+                <p class="text-4xl font-bold text-blue-700 mb-2">38</p>
                 <p class="text-slate-600">CLI Commands</p>
             </div>
             <div class="text-center">
-                <p class="text-4xl font-bold text-green-500 mb-2">100%</p>
+                <p class="text-4xl font-bold text-green-700 mb-2">100%</p>
                 <p class="text-slate-600">MySQL + PG</p>
             </div>
             <div class="text-center">
-                <p class="text-4xl font-bold text-purple-500 mb-2">0</p>
+                <p class="text-4xl font-bold text-purple-700 mb-2">0</p>
                 <p class="text-slate-600">Dependencies</p>
             </div>
             <div class="text-center">
-                <p class="text-4xl font-bold text-amber-500 mb-2">33KB</p>
+                <p class="text-4xl font-bold text-amber-700 mb-2">33KB</p>
                 <p class="text-slate-600">CSS gzipped</p>
             </div>
         </div>
@@ -55,12 +55,12 @@
             <!-- Feature 1: CLI -->
             <div class="card shadow-lg">
                 <div class="bg-blue-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-blue-600 font-bold text-lg">CLI & Generators</h3>
+                    <h3 class="text-blue-700 font-bold text-lg m-0">CLI & Generators</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">38 commands for scaffolding, migrations, queues, assets and more.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
-                        <li class="mb-1">✓ 12 generators, plus make:scaffold</li>
+                        <li class="mb-1">✓ 16 make: commands, make:scaffold among them</li>
                         <li class="mb-1">✓ Migrate, rollback, seed, fresh</li>
                         <li>✓ Queue, cache and asset commands</li>
                     </ul>
@@ -70,7 +70,7 @@
             <!-- Feature 2: SFHT -->
             <div class="card shadow-lg">
                 <div class="bg-green-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-green-600 font-bold text-lg">SFHT Templates</h3>
+                    <h3 class="text-green-700 font-bold text-lg m-0">SFHT Templates</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Native template engine with layouts, blocks, partials and components.</p>
@@ -85,7 +85,7 @@
             <!-- Feature 3: SFCSS -->
             <div class="card shadow-lg">
                 <div class="bg-purple-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-purple-600 font-bold text-lg">SFCSS Framework</h3>
+                    <h3 class="text-purple-700 font-bold text-lg m-0">SFCSS Framework</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Components and utilities generated from one config, with a dark theme.</p>
@@ -100,7 +100,7 @@
             <!-- Feature 4: Schema Builder -->
             <div class="card shadow-lg">
                 <div class="bg-amber-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-amber-600 font-bold text-lg">Schema Builder</h3>
+                    <h3 class="text-amber-700 font-bold text-lg m-0">Schema Builder</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Fluent, portable migrations with 40+ column types and constraints.</p>
@@ -115,7 +115,7 @@
             <!-- Feature 5: Security -->
             <div class="card shadow-lg">
                 <div class="bg-pink-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-pink-600 font-bold text-lg">Security First</h3>
+                    <h3 class="text-pink-700 font-bold text-lg m-0">Security First</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Built-in protection with JWT, CSRF, bound queries and escaped output.</p>
@@ -130,7 +130,7 @@
             <!-- Feature 6: Cache & Queue -->
             <div class="card shadow-lg">
                 <div class="bg-cyan-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-cyan-600 font-bold text-lg">Cache & Queue</h3>
+                    <h3 class="text-cyan-700 font-bold text-lg m-0">Cache & Queue</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Caching and background jobs, each with drivers you can swap.</p>
@@ -145,14 +145,14 @@
             <!-- Feature 7: SFJS -->
             <div class="card shadow-lg">
                 <div class="bg-teal-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-teal-600 font-bold text-lg">SFJS Library</h3>
+                    <h3 class="text-teal-700 font-bold text-lg m-0">SFJS Library</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Lightweight JavaScript for AJAX, DOM work and form validation.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
                         <li class="mb-1">✓ Declarative AJAX attributes</li>
                         <li class="mb-1">✓ Modal, dropdown, tabs, toasts</li>
-                        <li>✓ ~14KB gzipped, one file</li>
+                        <li>✓ ~15KB gzipped, one file</li>
                     </ul>
                 </div>
             </div>
@@ -160,7 +160,7 @@
             <!-- Feature 8: PHPX Components -->
             <div class="card shadow-lg">
                 <div class="bg-violet-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-violet-600 font-bold text-lg">PHPX Components</h3>
+                    <h3 class="text-violet-700 font-bold text-lg m-0">PHPX Components</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Build pages with component-oriented PHP functions and SFHT templates.</p>
@@ -175,7 +175,7 @@
             <!-- Feature 9: HTTP Streaming -->
             <div class="card shadow-lg">
                 <div class="bg-indigo-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-indigo-600 font-bold text-lg">HTTP Streaming</h3>
+                    <h3 class="text-indigo-700 font-bold text-lg m-0">HTTP Streaming</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Progressive data delivery and real-time events with Server-Sent Events.</p>
@@ -190,7 +190,7 @@
             <!-- Feature 10: Routing -->
             <div class="card shadow-lg">
                 <div class="bg-sky-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-sky-600 font-bold text-lg">Routing & Middleware</h3>
+                    <h3 class="text-sky-700 font-bold text-lg m-0">Routing & Middleware</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Routes, a request pipeline and a container that wires controllers.</p>
@@ -205,7 +205,7 @@
             <!-- Feature 11: Models -->
             <div class="card shadow-lg">
                 <div class="bg-emerald-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-emerald-600 font-bold text-lg">Models & Query Builder</h3>
+                    <h3 class="text-emerald-700 font-bold text-lg m-0">Models & Query Builder</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Rows as typed objects, relations declared once, loaded without N+1.</p>
@@ -220,12 +220,12 @@
             <!-- Feature 12: Validation -->
             <div class="card shadow-lg">
                 <div class="bg-lime-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-lime-600 font-bold text-lg">Validation</h3>
+                    <h3 class="text-lime-700 font-bold text-lg m-0">Validation</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Rules checked against what the request carried, not superglobals.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
-                        <li class="mb-1">✓ 8 rules: required, email, min, max...</li>
+                        <li class="mb-1">✓ 11 rules: required, email, url, min, max...</li>
                         <li class="mb-1">✓ Messages in three languages</li>
                         <li>✓ Form request classes</li>
                     </ul>
@@ -235,7 +235,7 @@
             <!-- Feature 13: Authentication -->
             <div class="card shadow-lg">
                 <div class="bg-rose-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-rose-600 font-bold text-lg">Authentication</h3>
+                    <h3 class="text-rose-700 font-bold text-lg m-0">Authentication</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Log users in, protect routes and decide who may do what.</p>
@@ -250,7 +250,7 @@
             <!-- Feature 14: Sessions -->
             <div class="card shadow-lg">
                 <div class="bg-orange-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-orange-600 font-bold text-lg">Sessions</h3>
+                    <h3 class="text-orange-700 font-bold text-lg m-0">Sessions</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Sessions with deadlines you choose, stored outside the process.</p>
@@ -265,7 +265,7 @@
             <!-- Feature 15: HTTP Client -->
             <div class="card shadow-lg">
                 <div class="bg-fuchsia-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-fuchsia-600 font-bold text-lg">HTTP Client & Async</h3>
+                    <h3 class="text-fuchsia-700 font-bold text-lg m-0">HTTP Client & Async</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Call other services, with several requests in flight at once.</p>
@@ -280,7 +280,7 @@
             <!-- Feature 16: Mail & Events -->
             <div class="card shadow-lg">
                 <div class="bg-red-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-red-600 font-bold text-lg">Mail & Events</h3>
+                    <h3 class="text-red-700 font-bold text-lg m-0">Mail & Events</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Send email through any provider and decouple work with events.</p>
@@ -295,7 +295,7 @@
             <!-- Feature 17: I18n -->
             <div class="card shadow-lg">
                 <div class="bg-yellow-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-yellow-600 font-bold text-lg">Internationalisation</h3>
+                    <h3 class="text-yellow-700 font-bold text-lg m-0">Internationalisation</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Messages by key in the active locale, UTC and UTF-8 throughout.</p>
@@ -310,7 +310,7 @@
             <!-- Feature 18: Observability -->
             <div class="card shadow-lg">
                 <div class="bg-slate-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-slate-600 font-bold text-lg">Logging & Health</h3>
+                    <h3 class="text-slate-700 font-bold text-lg m-0">Logging & Health</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Structured logs, metrics and health checks for load balancers.</p>
@@ -325,7 +325,7 @@
             <!-- Feature 19: PWA -->
             <div class="card shadow-lg">
                 <div class="bg-gray-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-gray-600 font-bold text-lg">Progressive Web App</h3>
+                    <h3 class="text-gray-700 font-bold text-lg m-0">Progressive Web App</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Turn an application into an installable app with one command.</p>
@@ -340,7 +340,7 @@
             <!-- Feature 20: Debugging -->
             <div class="card shadow-lg">
                 <div class="bg-zinc-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-zinc-600 font-bold text-lg">Debugging & Tools</h3>
+                    <h3 class="text-zinc-700 font-bold text-lg m-0">Debugging & Tools</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Look inside a running application without leaving the framework.</p>
@@ -355,7 +355,7 @@
             <!-- Feature 21: Uploads -->
             <div class="card shadow-lg">
                 <div class="bg-blue-50 p-4 rounded-t-md border-b">
-                    <h3 class="text-blue-600 font-bold text-lg">File Uploads</h3>
+                    <h3 class="text-blue-700 font-bold text-lg m-0">File Uploads</h3>
                 </div>
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Uploads checked by what the file contains, not what the browser claims.</p>
@@ -482,7 +482,7 @@
     <div class="container mx-auto max-w-2xl text-center">
         <h2 class="text-4xl font-bold text-slate-900 mb-4">Ready to Build?</h2>
         <p class="text-lg text-slate-700 mb-2">Zero setup, full power.</p>
-        <pre class="text-left d-inline-block"><code>composer create-project fabioaacarneiro/sfphp-framework my-app
+        <pre class="text-left d-block overflow-auto max-w-full"><code>composer create-project fabioaacarneiro/sfphp-framework my-app
 cd my-app
 ./sfphp serve</code></pre>
     </div>
@@ -540,7 +540,7 @@ cd my-app
         </div>
 
         <div class="text-center">
-            <a href="/phpx" class="btn btn-lg btn-primary font-bold rounded-md">
+            <a href="/phpx" class="btn btn-lg btn-primary font-bold rounded-md text-wrap">
                 See a .phpx example with SFCSS + SFJS
             </a>
             <p class="text-sm text-muted mt-3 mb-0">
@@ -556,14 +556,14 @@ cd my-app
     <div class="container mx-auto">
         <div class="text-center mb-8">
             <h3 class="text-2xl font-bold mb-2">SFPHP Framework</h3>
-            <p class="text-slate-400">Modern, Educational, Zero Dependencies</p>
+            <p class="text-slate-400">Zero dependencies, built for production</p>
         </div>
         <div class="d-flex justify-center gap-8 mb-8 flex-wrap">
             <a href="https://github.com/fabioaacarneiro/sfphp-project" class="text-blue-300 no-underline hover:text-blue-400">GitHub</a>
             <a href="https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/en/DOCUMENTATION.md" class="text-blue-300 no-underline hover:text-blue-400">Documentation</a>
             <a href="https://github.com/fabioaacarneiro/sfphp-project/issues" class="text-blue-300 no-underline hover:text-blue-400">Issues</a>
         </div>
-        <p class="text-center text-slate-500 text-sm">Made with love by Fabio Carneiro - 2026</p>
+        <p class="text-center text-slate-400 text-sm">Made with love by Fabio Carneiro - 2026</p>
     </div>
 </footer>
 

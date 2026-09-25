@@ -7,7 +7,7 @@ use SfphpProject\src\View\Sfht;
 function HowItWorks(): Sfht
 {
     return 
-(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="mt-12">
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); $__level = ob_get_level(); ob_start(); try { echo '<div class="mt-12">
             <h2 class="text-2xl font-bold mb-6">How It Works</h2>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -30,7 +30,7 @@ function HowItWorks(): Sfht
                 <!-- SSE -->
                 <div class="bg-white border border-gray-300 rounded-lg p-6">
                     <h3 class="text-lg font-bold mb-3 flex items-center">
-                        <span class="w-8 h-8 rounded-full bg-green-600 text-white flex items-center justify-center mr-3 text-sm font-bold">2</span>
+                        <span class="w-8 h-8 rounded-full bg-green-700 text-white flex items-center justify-center mr-3 text-sm font-bold">2</span>
                         Server-Sent Events
                     </h3>
                     <p class="text-sm text-gray-700 mb-3">
@@ -104,6 +104,6 @@ function HowItWorks(): Sfht
                     </div>
                 </div>
             </div>
-        </div>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+        </div>';  } catch (\Throwable $__e) { while (ob_get_level() > $__level) { ob_end_clean(); } throw $__e; } return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
 ;
 }

@@ -27,6 +27,11 @@ final class Str
     /**
      * Count the characters in a UTF-8 string.
      *
+     * A character is what a reader sees as one: "José" written with a
+     * combining accent is four, not five, and a flag or a family emoji is
+     * one. Counting code points made "José" typed on a keyboard that
+     * composes accents one character longer than the same name pasted in.
+     *
      * @param string $value The string to measure
      * @return int The number of characters, not bytes
      */
@@ -36,7 +41,7 @@ final class Str
             return 0;
         }
 
-        $count = preg_match_all('/./us', $value);
+        $count = preg_match_all('/\X/u', $value);
 
         /*
          * preg_match_all returns false on malformed UTF-8. Falling back to the
@@ -112,7 +117,8 @@ final class Str
      */
     public static function isAlpha(string $value): bool
     {
-        return $value !== '' && preg_match('/^\p{L}+$/u', $value) === 1;
+        // \p{M}: the combining marks Devanagari, Arabic and decomposed Latin are written with.
+        return $value !== '' && preg_match('/^\p{L}[\p{L}\p{M}]*$/u', $value) === 1;
     }
 
     /**
@@ -123,7 +129,7 @@ final class Str
      */
     public static function isAlphanumeric(string $value): bool
     {
-        return $value !== '' && preg_match('/^[\p{L}\p{N}]+$/u', $value) === 1;
+        return $value !== '' && preg_match('/^[\p{L}\p{N}][\p{L}\p{M}\p{N}]*$/u', $value) === 1;
     }
 
     /**
@@ -205,8 +211,39 @@ final class Str
             return [];
         }
 
-        $characters = preg_split('//u', $value, -1, PREG_SPLIT_NO_EMPTY);
+        $characters = preg_match_all('/\X/u', $value, $matches) === false ? false : $matches[0];
 
         return $characters === false ? str_split($value) : $characters;
+    }
+
+    /**
+     * The plural of an English noun, for table names.
+     *
+     * Deliberately small: it covers the regular rules and the few irregular
+     * words that turn up as model names. A model with an irregular name
+     * should set $table rather than rely on it. Model::table(), constrained()
+     * and make:model all use this one rule, so they agree — they used to
+     * disagree, and Key became "keies" in one place and "keys" in another.
+     *
+     * @param string $word The singular, lower case
+     * @return string The plural
+     */
+    public static function plural(string $word): string
+    {
+        $irregular = ['person' => 'people', 'child' => 'children', 'man' => 'men', 'woman' => 'women', 'mouse' => 'mice', 'goose' => 'geese'];
+
+        if (isset($irregular[$word])) {
+            return $irregular[$word];
+        }
+
+        if (preg_match('/[^aeiou]y$/', $word) === 1) {
+            return substr($word, 0, -1) . 'ies';
+        }
+
+        if (preg_match('/(s|x|z|ch|sh)$/', $word) === 1) {
+            return $word . 'es';
+        }
+
+        return $word . 's';
     }
 }

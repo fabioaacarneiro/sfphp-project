@@ -135,16 +135,33 @@ final class Metrics
     public static function prometheus(): string
     {
         $lines = [];
+        $typed = [];
+
+        /*
+         * Each metric family is declared once with # TYPE, which is what tells
+         * a scraper a counter from a gauge; without it every series was read
+         * as untyped. Values are written with at most three decimals, as the
+         * documentation shows them, not with PHP's full float precision.
+         */
+        $declare = static function (string $name, string $type) use (&$lines, &$typed): void {
+            if (!isset($typed[$name])) {
+                $typed[$name] = true;
+                $lines[] = '# TYPE ' . $name . ' ' . $type;
+            }
+        };
 
         foreach (self::$counters as $counter) {
-            $lines[] = self::line(self::sanitise($counter['name']), $counter['labels'], $counter['value']);
+            $name = self::sanitise($counter['name']);
+            $declare($name, 'counter');
+            $lines[] = self::line($name, $counter['labels'], $counter['value']);
         }
 
         foreach (self::snapshot()['timers'] as $timer) {
             $name = self::sanitise($timer['name']);
 
-            foreach (['count' => $timer['count'], 'sum' => $timer['total'],
-                      'min' => $timer['min'], 'max' => $timer['max']] as $suffix => $value) {
+            foreach (['count' => ['counter', $timer['count']], 'sum' => ['counter', $timer['total']],
+                      'min' => ['gauge', $timer['min']], 'max' => ['gauge', $timer['max']]] as $suffix => [$type, $value]) {
+                $declare($name . '_ms_' . $suffix, $type);
                 $lines[] = self::line($name . '_ms_' . $suffix, $timer['labels'], $value);
             }
         }
@@ -185,7 +202,10 @@ final class Metrics
      */
     private static function sanitise(string $name): string
     {
-        return preg_replace('/[^a-zA-Z0-9_]/', '_', $name) ?? 'metric';
+        $name = preg_replace('/[^a-zA-Z0-9_]/', '_', $name) ?? 'metric';
+
+        // A name may not start with a digit; "5xx_errors" is not a metric name.
+        return preg_match('/^[0-9]/', $name) === 1 ? '_' . $name : $name;
     }
 
     /**
@@ -198,6 +218,8 @@ final class Metrics
      */
     private static function line(string $name, array $labels, float|int $value): string
     {
+        $value = is_float($value) ? rtrim(rtrim(number_format($value, 3, '.', ''), '0'), '.') : (string) $value;
+
         if ($labels === []) {
             return $name . ' ' . $value;
         }

@@ -7,8 +7,8 @@ use SfphpProject\src\View\Sfht;
 /**
  * The form, and the place its answer lands.
  *
- * `@hxGet` is SFJS: it takes over the submit, sends the fields to that URL and
- * swaps the answer into `@hxTarget`. There is no JavaScript of our own on this
+ * `@get` is SFJS: it takes over the submit, sends the fields to that URL and
+ * swaps the answer into `@target`. There is no JavaScript of our own on this
  * page because there is nothing left for it to do — the server already knows
  * how to render an address, since that is what the components are for.
  *
@@ -41,7 +41,7 @@ function PostcodeLookup(?Sfht $result = null): Sfht
                     </div>
                 </form>
 
-                <div id="result" class="mt-4">{{ $result }}</div>
+                <div id="result" class="mt-4" aria-live="polite">{{ $result }}</div>
             </div>
         </section>
     );

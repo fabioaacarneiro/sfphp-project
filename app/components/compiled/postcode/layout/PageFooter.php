@@ -10,7 +10,7 @@ use SfphpProject\src\View\Sfht;
 function PageFooter(): Sfht
 {
     return 
-(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<footer class="bg-slate-900 text-white py-8 px-4 mt-12">
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); $__level = ob_get_level(); ob_start(); try { echo '<footer class="bg-slate-900 text-white py-8 px-4 mt-12">
             <div class="container mx-auto max-w-2xl">
                 <p class="m-0 text-sm">
                     Zero dependencies: no Node, no bundler, no third-party
@@ -18,6 +18,6 @@ function PageFooter(): Sfht
                 </p>
                 <a href="/" class="text-blue-300 no-underline text-sm">Back</a>
             </div>
-        </footer>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+        </footer>';  } catch (\Throwable $__e) { while (ob_get_level() > $__level) { ob_end_clean(); } throw $__e; } return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
 ;
 }

@@ -30,7 +30,7 @@ final class CompositeFuture extends Pending implements Cancellable
 
     private string $mode;
 
-    /** @var array<int, mixed> */
+    /** @var array<int|string, mixed> */
     private array $results = [];
 
     private int $settledCount = 0;
@@ -65,11 +65,17 @@ final class CompositeFuture extends Pending implements Cancellable
     /**
      * Take one part's outcome.
      *
-     * @param int $index Which part
+     * A part can be named: awaitAll(...['user' => $a, 'posts' => $b]) spreads
+     * string keys, which PHP passes as named arguments. The index used to be
+     * typed int, so a named part threw a TypeError from inside the event
+     * loop — and the timers it had started stayed there, failing the next,
+     * unrelated await() in the same process.
+     *
+     * @param int|string $index Which part
      * @param Future $settled The part
      * @return void
      */
-    private function absorb(int $index, Future $settled): void
+    private function absorb(int|string $index, Future $settled): void
     {
         if ($this->isSettled()) {
             return;
@@ -97,8 +103,8 @@ final class CompositeFuture extends Pending implements Cancellable
         }
 
         if ($this->settledCount === count($this->futures)) {
-            ksort($this->results);
-            $this->resolveWith(array_values($this->results));
+            // Named parts keep their names, in the order given; a list stays a list.
+            $this->resolveWith(array_is_list($this->futures) ? array_values($this->results) : $this->results);
         }
     }
 

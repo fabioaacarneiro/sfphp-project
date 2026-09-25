@@ -233,7 +233,12 @@
   on('beforetoggle', (e) => {
     const menu = e.target;
 
-    if (!menu.classList || !menu.classList.contains('dropdown-menu')) return;
+    /*
+     * A .popover is placed the same way as a menu. It used to be left out,
+     * so without CSS anchor positioning — Firefox, Safari — it opened at the
+     * top left of the window, far from the button that opened it.
+     */
+    if (!menu.classList || !(menu.classList.contains('dropdown-menu') || menu.classList.contains('popover'))) return;
 
     const invoker = invokersOf(menu)[0];
 
@@ -410,11 +415,20 @@
     owner = null;
   }
 
+  // A pending hide, cancelled when the pointer reaches the tooltip or its element.
+  let leaving = null;
+
   // A pointer lingers for a moment before it asks; the keyboard asks at once.
   on('mouseover', (e) => {
     const element = up(e, '[\\@tooltip]');
 
-    if (element && element !== owner) {
+    if ((element && element === owner) || (tip && tip.contains(e.target))) {
+      clearTimeout(leaving);
+
+      return;
+    }
+
+    if (element) {
       clearTimeout(waiting);
       waiting = setTimeout(() => showTip(element), 300);
     }
@@ -423,6 +437,10 @@
   /*
    * Leaving the element for the tooltip itself keeps it open, so it can be
    * read and selected — WCAG asks for content shown on hover to be hoverable.
+   * The hide waits a moment: the tooltip sits a few pixels away, and the
+   * pointer crossing that gap used to count as leaving. The stylesheet no
+   * longer sets pointer-events: none on it, which made it impossible to
+   * reach at all.
    */
   on('mouseout', (e) => {
     const from = up(e, '[\\@tooltip], .tooltip');
@@ -431,7 +449,8 @@
     if (!from) return;
     if (to && ((owner && owner.contains(to)) || (tip && tip.contains(to)))) return;
 
-    hideTip();
+    clearTimeout(leaving);
+    leaving = setTimeout(hideTip, 150);
   });
 
   on('focusin', (e) => {

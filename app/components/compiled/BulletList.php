@@ -14,10 +14,10 @@ use SfphpProject\src\View\Sfht;
 function BulletList(array $items): Sfht
 {
     return 
-(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<ul class="list-unstyled">
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); $__level = ob_get_level(); ob_start(); try { echo '<ul class="list-unstyled">
             '; foreach ($items as $item) { echo '
                 <li class="py-1">'; echo \SfphpProject\src\View\Compiler::text(($item)); echo '</li>
             '; } echo '
-        </ul>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+        </ul>';  } catch (\Throwable $__e) { while (ob_get_level() > $__level) { ob_end_clean(); } throw $__e; } return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
 ;
 }

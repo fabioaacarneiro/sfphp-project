@@ -56,6 +56,24 @@ final class Csrf
     }
 
     /**
+     * Replace the token with a new one.
+     *
+     * Called on login: a token issued to the anonymous session must not keep
+     * working for the authenticated one.
+     *
+     * @return string The new token
+     */
+    public static function rotate(): string
+    {
+        self::startSession();
+
+        $token = self::generateToken();
+        Session::put(self::SESSION_KEY, $token);
+
+        return $token;
+    }
+
+    /**
      * Render a hidden input field containing the CSRF token.
      *
      * @param string $name The input name used by forms

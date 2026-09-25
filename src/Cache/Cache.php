@@ -2,6 +2,14 @@
 
 namespace SfphpProject\src\Cache;
 
+/**
+ * What every cache driver does.
+ *
+ * Lifetimes mean the same thing in every driver: null or 0 never expires, a
+ * positive number is seconds from now, a negative one is refused. Values are
+ * what JSON can hold — null, scalars and arrays; an object put in comes back
+ * as an array. has() says whether a live entry exists, even one holding null.
+ */
 interface Cache
 {
     public function get(string $key, mixed $default = null): mixed;
@@ -13,6 +21,17 @@ interface Cache
     public function flush(): void;
 
     public function has(string $key): bool;
+
+    /**
+     * Remove the entries that have expired, and leave the rest.
+     *
+     * This is what `./sfphp cache:clear` runs. flush() removes everything,
+     * including what is not a cached page at all — revoked tokens, rate-limit
+     * counters, sessions kept in the cache.
+     *
+     * @return int How many entries were removed
+     */
+    public function prune(): int;
 
     /**
      * Add to a counter and return its new value, atomically.

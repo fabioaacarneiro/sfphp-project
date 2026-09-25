@@ -1,6 +1,6 @@
 {
     "name": "fabioaacarneiro/sfphp-framework",
-    "version": "0.31.0",
+    "version": "0.32.0",
     "description": "A full-stack PHP framework with zero runtime dependencies, complete async/await system using PHP Fibers, reactive components, and real-time capabilities.",
     "license": "MIT",
     "require": {
@@ -49,8 +49,7 @@
         ],
         "assets": "@php sfphp assets:publish",
         "post-create-project-cmd": [
-            "@php sfphp env:example",
-            "@php sfphp assets:publish"
+            "@php sfphp init"
         ]
     },
     "suggest": {
@@ -92,7 +91,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-master": "0.32.x-dev"
+            "dev-master": "0.33.x-dev"
         }
     },
     "bin": [

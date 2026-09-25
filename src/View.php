@@ -104,8 +104,20 @@ final class View
         try {
             return self::engine()->render($template, $data);
         } catch (RuntimeException $exception) {
+            /*
+             * Only a missing file is "not found". Every failure used to be
+             * reported that way — a typo in a filter or an exception thrown by
+             * the page itself read "View home not found", which sends the
+             * reader looking for a file that is right there.
+             */
+            if (!str_starts_with($exception->getMessage(), 'Template not found')) {
+                throw $exception;
+            }
+
             throw new InvalidArgumentException(
-                "$label $name not found: " . $exception->getMessage()
+                "$label $name not found: " . $exception->getMessage(),
+                0,
+                $exception
             );
         }
     }
@@ -127,7 +139,13 @@ final class View
              * project. Bootstrap::load() registers the real one.
              */
             $paths = self::$paths ?? [Bootstrap::basePath('app/resources/views')];
-            $cache = self::$cachePath ?? sys_get_temp_dir() . '/sfphp-sfht-cache';
+            /*
+             * Compiled templates are PHP files that get include()d, so they
+             * live in a directory only this user can write. The fixed name
+             * under the system temporary directory this used to be could be
+             * created first by anyone on the machine.
+             */
+            $cache = self::$cachePath ?? PrivateDirectory::storage('cache/sfht');
 
             self::$engine = new SfhtEngine($paths, $cache);
         }

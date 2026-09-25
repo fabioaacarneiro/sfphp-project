@@ -33,7 +33,7 @@ function HowItWorks(): Sfht
                 <pre class="bg-light p-3 rounded-md overflow-auto"><code>{{ $source }}</code></pre>
 
                 <p class="mt-4">
-                    The form carries <code>@hxGet</code>, so SFJS sends it and
+                    The form carries <code>@get</code>, so SFJS sends it and
                     swaps the answer into place. The answer is markup rendered
                     by these same components, which is why this page has no
                     JavaScript of its own: there is nothing for it to rebuild.

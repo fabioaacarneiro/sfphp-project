@@ -49,7 +49,20 @@ final class SetLocale implements Middleware
 
         Translator::setLocale($locale);
 
-        return $next($request->withAttribute('locale', Translator::locale()))
+        $response = $next($request->withAttribute('locale', Translator::locale()))
             ->withHeader('Content-Language', str_replace('_', '-', Translator::locale()));
+
+        /*
+         * The page depends on Accept-Language, so a shared cache has to key
+         * on it. Without Vary a CDN served the first visitor's language to
+         * everyone after them.
+         */
+        $vary = array_filter(array_map('trim', explode(',', (string) $response->header('Vary'))));
+
+        if (!in_array('accept-language', array_map('strtolower', $vary), true)) {
+            $vary[] = 'Accept-Language';
+        }
+
+        return $response->withHeader('Vary', implode(', ', $vary));
     }
 }

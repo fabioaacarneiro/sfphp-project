@@ -74,3 +74,4 @@ benchmarks/
 /public/assets/css/sfcss.min.css
 /public/assets/js/sfjs.js
 /public/assets/js/sfjs.min.js
+/public/assets/.sfphp-published.json

@@ -8,6 +8,8 @@ use JsonException;
 use JsonSerializable;
 use PDO;
 use ReflectionClass;
+use ReflectionMethod;
+use ReflectionNamedType;
 use RuntimeException;
 use SfphpProject\src\Database;
 use SfphpProject\src\QueryBuilder;
@@ -109,6 +111,29 @@ abstract class Model implements JsonSerializable
     protected static array $casts = [];
 
     /**
+     * Attributes left out of toArray() and JSON.
+     *
+     * A model handed to Response::json() used to send every column it had,
+     * so a user came back with its password hash and remember token. Name the
+     * columns that must never leave the server here:
+     *
+     *     protected static array $hidden = ['password', 'remember_token'];
+     *
+     * @var array<int, string>
+     */
+    protected static array $hidden = [];
+
+    /**
+     * Whether save() keeps created_at and updated_at.
+     *
+     * Opt in when the table has both columns — a migration's timestamps()
+     * creates them. An insert then sets both, and an update refreshes
+     * updated_at, in UTC. Without it updated_at stayed whatever the insert
+     * wrote.
+     */
+    protected static bool $timestamps = false;
+
+    /**
      * Connection override, used by tests and by anything running outside a request.
      */
     private static ?PDO $connection = null;
@@ -123,6 +148,22 @@ abstract class Model implements JsonSerializable
     private array $relations = [];
 
     private bool $exists = false;
+
+    /**
+     * The primary key the row had when it was read or inserted.
+     *
+     * An update is addressed with this, not with the attribute: changing the
+     * key and saving used to write the new values into the row that already
+     * had the new key.
+     */
+    private mixed $originalKey = null;
+
+    /**
+     * Which of a class's methods declare a Relation, per class.
+     *
+     * @var array<class-string, array<string, bool>>
+     */
+    private static array $relationMethods = [];
 
     /**
      * Create a model, optionally filling it.
@@ -182,14 +223,14 @@ abstract class Model implements JsonSerializable
      *
      * @param mixed $id The primary key value
      * @return static The model
-     * @throws RuntimeException When no row matches
+     * @throws ModelNotFoundException When no row matches, which answers 404
      */
     public static function findOrFail(mixed $id): static
     {
         $model = static::find($id);
 
         if ($model === null) {
-            throw new RuntimeException(sprintf(
+            throw new ModelNotFoundException(sprintf(
                 'No %s found with %s %s.',
                 static::class,
                 static::$primaryKey,
@@ -227,6 +268,7 @@ abstract class Model implements JsonSerializable
         $model->attributes = $row;
         $model->dirty = [];
         $model->exists = true;
+        $model->originalKey = $row[static::$primaryKey] ?? null;
 
         return $model;
     }
@@ -245,17 +287,7 @@ abstract class Model implements JsonSerializable
             return static::$table;
         }
 
-        $name = strtolower((new ReflectionClass(static::class))->getShortName());
-
-        if (str_ends_with($name, 'y')) {
-            return substr($name, 0, -1) . 'ies';
-        }
-
-        if (preg_match('/(s|x|z|ch|sh)$/', $name) === 1) {
-            return $name . 'es';
-        }
-
-        return $name . 's';
+        return \SfphpProject\src\Str::plural(strtolower((new ReflectionClass(static::class))->getShortName()));
     }
 
     /**
@@ -358,14 +390,28 @@ abstract class Model implements JsonSerializable
         $builder = self::builder();
 
         if (!$this->exists) {
+            if (static::$timestamps) {
+                $now = Time::now()->format('Y-m-d H:i:s');
+                $this->attributes['created_at'] ??= $now;
+                $this->attributes['updated_at'] ??= $now;
+            }
+
             $id = $builder->insert($this->forStorage($this->attributes));
 
             if (!array_key_exists(static::$primaryKey, $this->attributes)) {
-                $this->attributes[static::$primaryKey] = $id;
+                /*
+                 * lastInsertId() is a string in every driver. A key read back
+                 * with find() is an int, so the same row compared unequal
+                 * with === depending on how the model was obtained.
+                 */
+                $this->attributes[static::$primaryKey] = preg_match('/^-?\d+$/', $id) === 1 && (string) (int) $id === $id
+                    ? (int) $id
+                    : $id;
             }
 
             $this->exists = true;
             $this->dirty = [];
+            $this->originalKey = $this->attributes[static::$primaryKey] ?? null;
 
             return true;
         }
@@ -374,10 +420,15 @@ abstract class Model implements JsonSerializable
             return false;
         }
 
-        $builder->where(static::$primaryKey, $this->attributes[static::$primaryKey] ?? null)
+        if (static::$timestamps && !array_key_exists('updated_at', $this->dirty)) {
+            $this->setAttribute('updated_at', Time::now()->format('Y-m-d H:i:s'));
+        }
+
+        $builder->where(static::$primaryKey, $this->originalKey ?? ($this->attributes[static::$primaryKey] ?? null))
             ->update($this->forStorage($this->dirty));
 
         $this->dirty = [];
+        $this->originalKey = $this->attributes[static::$primaryKey] ?? null;
 
         return true;
     }
@@ -394,7 +445,7 @@ abstract class Model implements JsonSerializable
         }
 
         self::builder()
-            ->where(static::$primaryKey, $this->attributes[static::$primaryKey] ?? null)
+            ->where(static::$primaryKey, $this->originalKey ?? ($this->attributes[static::$primaryKey] ?? null))
             ->delete();
 
         $this->exists = false;
@@ -483,6 +534,14 @@ abstract class Model implements JsonSerializable
         $data = [];
 
         foreach ($this->attributes as $key => $value) {
+            /*
+             * The pivot key is how a many-to-many load matches rows to their
+             * owners. It is bookkeeping, not a column of this model.
+             */
+            if (in_array($key, static::$hidden, true) || $key === self::PIVOT_KEY) {
+                continue;
+            }
+
             $data[$key] = $this->castForArray((string) $key, $value);
         }
 
@@ -623,7 +682,13 @@ abstract class Model implements JsonSerializable
             return $this->castFromDatabase($name, $this->attributes[$name]);
         }
 
-        if (method_exists($this, $name)) {
+        /*
+         * Only a method that declares it returns a Relation is called. Any
+         * zero-argument method used to be: reading $post->delete deleted the
+         * row, and $model->{$name} with a name from a request could run
+         * whatever method it spelled.
+         */
+        if (static::declaresRelation($name)) {
             $relation = $this->{$name}();
 
             if ($relation instanceof Relation) {
@@ -632,6 +697,37 @@ abstract class Model implements JsonSerializable
         }
 
         return null;
+    }
+
+    /**
+     * Whether a method of this model declares that it returns a Relation.
+     *
+     * @internal Also used by ModelQuery to check the names given to with().
+     * @param string $name The method name
+     * @return bool
+     */
+    public static function declaresRelation(string $name): bool
+    {
+        $class = static::class;
+
+        if (!isset(self::$relationMethods[$class][$name])) {
+            $declares = false;
+
+            if (method_exists($class, $name)) {
+                $method = new ReflectionMethod($class, $name);
+                $type = $method->getReturnType();
+
+                $declares = !$method->isStatic()
+                    && $method->getNumberOfRequiredParameters() === 0
+                    && $type instanceof ReflectionNamedType
+                    && !$type->isBuiltin()
+                    && is_a($type->getName(), Relation::class, true);
+            }
+
+            self::$relationMethods[$class][$name] = $declares;
+        }
+
+        return self::$relationMethods[$class][$name];
     }
 
     /**

@@ -33,7 +33,16 @@ use Throwable;
  */
 final class Dispatcher
 {
-    /** @var array<string, list<callable|string>> */
+    /**
+     * Every registration, in the order it was made.
+     *
+     * One list rather than a map of event => listeners. The map grouped
+     * listeners by the class they were registered against, so with a parent,
+     * a child and the parent again the order came out parent, parent, child
+     * — not the registration order the documentation promises.
+     *
+     * @var list<array{0: string, 1: callable|string}>
+     */
     private static array $listeners = [];
 
     private static ?Container $container = null;
@@ -63,7 +72,7 @@ final class Dispatcher
      */
     public static function listen(string $event, callable|string $listener): void
     {
-        self::$listeners[$event][] = $listener;
+        self::$listeners[] = [$event, $listener];
     }
 
     /**
@@ -124,7 +133,17 @@ final class Dispatcher
      */
     public static function hasListeners(string $event): bool
     {
-        return isset(self::$listeners[$event]) && self::$listeners[$event] !== [];
+        /*
+         * What dispatch() would reach: a listener registered for this class,
+         * or for a parent class or interface of it.
+         */
+        foreach (self::$listeners as [$registered]) {
+            if ($registered === $event || is_a($event, $registered, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -141,7 +160,10 @@ final class Dispatcher
             return;
         }
 
-        unset(self::$listeners[$event]);
+        self::$listeners = array_values(array_filter(
+            self::$listeners,
+            static fn (array $registration): bool => $registration[0] !== $event
+        ));
     }
 
     /**
@@ -157,11 +179,9 @@ final class Dispatcher
     {
         $listeners = [];
 
-        foreach (self::$listeners as $registered => $registeredListeners) {
+        foreach (self::$listeners as [$registered, $listener]) {
             if ($event instanceof $registered) {
-                foreach ($registeredListeners as $listener) {
-                    $listeners[] = $listener;
-                }
+                $listeners[] = $listener;
             }
         }
 
