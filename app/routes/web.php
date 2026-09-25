@@ -20,6 +20,9 @@ Router::get("/", "MainController", "index");
 Router::get('/phpx', 'PhpxController', 'index')->name('phpx');
 Router::get('/phpx/postcode', 'PhpxController', 'postcode')->name('phpx.postcode');
 
+// Examples
+Router::get('/examples/streaming', 'ExamplesController', 'streaming')->name('examples.streaming');
+
 // Streaming Demo
 Router::get('/streams', 'StreamController', 'index')->name('streams');
 Router::get('/stream', 'StreamController', 'text');

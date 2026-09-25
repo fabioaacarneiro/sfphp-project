@@ -1,0 +1,46 @@
+<?php
+
+namespace SfphpProject\app\components\examples;
+
+use SfphpProject\src\View\Sfht;
+
+use function SfphpProject\app\components\examples\layout\PageHeader;
+use function SfphpProject\app\components\examples\layout\PageFooter;
+use function SfphpProject\app\components\examples\streaming\TextStreamExample;
+use function SfphpProject\app\components\examples\streaming\SseExample;
+use function SfphpProject\app\components\examples\streaming\CodeExamples;
+
+/**
+ * Examples of @stream and @sse directives from SFJS
+ */
+function StreamingExamples(): Sfht
+{
+    return sfht(
+        <!DOCTYPE html>
+        <html lang="{{ lang_tag() }}">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>@stream & @sse Examples — SFPHP</title>
+            <link rel="stylesheet" href="{{ asset('css/sfcss.min.css') }}">
+        </head>
+        <body class="bg-light">
+            {{ PageHeader() }}
+
+            <main class="container py-12 max-w-6xl mx-auto px-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+                    {{ TextStreamExample() }}
+                    {{ SseExample() }}
+                </div>
+
+                {{ CodeExamples() }}
+            </main>
+
+            {{ PageFooter() }}
+
+            <script src="{{ asset('js/sfjs.min.js') }}"></script>
+            <script src="{{ asset('js/sfjs-stream.min.js') }}"></script>
+        </body>
+        </html>
+    );
+}

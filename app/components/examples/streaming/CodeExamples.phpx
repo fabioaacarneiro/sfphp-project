@@ -1,0 +1,160 @@
+<?php
+
+namespace SfphpProject\app\components\examples\streaming;
+
+use SfphpProject\src\View\Sfht;
+
+/**
+ * Code examples for streaming
+ */
+function CodeExamples(): Sfht
+{
+    return sfht(
+        <div>
+            <h2 class="text-2xl font-bold mb-6">Implementation Examples</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- HTML: @stream example -->
+                <div class="bg-white border border-gray-300 rounded-lg p-6">
+                    <h3 class="text-lg font-bold mb-3">HTML: @stream Directive</h3>
+                    <pre class="bg-gray-50 p-3 rounded text-xs overflow-x-auto"><code class="language-html">&lt;!-- Simple button --&gt;
+&lt;button @stream="/api/data"
+        @target="#output"
+        @swap="innerHTML"&gt;
+  Load Data
+&lt;/button&gt;
+
+&lt;!-- Form with streaming POST --&gt;
+&lt;form @stream="/api/upload"
+      @method="POST"
+      @target="#result"&gt;
+  &lt;input type="file" name="file"&gt;
+  &lt;button type="submit"&gt;Upload&lt;/button&gt;
+&lt;/form&gt;</code></pre>
+                </div>
+
+                <!-- PHP: Response::stream() example -->
+                <div class="bg-white border border-gray-300 rounded-lg p-6">
+                    <h3 class="text-lg font-bold mb-3">PHP: Response::stream()</h3>
+                    <pre class="bg-gray-50 p-3 rounded text-xs overflow-x-auto"><code class="language-php">use SfphpProject\src\Http\Response;
+
+public function stream(): Response
+{
+    return Response::stream(
+        function ($out) {
+            $out->write("Start\n");
+
+            for ($i = 1; $i <= 10; $i++) {
+                if ($out->aborted()) break;
+                $out->write("Chunk $i\n");
+                usleep(100000);
+            }
+
+            $out->write("Done!");
+        },
+        headers: [
+            'Content-Type' => 'text/plain'
+        ]
+    );
+}</code></pre>
+                </div>
+
+                <!-- HTML: @sse example -->
+                <div class="bg-white border border-gray-300 rounded-lg p-6">
+                    <h3 class="text-lg font-bold mb-3">HTML: @sse Directive</h3>
+                    <pre class="bg-gray-50 p-3 rounded text-xs overflow-x-auto"><code class="language-html">&lt;!-- Listen to events --&gt;
+&lt;div @sse="/api/events"
+     @events="progress,complete,error"
+     @target="#output"&gt;
+  Waiting for events...
+&lt;/div&gt;
+
+&lt;!-- Manual JavaScript --&gt;
+&lt;script&gt;
+let es = new EventSource('/api/events');
+
+es.addEventListener('progress', (e) => {
+  console.log('Progress:', e.data);
+});
+
+es.addEventListener('complete', (e) => {
+  console.log('Done:', e.data);
+  es.close();
+});
+&lt;/script&gt;</code></pre>
+                </div>
+
+                <!-- PHP: ServerSentEvent example -->
+                <div class="bg-white border border-gray-300 rounded-lg p-6">
+                    <h3 class="text-lg font-bold mb-3">PHP: ServerSentEvent</h3>
+                    <pre class="bg-gray-50 p-3 rounded text-xs overflow-x-auto"><code class="language-php">use SfphpProject\src\Http\Response;
+use SfphpProject\src\Http\ServerSentEvent;
+
+public function events(): Response
+{
+    return Response::stream(
+        function ($out) {
+            $sse = new ServerSentEvent($out);
+
+            $sse->send('Started', event: 'status');
+
+            for ($i = 1; $i <= 5; $i++) {
+                if ($out->aborted()) break;
+
+                $sse->send(
+                    data: "$i/5",
+                    event: 'progress',
+                    id: (string) $i
+                );
+            }
+
+            $sse->send('Complete', event: 'done');
+        },
+        headers: [
+            'Content-Type' => 'text/event-stream'
+        ]
+    );
+}</code></pre>
+                </div>
+            </div>
+
+            <!-- Key Features -->
+            <div class="mt-12 bg-blue-50 border border-blue-200 rounded-lg p-6">
+                <h3 class="text-lg font-bold mb-4">Key Features</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    <div>
+                        <h4 class="font-bold text-blue-900 mb-2">🚀 Progressive Delivery</h4>
+                        <p class="text-gray-700">
+                            Send data as it becomes available, not all at once. Perfect for large files, reports, or AI responses.
+                        </p>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-blue-900 mb-2">🔗 Connection Aware</h4>
+                        <p class="text-gray-700">
+                            Check <code class="bg-white px-1">$out->aborted()</code> to detect when the browser disconnects.
+                        </p>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-blue-900 mb-2">⏱️ Real-time Events</h4>
+                        <p class="text-gray-700">
+                            Use SSE for live updates, notifications, or progress without polling.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Use Cases -->
+            <div class="mt-8 bg-green-50 border border-green-200 rounded-lg p-6">
+                <h3 class="text-lg font-bold mb-4">Common Use Cases</h3>
+                <ul class="text-sm text-gray-700 space-y-2">
+                    <li><strong>🤖 AI Responses:</strong> Stream LLM output token-by-token for responsive UX</li>
+                    <li><strong>📊 Progress Updates:</strong> Real-time progress on uploads, exports, or long-running tasks</li>
+                    <li><strong>📝 Live Logs:</strong> Stream application logs, build output, or deployment progress</li>
+                    <li><strong>🔔 Notifications:</strong> Send real-time alerts and updates without page reload</li>
+                    <li><strong>📈 Live Data:</strong> Stream stock prices, metrics, or any real-time data feed</li>
+                    <li><strong>📦 Large Exports:</strong> Export data without buffering entire result in memory</li>
+                </ul>
+            </div>
+        </div>
+    );
+}
