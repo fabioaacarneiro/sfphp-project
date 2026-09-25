@@ -242,18 +242,24 @@ final class Client
         $statusCode = 0;
         $receivedFirstChunk = false;
         $statusNotified = false;
+        $abortedByListener = false;
+        $headerBlockComplete = false;
 
         $manager = new ClientStream($listener);
         [$encodedBody, $bodyHeaders] = $this->payload($body);
+
+        // For streams, the total timeout is often longer than expected, so use 0 (no limit)
+        // and rely on the inactivity timeout (LOW_SPEED) to detect stalled connections.
+        $streamTimeout = $this->timeout === self::TIMEOUT ? 0 : $this->timeout;
 
         curl_setopt_array($handle, [
             CURLOPT_URL => $url,
             CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_RETURNTRANSFER => false,
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
-            CURLOPT_TIMEOUT => $this->timeout,
+            CURLOPT_TIMEOUT => $streamTimeout,
             CURLOPT_LOW_SPEED_TIME => 30,
-            CURLOPT_LOW_SPEED_LIMIT => 1, // 1 byte in 30s = silence, abort (not slowness)
+            CURLOPT_LOW_SPEED_LIMIT => 1, // 1 byte/sec for 30s, not total bytes
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => self::MAX_REDIRECTS,
             CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
@@ -261,25 +267,51 @@ final class Client
             CURLOPT_SSL_VERIFYPEER => $this->verify,
             CURLOPT_SSL_VERIFYHOST => $this->verify ? 2 : 0,
             CURLOPT_HTTPHEADER => $this->headerLines($bodyHeaders),
-            CURLOPT_HEADERFUNCTION => static function ($handle, string $line) use (&$responseHeaders, &$statusCode, $listener, &$statusNotified): int {
-                $parts = explode(':', $line, 2);
+            CURLOPT_HEADERFUNCTION => static function ($handle, string $line) use (&$responseHeaders, &$statusCode, $listener, &$statusNotified, &$headerBlockComplete): int {
+                $trimmed = trim($line);
 
-                if (count($parts) === 2) {
-                    $responseHeaders[trim($parts[0])] = trim($parts[1]);
-                } elseif (str_starts_with($line, 'HTTP/')) {
-                    $statusCode = (int) explode(' ', $line)[1] ?? 0;
-                    // Notify status/headers as soon as we know them, even before body arrives
-                    if (!$statusNotified) {
+                if ($trimmed === '') {
+                    // Blank line = end of header block. Notify onStatus now (headers complete).
+                    $headerBlockComplete = true;
+                    if (!$statusNotified && $statusCode > 0) {
                         $statusNotified = true;
                         $listener->onStatus($statusCode, $responseHeaders);
+                    }
+                } elseif (str_starts_with($trimmed, 'HTTP/')) {
+                    // New response line (redirect or 1xx). Reset headers for this block.
+                    $statusCode = (int) explode(' ', $trimmed)[1] ?? 0;
+                    $responseHeaders = [];
+                    $headerBlockComplete = false;
+                    $statusNotified = false;
+                } else {
+                    // Header line
+                    $parts = explode(':', $line, 2);
+                    if (count($parts) === 2) {
+                        $responseHeaders[trim($parts[0])] = trim($parts[1]);
                     }
                 }
 
                 return strlen($line);
             },
-            CURLOPT_WRITEFUNCTION => static function (mixed $handle, string $chunk) use ($manager, &$receivedFirstChunk): int {
-                $receivedFirstChunk = true;
-                return $manager->receive($chunk);
+            CURLOPT_WRITEFUNCTION => static function (mixed $handle, string $chunk) use ($manager, &$receivedFirstChunk, &$abortedByListener, $listener, &$statusCode, &$responseHeaders, &$statusNotified): int {
+                if (!$receivedFirstChunk) {
+                    $receivedFirstChunk = true;
+                    // If we're here, headers are complete but onStatus hasn't fired yet (no blank line?)
+                    // This can happen with some servers. Fire it now.
+                    if (!$statusNotified && $statusCode > 0) {
+                        $statusNotified = true;
+                        $listener->onStatus($statusCode, $responseHeaders);
+                    }
+                }
+
+                $bytes = $manager->receive($chunk);
+
+                // If receive() returned 0 (less than strlen($chunk)), listener aborted
+                if ($bytes !== strlen($chunk)) {
+                    $abortedByListener = true;
+                }
+
+                return $bytes;
             },
         ]);
 
@@ -293,12 +325,18 @@ final class Client
 
         curl_close($handle);
 
-        // curl_exec() failure is ALWAYS an error, whether or not chunks arrived
-        if ($result === false) {
+        // curl_exec() = false is error UNLESS the listener intentionally aborted
+        if ($result === false && !$abortedByListener) {
             throw new ClientException(
                 sprintf('Stream request failed: %s', $error !== '' ? $error : 'unknown error'),
                 $errno
             );
+        }
+
+        // Ensure onStatus was called, even for responses without body
+        if (!$statusNotified && $statusCode > 0) {
+            $statusNotified = true;
+            $listener->onStatus($statusCode, $responseHeaders);
         }
 
         $remainder = $manager->finalize();
