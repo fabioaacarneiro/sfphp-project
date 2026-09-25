@@ -2845,7 +2845,7 @@ a colon.
 
 | Rule | Checks |
 |---|---|
-| `required` | Not null, not empty, not an empty array |
+| `required` | Not null, not empty, not only whitespace, not an empty array |
 | `email` | `FILTER_VALIDATE_EMAIL` |
 | `url` | `FILTER_VALIDATE_URL` |
 | `number` | ASCII digits only (safe for `(int)`) |
@@ -2856,6 +2856,25 @@ a colon.
 | `minLength:N` | At least N characters, **always** — whatever the value looks like |
 | `maxLength:N` | At most N characters, always |
 | `pattern:REGEX` | Matches, with `u` and the delimiters supplied for you |
+
+**`required` comes first, and the other rules only when there is a value.** A
+field that is absent, empty or only whitespace is judged by `required` alone,
+wherever it sits in the list: with it, "is required" is the one message — there
+is no length to check in a value that is not there; without it, the field is
+optional and nothing is checked. Once the field has a value, `required` has
+nothing to say and every other rule applies, each with its own message. `"0"`
+is a value. The browser (`@validate`) decides the same way.
+
+```php
+$rules = ['name' => 'required|min:3', 'nickname' => 'min:3|max:20'];
+
+Validator::validate([], $rules)->errors();
+// ['name' => ['name is required.']]            — nickname is optional: not checked
+
+Validator::validate(['name' => 'Jo', 'nickname' => 'Al'], $rules)->errors();
+// ['name' => ['name must be at least 3 characters long.'],
+//  'nickname' => ['nickname must be at least 3 characters long.']]
+```
 
 **`min` and `max` follow the value**, which is what people mean when they write
 them:
@@ -5186,7 +5205,9 @@ in a submit without JavaScript.
 
 `@validate` runs on `blur` and takes the same rules the server validates with —
 see [Validation](#validation) for the list. Several separated by `|`:
-`@validate="required|number|min:18"`.
+`@validate="required|number|min:18"`. As on the server, `required` is judged
+first: an empty field shows only "required" when the rule is there, and nothing
+when it is not; the other rules check a field only once it has a value.
 
 ```html
 <form @post="/users" @target="#list">

@@ -2885,7 +2885,7 @@ cadenas de reglas. Los argumentos van tras dos puntos.
 
 | Regla | Comprueba |
 |---|---|
-| `required` | No nulo, no vacío, no lista vacía |
+| `required` | No nulo, no vacío, no solo espacios, no lista vacía |
 | `email` | `FILTER_VALIDATE_EMAIL` |
 | `url` | `FILTER_VALIDATE_URL` |
 | `number` | Solo dígitos ASCII (seguro para `(int)`) |
@@ -2896,6 +2896,25 @@ cadenas de reglas. Los argumentos van tras dos puntos.
 | `minLength:N` | Al menos N caracteres, **siempre** — sea cual sea el valor |
 | `maxLength:N` | Como máximo N caracteres, siempre |
 | `pattern:REGEX` | Coincide, con `u` y con los delimitadores puestos por ti |
+
+**`required` va primero, y las demás reglas solo cuando hay valor.** Un campo
+ausente, vacío o con solo espacios se juzga únicamente por `required`, esté
+donde esté en la lista: con él, "es obligatorio" es el único mensaje — no hay
+longitud que comprobar en un valor que no existe; sin él, el campo es opcional y
+no se comprueba nada. Cuando el campo tiene valor, `required` no tiene nada que
+decir y se aplican todas las demás reglas, cada una con su mensaje. `"0"` es un
+valor. El navegador (`@validate`) decide igual.
+
+```php
+$rules = ['name' => 'required|min:3', 'nickname' => 'min:3|max:20'];
+
+Validator::validate([], $rules)->errors();
+// ['name' => ['name is required.']]            — nickname is optional: not checked
+
+Validator::validate(['name' => 'Jo', 'nickname' => 'Al'], $rules)->errors();
+// ['name' => ['name must be at least 3 characters long.'],
+//  'nickname' => ['nickname must be at least 3 characters long.']]
+```
 
 **`min` y `max` siguen al valor**, que es lo que la gente quiere decir cuando los
 escribe:
@@ -5275,7 +5294,10 @@ su `value`, como en un envío sin JavaScript.
 
 `@validate` se ejecuta en `blur` y acepta las mismas reglas que valida el
 servidor — véase [Validación](#validación) para la lista. Varias separadas por
-`|`: `@validate="required|number|min:18"`.
+`|`: `@validate="required|number|min:18"`. Como en el servidor, `required` se
+juzga primero: un campo vacío muestra solo "obligatorio" cuando la regla está, y
+nada cuando no está; las demás reglas comprueban el campo solo cuando tiene
+valor.
 
 ```html
 <form @post="/usuarios" @target="#lista">

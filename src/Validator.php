@@ -33,6 +33,14 @@ final class Validator
      * Length is counted in characters and the alphabetic rules accept every
      * script, so "日本語" is 3 and `alpha` accepts "José".
      *
+     * **A field without `required` is optional.** Absent or empty — null, "",
+     * whitespace only, or an empty array — it passes, and none of its rules run: `min:3` on an
+     * optional nickname judges a nickname, not the absence of one. With
+     * `required`, an absent or empty field gets that one message and nothing
+     * else, wherever `required` sits in the list: there is no length to check
+     * in a value that is not there. Once the field has a value, every other
+     * rule applies.
+     *
      * @param array<string, mixed> $data The data to validate
      * @param array<string, string|list<string>> $rules The rules, keyed by field
      * @param array<string, array<string, string>> $errorMessages Messages to use instead of the defaults
@@ -48,13 +56,30 @@ final class Validator
 
         foreach ($rules as $field => $ruleSet) {
             $rulesArray = is_array($ruleSet) ? $ruleSet : explode('|', (string) $ruleSet);
+            $rulesArray = array_values(array_filter(
+                array_map(static fn (mixed $rule): string => trim((string) $rule), $rulesArray),
+                static fn (string $rule): bool => $rule !== ''
+            ));
+
+            // A misspelt rule is an error whether or not this field was sent,
+            // so the check does not depend on which rules end up running.
+            foreach ($rulesArray as $rule) {
+                self::assertKnownRule($rule, $field);
+            }
+
             $value = $data[$field] ?? null;
             $stringValue = is_scalar($value) ? (string) $value : '';
 
-            foreach ($rulesArray as $rule) {
-                $rule = trim((string) $rule);
+            if (self::isEmpty($value)) {
+                if (in_array('required', $rulesArray, true)) {
+                    $errors[$field][] = self::message($errorMessages, $field, 'required');
+                }
 
-                if ($rule === '') {
+                continue;
+            }
+
+            foreach ($rulesArray as $rule) {
+                if ($rule === 'required') {
                     continue;
                 }
 
@@ -118,11 +143,6 @@ final class Validator
         }
 
         switch ($rule) {
-            case 'required':
-                return $value === null || $value === '' || $value === []
-                    ? self::message($custom, $field, 'required')
-                    : null;
-
             case 'email':
                 return filter_var($stringValue, FILTER_VALIDATE_EMAIL) === false
                     ? self::message($custom, $field, 'email')
@@ -149,6 +169,45 @@ final class Validator
             $field,
             'required, email, url, number, alpha, alphanum, min:N, max:N, minLength:N, maxLength:N, pattern:REGEX'
         ));
+    }
+
+    /**
+     * Whether a value counts as not given: absent, null, an empty array, or a
+     * string with nothing but whitespace.
+     *
+     * An HTML form sends "" for a field left blank, so blank is treated the
+     * same as absent, and a name of three spaces is no more a name than an
+     * empty one. SFJS decides the same way in the browser. "0" and 0 are
+     * values.
+     */
+    private static function isEmpty(mixed $value): bool
+    {
+        if ($value === null || $value === []) {
+            return true;
+        }
+
+        return is_string($value) && preg_match('/^\s*$/u', $value) === 1;
+    }
+
+    /**
+     * Refuse a rule name the validator does not know.
+     *
+     * @throws InvalidArgumentException If the rule name is not recognised
+     */
+    private static function assertKnownRule(string $rule, string $field): void
+    {
+        $known = preg_match('/^(min|max|minLength|maxLength):-?\d+(?:\.\d+)?$/i', $rule) === 1
+            || preg_match('/^pattern:.+$/s', $rule) === 1
+            || in_array($rule, ['required', 'email', 'url', 'alpha', 'alphanum', 'number'], true);
+
+        if (!$known) {
+            throw new InvalidArgumentException(sprintf(
+                'Unknown validation rule "%s" for field "%s". The rules are: %s.',
+                $rule,
+                $field,
+                'required, email, url, number, alpha, alphanum, min:N, max:N, minLength:N, maxLength:N, pattern:REGEX'
+            ));
+        }
     }
 
     /**

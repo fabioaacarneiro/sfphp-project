@@ -2838,9 +2838,11 @@ $tests->run('validation messages follow the locale and inflect by count', functi
         $errors = Validator::validate(['nome' => ''], ['nome' => 'required'])->errors();
         $tests->assertSame('nome é obrigatório.', $errors['nome'][0]);
 
-        // A regra de comprimento flexiona: "ao menos um caractere", não "1 caracteres".
-        $errors = Validator::validate(['nome' => ''], ['nome' => 'min:1'])->errors();
-        $tests->assertSame('nome deve ter ao menos um caractere.', $errors['nome'][0]);
+        // A regra de comprimento flexiona: "no máximo um caractere", não "1
+        // caracteres". (Testado pelo max: um campo vazio é opcional e não é
+        // validado, então o singular de min:1 não é mais alcançável.)
+        $errors = Validator::validate(['nome' => 'ab'], ['nome' => 'max:1'])->errors();
+        $tests->assertSame('nome deve ter no máximo um caractere.', $errors['nome'][0]);
 
         $errors = Validator::validate(['nome' => 'ab'], ['nome' => 'min:5'])->errors();
         $tests->assertSame('nome deve ter ao menos 5 caracteres.', $errors['nome'][0]);
@@ -7146,6 +7148,44 @@ final class QueueProbeDriver implements \SfphpProject\src\Queue\Queue
         return json_encode(['class' => get_class($job), 'data' => $job->payload(), 'options' => $job->options()]);
     }
 }
+
+$tests->run('required is judged first, and an optional field is judged only when it has a value', function () use ($tests): void {
+    $rules = ['nickname' => 'min:3|max:10', 'name' => 'min:3|required', 'email' => 'email'];
+
+    // Absent or blank and optional: nothing runs. Absent or blank and
+    // required: that one message, even though required comes last.
+    foreach ([[], ['nickname' => '', 'name' => '   ', 'email' => '']] as $data) {
+        $errors = Validator::validate($data, $rules)->errors();
+
+        $tests->assertSame(['name'], array_keys($errors));
+        $tests->assertSame(['name is required.'], $errors['name']);
+    }
+
+    // With a value, required is satisfied and says nothing; the other rules
+    // speak for themselves.
+    $errors = Validator::validate(
+        ['nickname' => 'ab', 'name' => 'Jo', 'email' => 'not-an-email'],
+        $rules
+    )->errors();
+    $tests->assertSame(['nickname must be at least 3 characters long.'], $errors['nickname']);
+    $tests->assertSame(['name must be at least 3 characters long.'], $errors['name']);
+    $tests->assertSame(['email must be a valid email.'], $errors['email']);
+
+    $result = Validator::validate(['nickname' => 'Ana', 'name' => 'Joana', 'email' => 'ana@example.com'], $rules);
+    $tests->assertTrue($result->passes());
+
+    // "0" is a value, not an empty field.
+    $tests->assertSame(
+        ['count must be at least 1.'],
+        Validator::validate(['count' => '0'], ['count' => 'required|number|min:1'])->errors()['count'] ?? []
+    );
+
+    // A misspelt rule is refused even on a field that was not sent.
+    $tests->assertThrows(
+        fn () => Validator::validate([], ['nickname' => 'mni:3']),
+        InvalidArgumentException::class
+    );
+});
 
 $tests->run('validated() hands back only the fields that had rules', function () use ($tests): void {
     /*
