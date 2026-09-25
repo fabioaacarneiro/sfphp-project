@@ -1,12 +1,20 @@
 {
     "name": "fabioaacarneiro/sfphp-framework",
-    "version": "0.27.0",
+    "version": "0.29.0",
     "description": "A full-stack PHP framework with zero runtime dependencies, complete async/await system using PHP Fibers, reactive components, and real-time capabilities.",
     "license": "MIT",
     "require": {
         "php": "^8.1",
+        "ext-ctype": "*",
+        "ext-curl": "*",
+        "ext-fileinfo": "*",
+        "ext-filter": "*",
         "ext-json": "*",
-        "ext-pdo": "*"
+        "ext-mbstring": "*",
+        "ext-openssl": "*",
+        "ext-pdo": "*",
+        "ext-session": "*",
+        "ext-tokenizer": "*"
     },
     "autoload": {
         "psr-4": {
@@ -46,11 +54,15 @@
         ]
     },
     "suggest": {
-        "ext-mbstring": "Improves Unicode case conversion; the framework falls back to ASCII folding without it.",
-        "ext-redis": "Enables the Redis cache and queue drivers.",
-        "ext-pcntl": "Enables graceful shutdown of the queue worker.",
-        "ext-fileinfo": "Reads an uploaded file's real media type. Without it assertType() refuses rather than guessing.",
-        "ext-curl": "Required by the HTTP client. Without it, Http::get() and friends refuse rather than degrade."
+        "ext-pdo_mysql": "The PDO driver for MySQL 8+ — install the one for the database you use.",
+        "ext-pdo_pgsql": "The PDO driver for PostgreSQL 12+.",
+        "ext-pdo_sqlite": "The PDO driver for SQLite.",
+        "ext-redis": "The Redis cache, session and queue drivers, and anything shared between instances. Not bundled with PHP (PECL).",
+        "ext-pcntl": "Graceful stop on SIGTERM and per-job timeouts for the queue worker. Unix only, which is why it is not required.",
+        "ext-posix": "Terminal detection for coloured dump() output in the console.",
+        "ext-gd": "Generates the PWA icons in make:pwa.",
+        "ext-intl": "Locale-correct dates and numbers (CLDR). Without it they fall back to ISO dates and separators guessed from the language.",
+        "ext-readline": "The interactive ./sfphp tinker shell."
     },
     "type": "project",
     "keywords": [
@@ -60,14 +72,27 @@
         "query-builder",
         "template-engine",
         "i18n",
-        "zero-dependencies"
+        "zero-dependencies",
+        "streams",
+        "reactivity",
+        "templ",
+        "htmx",
+        "bootstrap",
+        "alpine",
+        "pwa",
+        "simple",
+        "php",
+        "complete",
+        "all-in-one",
+        "llm",
+        "chat"
     ],
     "config": {
         "sort-packages": true
     },
     "extra": {
         "branch-alias": {
-            "dev-master": "0.28.x-dev"
+            "dev-master": "0.30.x-dev"
         }
     },
     "bin": [

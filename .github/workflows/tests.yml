@@ -6,9 +6,9 @@ on:
 
 jobs:
   # The unit suite runs with nothing beyond the extensions composer.json
-  # requires. mbstring is deliberately absent: the framework's UTF-8 handling
-  # is built on PCRE so that it works on a bare PHP build, and this job is what
-  # keeps that true.
+  # requires — all of them part of a standard PHP build — so a feature that
+  # quietly starts needing an optional one (redis, pcntl, gd, intl) fails here
+  # rather than on somebody's server.
   unit:
     name: Unit (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
@@ -24,13 +24,13 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: json, pdo
+          extensions: ctype, curl, fileinfo, filter, json, mbstring, openssl, pdo, session, tokenizer
           coverage: none
       - run: composer install --prefer-dist --no-progress
       # Full validation, publish checks included: this package is published,
       # so a composer.json that Packagist would refuse has to fail here rather
       # than at the moment somebody tries to install it.
-      - run: composer validate --strict
+      - run: composer validate --strict --no-check-version
       - run: composer run lint
       - run: composer run test
 
@@ -106,7 +106,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: json, pdo, pdo_mysql, pdo_pgsql, redis
+          extensions: ctype, curl, fileinfo, filter, json, mbstring, openssl, pdo, session, tokenizer, pdo_mysql, pdo_pgsql, redis
           coverage: none
       - run: composer install --prefer-dist --no-progress
 
