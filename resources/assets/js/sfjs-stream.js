@@ -23,6 +23,8 @@
     const url = element.getAttribute('@stream') || element.getAttribute('@hxstream');
     const target = element.getAttribute('@target') || element.getAttribute('@hxtarget');
     const targetEl = target ? document.querySelector(target) : element;
+    const method = (element.getAttribute('@method') || 'GET').toUpperCase();
+    const body = element.getAttribute('@body') ? JSON.parse(element.getAttribute('@body')) : null;
 
     if (!url || !targetEl) {
       console.warn('SFJS Stream: Missing @stream URL or @target element');
@@ -34,7 +36,7 @@
     if (isSSE) {
       handleSSE(url, targetEl, element);
     } else {
-      handleTextStream(url, targetEl, element);
+      handleTextStream(url, targetEl, element, method, body);
     }
   }
 
@@ -43,16 +45,37 @@
    * @param {string} url The streaming endpoint
    * @param {Element} target The target element
    * @param {Element} element The original element with @stream (for @abort binding)
+   * @param {string} method The HTTP method (GET, POST, etc)
+   * @param {?Object} body The request body for POST/PUT/PATCH
    */
-  function handleTextStream(url, target, element) {
+  function handleTextStream(url, target, element, method = 'GET', body = null) {
     const controller = new AbortController();
 
-    fetch(url, {
+    const headers = {
+      'X-Requested-With': 'XMLHttpRequest',
+    };
+
+    // Add CSRF token for state-changing requests
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      const token = document.querySelector('meta[name="csrf-token"]')?.content;
+      if (token) {
+        headers['X-CSRF-Token'] = token;
+      }
+    }
+
+    const fetchOptions = {
+      method,
       signal: controller.signal,
-      headers: {
-        'X-Requested-With': 'XMLHttpRequest',
-      },
-    })
+      headers,
+    };
+
+    // Add body for state-changing requests
+    if (body && ['POST', 'PUT', 'PATCH'].includes(method)) {
+      headers['Content-Type'] = 'application/json';
+      fetchOptions.body = JSON.stringify(body);
+    }
+
+    fetch(url, fetchOptions)
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.body;

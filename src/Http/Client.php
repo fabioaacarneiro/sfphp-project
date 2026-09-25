@@ -252,7 +252,7 @@ final class Client
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
             CURLOPT_TIMEOUT => $this->timeout,
             CURLOPT_LOW_SPEED_TIME => 30,
-            CURLOPT_LOW_SPEED_LIMIT => 1024, // 1KB in 30s = abort
+            CURLOPT_LOW_SPEED_LIMIT => 1, // 1 byte in 30s = silence, abort (not slowness)
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => self::MAX_REDIRECTS,
             CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
@@ -291,7 +291,8 @@ final class Client
 
         curl_close($handle);
 
-        if ($result === false && !$receivedFirstChunk) {
+        // curl_exec() failure is ALWAYS an error, whether or not chunks arrived
+        if ($result === false) {
             throw new ClientException(
                 sprintf('Stream request failed: %s', $error !== '' ? $error : 'unknown error'),
                 $errno
