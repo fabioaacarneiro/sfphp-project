@@ -245,6 +245,74 @@ Heartbeat (keeps connection alive, browser ignores):
 
 ---
 
+## Streaming in the Browser (SFJS `@stream`)
+
+`sfjs-stream.js` reads a streamed response into a page element without any
+JavaScript of your own. Load it after `sfjs.js`:
+
+```html
+<script src="{{ asset('js/sfjs.min.js') }}"></script>
+<script src="{{ asset('js/sfjs-stream.min.js') }}"></script>
+```
+
+### Text streams
+
+```html
+<div id="output">Output appears here...</div>
+
+<button @stream="/stream" @target="#output">Start streaming</button>
+```
+
+Each chunk is appended to the target as it arrives. The target receives the
+chunks as **text**, not HTML, so the endpoint should answer with plain text
+(`Content-Type: text/plain`). Markup sent down the stream would show up tag by
+tag.
+
+### Server-Sent Events
+
+Add `@sse` to read the endpoint as an event stream. `@events` names the event
+types to show, besides the default `message`:
+
+```html
+<button @stream="/stream/sse" @sse @events="status,progress,complete" @target="#events">
+    Connect
+</button>
+```
+
+A `GET` without a body uses `EventSource`. Any other method, or a request with
+a body, reads the event stream through `fetch`.
+
+### Attributes
+
+| Attribute | Meaning |
+|---|---|
+| `@stream` | The URL to stream from |
+| `@target` | The element that receives the output (default: the element itself) |
+| `@sse` | Read the response as Server-Sent Events |
+| `@events` | Comma-separated SSE event types to show |
+| `@method` | HTTP method (default `GET`) |
+| `@body` | JSON request body |
+| `@trigger` | The event that starts the stream |
+| `@abort` | Selector of an element whose click stops the stream |
+
+### When a stream starts
+
+Without `@trigger`, the rule is the same as the rest of SFJS: **a click starts
+a button or link, a submit starts a form**. Any other element starts streaming
+on its own when the page loads. A button inside a form streams on click and
+sends the form's fields as the body when the method is `POST`, `PUT` or
+`PATCH`.
+
+Starting again replaces the run in progress. A second click stops the stream
+that is still arriving, clears the target and streams from the beginning, so
+the output of two runs never mixes in one box. `@abort` stops the current run
+and leaves what already arrived in place.
+
+State-changing methods send the page's `<meta name="csrf-token">` as
+`X-CSRF-Token`.
+
+---
+
 ## Client-Side Streaming (HTTP → PHP)
 
 Receive large responses from upstream services in chunks, without buffering the entire body.
@@ -552,23 +620,6 @@ Streaming doesn't add CPU overhead vs. buffering. Both process the same data.
 ---
 
 ## Not Yet Implemented
-
-### SFJS @stream Attribute
-
-Browser-side streaming is planned for a future release. For now:
-
-```html
-<!-- Not yet available -->
-<div @stream="/api/stream" @target="#output">Loading...</div>
-
-<!-- Workaround: use JavaScript -->
-<script>
-const es = new EventSource('/api/stream');
-es.onmessage = (e) => {
-    document.getElementById('output').textContent += e.data;
-};
-</script>
-```
 
 ### Timeout Management
 

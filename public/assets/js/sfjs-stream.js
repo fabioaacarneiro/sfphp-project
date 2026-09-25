@@ -51,11 +51,15 @@
 
     const isSSE = element.getAttribute('@sse') !== null || element.getAttribute('@hxsse') !== null;
 
-    if (isSSE) {
-      handleSSE(url, targetEl, element, method, body);
-    } else {
-      handleTextStream(url, targetEl, element, method, body);
-    }
+    // Starting again replaces the run in progress: stop it, then start from
+    // an empty target, so a second click repeats the stream instead of
+    // mixing two of them in the same box.
+    element.__sfStreamStop?.();
+    targetEl.textContent = '';
+
+    element.__sfStreamStop = isSSE
+      ? handleSSE(url, targetEl, element, method, body)
+      : handleTextStream(url, targetEl, element, method, body);
   }
 
   /**
@@ -65,6 +69,7 @@
    * @param {Element} element The original element with @stream (for @abort binding)
    * @param {string} method The HTTP method (GET, POST, etc)
    * @param {?Object} body The request body for POST/PUT/PATCH
+   * @returns {Function} Stops the stream
    */
   function handleTextStream(url, target, element, method = 'GET', body = null) {
     const controller = new AbortController();
@@ -107,7 +112,11 @@
 
         const readChunk = () => {
           reader.read().then(({ done, value }) => {
-            if (done) return;
+            if (done) {
+              result += decoder.decode();
+              target.textContent = result;
+              return;
+            }
 
             const chunk = decoder.decode(value, { stream: true });
             result += chunk;
@@ -120,6 +129,8 @@
 
             readChunk();
           }).catch((error) => {
+            if (error.name === 'AbortError') return;
+
             console.error('SFJS Stream: Error reading chunk', error);
             target.textContent = `Error: ${error.message}`;
           });
@@ -134,13 +145,7 @@
         }
       });
 
-    // Allow aborting via @abort attribute
-    const abortBtn = element.getAttribute('@abort');
-    if (abortBtn) {
-      document.querySelector(abortBtn)?.addEventListener('click', () => {
-        controller.abort();
-      });
-    }
+    return () => controller.abort();
   }
 
   /**
@@ -150,6 +155,7 @@
    * @param {Element} element The original element with @stream (for @events/@abort binding)
    * @param {string} method The HTTP method (GET, POST, etc) — only GET works with EventSource
    * @param {?Object} body The request body for POST (must use fetch for SSE)
+   * @returns {Function} Closes the connection
    */
   function handleSSE(url, target, element, method = 'GET', body = null) {
     let content = '';
@@ -157,8 +163,7 @@
 
     // EventSource only supports GET. For POST, use fetch with manual SSE parsing.
     if (body || method !== 'GET') {
-      handleSSEviafetch(url, target, element, method, body);
-      return;
+      return handleSSEviafetch(url, target, element, method, body);
     }
 
     const es = new EventSource(url);
@@ -190,17 +195,12 @@
       target.textContent += '\n\n[Connection closed]';
     });
 
-    // Allow closing via @abort attribute
-    const abortBtn = element.getAttribute('@abort');
-    if (abortBtn) {
-      document.querySelector(abortBtn)?.addEventListener('click', () => {
-        es.close();
-      });
-    }
+    return () => es.close();
   }
 
   /**
    * Handle SSE via fetch (supports POST)
+   * @returns {Function} Stops the stream
    */
   function handleSSEviafetch(url, target, element, method, body) {
     const controller = new AbortController();
@@ -324,13 +324,26 @@
         }
       });
 
-    // Allow closing via @abort attribute
-    const abortBtn = element.getAttribute('@abort');
-    if (abortBtn) {
-      document.querySelector(abortBtn)?.addEventListener('click', () => {
-        controller.abort();
-      });
-    }
+    return () => controller.abort();
+  }
+
+  /**
+   * The event that starts a stream when @trigger is not given.
+   *
+   * A form streams on submit and something clickable streams on click; only
+   * other elements start on their own, as the page loads. A submit listener
+   * on a button inside a form would never fire, since submit is dispatched
+   * on the form, so a button streams on click wherever it sits.
+   *
+   * @param {Element} element The element with @stream
+   * @returns {string} The event name
+   */
+  function defaultTrigger(element) {
+    if (element.tagName === 'FORM') return 'submit';
+
+    if (element.matches('button, a, input[type="button"], input[type="submit"]')) return 'click';
+
+    return 'load';
   }
 
   /**
@@ -344,9 +357,17 @@
       if (element.__sfStreamBound) return;
       element.__sfStreamBound = true;
 
-      // Default trigger: 'submit' for forms, 'load' for other elements
-      const defaultTrigger = (element.tagName === 'FORM' || element.closest('form')) ? 'submit' : 'load';
-      const trigger = element.getAttribute('@trigger') || element.getAttribute('@hxtrigger') || defaultTrigger;
+      const trigger = element.getAttribute('@trigger') || element.getAttribute('@hxtrigger') || defaultTrigger(element);
+
+      // @abort names the element that stops whatever run is in progress.
+      // Bound once here, not per run, so restarting does not stack listeners.
+      const abortSelector = element.getAttribute('@abort');
+      if (abortSelector) {
+        document.querySelector(abortSelector)?.addEventListener('click', () => {
+          element.__sfStreamStop?.();
+          element.__sfStreamStop = null;
+        });
+      }
 
       if (trigger === 'load') {
         handleStream(element);
