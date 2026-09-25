@@ -1,0 +1,46 @@
+<?php
+
+namespace SfphpProject\app\components\streams;
+
+use SfphpProject\src\View\Sfht;
+
+use function SfphpProject\app\components\streams\layout\PageFooter;
+use function SfphpProject\app\components\streams\layout\PageHeader;
+use function SfphpProject\app\components\streams\boxes\TextStreamBox;
+use function SfphpProject\app\components\streams\boxes\SseStreamBox;
+use function SfphpProject\app\components\streams\explain\HowItWorks;
+
+/**
+ * The page that demonstrates HTTP Streaming and Server-Sent Events (SSE).
+ */
+function StreamsPage(): Sfht
+{
+    return sfht(
+        <!DOCTYPE html>
+        <html lang="{{ lang_tag() }}">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>HTTP Streaming + SSE — SFPHP</title>
+            <link rel="stylesheet" href="{{ asset('css/sfcss.min.css') }}">
+        </head>
+        <body class="bg-light">
+            {{ PageHeader() }}
+
+            <main class="container py-12 max-w-4xl mx-auto px-4">
+                <div class="grid grid-cols-2 gap-6">
+                    {{ TextStreamBox() }}
+                    {{ SseStreamBox() }}
+                </div>
+
+                {{ HowItWorks() }}
+            </main>
+
+            {{ PageFooter() }}
+
+            <script src="{{ asset('js/sfjs.min.js') }}"></script>
+            <script src="{{ asset('js/sfjs-stream.min.js') }}"></script>
+        </body>
+        </html>
+    );
+}

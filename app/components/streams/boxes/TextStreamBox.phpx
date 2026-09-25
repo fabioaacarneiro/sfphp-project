@@ -1,0 +1,52 @@
+<?php
+
+namespace SfphpProject\app\components\streams\boxes;
+
+use SfphpProject\src\View\Sfht;
+
+/**
+ * Demonstrates text streaming.
+ * When the button is clicked, it fetches /stream and displays
+ * chunks as they arrive from the server.
+ */
+function TextStreamBox(): Sfht
+{
+    return sfht(
+        <div class="card">
+            <div class="card-header">
+                <h2 class="text-lg font-bold">Text Streaming</h2>
+                <p class="text-sm text-gray-600 mt-1">Progressive delivery of text chunks</p>
+            </div>
+
+            <div class="card-body">
+                <p class="text-sm mb-4">
+                    Simulates token-by-token generation (like LLM outputs).
+                    Each chunk arrives with a 200ms delay.
+                </p>
+
+                <div
+                    id="text-stream-output"
+                    class="bg-white border border-gray-300 rounded p-4 mb-4 font-mono text-sm min-h-32 max-h-64 overflow-y-auto whitespace-pre-wrap break-words"
+                >
+                    <span class="text-gray-400">Output appears here...</span>
+                </div>
+
+                <button
+                    class="btn btn-primary w-full"
+                    @stream="/stream"
+                    @target="#text-stream-output"
+                    @swap="innerHTML"
+                >
+                    Start Streaming
+                </button>
+            </div>
+
+            <div class="card-footer text-xs text-gray-600">
+                <p><strong>How it works:</strong></p>
+                <p>• Server responds with chunked Transfer-Encoding</p>
+                <p>• Browser receives data as it arrives</p>
+                <p>• Perfect for AI responses, file uploads, logs</p>
+            </div>
+        </div>
+    );
+}

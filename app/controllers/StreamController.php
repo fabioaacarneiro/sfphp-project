@@ -6,11 +6,23 @@ use SfphpProject\src\Http\Response;
 use SfphpProject\src\Http\ServerSentEvent;
 use SfphpProject\src\Http\StreamWriter;
 
+use function SfphpProject\app\components\streams\StreamsPage;
+
 /**
  * Demo controller showing server-to-client streaming.
  */
 final class StreamController
 {
+    /**
+     * Show the demonstration page with live examples.
+     *
+     * @return Response The page
+     */
+    public function index(): Response
+    {
+        return Response::html((string) StreamsPage());
+    }
+
     /**
      * Stream text chunks (e.g., AI-generated text token by token).
      *
