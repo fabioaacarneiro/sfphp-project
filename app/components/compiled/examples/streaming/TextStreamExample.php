@@ -22,9 +22,10 @@ echo ')</h2>
                     Stream text chunks progressively (perfect for AI responses, logs, or any long text).
                 </p>
 
-                <div class="bg-white border border-gray-300 rounded p-4 font-mono text-sm min-h-40 max-h-64 overflow-y-auto whitespace-pre-wrap break-words mb-4">
-                    <span class="text-gray-400" id="stream-output">Click "Start Stream" to see chunks arrive...</span>
-                </div>
+                <div
+                    id="stream-output"
+                    class="bg-white border border-gray-300 rounded p-4 font-mono text-sm min-h-40 max-h-64 overflow-y-auto whitespace-pre-wrap break-words mb-4"
+                ><span class="text-gray-400">Click "Start Stream" to see chunks arrive...</span></div>
 
                 <button
                     class="btn btn-primary w-full"

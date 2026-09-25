@@ -1,7 +1,7 @@
 # SFCSS — Complete utilities reference
 
-> **Size:** 110KB raw · 92KB minified · **16.1KB gzipped**
-> **Classes:** 2,339 in total — 1,211 base, 600 `hover:`, 528 responsive
+> **Size:** 115KB raw · 95KB minified · **16.8KB gzipped**
+> **Classes:** 2,382 in total — 1,254 base, 600 `hover:`, 528 responsive
 > **Colours:** 600 palette classes (20 families × 10 shades × `bg`/`text`/`border`) plus 25 theme classes
 >
 > 🌍 Also available in [Português](../pt-BR/SFCSS_UTILITIES.md) and
@@ -83,6 +83,17 @@ Space between items in a grid or flex container:
 <div class="grid grid-cols-3 gap-0 gap-1 gap-2 gap-3 gap-4 gap-5 gap-6 gap-8">
 ```
 
+### Space between children
+
+A margin on every child except the first, so a stack is spaced without the last
+item pushing on what follows. The steps are the margin scale's: `space-y-4` is
+the same distance as `mt-4`.
+
+```html
+<div class="space-y-1 space-y-2 space-y-3 space-y-4 space-y-6 space-y-8">
+<div class="d-flex space-x-1 space-x-2 space-x-3 space-x-4 space-x-6 space-x-8">
+```
+
 ---
 
 ## Sizing
@@ -149,6 +160,24 @@ the value to the builder, or write the rule yourself.
 <div class="h-[96px] h-[128px] h-[192px] h-[256px]">
 ```
 
+### Max and min height
+
+The same rem scale as `h-*`, so `min-h-32` is as tall as `h-32`:
+
+```html
+<div class="max-h-32 max-h-40 max-h-48 max-h-64 max-h-80 max-h-96">
+<div class="max-h-full max-h-screen max-h-none">
+
+<div class="min-h-0 min-h-16 min-h-24 min-h-32 min-h-40 min-h-48 min-h-64">
+<div class="min-h-full min-h-screen">
+```
+
+A box that grows with its content up to a limit, then scrolls:
+
+```html
+<div class="min-h-32 max-h-64 overflow-y-auto">
+```
+
 ### Max and min width
 
 ```html
@@ -158,6 +187,10 @@ the value to the builder, or write the rule yourself.
 <div class="max-w-xl">        <!-- 36rem -->
 <div class="max-w-2xl">       <!-- 42rem -->
 <div class="max-w-3xl">       <!-- 48rem -->
+<div class="max-w-4xl">       <!-- 56rem -->
+<div class="max-w-5xl">       <!-- 64rem -->
+<div class="max-w-6xl">       <!-- 72rem -->
+<div class="max-w-7xl">       <!-- 80rem -->
 <div class="max-w-full">      <!-- 100% -->
 <div class="max-w-none">      <!-- none -->
 
@@ -298,6 +331,25 @@ so they need no class.
 <p class="italic">
 <p class="not-italic">
 ```
+
+### Whitespace and wrapping
+
+```html
+<p class="whitespace-normal">        <!-- collapse spaces and newlines (default) -->
+<p class="whitespace-nowrap">        <!-- one line, never wraps -->
+<p class="whitespace-pre">           <!-- keep everything, never wraps -->
+<p class="whitespace-pre-line">      <!-- keep newlines, collapse spaces -->
+<p class="whitespace-pre-wrap">      <!-- keep everything, still wraps -->
+<p class="whitespace-break-spaces">
+
+<p class="break-normal">             <!-- break only where the language allows -->
+<p class="break-words">              <!-- break a word too long for its line -->
+<p class="break-all">                <!-- break anywhere -->
+```
+
+`whitespace-pre-wrap` is what text arriving in chunks needs — a stream, a log,
+generated text: without it every newline the server sent collapses into a space
+and the output runs together on one line.
 
 ---
 
@@ -534,8 +586,8 @@ several times over for classes nobody writes responsively.
 
 | | |
 |---|---|
-| Unique selectors | **2,339** |
-| Base utilities and components | 1,209 |
+| Unique selectors | **2,382** |
+| Base utilities and components | 1,254 |
 | `hover:` variants | 600 |
 | Responsive variants | 528 |
 | Colour families | 20 |
@@ -543,7 +595,7 @@ several times over for classes nobody writes responsively.
 | Palette colour classes | 600 |
 | Theme colour classes | 25 |
 | Breakpoint prefixes | 4 |
-| Raw · minified · gzipped | 110KB · 92KB · **16.1KB** |
+| Raw · minified · gzipped | 115KB · 95KB · **16.8KB** |
 
 Components — buttons, cards, forms, tables, badges, alerts — are documented in
 [SFCSS](SFCSS.md).

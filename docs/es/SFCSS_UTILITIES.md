@@ -1,7 +1,7 @@
 # SFCSS — Referencia completa de utilidades
 
-> **Tamaño:** 110KB en crudo · 92KB minificado · **16,1KB comprimidos**
-> **Clases:** 2.339 en total — 1.211 base, 600 `hover:`, 528 responsivas
+> **Tamaño:** 115KB en crudo · 95KB minificado · **16,8KB comprimidos**
+> **Clases:** 2.382 en total — 1.254 base, 600 `hover:`, 528 responsivas
 > **Colores:** 600 clases de paleta (20 familias × 10 tonos × `bg`/`text`/`border`) más 25 clases del tema
 >
 > 🌍 Disponible también en [English](../en/SFCSS_UTILITIES.md) y
@@ -83,6 +83,17 @@ Espacio entre elementos de una rejilla o un contenedor flex:
 <div class="grid grid-cols-3 gap-0 gap-1 gap-2 gap-3 gap-4 gap-5 gap-6 gap-8">
 ```
 
+### Espacio entre hijos
+
+Un margen en cada hijo excepto el primero, así una pila queda espaciada sin que
+el último elemento empuje lo que viene después. Los pasos son los de la escala
+de margen: `space-y-4` es la misma distancia que `mt-4`.
+
+```html
+<div class="space-y-1 space-y-2 space-y-3 space-y-4 space-y-6 space-y-8">
+<div class="d-flex space-x-1 space-x-2 space-x-3 space-x-4 space-x-6 space-x-8">
+```
+
 ---
 
 ## Tamaño
@@ -149,6 +160,24 @@ generó. Añade el valor al constructor, o escribe tú la regla.
 <div class="h-[96px] h-[128px] h-[192px] h-[256px]">
 ```
 
+### Altura máxima y mínima
+
+La misma escala en rem que `h-*`, así que `min-h-32` mide lo mismo que `h-32`:
+
+```html
+<div class="max-h-32 max-h-40 max-h-48 max-h-64 max-h-80 max-h-96">
+<div class="max-h-full max-h-screen max-h-none">
+
+<div class="min-h-0 min-h-16 min-h-24 min-h-32 min-h-40 min-h-48 min-h-64">
+<div class="min-h-full min-h-screen">
+```
+
+Una caja que crece con su contenido hasta un límite y luego se desplaza:
+
+```html
+<div class="min-h-32 max-h-64 overflow-y-auto">
+```
+
 ### Anchura máxima y mínima
 
 ```html
@@ -158,6 +187,10 @@ generó. Añade el valor al constructor, o escribe tú la regla.
 <div class="max-w-xl">        <!-- 36rem -->
 <div class="max-w-2xl">       <!-- 42rem -->
 <div class="max-w-3xl">       <!-- 48rem -->
+<div class="max-w-4xl">       <!-- 56rem -->
+<div class="max-w-5xl">       <!-- 64rem -->
+<div class="max-w-6xl">       <!-- 72rem -->
+<div class="max-w-7xl">       <!-- 80rem -->
 <div class="max-w-full">      <!-- 100% -->
 <div class="max-w-none">      <!-- none -->
 
@@ -299,6 +332,25 @@ así que no necesitan clase.
 <p class="italic">
 <p class="not-italic">
 ```
+
+### Espacios y saltos de línea
+
+```html
+<p class="whitespace-normal">        <!-- junta espacios y saltos (por defecto) -->
+<p class="whitespace-nowrap">        <!-- una línea, nunca salta -->
+<p class="whitespace-pre">           <!-- conserva todo, nunca salta -->
+<p class="whitespace-pre-line">      <!-- conserva saltos, junta espacios -->
+<p class="whitespace-pre-wrap">      <!-- conserva todo, y aun así salta -->
+<p class="whitespace-break-spaces">
+
+<p class="break-normal">             <!-- corta solo donde el idioma lo permite -->
+<p class="break-words">              <!-- corta una palabra demasiado larga para la línea -->
+<p class="break-all">                <!-- corta en cualquier punto -->
+```
+
+`whitespace-pre-wrap` es lo que necesita el texto que llega por partes — un
+stream, un log, texto generado: sin él, cada salto de línea que envió el
+servidor se vuelve un espacio y la salida se junta en una sola línea.
 
 ---
 
@@ -537,8 +589,8 @@ forma responsiva.
 
 | | |
 |---|---|
-| Selectores únicos | **2.339** |
-| Utilidades base y componentes | 1.209 |
+| Selectores únicos | **2.382** |
+| Utilidades base y componentes | 1.254 |
 | Variantes `hover:` | 600 |
 | Variantes responsivas | 528 |
 | Familias de color | 20 |
@@ -546,7 +598,7 @@ forma responsiva.
 | Clases de color de la paleta | 600 |
 | Clases de color del tema | 25 |
 | Prefijos de punto de ruptura | 4 |
-| Crudo · minificado · comprimido | 110KB · 92KB · **16,1KB** |
+| Crudo · minificado · comprimido | 115KB · 95KB · **16,8KB** |
 
 Los componentes — botones, tarjetas, formularios, tablas, etiquetas, alertas —
 están documentados en [SFCSS](SFCSS.md).

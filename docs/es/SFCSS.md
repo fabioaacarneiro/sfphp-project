@@ -1,6 +1,6 @@
 # SFCSS — Simple Framework CSS
 
-> Verificado contra la hoja de estilos construida · 2.339 clases · 16,4KB comprimidos
+> Verificado contra la hoja de estilos construida · 2.382 clases · 16,8KB comprimidos
 >
 > 🌍 Disponible también en [English](../en/SFCSS.md) y
 > [Português](../pt-BR/SFCSS.md).
@@ -73,8 +73,8 @@ php tools/css-builder/sfcss-builder.php
 
 Eso escribe las dos salidas:
 
-- `resources/assets/css/sfcss.css` — 112KB, legible
-- `resources/assets/css/sfcss.min.css` — 94KB, minificado (16,4KB comprimidos)
+- `resources/assets/css/sfcss.css` — 115KB, legible
+- `resources/assets/css/sfcss.min.css` — 95KB, minificado (16,8KB comprimidos)
 
 ### Qué hace el constructor
 
@@ -517,14 +517,14 @@ referencias a variables.
 
 | | |
 |---|---|
-| Clases en total | **2.339** |
-| — utilidades base y componentes | 1.211 |
+| Clases en total | **2.382** |
+| — utilidades base y componentes | 1.254 |
 | — variantes `hover:` | 600 |
 | — variantes responsivas (`sm` `md` `lg` `xl`) | 528 |
 | Clases de color | 620 |
-| En crudo | 112KB |
-| Minificado | 94KB |
-| **Comprimido** | **16,4KB** |
+| En crudo | 115KB |
+| Minificado | 95KB |
+| **Comprimido** | **16,8KB** |
 | Dependencias | ninguna |
 | JavaScript | ninguno |
 

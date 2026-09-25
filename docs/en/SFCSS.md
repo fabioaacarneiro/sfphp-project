@@ -1,6 +1,6 @@
 # SFCSS — Simple Framework CSS
 
-> Verified against the built stylesheet · 2,339 classes · 16.4KB gzipped
+> Verified against the built stylesheet · 2,382 classes · 16.8KB gzipped
 >
 > 🌍 Also available in [Português](../pt-BR/SFCSS.md) and
 > [Español](../es/SFCSS.md).
@@ -71,8 +71,8 @@ php tools/css-builder/sfcss-builder.php
 
 That writes both outputs:
 
-- `resources/assets/css/sfcss.css` — 112KB, readable
-- `resources/assets/css/sfcss.min.css` — 94KB, minified (16.4KB gzipped)
+- `resources/assets/css/sfcss.css` — 115KB, readable
+- `resources/assets/css/sfcss.min.css` — 95KB, minified (16.8KB gzipped)
 
 ### What the builder does
 
@@ -506,14 +506,14 @@ those are generated as literal values rather than variable references.
 
 | | |
 |---|---|
-| Classes in total | **2,339** |
-| — base utilities and components | 1,211 |
+| Classes in total | **2,382** |
+| — base utilities and components | 1,254 |
 | — `hover:` variants | 600 |
 | — responsive variants (`sm` `md` `lg` `xl`) | 528 |
 | Colour classes | 620 |
-| Raw | 112KB |
-| Minified | 94KB |
-| **Gzipped** | **16.4KB** |
+| Raw | 115KB |
+| Minified | 95KB |
+| **Gzipped** | **16.8KB** |
 | Dependencies | none |
 | JavaScript | none |
 

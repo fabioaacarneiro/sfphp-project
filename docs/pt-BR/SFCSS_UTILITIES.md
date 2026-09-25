@@ -1,7 +1,7 @@
 # SFCSS — Referência completa de utilitários
 
-> **Tamanho:** 110KB cru · 92KB minificado · **16,1KB gzipped**
-> **Classes:** 2.339 no total — 1.211 base, 600 `hover:`, 528 responsivas
+> **Tamanho:** 115KB cru · 95KB minificado · **16,8KB gzipped**
+> **Classes:** 2.382 no total — 1.254 base, 600 `hover:`, 528 responsivas
 > **Cores:** 600 classes de paleta (20 famílias × 10 tons × `bg`/`text`/`border`) mais 25 classes de tema
 >
 > 🌍 Disponível também em [English](../en/SFCSS_UTILITIES.md) e
@@ -83,6 +83,17 @@ Espaço entre itens de um grid ou de um container flex:
 <div class="grid grid-cols-3 gap-0 gap-1 gap-2 gap-3 gap-4 gap-5 gap-6 gap-8">
 ```
 
+### Espaço entre filhos
+
+Uma margem em todo filho exceto o primeiro, então uma pilha fica espaçada sem o
+último item empurrar o que vem depois. Os passos são os da escala de margem:
+`space-y-4` é a mesma distância que `mt-4`.
+
+```html
+<div class="space-y-1 space-y-2 space-y-3 space-y-4 space-y-6 space-y-8">
+<div class="d-flex space-x-1 space-x-2 space-x-3 space-x-4 space-x-6 space-x-8">
+```
+
 ---
 
 ## Sizing
@@ -149,6 +160,24 @@ ao builder, ou escreva a regra você mesmo.
 <div class="h-[96px] h-[128px] h-[192px] h-[256px]">
 ```
 
+### Altura máxima e mínima
+
+A mesma escala em rem do `h-*`, então `min-h-32` tem a altura de `h-32`:
+
+```html
+<div class="max-h-32 max-h-40 max-h-48 max-h-64 max-h-80 max-h-96">
+<div class="max-h-full max-h-screen max-h-none">
+
+<div class="min-h-0 min-h-16 min-h-24 min-h-32 min-h-40 min-h-48 min-h-64">
+<div class="min-h-full min-h-screen">
+```
+
+Uma caixa que cresce com o conteúdo até um limite e então rola:
+
+```html
+<div class="min-h-32 max-h-64 overflow-y-auto">
+```
+
 ### Largura máxima e mínima
 
 ```html
@@ -158,6 +187,10 @@ ao builder, ou escreva a regra você mesmo.
 <div class="max-w-xl">        <!-- 36rem -->
 <div class="max-w-2xl">       <!-- 42rem -->
 <div class="max-w-3xl">       <!-- 48rem -->
+<div class="max-w-4xl">       <!-- 56rem -->
+<div class="max-w-5xl">       <!-- 64rem -->
+<div class="max-w-6xl">       <!-- 72rem -->
+<div class="max-w-7xl">       <!-- 80rem -->
 <div class="max-w-full">      <!-- 100% -->
 <div class="max-w-none">      <!-- none -->
 
@@ -296,6 +329,25 @@ então não precisam de classe.
 <p class="italic">
 <p class="not-italic">
 ```
+
+### Espaços e quebra de linha
+
+```html
+<p class="whitespace-normal">        <!-- junta espaços e quebras (padrão) -->
+<p class="whitespace-nowrap">        <!-- uma linha, nunca quebra -->
+<p class="whitespace-pre">           <!-- mantém tudo, nunca quebra -->
+<p class="whitespace-pre-line">      <!-- mantém quebras, junta espaços -->
+<p class="whitespace-pre-wrap">      <!-- mantém tudo, e ainda quebra -->
+<p class="whitespace-break-spaces">
+
+<p class="break-normal">             <!-- quebra só onde o idioma permite -->
+<p class="break-words">              <!-- quebra uma palavra longa demais para a linha -->
+<p class="break-all">                <!-- quebra em qualquer ponto -->
+```
+
+`whitespace-pre-wrap` é o que texto chegando em partes precisa — um stream, um
+log, texto gerado: sem ele, cada quebra de linha que o servidor enviou vira um
+espaço e a saída se emenda numa linha só.
 
 ---
 
@@ -532,8 +584,8 @@ vezes por classes que ninguém escreve de forma responsiva.
 
 | | |
 |---|---|
-| Seletores únicos | **2.339** |
-| Utilitários base e componentes | 1.209 |
+| Seletores únicos | **2.382** |
+| Utilitários base e componentes | 1.254 |
 | Variantes `hover:` | 600 |
 | Variantes responsivas | 528 |
 | Famílias de cor | 20 |
@@ -541,7 +593,7 @@ vezes por classes que ninguém escreve de forma responsiva.
 | Classes de cor da paleta | 600 |
 | Classes de cor de tema | 25 |
 | Prefixos de breakpoint | 4 |
-| Cru · minificado · gzipped | 110KB · 92KB · **16,1KB** |
+| Cru · minificado · gzipped | 115KB · 95KB · **16,8KB** |
 
 Os componentes — botões, cards, formulários, tabelas, badges, alerts — estão
 documentados em [SFCSS](SFCSS.md).

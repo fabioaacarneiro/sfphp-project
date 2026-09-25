@@ -4509,12 +4509,12 @@ it, which is [further down](#changing-sfcss).
 
 | | |
 |---|---|
-| Classes in total | **2,339** |
-| — base utilities | 1,211 |
+| Classes in total | **2,382** |
+| — base utilities | 1,254 |
 | — `hover:` variants | 600 |
 | — responsive variants (`sm` `md` `lg` `xl`) | 528 |
 | Colour classes | 600 palette (20 families × 10 shades × `bg`/`text`/`border`) + 25 theme |
-| Size | 112KB raw · 94KB minified · **16.4KB gzipped** |
+| Size | 115KB raw · 95KB minified · **16.8KB gzipped** |
 | Dependencies | none |
 
 ### Changing SFCSS

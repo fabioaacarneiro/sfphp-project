@@ -4578,12 +4578,12 @@ que es lo que viene [más abajo](#cambiar-sfcss).
 
 | | |
 |---|---|
-| Clases en total | **2.339** |
-| — utilidades base | 1.211 |
+| Clases en total | **2.382** |
+| — utilidades base | 1.254 |
 | — variantes `hover:` | 600 |
 | — variantes responsivas (`sm` `md` `lg` `xl`) | 528 |
 | Clases de color | 600 de paleta (20 familias × 10 tonos × `bg`/`text`/`border`) + 25 del tema |
-| Tamaño | 112KB en crudo · 94KB minificado · **16,4KB comprimido** |
+| Tamaño | 115KB en crudo · 95KB minificado · **16,8KB comprimido** |
 | Dependencias | ninguna |
 
 ### Cambiar SFCSS

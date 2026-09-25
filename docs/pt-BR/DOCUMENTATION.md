@@ -4503,12 +4503,12 @@ que está [mais abaixo](#mudar-o-sfcss).
 
 | | |
 |---|---|
-| Classes no total | **2.339** |
-| — utilitárias base | 1.211 |
+| Classes no total | **2.382** |
+| — utilitárias base | 1.254 |
 | — variantes `hover:` | 600 |
 | — variantes responsivas (`sm` `md` `lg` `xl`) | 528 |
 | Classes de cor | 600 de paleta (20 famílias × 10 tons × `bg`/`text`/`border`) + 25 de tema |
-| Tamanho | 112KB cru · 94KB minificado · **16,4KB gzipped** |
+| Tamanho | 115KB cru · 95KB minificado · **16,8KB gzipped** |
 | Dependências | nenhuma |
 
 ### Mudar o SFCSS
