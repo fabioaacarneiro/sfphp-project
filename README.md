@@ -57,7 +57,7 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 | **HTTP** | Request/Response objects, middleware pipeline, status codes |
 | **Database** | Query builder with relations, migrations, seeders, transactions |
 | **ORM (Models)** | Object hydration, attribute types, with() for eager loading |
-| **Schema Builder** | 30+ column types, MySQL 8 ↔ PostgreSQL 12 perfect parity |
+| **Schema Builder** | 40+ column types, MySQL 8 ↔ PostgreSQL 12 perfect parity |
 | **Authentication** | Sessions, JWT tokens, password hashing, policies, rememberme |
 | **Authorization** | Gate-based access control, policy classes |
 | **Validation** | Form validation, custom rules, error messages |
@@ -69,8 +69,8 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 |---------|-------------|
 | **SFHT Templates** | Auto-escaping, layout inheritance, component composition |
 | **.phpx Components** | Markup inside PHP functions, compiled on build |
-| **SFCSS Framework** | 2,337+ utility classes, 16.1KB gzipped, Tailwind-compatible |
-| **SFJS Library** | AJAX, DOM utilities, form validation, 3KB gzipped |
+| **SFCSS Framework** | 2,337+ utility classes, 16.6KB gzipped, Tailwind-compatible |
+| **SFJS Library** | AJAX, DOM utilities, form validation, 6KB gzipped |
 | **Built-in Assets** | Published to `public/` with zero config |
 
 ### Advanced Features

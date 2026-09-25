@@ -27,7 +27,7 @@
     <div class="container mx-auto">
         <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div class="text-center">
-                <p class="text-4xl font-bold text-blue-500 mb-2">32</p>
+                <p class="text-4xl font-bold text-blue-500 mb-2">38</p>
                 <p class="text-slate-600">CLI Commands</p>
             </div>
             <div class="text-center">
@@ -39,7 +39,7 @@
                 <p class="text-slate-600">Dependencies</p>
             </div>
             <div class="text-center">
-                <p class="text-4xl font-bold text-amber-500 mb-2">16KB</p>
+                <p class="text-4xl font-bold text-amber-500 mb-2">17KB</p>
                 <p class="text-slate-600">CSS gzipped</p>
             </div>
         </div>
@@ -58,11 +58,11 @@
                     <h3 class="text-blue-600 font-bold text-lg">CLI & Generators</h3>
                 </div>
                 <div class="card-body">
-                    <p class="text-slate-600 mb-4">32 commands for scaffolding controllers, models, migrations and more.</p>
+                    <p class="text-slate-600 mb-4">38 commands for scaffolding, migrations, queues, assets and more.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
-                        <li class="mb-1">✓ 12 code generators</li>
-                        <li class="mb-1">✓ 7 database commands</li>
-                        <li>✓ Rapid scaffolding</li>
+                        <li class="mb-1">✓ 12 generators, plus make:scaffold</li>
+                        <li class="mb-1">✓ Migrate, rollback, seed, fresh</li>
+                        <li>✓ Queue, cache and asset commands</li>
                     </ul>
                 </div>
             </div>
@@ -73,11 +73,11 @@
                     <h3 class="text-green-600 font-bold text-lg">SFHT Templates</h3>
                 </div>
                 <div class="card-body">
-                    <p class="text-slate-600 mb-4">Native template engine with blocks, components, and elegant syntax.</p>
+                    <p class="text-slate-600 mb-4">Native template engine with layouts, blocks, partials and components.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
                         <li class="mb-1">✓ Auto-escaped output</li>
                         <li class="mb-1">✓ Template inheritance</li>
-                        <li>✓ Built-in filters</li>
+                        <li>✓ 13 built-in filters</li>
                     </ul>
                 </div>
             </div>
@@ -90,9 +90,9 @@
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Utility CSS with 620 color classes, hover and responsive variants.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
-                        <li class="mb-1">✓ 16KB gzipped</li>
+                        <li class="mb-1">✓ ~17KB gzipped</li>
                         <li class="mb-1">✓ 20 color families</li>
-                        <li>✓ Complete utilities</li>
+                        <li>✓ sm, md, lg and xl breakpoints</li>
                     </ul>
                 </div>
             </div>
@@ -103,11 +103,11 @@
                     <h3 class="text-amber-600 font-bold text-lg">Schema Builder</h3>
                 </div>
                 <div class="card-body">
-                    <p class="text-slate-600 mb-4">Fluent, portable migrations with 30+ column types and constraints.</p>
+                    <p class="text-slate-600 mb-4">Fluent, portable migrations with 40+ column types and constraints.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
-                        <li class="mb-1">✓ MySQL 8.0+ support</li>
+                        <li class="mb-1">✓ MySQL 8+ support</li>
                         <li class="mb-1">✓ PostgreSQL 12+ support</li>
-                        <li>✓ Full validation</li>
+                        <li>✓ Fails loudly when a dialect cannot</li>
                     </ul>
                 </div>
             </div>
@@ -122,7 +122,7 @@
                     <ul class="text-slate-600 text-sm list-unstyled">
                         <li class="mb-1">✓ JWT HS256 tokens</li>
                         <li class="mb-1">✓ CSRF protection</li>
-                        <li>✓ Input validation</li>
+                        <li>✓ Rate limiting and security headers</li>
                     </ul>
                 </div>
             </div>
@@ -133,11 +133,11 @@
                     <h3 class="text-cyan-600 font-bold text-lg">Cache & Queue</h3>
                 </div>
                 <div class="card-body">
-                    <p class="text-slate-600 mb-4">High-performance caching and background job processing systems.</p>
+                    <p class="text-slate-600 mb-4">Caching and background jobs, each with drivers you can swap.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
-                        <li class="mb-1">✓ File, Redis, Memory</li>
-                        <li class="mb-1">✓ Job workers</li>
-                        <li>✓ Retry logic</li>
+                        <li class="mb-1">✓ Cache: file, Redis, memory</li>
+                        <li class="mb-1">✓ Queue: database, Redis</li>
+                        <li>✓ Delays, retries, failed jobs</li>
                     </ul>
                 </div>
             </div>
@@ -152,7 +152,7 @@
                     <ul class="text-slate-600 text-sm list-unstyled">
                         <li class="mb-1">✓ Declarative AJAX attributes</li>
                         <li class="mb-1">✓ Client-side validation</li>
-                        <li>✓ 3KB gzipped</li>
+                        <li>✓ ~6KB gzipped</li>
                     </ul>
                 </div>
             </div>
@@ -180,9 +180,189 @@
                 <div class="card-body">
                     <p class="text-slate-600 mb-4">Progressive data delivery and real-time events with Server-Sent Events.</p>
                     <ul class="text-slate-600 text-sm list-unstyled">
-                        <li class="mb-1">✓ Response::stream() API</li>
-                        <li class="mb-1">✓ ServerSentEvent (SSE)</li>
+                        <li class="mb-1">✓ Response::stream() and SSE</li>
+                        <li class="mb-1">✓ SFJS @stream attribute</li>
                         <li>✓ <a href="/streams" class="text-indigo-600 font-semibold">See demo</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 10: Routing -->
+            <div class="card shadow-lg">
+                <div class="bg-sky-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-sky-600 font-bold text-lg">Routing & Middleware</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-slate-600 mb-4">Routes, a request pipeline and a container that wires controllers.</p>
+                    <ul class="text-slate-600 text-sm list-unstyled">
+                        <li class="mb-1">✓ Named routes and URL generation</li>
+                        <li class="mb-1">✓ 9 built-in middleware</li>
+                        <li>✓ Dependency injection container</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 11: Models -->
+            <div class="card shadow-lg">
+                <div class="bg-emerald-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-emerald-600 font-bold text-lg">Models & Query Builder</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-slate-600 mb-4">Rows as typed objects, relations declared once, loaded without N+1.</p>
+                    <ul class="text-slate-600 text-sm list-unstyled">
+                        <li class="mb-1">✓ Fluent query builder</li>
+                        <li class="mb-1">✓ Relations with eager loading</li>
+                        <li>✓ Seeders and factories</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 12: Validation -->
+            <div class="card shadow-lg">
+                <div class="bg-lime-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-lime-600 font-bold text-lg">Validation</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-slate-600 mb-4">Rules checked against what the request carried, not superglobals.</p>
+                    <ul class="text-slate-600 text-sm list-unstyled">
+                        <li class="mb-1">✓ 8 rules: required, email, min, max...</li>
+                        <li class="mb-1">✓ Messages in three languages</li>
+                        <li>✓ Form request classes</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 13: Authentication -->
+            <div class="card shadow-lg">
+                <div class="bg-rose-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-rose-600 font-bold text-lg">Authentication</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-slate-600 mb-4">Log users in, protect routes and decide who may do what.</p>
+                    <ul class="text-slate-600 text-sm list-unstyled">
+                        <li class="mb-1">✓ Session and token guards</li>
+                        <li class="mb-1">✓ Gates and policies</li>
+                        <li>✓ Password hashing, remember me</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 14: Sessions -->
+            <div class="card shadow-lg">
+                <div class="bg-orange-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-orange-600 font-bold text-lg">Sessions</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-slate-600 mb-4">Sessions with deadlines you choose, stored outside the process.</p>
+                    <ul class="text-slate-600 text-sm list-unstyled">
+                        <li class="mb-1">✓ Idle and absolute timeouts</li>
+                        <li class="mb-1">✓ Cache or database storage</li>
+                        <li>✓ Fixation protection</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 15: HTTP Client -->
+            <div class="card shadow-lg">
+                <div class="bg-fuchsia-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-fuchsia-600 font-bold text-lg">HTTP Client & Async</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-slate-600 mb-4">Call other services, with several requests in flight at once.</p>
+                    <ul class="text-slate-600 text-sm list-unstyled">
+                        <li class="mb-1">✓ Immutable, reusable clients</li>
+                        <li class="mb-1">✓ Http::getAsync() and await()</li>
+                        <li>✓ Streamed responses</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 16: Mail & Events -->
+            <div class="card shadow-lg">
+                <div class="bg-red-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-red-600 font-bold text-lg">Mail & Events</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-slate-600 mb-4">Send email through any provider and decouple work with events.</p>
+                    <ul class="text-slate-600 text-sm list-unstyled">
+                        <li class="mb-1">✓ SMTP reaches every provider</li>
+                        <li class="mb-1">✓ Log and array drivers for tests</li>
+                        <li>✓ Event dispatcher and listeners</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 17: I18n -->
+            <div class="card shadow-lg">
+                <div class="bg-yellow-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-yellow-600 font-bold text-lg">Internationalisation</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-slate-600 mb-4">Messages by key in the active locale, UTC and UTF-8 throughout.</p>
+                    <ul class="text-slate-600 text-sm list-unstyled">
+                        <li class="mb-1">✓ English, Portuguese, Spanish</li>
+                        <li class="mb-1">✓ Locale middleware</li>
+                        <li>✓ UTC time, Unicode-safe strings</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 18: Observability -->
+            <div class="card shadow-lg">
+                <div class="bg-slate-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-slate-600 font-bold text-lg">Logging & Health</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-slate-600 mb-4">Structured logs, metrics and health checks for load balancers.</p>
+                    <ul class="text-slate-600 text-sm list-unstyled">
+                        <li class="mb-1">✓ JSON log lines in UTC</li>
+                        <li class="mb-1">✓ Counters and timers</li>
+                        <li>✓ Health checks</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 19: PWA -->
+            <div class="card shadow-lg">
+                <div class="bg-gray-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-gray-600 font-bold text-lg">Progressive Web App</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-slate-600 mb-4">Turn an application into an installable app with one command.</p>
+                    <ul class="text-slate-600 text-sm list-unstyled">
+                        <li class="mb-1">✓ Manifest and service worker</li>
+                        <li class="mb-1">✓ Icons generated from one image</li>
+                        <li>✓ Offline page</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 20: Debugging -->
+            <div class="card shadow-lg">
+                <div class="bg-zinc-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-zinc-600 font-bold text-lg">Debugging & Tools</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-slate-600 mb-4">Look inside a running application without leaving the framework.</p>
+                    <ul class="text-slate-600 text-sm list-unstyled">
+                        <li class="mb-1">✓ dump() and dd()</li>
+                        <li class="mb-1">✓ Interactive tinker shell</li>
+                        <li>✓ Error pages and test generator</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Feature 21: Uploads -->
+            <div class="card shadow-lg">
+                <div class="bg-blue-50 p-4 rounded-t-md border-b">
+                    <h3 class="text-blue-600 font-bold text-lg">File Uploads</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-slate-600 mb-4">Uploads checked by what the file contains, not what the browser claims.</p>
+                    <ul class="text-slate-600 text-sm list-unstyled">
+                        <li class="mb-1">✓ Type read from the file's bytes</li>
+                        <li class="mb-1">✓ Safe names and moves</li>
+                        <li>✓ Translated failure reasons</li>
                     </ul>
                 </div>
             </div>
