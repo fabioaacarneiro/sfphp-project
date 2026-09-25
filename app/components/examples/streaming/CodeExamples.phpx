@@ -9,7 +9,7 @@ use SfphpProject\src\View\Sfht;
  */
 function CodeExamples(): Sfht
 {
-    return sfht(
+    return Sfht(
         <div>
             <h2 class="text-2xl font-bold mb-6">Implementation Examples</h2>
 

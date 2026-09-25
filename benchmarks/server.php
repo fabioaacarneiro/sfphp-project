@@ -58,11 +58,11 @@ if (is_dir($compiled)) {
 
 Router::reset();
 
-Router::get('/hello', 'BenchController', 'hello');
-Router::get('/json', 'BenchController', 'json');
-Router::get('/phpx', 'BenchController', 'phpx');
-Router::get('/http', 'BenchController', 'http');
-Router::get('/http-parallel', 'BenchController', 'httpParallel');
+Router::get('/hello', [BenchController::class, 'hello']);
+Router::get('/json', [BenchController::class, 'json']);
+Router::get('/phpx', [BenchController::class, 'phpx']);
+Router::get('/http', [BenchController::class, 'http']);
+Router::get('/http-parallel', [BenchController::class, 'httpParallel']);
 
 /**
  * The endpoints under measurement.
@@ -155,7 +155,7 @@ $container = new Container();
  * and a session, a CSRF check and a locale negotiation would be measured too —
  * each worth knowing about, none of them what this benchmark is asking.
  */
-$router = new Router($container, '');
+$router = new Router($container);
 
 $request = Request::fromGlobals();
 $response = $router->dispatch($request);

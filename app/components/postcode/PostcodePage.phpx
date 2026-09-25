@@ -27,7 +27,7 @@ use function SfphpProject\app\components\postcode\lookup\PostcodeLookup;
  */
 function PostcodePage(?Sfht $result = null): Sfht
 {
-    return sfht(
+    return Sfht(
         <!DOCTYPE html>
         <html lang="{{ lang_tag() }}">
         <head>

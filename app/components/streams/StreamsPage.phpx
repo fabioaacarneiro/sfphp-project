@@ -15,7 +15,7 @@ use function SfphpProject\app\components\streams\explain\HowItWorks;
  */
 function StreamsPage(): Sfht
 {
-    return sfht(
+    return Sfht(
         <!DOCTYPE html>
         <html lang="{{ lang_tag() }}">
         <head>

@@ -11,7 +11,7 @@ use SfphpProject\src\View\Sfht;
  */
 function SseStreamBox(): Sfht
 {
-    return sfht(
+    return Sfht(
         <div class="card">
             <div class="card-header">
                 <h2 class="text-lg font-bold">Server-Sent Events</h2>

@@ -31,17 +31,15 @@ class Router
     /**
      * Create a router.
      *
-     * The controller namespace is a parameter rather than a constant so that
-     * an application can live under its own namespace, and so tests can point
-     * the router at their own controllers. It was hardcoded before, which tied
-     * the framework to this one application layout.
+     * Routes name their controller by its class — [PostController::class,
+     * 'index'] — so the router needs no namespace of its own: an application
+     * keeps its controllers wherever it likes, and the editor can follow,
+     * rename and check every one of them.
      *
      * @param Container $container The dependency injection container
-     * @param string $controllerNamespace The namespace route controllers live in
      */
     public function __construct(
-        private Container $container,
-        private string $controllerNamespace = 'SfphpProject\\app\\controllers\\'
+        private Container $container
     ) {}
 
     /**
@@ -189,7 +187,7 @@ class Router
      */
     private function call(Route $route, Request $request, array $parameters): Response
     {
-        $controllerClass = $this->controllerNamespace . $route->getController();
+        $controllerClass = $route->getController();
 
         if (!class_exists($controllerClass)) {
             throw new RuntimeException("Controller $controllerClass not found.");
@@ -224,112 +222,112 @@ class Router
      * Define a GET route.
      *
      * @param string $url The route URL
-     * @param string $controller The controller class name
-     * @param string $action The controller action name
+     * @param array{0: class-string, 1: string} $action [Controller::class, 'method']
      * @return Route The registered route
+     * @throws InvalidArgumentException When the action is not a [class, method] pair
      */
     public static function get(
         string $url,
-        string $controller,
-        string $action
+        array|string $action,
+        ?string $method = null
     ): Route {
-        return self::addRoute(GET, $url, $controller, $action);
+        return self::addRoute(GET, $url, $action, $method);
     }
 
     /**
      * Define a POST route.
      *
      * @param string $url The route URL
-     * @param string $controller The controller class name
-     * @param string $action The controller action name
+     * @param array{0: class-string, 1: string} $action [Controller::class, 'method']
      * @return Route The registered route
+     * @throws InvalidArgumentException When the action is not a [class, method] pair
      */
     public static function post(
         string $url,
-        string $controller,
-        string $action
+        array|string $action,
+        ?string $method = null
     ): Route {
-        return self::addRoute(POST, $url, $controller, $action);
+        return self::addRoute(POST, $url, $action, $method);
     }
 
     /**
      * Define a PUT route.
      *
      * @param string $url The route URL
-     * @param string $controller The controller class name
-     * @param string $action The controller action name
+     * @param array{0: class-string, 1: string} $action [Controller::class, 'method']
      * @return Route The registered route
+     * @throws InvalidArgumentException When the action is not a [class, method] pair
      */
     public static function put(
         string $url,
-        string $controller,
-        string $action
+        array|string $action,
+        ?string $method = null
     ): Route {
-        return self::addRoute(PUT, $url, $controller, $action);
+        return self::addRoute(PUT, $url, $action, $method);
     }
 
     /**
      * Define a DELETE route.
      *
      * @param string $url The route URL
-     * @param string $controller The controller class name
-     * @param string $action The controller action name
+     * @param array{0: class-string, 1: string} $action [Controller::class, 'method']
      * @return Route The registered route
+     * @throws InvalidArgumentException When the action is not a [class, method] pair
      */
     public static function delete(
         string $url,
-        string $controller,
-        string $action
+        array|string $action,
+        ?string $method = null
     ): Route {
-        return self::addRoute(DELETE, $url, $controller, $action);
+        return self::addRoute(DELETE, $url, $action, $method);
     }
 
     /**
      * Define a PATCH route.
      *
      * @param string $url The route URL
-     * @param string $controller The controller class name
-     * @param string $action The controller action name
+     * @param array{0: class-string, 1: string} $action [Controller::class, 'method']
      * @return Route The registered route
+     * @throws InvalidArgumentException When the action is not a [class, method] pair
      */
     public static function patch(
         string $url,
-        string $controller,
-        string $action
+        array|string $action,
+        ?string $method = null
     ): Route {
-        return self::addRoute(PATCH, $url, $controller, $action);
+        return self::addRoute(PATCH, $url, $action, $method);
     }
 
     /**
      * Define a HEAD route.
      *
      * @param string $url The route URL
-     * @param string $controller The controller class name
-     * @param string $action The controller action name
+     * @param array{0: class-string, 1: string} $action [Controller::class, 'method']
      * @return Route The registered route
+     * @throws InvalidArgumentException When the action is not a [class, method] pair
      */
     public static function head(
         string $url,
-        string $controller,
-        string $action
+        array|string $action,
+        ?string $method = null
     ): Route {
-        return self::addRoute(HEAD, $url, $controller, $action);
+        return self::addRoute(HEAD, $url, $action, $method);
     }
 
     /**
      * Define an OPTIONS route.
      *
      * @param string $url The route URL
-     * @param string $controller The controller class name
-     * @param string $action The controller action name
+     * @param array{0: class-string, 1: string} $action [Controller::class, 'method']
      * @return Route The registered route
+     * @throws InvalidArgumentException When the action is not a [class, method] pair
      */
     public static function options(
         string $url,
-        string $controller,
-        string $action
+        array|string $action,
+        ?string $method = null
     ): Route {
-        return self::addRoute(OPTIONS, $url, $controller, $action);
+        return self::addRoute(OPTIONS, $url, $action, $method);
     }
 
     /**
@@ -425,26 +423,33 @@ class Router
     /**
      * Register a route using the active group context.
      *
-     * @param string $method The HTTP method
+     * The second parameter of each verb takes the old controller-name string
+     * only to refuse it with the new spelling (see action()); a route always
+     * names its action as [Controller::class, 'method'].
+     *
+     * @param string $verb The HTTP method
      * @param string $url The route URL
-     * @param string $controller The controller class name
-     * @param string $action The controller action name
+     * @param array<int, mixed>|string $action [Controller::class, 'method']
+     * @param string|null $oldMethod The method, from the old three-argument form
      * @return Route The registered route
+     * @throws InvalidArgumentException When the action is not a [class, method] pair
      */
     private static function addRoute(
-        string $method,
+        string $verb,
         string $url,
-        string $controller,
-        string $action
+        array|string $action,
+        ?string $oldMethod = null
     ): Route {
+        [$controller, $method] = self::action($verb, $url, $action, $oldMethod);
+
         $group = end(self::$groups)
             ?: ['prefix' => '', 'namePrefix' => '', 'middleware' => []];
 
         $route = new Route(
-            $method,
+            $verb,
             self::joinUri($group['prefix'], $url),
             $controller,
-            $action,
+            $method,
             $group['namePrefix']
         );
 
@@ -453,6 +458,51 @@ class Router
         self::$routes[] = $route;
 
         return $route;
+    }
+
+    /**
+     * Read a route's action: [Controller::class, 'method'].
+     *
+     * The pair is what an editor understands: it follows the class, renames
+     * it with the rest of the code, and flags one that does not exist — where
+     * the old 'PostController', 'index' was two strings nothing could check
+     * before a request arrived. The old form is refused with the new spelling
+     * in the message, so an upgrade fails at boot with the fix in hand rather
+     * than at the first request with a class-not-found.
+     *
+     * @param array<int, mixed>|string $action The action as given
+     * @return array{0: string, 1: string} The controller class and the method
+     * @throws InvalidArgumentException When the action is not a [class, method] pair
+     */
+    private static function action(string $verb, string $url, array|string $action, ?string $oldMethod): array
+    {
+        if (is_string($action)) {
+            $short = substr((string) strrchr('\\' . $action, '\\'), 1);
+
+            throw new InvalidArgumentException(sprintf(
+                "Route %s %s names its controller as a string. Name the class and the method as a pair: [%s::class, '%s'].",
+                $verb,
+                $url,
+                $short,
+                $oldMethod ?? 'method'
+            ));
+        }
+
+        $valid = $oldMethod === null
+            && array_is_list($action)
+            && count($action) === 2
+            && is_string($action[0]) && $action[0] !== ''
+            && is_string($action[1]) && $action[1] !== '';
+
+        if (!$valid) {
+            throw new InvalidArgumentException(sprintf(
+                "Route %s %s needs its action as [Controller::class, 'method'].",
+                $verb,
+                $url
+            ));
+        }
+
+        return [ltrim($action[0], '\\'), $action[1]];
     }
 
     /**

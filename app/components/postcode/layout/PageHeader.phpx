@@ -12,7 +12,7 @@ use SfphpProject\src\View\Sfht;
  */
 function PageHeader(): Sfht
 {
-    return sfht(
+    return Sfht(
         <header class="bg-blue-600 text-white py-12 px-4">
             <div class="container mx-auto max-w-2xl">
                 <p class="text-sm opacity-90 m-0 mb-2">SFPHP</p>

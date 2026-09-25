@@ -13,7 +13,7 @@ use SfphpProject\src\View\Sfht;
  */
 function BulletList(array $items): Sfht
 {
-    return sfht(
+    return Sfht(
         <ul class="list-unstyled">
             @foreach ($items as $item)
                 <li class="py-1">{{ $item }}</li>

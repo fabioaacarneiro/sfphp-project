@@ -20,7 +20,7 @@ final class StreamController
      */
     public function index(): Response
     {
-        return Response::html((string) StreamsPage());
+        return Response::phpx(StreamsPage());
     }
 
     /**

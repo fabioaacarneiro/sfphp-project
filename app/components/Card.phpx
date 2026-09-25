@@ -10,7 +10,7 @@ use SfphpProject\src\View\Sfht;
  */
 function Card(string $title, string $body, string $colour = 'blue'): Sfht
 {
-    return sfht(
+    return Sfht(
         <div class="card mb-4 border-{{ $colour }}-500">
             <div class="card-header">
                 <h3 class="m-0 text-{{ $colour }}-600">{{ $title }}</h3>

@@ -13,7 +13,7 @@ use SfphpProject\src\View\Sfht;
  */
 function Field(string $label, string $value): Sfht
 {
-    return sfht(
+    return Sfht(
         <div class="py-1">
             <span class="text-xs text-muted d-block">{{ $label }}</span>
             <span class="font-semibold">{{ $value }}</span>

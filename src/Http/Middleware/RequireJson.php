@@ -18,7 +18,7 @@ use SfphpProject\src\Http\Response;
  * registered on.
  *
  *     Router::group('/api', function (): void {
- *         Router::post('/posts', 'PostController', 'store');
+ *         Router::post('/posts', [PostController::class, 'store']);
  *     }, 'api.', [new RequireJson()]);
  *
  * The action then reads what was decoded, and can trust it:
