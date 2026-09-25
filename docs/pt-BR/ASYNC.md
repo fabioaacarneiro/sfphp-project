@@ -121,9 +121,9 @@ $user = await($task);
 Como o `await()` espera depende de onde ele é chamado:
 
 - **Dentro de uma Task** ele estaciona a Fiber da Task. O scheduler a retoma
-  quando o Future aguardado se resolve, e roda outras Tasks enquanto isso.
+  quando o Future aguardado conclui, e roda outras Tasks enquanto isso.
 - **Fora de uma Task** (em um controller, um comando ou um teste) ele mesmo
-  conduz o event loop até o Future se resolver. Toda outra operação pendente
+  conduz o event loop até o Future concluir. Toda outra operação pendente
   continua progredindo enquanto ele espera.
 
 Nos dois casos o processo nunca fica consultando em laço. Quando não há nada
@@ -194,10 +194,13 @@ O `CompositeFuture` combina Futures. Ele tem exatamente dois modos:
 - `CompositeFuture::all(...$futures)` resolve quando todas as partes resolvem,
   com os valores na ordem dada. Ele rejeita assim que uma parte falha, com a
   exceção dessa parte.
-- `CompositeFuture::race(...$futures)` se resolve com a primeira parte a se
-  resolver. Se essa parte falhou, a corrida rejeita.
+- `CompositeFuture::race(...$futures)` conclui com a primeira parte a concluir.
+  Se essa parte falhou, a corrida rejeita.
 
 O `awaitAll(...$futures)` é um atalho para `await(CompositeFuture::all(...))`.
+As partes podem ter nome: `awaitAll(...['user' => $a, 'posts' => $b])` resolve
+com `['user' => …, 'posts' => …]`, na ordem dada. Uma parte com nome era um
+`TypeError` dentro do loop, que depois fazia falhar também o `await()` seguinte.
 
 ```php
 <?php
@@ -229,7 +232,7 @@ não inicia nem conduz nada. Três chamadas a `Http::getAsync()` se sobrepõem
 porque cada uma já estava no event loop. Três consultas passadas ao `all()`
 continuam rodando uma depois da outra.
 
-Quando o `all()` rejeita ou o `race()` se resolve, as outras partes **não** são
+Quando o `all()` rejeita ou o `race()` conclui, as outras partes **não** são
 canceladas. Elas pertencem a quem as criou, e uma requisição HTTP que perdeu uma
 corrida continua rodando até o fim no loop. Para parar as outras partes, cancele
 o próprio composto. O `CompositeFuture::cancel()` cancela toda parte que ainda
@@ -265,12 +268,12 @@ Todo Future implementa `SfphpProject\src\Async\Future`:
 
 | Método | Significado |
 |---|---|
-| `isPending()` | Ainda não se resolveu. |
-| `isResolved()` | Resolveu com um valor. |
-| `isRejected()` | Resolveu com uma exceção. |
+| `isPending()` | Ainda não concluiu. |
+| `isResolved()` | Concluiu com um valor. |
+| `isRejected()` | Concluiu com uma exceção. |
 | `getValue()` | O valor. Lança a exceção se foi rejeitado. |
 | `getException()` | A exceção, ou `null`. |
-| `onResolve(callable $cb)` | Chama `$cb($future)` quando ele se resolve, ou na hora se já tiver se resolvido. |
+| `onResolve(callable $cb)` | Chama `$cb($future)` quando ele conclui, ou na hora se já tiver concluído. |
 
 Os Futures do próprio runtime (`Task`, `HttpFuture`, `TimerFuture`,
 `CompositeFuture`, `QueryFuture`) estendem `Pending`, que acrescenta:
@@ -283,10 +286,10 @@ Os Futures do próprio runtime (`Task`, `HttpFuture`, `TimerFuture`,
 
 Três regras:
 
-1. **Resolvido é definitivo.** Depois que um Future se resolve, ele nunca mais
+1. **Concluído é definitivo.** Depois que um Future conclui, ele nunca mais
    muda.
-2. **Ler cedo demais lança exceção.** O `getValue()` em um `Pending` que não se
-   resolveu lança `AsyncException` ("This operation has not finished. Await it
+2. **Ler cedo demais lança exceção.** O `getValue()` em um `Pending` que não
+   concluiu lança `AsyncException` ("This operation has not finished. Await it
    before reading its value."). Ele não devolve `null`. Use `await()`.
 3. **Um Future cancelado lança exceção ao ser lido.** O `getValue()` lança o
    motivo do cancelamento: uma `CancelledException`, ou o motivo que tiver sido
@@ -308,11 +311,11 @@ try {
 }
 
 echo await($task), PHP_EOL;            // 42
-echo $task->getValue(), PHP_EOL;       // 42, agora que se resolveu
+echo $task->getValue(), PHP_EOL;       // 42, agora que concluiu
 ```
 
 Os callbacks passados ao `onResolve()` rodam de forma síncrona quando o Future
-se resolve. Uma exceção lançada em um deles não é engolida. Ela se propaga,
+conclui. Uma exceção lançada em um deles não é engolida. Ela se propaga,
 porque escondê-la deixaria uma Task que nunca é retomada.
 
 ## Tasks
@@ -368,12 +371,12 @@ O prazo é um temporizador no event loop. Quando ele dispara, o Future aguardado
 |---|---|
 | `HttpFuture` | Remove a transferência do curl multi handle e fecha a conexão. |
 | `TimerFuture` (`delay()`) | Remove o temporizador. |
-| `Task` | Resolve a Task como cancelada. A sua Fiber nunca é retomada, então o código dela para no `await()` em que está estacionado. |
+| `Task` | Conclui a Task como cancelada. A sua Fiber nunca é retomada, então o código dela para no `await()` em que está estacionado. |
 | `CompositeFuture` | Cancela toda parte que ainda está pendente e é cancelável, e depois a si mesmo. |
 
 Um Future que não é `Cancellable` ignora o timeout. Isso inclui o
 `QueryFuture` e os [adaptadores bloqueantes](#adaptadores-bloqueantes). O
-`await()` espera que ele se resolva, exatamente como faria sem timeout, e
+`await()` espera que ele conclua, exatamente como faria sem timeout, e
 nenhuma `TimeoutException` é lançada. Para uma consulta não teria como ser
 diferente: depois que o PDO a enviou, o processo fica bloqueado até o servidor
 responder.
@@ -517,7 +520,7 @@ que o cliente síncrono devolve:
 | `body()` | O corpo cru (`string`). |
 | `json(bool $strict = false)` | O corpo decodificado como array, ou `null` quando não é JSON. Com `true`, lança `ClientException` em vez de devolver `null`. |
 | `header(string $name)` | Um header, buscado sem diferenciar maiúsculas, ou `null`. |
-| `headers()` | Todos os headers. |
+| `headers()` | Todos os headers da resposta final — não os dos redirecionamentos antes dela. |
 | `url()` | A URL que respondeu, depois dos redirecionamentos. |
 | `throw()` | Lança `ClientException` para 4xx/5xx; caso contrário, devolve a resposta. |
 
@@ -543,7 +546,9 @@ $user = await(Http::getAsync('https://api.example.com/users/1'))->throw()->json(
 você inspeciona o `status()`. Nenhuma resposta (falha de DNS, conexão recusada,
 timeout, falha de TLS) rejeita o Future com `SfphpProject\src\Http\ClientException`.
 A extensão `curl` é obrigatória. Sem ela, o Future rejeita na hora com uma
-`ClientException` que diz isso.
+`ClientException` que diz isso. O mesmo acontece com um valor de header que tem
+uma quebra de linha, e com um corpo que o JSON não consegue codificar — que antes
+era enviado como uma string vazia.
 
 ## Consultas ao banco
 
@@ -704,15 +709,15 @@ Toda exceção que o runtime lança por motivos próprios estende
 
 | Exceção | Quando |
 |---|---|
-| `AsyncException` | Ler um Future que não se resolveu. Um deadlock (abaixo). Desempilhar um scheduler que não está lá. `Context::getScheduler()` sem scheduler ("No active Scheduler"). |
-| `TimeoutException` | `await($future, $timeout)` em um `Cancellable` que não se resolveu a tempo. |
+| `AsyncException` | Ler um Future que não concluiu. Um deadlock (abaixo). Desempilhar um scheduler que não está lá. `Context::getScheduler()` sem scheduler ("No active Scheduler"). |
+| `TimeoutException` | `await($future, $timeout)` em um `Cancellable` que não concluiu a tempo. |
 | `CancelledException` | Ler ou aguardar um Future cancelado sem um motivo explícito. |
 
 O erro que o próprio trabalho lançou passa sem alteração. Uma Task que lança
 `DomainException` faz o `await()` lançar essa `DomainException`. Uma
 transferência HTTP que falhou lança `SfphpProject\src\Http\ClientException`.
 
-**Deadlock.** Quando toda Task está estacionada em algo que nada vai resolver, e
+**Deadlock.** Quando toda Task está estacionada em algo que nada vai concluir, e
 não há transferência nem temporizador pendente, o scheduler para com:
 
 ```
@@ -728,7 +733,7 @@ Deadlock: the awaited operation is still pending and nothing is scheduled that c
 ```
 
 Isso só acontece com Futures que você mesmo constrói, como uma subclasse de
-`Pending` que nunca se resolve. Os Futures do framework sempre se resolvem.
+`Pending` que nunca conclui. Os Futures do framework sempre concluem.
 
 O `SfphpProject\src\Async\Exceptions.php` é mantido só para que o código que o
 incluía continue carregando. As três classes têm cada uma o seu próprio arquivo
@@ -1087,7 +1092,7 @@ WebSocket funcional.** Não construa funcionalidades sobre ele.
 O que ele faz:
 
 - Abre uma conexão TCP simples com o host e a porta da URL (80 quando a URL não
-  tem porta). Ele se resolve quando a conexão está aberta ou falhou.
+  tem porta). Ele conclui quando a conexão está aberta ou falhou.
 - `send($text)` escreve um frame de texto mascarado. `queueMessage()` e
   `flushQueue()` agrupam envios. `disconnect()` fecha o socket.
 
@@ -1130,7 +1135,7 @@ e ele espera por todos de uma vez, por no máximo 50 ms a cada vez.
 
 **`Scheduler`** mantém as Tasks *prontas*, que ele roda em sequência, e as Tasks
 *em espera*, que estão estacionadas em um Future. Uma Task em espera não é
-tocada até o seu Future se resolver, e então volta para as prontas. Quando nada
+tocada até o seu Future concluir, e então volta para as prontas. Quando nada
 está pronto, o scheduler deixa o loop esperar. O `stats()` devolve
 `['ready' => …, 'waiting' => …, 'loop' => ['transfers' => …, 'timers' => …, 'watchers' => …]]`,
 o que é útil para conferir que nada ficou pendente no fim de uma requisição.
@@ -1190,12 +1195,12 @@ outra.
 | Sintoma | Causa | Correção |
 |---|---|---|
 | `Call to undefined function async()` | A função não foi importada. | `use function SfphpProject\src\Async\{async, await, delay, awaitAll};` |
-| `AsyncException: This operation has not finished…` | `getValue()` em um Future que não se resolveu. | `await($future)`. |
+| `AsyncException: This operation has not finished…` | `getValue()` em um Future que não concluiu. | `await($future)`. |
 | `TypeError` vindo do `await()` | Foi passado um valor em vez de um Future, como `await($f->getValue())`. | `await($f)`. |
 | `await(async(...))` devolve um Future | O callable devolveu um Future sem aguardá-lo. | `async(fn () => await(...))`, ou aguarde o Future diretamente. |
 | Três consultas "paralelas" levam o triplo do tempo | Consultas bloqueiam (PDO). | Esperado. Só HTTP e temporizadores se sobrepõem. |
 | Uma requisição não se sobrepôs a outro trabalho | Trabalho bloqueante rodou entre criar o Future e aguardá-lo. | Crie todas as requisições primeiro, e depois aguarde-as juntas. |
 | `ClientException: … No host part in the URL` | URL relativa passada a `Http::*Async`. | Use uma URL absoluta. |
 | Um timeout não interrompeu a operação | O Future não é `Cancellable` (consulta, arquivo, cache, componente). | Só HTTP, temporizadores, Tasks e compostos respeitam timeouts. |
-| `AsyncException: Deadlock: …` | Uma Task aguarda um Future que nada vai resolver. | Resolva-o, ou não o aguarde. |
+| `AsyncException: Deadlock: …` | Uma Task aguarda um Future que nada vai concluir. | Conclua-o, ou não o aguarde. |
 | Uma Task nunca rodou | Nada aguardou coisa alguma depois que ela foi criada. | Aguarde-a, ou aguarde outra coisa. |

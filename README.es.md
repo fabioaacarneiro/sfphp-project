@@ -2,7 +2,7 @@
 
 > **¿Te gusta SFPHP?** ⭐ [Danos una estrella en GitHub](https://github.com/fabioaacarneiro/sfphp-project) — ¡nos ayuda a crecer y mantiene vivo el framework!
 
-> **Lee esto en:** [English](README.md) · [Português](README.pt-BR.md) · [Español](README.es.md)
+> **Lee esto en:** [English](https://github.com/fabioaacarneiro/sfphp-project/blob/master/README.md) · [Português](https://github.com/fabioaacarneiro/sfphp-project/blob/master/README.pt-BR.md) · [Español](https://github.com/fabioaacarneiro/sfphp-project/blob/master/README.es.md)
 
 **El framework PHP para desarrolladores a quienes les importan el rendimiento, la seguridad y la simplicidad.**
 
@@ -14,20 +14,20 @@ Un framework PHP full-stack, listo para producción, con **cero dependencias en 
 
 ### ⚡ **Rendimiento ultrarrápido**
 - **Sin dependencias que engorden el proyecto** — solo la biblioteca estándar de PHP y el driver de tu base de datos
-- **HTTP concurrente, medido** — tres peticiones salientes cuestan lo que cuesta una; `benchmarks/` tiene los scripts que reproducen las cifras
+- **HTTP concurrente, medido** — tres peticiones salientes cuestan lo que cuesta una; [`benchmarks/`](https://github.com/fabioaacarneiro/sfphp-project/tree/master/benchmarks) en el repositorio tiene los scripts que reproducen las cifras
 - **Consultas eficientes** — relaciones cargadas por adelantado con `with()` para evitar consultas N+1, caché inteligente
 - **Sobrecarga mínima del framework** — tu código se ejecuta de inmediato, no enterrado bajo capas
 
 ### 🔒 **Seguridad incorporada**
 - **Confianza cero por defecto** — protección CSRF, binding de SQL y escape de XSS en todas partes
-- **Autenticación probada en batalla** — sesiones, tokens JWT, políticas, «recordarme»
+- **Autenticación incorporada** — sesiones, tokens JWT, políticas, tokens «recordarme»
 - **Validación de peticiones** — parámetros de ruta con tipos, filtrado de la entrada
 - **Nada de teatro de seguridad** — implementamos lo que importa y nos saltamos lo que creó el culto a la costumbre
 
 ### 🎯 **Experiencia de desarrollo**
-- **Tipos en todas partes** — atributos de PHP 8.1, parámetros tipados, autocompletado en el IDE
-- **Generadores para ir rápido** — 16 generadores `make:*` para modelos, migraciones, controladores, tests y más
-- **CLI completa** — 38 comandos para gestionar tu aplicación
+- **Tipos en todas partes** — parámetros tipados, clases nombradas como `::class`, autocompletado en el IDE
+- **Generadores para ir rápido** — 16 comandos `make:*` para modelos, migraciones, controladores, tests y más
+- **CLI completa** — 41 comandos para gestionar tu aplicación
 - **API intuitiva** — la aprendes una vez y funciona igual en todas partes
 
 ### 🌍 **Multilingüe de verdad**
@@ -36,7 +36,7 @@ Un framework PHP full-stack, listo para producción, con **cero dependencias en 
 - **Mensajes del framework en el idioma del visitante** — hasta los errores 404 respetan el locale
 
 ### 📦 **Todo lo que necesitas, nada que no necesites**
-- Más de 150 funcionalidades de seguridad incorporadas
+- Seguridad por defecto: CSRF, límite de peticiones, cabeceras de seguridad, proxies de confianza
 - Migraciones y seeders de base de datos
 - Email con SMTP/TLS
 - Caché en Redis y en archivos
@@ -57,10 +57,10 @@ Un framework PHP full-stack, listo para producción, con **cero dependencias en 
 | **HTTP** | Objetos Request/Response, pipeline de middleware, códigos de estado |
 | **Base de datos** | Query builder con relaciones, migraciones, seeders, transacciones |
 | **ORM (Models)** | Hidratación de objetos, tipos de atributo, with() para carga anticipada |
-| **Schema Builder** | Más de 40 tipos de columna, paridad perfecta MySQL 8 ↔ PostgreSQL 12 |
-| **Autenticación** | Sesiones, tokens JWT, hash de contraseñas, políticas, rememberme |
+| **Schema Builder** | Más de 40 tipos de columna, paridad real MySQL 8 ↔ PostgreSQL 12 |
+| **Autenticación** | Sesiones, tokens JWT, hash de contraseñas, políticas, tokens «recordarme» |
 | **Autorización** | Control de acceso basado en Gate, clases de política |
-| **Validación** | Validación de formularios, reglas personalizadas, mensajes de error |
+| **Validación** | 11 reglas, mensajes en el idioma del visitante, las mismas reglas en el navegador |
 | **Middleware** | Global, por grupo, por ruta, verificación automática de CSRF |
 
 ### Frontend y vistas
@@ -70,7 +70,7 @@ Un framework PHP full-stack, listo para producción, con **cero dependencias en 
 | **Plantillas SFHT** | Escape automático, herencia de layouts, composición de componentes |
 | **Componentes .phpx** | Marcado dentro de funciones PHP, compilado en el build |
 | **Framework SFCSS** | 3.836 clases — componentes y utilidades — a partir de una sola configuración: formularios, navegación, modales, menús desplegables, tema oscuro, contraste calculado para WCAG AA, 33KB comprimidos |
-| **Biblioteca SFJS** | Un solo archivo: AJAX, validación accesible, streaming, modal, menú desplegable, tooltip, pestañas y toasts — 14KB comprimidos |
+| **Biblioteca SFJS** | Un solo archivo: AJAX, validación accesible, streaming, modal, menú desplegable, tooltip, pestañas y toasts — 15KB comprimidos |
 | **Assets incorporados** | Publicados en `public/` sin ninguna configuración |
 
 ### Funcionalidades avanzadas
@@ -79,13 +79,13 @@ Un framework PHP full-stack, listo para producción, con **cero dependencias en 
 |---------|-------------|
 | **Sistema async/await** | Fibers de PHP sobre un event loop real: las peticiones HTTP se solapan, los temporizadores y los timeouts son del loop. Las consultas se programan, no se solapan. |
 | **Difusión de eventos** | Pub/sub con comodines `user.*`, historial de eventos, despacho asíncrono |
-| **Caché** | Drivers de archivo, memoria y Redis con invalidación inteligente |
+| **Caché** | Drivers de archivo, memoria y Redis, contadores atómicos |
 | **Colas de trabajos** | Workers en segundo plano con reintentos, drivers de base de datos o Redis |
 | **Email** | SMTP con TLS, texto plano + HTML, adjuntos |
 | **Subida de archivos** | Detección del tipo a partir de los bytes, almacenamiento seguro, rechazo de archivos falsificados |
 | **Logging** | Líneas JSON en UTC, trazado de peticiones, ocultación de secretos |
 | **Fechas y horas** | UTC en todas partes, la zona horaria solo para mostrar |
-| **Depuración** | Páginas de error cuidadas, `dump()` y `dd()`, salida en el terminal |
+| **Depuración** | Páginas de error en el idioma del visitante, `dump()` y `dd()`, salida en el terminal |
 
 ---
 
@@ -94,7 +94,7 @@ Un framework PHP full-stack, listo para producción, con **cero dependencias en 
 ### 📱 **APIs de alto tráfico**
 Por qué gana SFPHP: llamadas salientes que se solapan, caché inteligente, query builder optimizado, y un footprint sin dependencias que significa memoria mínima por petición.
 
-**Ejemplo:** tu endpoint llama a tres servicios. Medido contra un origen local que responde en 100 ms, un endpoint que hace tres llamadas tiene la misma latencia y el mismo rendimiento que uno que hace una sola — 80 RPS, p50 de 208 ms, bajo la carga descrita en `benchmarks/server.php`.
+**Ejemplo:** tu endpoint llama a tres servicios. Medido contra un origen local que responde en 100 ms, un endpoint que hace tres llamadas tiene la misma latencia y el mismo rendimiento que uno que hace una sola — 80 RPS, p50 de 208 ms, bajo la carga descrita en [`benchmarks/server.php`](https://github.com/fabioaacarneiro/sfphp-project/blob/master/benchmarks/server.php).
 
 ### 🌐 **Plataformas multilingües**
 Por qué gana SFPHP: soporte de i18n de primera clase con negociación de idioma, tratamiento de UTF-8 correcto con Unicode de principio a fin, mensajes del framework en el idioma del visitante.
@@ -122,12 +122,12 @@ Por qué gana SFPHP: pilas incluidas — autenticación, autorización, validaci
 **Ejemplo:** sistemas de gestión de contenidos, plataformas SaaS, aplicaciones de negocio en las que quieres todo en un solo framework.
 
 ### 💼 **Integraciones empresariales**
-Por qué gana SFPHP: cero dependencias significa CVEs mínimos, facilidad para el análisis estático, nada de infierno de versiones y trazabilidad para el cumplimiento de seguridad.
+Por qué gana SFPHP: cero dependencias significa CVEs mínimos, facilidad para el análisis estático, nada de infierno de versiones, logs estructurados que llevan un id de petición.
 
 **Ejemplo:** sistemas que tienen que integrarse con código heredado, APIs bancarias o infraestructura corporativa sin arrastrar árboles de dependencias.
 
 ### 🚀 **MVP de startup**
-Por qué gana SFPHP: rápido de programar, difícil de romper, nada que configurar, 16 generadores de CLI, migraciones incorporadas, y el despliegue son solo archivos PHP.
+Por qué gana SFPHP: rápido de programar, difícil de romper, nada que configurar, 16 comandos `make:*`, migraciones incorporadas, y el despliegue son solo archivos PHP.
 
 **Ejemplo:** lanza un SaaS, un marketplace o un servicio sin semanas de decisiones de infraestructura.
 
@@ -148,6 +148,7 @@ Eso es todo. Abre `http://localhost:8000` y tendrás:
 - ✅ Una migración, un seeder y una factory de usuarios
 - ✅ JWT configurado con una clave secreta real
 - ✅ CSS y JavaScript publicados y listos
+- ✅ Un `.gitignore` que deja `.env` y `vendor/` fuera de Git
 - ✅ La CLI completa disponible en `./sfphp`
 
 ### Genera tu primer modelo
@@ -161,14 +162,17 @@ Eso es todo. Abre `http://localhost:8000` y tendrás:
 ### Crea un controlador
 
 ```bash
-./sfphp make:controller Product     # creates app/controllers/ProductController.php
+./sfphp make:controller Product     # crea app/controllers/ProductController.php y su vista
 ```
 
 ### Define una ruta
 
 ```php
+// app/routes/web.php
+use SfphpProject\app\controllers\ProductController;
+
 Router::get('/products', [ProductController::class, 'index']);
-Router::get('/products/id:number', [ProductController::class, 'show']);   // add show() to the controller
+Router::get('/products/id:number', [ProductController::class, 'show']);   // añade show() al controlador
 ```
 
 ### Llama a tres servicios a la vez
@@ -197,10 +201,10 @@ para tres peticiones de 300 ms, 309 ms para cincuenta.
 ### Hecho para cualquier idioma
 
 ```php
-Str::length('日本語');           // 3 (not 9 bytes)
+Str::length('日本語');           // 3 (no 9 bytes)
 Validator::validate(['n' => 'José'], ['n' => 'alpha'])->passes();  // true
-Router::get('/products/name:alpha', ...);  // matches /products/café
-__('http.not_found_message');  // in the visitor's language
+Router::get('/products/name:alpha', ...);  // coincide con /products/café
+__('http.not_found_message');  // en el idioma del visitante
 ```
 
 ---
@@ -222,10 +226,10 @@ __('http.not_found_message');  // in the visitor's language
 ## Lo que NO se incluye (y por qué)
 
 - **Recuperación de contraseña** — Tu aplicación tiene que enviarla por email de todos modos; nosotros nos ocupamos de la infraestructura
-- **Doble factor** — No hay una solución única para todos; Mail cubre la parte que le tocaba al framework
+- **Doble factor** — No hay una solución única para todos; Mail es la pieza que el framework le debe
 - **Brokers de mensajes** — Las colas incorporadas suelen bastar; conecta RabbitMQ cuando lo necesites
 - **ORM completo** — Un query builder con relaciones es mejor para la mayoría de las aplicaciones; te mantiene al mando
-- **Relaciones polimórficas** — Un caso límite; no justifica 200 líneas de código en la mayoría de los sistemas
+- **Relaciones polimórficas** — Guardan un nombre de clase PHP en la base de datos, acoplando el esquema a tu namespace; `belongsToMany()` cubre el caso común
 
 **Principio:** nunca añadas complejidad hasta demostrar que la necesitas. SFPHP te da las piezas para construir lo adecuado para tu aplicación.
 
@@ -237,17 +241,17 @@ Completa en tres idiomas — inglés, portugués y español, cada uno una versi�
 
 | Idioma | Framework | Async | Streaming | PWA | Estilos | Componentes |
 |----------|-----------|-------|-----------|-----|---------|------------|
-| 🇬🇧 **English** | [Docs](docs/en/DOCUMENTATION.md) | [Async/Await](docs/en/ASYNC.md) | [Streaming](docs/en/STREAMING.md) | [PWA Guide](docs/en/PWA_GUIDE.md) | [SFCSS](docs/en/SFCSS.md) | [.phpx](docs/en/PHPX_COMPONENTS.md) |
-| 🇧🇷 **Português** | [Docs](docs/pt-BR/DOCUMENTATION.md) | [Async/Await](docs/pt-BR/ASYNC.md) | [Streaming](docs/pt-BR/STREAMING.md) | [Guia PWA](docs/pt-BR/PWA_GUIDE.md) | [SFCSS](docs/pt-BR/SFCSS.md) | [.phpx](docs/pt-BR/PHPX_COMPONENTS.md) |
-| 🇪🇸 **Español** | [Docs](docs/es/DOCUMENTATION.md) | [Async/Await](docs/es/ASYNC.md) | [Streaming](docs/es/STREAMING.md) | [Guía PWA](docs/es/PWA_GUIDE.md) | [SFCSS](docs/es/SFCSS.md) | [.phpx](docs/es/PHPX_COMPONENTS.md) |
+| 🇬🇧 **English** | [Docs](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/en/DOCUMENTATION.md) | [Async/Await](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/en/ASYNC.md) | [Streaming](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/en/STREAMING.md) | [PWA Guide](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/en/PWA_GUIDE.md) | [SFCSS](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/en/SFCSS.md) | [.phpx](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/en/PHPX_COMPONENTS.md) |
+| 🇧🇷 **Português** | [Docs](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/pt-BR/DOCUMENTATION.md) | [Async/Await](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/pt-BR/ASYNC.md) | [Streaming](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/pt-BR/STREAMING.md) | [Guia PWA](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/pt-BR/PWA_GUIDE.md) | [SFCSS](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/pt-BR/SFCSS.md) | [.phpx](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/pt-BR/PHPX_COMPONENTS.md) |
+| 🇪🇸 **Español** | [Docs](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/es/DOCUMENTATION.md) | [Async/Await](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/es/ASYNC.md) | [Streaming](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/es/STREAMING.md) | [Guía PWA](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/es/PWA_GUIDE.md) | [SFCSS](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/es/SFCSS.md) | [.phpx](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/es/PHPX_COMPONENTS.md) |
 
-**[SFHT](docs/es/DOCUMENTATION.md#vistas-y-sfht)** es marcado en un archivo; **.phpx** es un componente escrito como una función PHP
+**[SFHT](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/es/DOCUMENTATION.md#vistas-y-sfht)** es marcado en un archivo; **.phpx** es un componente escrito como una función PHP
 con su marcado dentro. Los dos vienen incluidos, y la documentación explica
 cuándo conviene cada uno.
 
 **¿Inicio rápido?**
-- 📱 [Guía de configuración de PWA](docs/es/PWA_GUIDE.md)
-- 📖 [Documentación completa](docs/es/DOCUMENTATION.md)
+- 📱 [Guía de configuración de PWA](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/es/PWA_GUIDE.md)
+- 📖 [Documentación completa](https://github.com/fabioaacarneiro/sfphp-project/blob/master/docs/es/DOCUMENTATION.md)
 
 ---
 
@@ -259,17 +263,20 @@ cuándo conviene cada uno.
 - **Caché** (opcional) — archivo, memoria o Redis
 - **Cola** (opcional) — base de datos o Redis
 
-Requiere extensiones que vienen con PHP: `ext-ctype`, `ext-curl`, `ext-fileinfo`, `ext-filter`, `ext-json`, `ext-mbstring`, `ext-openssl`, `ext-pdo`, `ext-session`, `ext-tokenizer` — más el driver PDO de tu base de datos. Opcionales: `ext-redis` para los drivers Redis, `ext-pcntl` para que los workers de la cola terminen de forma ordenada (Unix), `ext-posix`, `ext-gd` para los iconos de la PWA, `ext-readline` para tinker. Sin dependencias de Composer.
+Requiere extensiones que vienen con PHP: `ext-ctype`, `ext-curl`, `ext-fileinfo`, `ext-filter`, `ext-json`, `ext-mbstring`, `ext-openssl`, `ext-pdo`, `ext-session`, `ext-tokenizer` — más el driver PDO de tu base de datos. Opcionales: `ext-redis` para los drivers Redis, `ext-pcntl` para que los workers de la cola terminen de forma ordenada (Unix), `ext-posix`, `ext-gd` para los iconos de la PWA, `ext-intl` para fechas y números correctos según el locale, `ext-readline` para tinker. Sin dependencias de Composer.
 
 ---
 
 ## Tests
 
+En un proyecto que creaste, `composer test` ejecuta tus propios tests (`./sfphp test`,
+sobre `tests/*Test.php`). En un clon de este repositorio, los del framework:
+
 ```bash
-composer run test       # the unit suite (php tests/run.php)
-composer run test:db    # Integration tests on real MySQL & PostgreSQL
-composer run lint       # PHP syntax check
-composer run docs       # Verify documentation consistency
+composer run test       # la suite unitaria (php tests/run.php)
+composer run test:db    # tests de integración en MySQL y PostgreSQL reales
+composer run lint       # comprobación de sintaxis de PHP
+composer run docs       # verifica la coherencia de la documentación
 ```
 
 La suite de tests se ejecuta en **PHP 8.1–8.4** en CI.
@@ -278,7 +285,7 @@ La suite de tests se ejecuta en **PHP 8.1–8.4** en CI.
 
 ## Seguridad
 
-Nos tomamos la seguridad en serio. Consulta [SECURITY.md](SECURITY.md) para:
+Nos tomamos la seguridad en serio. Consulta [SECURITY.md](https://github.com/fabioaacarneiro/sfphp-project/blob/master/SECURITY.md) para:
 - Cómo informar de vulnerabilidades
 - Las prácticas de seguridad que usa SFPHP
 - Dónde encontrar la documentación detallada de seguridad
@@ -287,7 +294,7 @@ Nos tomamos la seguridad en serio. Consulta [SECURITY.md](SECURITY.md) para:
 
 ## Licencia
 
-MIT — Consulta [LICENSE](LICENSE)
+MIT — Consulta [LICENSE](https://github.com/fabioaacarneiro/sfphp-project/blob/master/LICENSE)
 
 **Creado por** Fabio Carneiro  
 **Colaboradores** La comunidad

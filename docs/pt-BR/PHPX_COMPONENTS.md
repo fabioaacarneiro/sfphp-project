@@ -202,7 +202,11 @@ elemento é texto, seja o que for que ele contenha:
 
 Só **fora de todo elemento** um parêntese conta, e ali ele precisa estar
 equilibrado, como em PHP: o `)` que equilibra o `Sfht(` é o que fecha a região.
-Elementos vazios (`<br>`, `<img>`, `<input>` …) e tags autofechadas não abrem
+
+O `Sfht(` abre uma região só no código. Escrito em um comentário ou em uma
+string — um docblock que explica como as regiões abrem, `$hint = "use Sfht(
+here"` — ele é texto, do jeito que o próprio tokenizer do PHP o lê, e o antigo
+`sfht(` minúsculo em um comentário também não é recusado. Elementos vazios (`<br>`, `<img>`, `<input>` …) e tags autofechadas não abrem
 nada, e uma tag de fechamento também fecha qualquer elemento deixado aberto
 dentro dela, do jeito que o HTML trata um `<li>` sem `</li>`.
 
@@ -298,7 +302,9 @@ nunca são compilados de novo.
 ### O que o build produz
 
 Cada região vira uma closure chamada na hora. Ela recebe as variáveis da função
-por `get_defined_vars()`, faz buffer do markup e o devolve como um `Sfht`. Todo
+por `get_defined_vars()`, faz buffer do markup e o devolve como um `Sfht`; se o markup lança uma
+exceção, o buffer é fechado antes de a exceção seguir adiante, então nenhum
+markup renderizado pela metade fica na frente da página de erro. Todo
 `{{ }}` vira uma chamada a `Compiler::text()`, e as instruções são separadas por
 espaços em vez de quebras de linha, então cada linha de markup fica na linha em
 que foi escrita. Este é o `compiled/postcode/lookup/Field.php`, gerado a partir
@@ -308,10 +314,10 @@ do componente mostrado em [Compor componentes](#compor-componentes):
 function Field(string $label, string $value): Sfht
 {
     return 
-(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="py-1">
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); $__level = ob_get_level(); ob_start(); try { echo '<div class="py-1">
             <span class="text-xs text-muted d-block">'; echo \SfphpProject\src\View\Compiler::text(($label)); echo '</span>
             <span class="font-semibold">'; echo \SfphpProject\src\View\Compiler::text(($value)); echo '</span>
-        </div>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+        </div>';  } catch (\Throwable $__e) { while (ob_get_level() > $__level) { ob_end_clean(); } throw $__e; } return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
 ;
 }
 ```
@@ -364,7 +370,7 @@ logo depois da instalação, sem build.
 
 ## Carregar os componentes
 
-O PHP autoloada **classes**, não funções. O Composer não consegue encontrar
+O PHP carrega automaticamente **classes**, não funções. O Composer não consegue encontrar
 `SfphpProject\app\components\Card()` sob demanda do jeito que encontra um
 controller, então todo componente compilado precisa ser incluído com `require`
 antes de ser chamado. O `public/index.php` faz isso uma vez, antes de as rotas
@@ -624,7 +630,7 @@ Qualquer valor PHP serve — strings, números, arrays, models, coleções — c
 valores padrão e argumentos nomeados (`PostPage(post: $post)`). A assinatura diz
 exatamente do que o componente precisa, então o editor completa a chamada e o
 PHP recusa um tipo errado. O `{{ }}` escapa o que imprime, então um título vindo
-do banco não injeta marcação. Um componente repassa dados aos que o compõem do
+do banco não injeta markup. Um componente repassa dados aos que o compõem do
 mesmo jeito — o `PostPage` chamando `Comment($comment)`.
 
 Essa é a diferença para um template: `Response::sfht('post', ['post' =>
@@ -633,7 +639,7 @@ recebe como argumentos tipados que o editor consegue conferir.
 
 > **Migrando da 0.30.** O `Response::view()` agora é `Response::sfht()`, e um
 > componente é respondido com `Response::phpx(PostcodePage())` em vez de
-> `Response::html((string) PostcodePage())`. Uma região de marcação abre com
+> `Response::html((string) PostcodePage())`. Uma região de markup abre com
 > `Sfht(` — o nome do tipo que ela devolve — em vez de `sfht(`; o build recusa a
 > grafia antiga com a linha e a correção.
 

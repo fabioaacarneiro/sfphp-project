@@ -107,7 +107,12 @@ opcional. Um `./sfphp make:pwa` simples então pega o nome do arquivo, que lê o
 
 Os valores são resolvidos nesta ordem: **flag, depois `app/pwa/config.php`,
 depois o padrão embutido.** Uma flag só vale para aquela execução e não altera o
-arquivo. `--enable-push` e `--enable-sync` só conseguem ligar um recurso. Para
+arquivo. Uma flag recebe o seu valor depois de `=` ou depois de um espaço —
+`--name "My App"` funciona — e `--color` e `--background` precisam ser cores
+hexadecimais (`#2563eb`, `#fff`, ou oito dígitos com alfa); qualquer outra coisa
+para o comando antes de um arquivo ser escrito. O manifest é escrito com o texto
+como ele é, então "Café" continua "Café" em vez de `Caf\u00e9`. `--enable-push`
+e `--enable-sync` só conseguem ligar um recurso. Para
 desligar um recurso que o config liga, defina-o como `false` no arquivo.
 
 Algumas configurações não têm flag: `start_url`, `scope`, `display`,
@@ -203,10 +208,7 @@ Observações:
   `landscape`.
 - **Se o arquivo não existir,** o `make:pwa` usa os padrões mostrados acima e
   exige `--name`. O pacote mantém uma cópia deste arquivo em
-  `resources/pwa/config.php`. Em um projeto que instalou o framework com o
-  Composer, ela fica em
-  `vendor/fabioaacarneiro/sfphp-framework/resources/pwa/config.php`. Copie-a
-  para `app/pwa/config.php`.
+  `resources/pwa/config.php`; copie-a para `app/pwa/config.php`.
 
 ---
 
@@ -223,7 +225,8 @@ layout, por exemplo `app/resources/views/layouts/base.sfht`:
 ```
 
 - O valor de `<meta name="theme-color">` deve bater com o `theme_color`. O
-  comando imprime este bloco já com a sua cor preenchida.
+  comando imprime este bloco já com a sua cor preenchida, e imprime a linha do
+  `apple-touch-icon` só quando gerou esse ícone.
 - O `install-sw.js` registra o `/service-worker.js` com escopo `/` e define o
   `window.pwa`. Sem ele, nenhum service worker é registrado.
 - O iOS ignora os ícones do manifest para a tela inicial e usa o

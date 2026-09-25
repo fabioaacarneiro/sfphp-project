@@ -199,6 +199,9 @@ printf("%.0f ms\n", (microtime(true) - $started) * 1000);
   concluya. Si esa parte falló, la carrera se rechaza.
 
 `awaitAll(...$futures)` es una abreviatura de `await(CompositeFuture::all(...))`.
+Las partes pueden tener nombre: `awaitAll(...['user' => $a, 'posts' => $b])` se resuelve en
+`['user' => …, 'posts' => …]`, en el orden dado. Una parte con nombre solía ser un
+`TypeError` dentro del loop, que además hacía fallar el siguiente `await()`.
 
 ```php
 <?php
@@ -518,7 +521,7 @@ clase que devuelve el cliente síncrono:
 | `body()` | El cuerpo en crudo (`string`). |
 | `json(bool $strict = false)` | El cuerpo decodificado como array, o `null` cuando no es JSON. Con `true`, lanza `ClientException` en lugar de devolver `null`. |
 | `header(string $name)` | Una cabecera, buscada sin distinguir mayúsculas de minúsculas, o `null`. |
-| `headers()` | Todas las cabeceras. |
+| `headers()` | Todas las cabeceras de la respuesta final — no las de las redirecciones anteriores. |
 | `url()` | La URL que respondió, tras las redirecciones. |
 | `throw()` | Lanza `ClientException` para 4xx/5xx; en caso contrario devuelve la respuesta. |
 
@@ -544,7 +547,9 @@ $user = await(Http::getAsync('https://api.example.com/users/1'))->throw()->json(
 resuelve y tú inspeccionas `status()`. La ausencia total de respuesta (fallo de
 DNS, conexión rechazada, plazo agotado, fallo de TLS) rechaza el Future con
 `SfphpProject\src\Http\ClientException`. La extensión `curl` es obligatoria. Sin
-ella, el Future se rechaza al instante con una `ClientException` que lo indica.
+ella, el Future se rechaza al instante con una `ClientException` que lo indica. Lo mismo ocurre con un valor de cabecera que
+contiene un salto de línea, y con un cuerpo que JSON no puede codificar — que antes
+se enviaba como una cadena vacía.
 
 ## Consultas a la base de datos
 
@@ -1061,7 +1066,7 @@ incluidos:
   vacíalo con `clearHistory()`.
 - `scope('billing')` devuelve un broadcaster que comparte estos listeners y
   este historial y antepone `billing.` a cada nombre de evento que recibe.
-  `clear()` sobre un scope elimina solo los listeners de ese scope.
+  `clear()` sobre un ámbito elimina solo los listeners de ese ámbito.
 
 ```php
 <?php

@@ -108,7 +108,11 @@ lee `APP_NAME` de `.env`.
 
 Los valores se resuelven en este orden: **flag, luego `app/pwa/config.php`,
 luego el valor por defecto incorporado.** Un flag solo se aplica a esa ejecución
-y no cambia el archivo. `--enable-push` y `--enable-sync` solo pueden activar
+y no cambia el archivo. Un flag toma su valor después de `=` o de un espacio — `--name "My App"`
+funciona — y `--color` y `--background` tienen que ser colores hexadecimales (`#2563eb`,
+`#fff`, u ocho dígitos con alfa); cualquier otra cosa detiene el comando antes de que
+se escriba un archivo. El manifiesto se escribe con su texto tal cual, así que "Café"
+sigue siendo "Café" y no `Caf\u00e9`. `--enable-push` y `--enable-sync` solo pueden activar
 una funcionalidad. Para desactivar una funcionalidad que la configuración
 activa, ponla a `false` en el archivo.
 
@@ -169,7 +173,7 @@ return [
     'orientation' => 'portrait-primary',
 
     'service_worker' => [
-        'version' => 'v1',             // parte del nombre de la caché, véase "Nombre y versionado de la caché"
+        'version' => 'v1',             // parte del nombre de la caché, consulta "Nombre y versionado de la caché"
         'static_assets' => [           // se precachean cuando se instala el service worker
             '/assets/css/sfcss.min.css',
             '/assets/js/sfjs.min.js',
@@ -205,10 +209,7 @@ Notas:
   y `landscape`.
 - **Si el archivo no existe,** `make:pwa` usa los valores por defecto mostrados
   arriba y exige `--name`. El paquete guarda una copia de este archivo en
-  `resources/pwa/config.php`. En un proyecto que instaló el framework con
-  Composer, está en
-  `vendor/fabioaacarneiro/sfphp-framework/resources/pwa/config.php`. Cópialo a
-  `app/pwa/config.php`.
+  `resources/pwa/config.php`; cópialo a `app/pwa/config.php`.
 
 ---
 
@@ -225,7 +226,8 @@ por ejemplo `app/resources/views/layouts/base.sfht`:
 ```
 
 - El valor de `<meta name="theme-color">` debe coincidir con `theme_color`. El
-  comando imprime este bloque con tu color ya puesto.
+  comando imprime este bloque con tu color ya puesto, e imprime la línea
+  `apple-touch-icon` solo cuando generó ese icono.
 - `install-sw.js` registra `/service-worker.js` con scope `/` y define
   `window.pwa`. Sin él no se registra ningún service worker.
 - iOS ignora los iconos del manifiesto para la pantalla de inicio y usa

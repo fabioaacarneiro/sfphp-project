@@ -143,12 +143,26 @@ my-app/
   resources/assets/       SFCSS and SFJS
   sfphp                   the console
   .env                    written for you, with a JWT key generated
+  .gitignore              written for you: .env, vendor/ and storage/ stay out
 ```
 
-Creating the project also copies `.env-example` to `.env` — **with a real
-`JWT_KEY`**, because the placeholder is refused on purpose and generating a key
-should not be the first thing you have to read about — and publishes SFCSS and
-SFJS into `public/assets`.
+Creating the project runs `./sfphp init`, which does four things:
+
+- copies `.env-example` to `.env` — **with a real `JWT_KEY`**, because the
+  placeholder is refused on purpose and generating a key should not be the first
+  thing you have to read about;
+- publishes SFCSS and SFJS into `public/assets`;
+- writes a `.gitignore` for the project, so the first `git add .` does not
+  commit `.env` and its key, `vendor/` or the published assets;
+- replaces the composer scripts that belong to the framework's own repository:
+  `composer test` runs `./sfphp test`, your tests.
+
+Each step only adds what is missing, so `./sfphp init` is safe to run again.
+
+`composer create-project` is the way to install SFPHP. The package is a project
+template, not a library: `composer require` puts a second application inside
+`vendor/`, and the console commands, the example seeders and the server script
+all assume the project root is the package's.
 
 Everything there is **yours**. Delete the example controller and its views; the
 framework is `src/` and does not mind.
@@ -167,6 +181,7 @@ no dependencies and a created project carries its own copy of it.
 | `src/` | The framework itself, including the settings layer (`Bootstrap`, `Config`) |
 | `database/` | Migrations, seeders and factories |
 | `lang/` | Your message catalogs |
+| `storage/` | Created on first use, private (`0700`): the file cache and the compiled templates |
 | `.env` | Configuration, never committed |
 | `vendor/` | The autoloader. Nothing to open, nothing to edit |
 
@@ -190,7 +205,7 @@ Bootstrap::load(dirname(__DIR__), [
     'views' => 'resources/views',
     'lang' => 'resources/lang',
     'env' => null,               // configuration comes from the environment
-    'cache' => 'var/cache/views', // compiled templates (default: the system temp directory)
+    'cache' => 'var/cache/views', // compiled templates (default: storage/cache/sfht)
 ]);
 ```
 
@@ -242,7 +257,7 @@ resources/      SFCSS and SFJS sources, published into public/assets
 lang/           Message catalogs (en, pt_BR, es)
 database/       The application's migrations/, seeders/, factories/
 tools/          The SFCSS and SFJS builders, and the docs-parity check
-tests/          A bespoke suite, no PHPUnit
+tests/          A bespoke suite, no PHPUnit (a created project's own tests run with ./sfphp test)
 docs/           This documentation
 sfphp           The CLI entry point
 server.php      Router script for the built-in server
@@ -367,7 +382,13 @@ Router::options(...);
 
 An unmatched route answers **404**. A path that matches with the wrong method
 answers **405** with an `Allow` header. `OPTIONS` answers **204** automatically
-when a path has routes.
+when a path has routes. Both refusals are the framework's error page, or JSON
+for a client that asks for it (`Accept: application/json`), like every other
+error.
+
+A `HEAD` request is answered by the `GET` route for the same path, with the
+headers and without the body — which is what link checkers and uptime probes
+send. `Allow` lists `HEAD` beside `GET`, and `OPTIONS`.
 
 ### Parameters
 
@@ -381,9 +402,9 @@ Router::get('/codes/code:alphanum', [CodeController::class, 'show']);
 
 | Type | Matches | Note |
 |---|---|---|
-| `number` | `[0-9]+` | ASCII on purpose: the value exists to survive an `(int)` cast, and PHP's cast does not understand Eastern Arabic or Devanagari digits |
-| `alpha` | `\p{L}+` | Any script: `café`, `北京`, `Владимир` |
-| `alphanum` | `[\p{L}\p{N}]+` | Letters and digits from any script |
+| `number` | `[0-9]+` | ASCII on purpose: the value exists to survive an `(int)` cast, and PHP's cast does not understand Eastern Arabic or Devanagari digits. A number larger than PHP's integer is a 404, not a `TypeError` in an `int $id` action |
+| `alpha` | `\p{L}[\p{L}\p{M}]*` | Any script, combining marks included: `café`, `北京`, `Владимир`, `हिन्दी` |
+| `alphanum` | `[\p{L}\p{N}][\p{L}\p{M}\p{N}]*` | Letters and digits from any script |
 
 Values reach the action **positionally**, in the order they appear in the URL,
 after the request:
@@ -397,10 +418,17 @@ public function show(Request $request, string $tenantId, string $postId): Respon
 }
 ```
 
+Inside a middleware, or anywhere the request is at hand, the same values are
+read with `$request->route('id')`; `$request->routeParameters()` has them all
+and `$request->routePattern()` the route that matched. They are kept apart
+from the request's attributes, so a route declared as `/profile/user:alpha`
+does not replace the signed-in user that `$request->user()` returns.
+
 The request path is decoded segment by segment before matching, so
 `/products/caf%C3%A9` matches `/products/name:alpha`. Encoded separators
 (`%2F`, `%5C`) are **not** turned into real ones: `/a%2Fb` never reaches the
-route `/a/b`.
+route `/a/b`. Repeated slashes are collapsed, as a web server does:
+`//admin/panel` is the path `/admin/panel`.
 
 A route **without parameters** is matched by comparing two strings, never by
 running a regular expression, and a route with them compiles its pattern once
@@ -501,17 +529,18 @@ $request->filled('title');
 
 $request->header('Authorization');   // case-insensitive lookup
 $request->bearerToken();
-$request->json();                    // decodes the body, throws JsonException
+$request->json();                    // decodes the body; a malformed one is a 400 (InvalidJsonException)
 $request->rawBody;
 
 $request->cookie('session');
 $request->file('avatar');
-$request->ip();
+$request->ip();                      // the client, through trusted proxies only
 $request->isSecure();
 $request->expectsJson();
 
 $request->user();                    // set by the Authenticate middleware
 $request->route('id');               // route parameter
+$request->routeParameters();         // all of them, in URL order
 $request->attribute('locale');       // attached by a middleware
 $withUser = $request->withAttribute('user', $user);   // clones
 $request->isFragment();              // true when SFJS asked for a fragment
@@ -592,12 +621,14 @@ final class PostController
 > **`back()` will not leave your site.** The referer is a header, so the visitor
 > chooses it, which makes it a redirect destination an attacker can pick.
 > Following one to another origin is an open redirect — how a phishing link
-> borrows your domain's good name. A referer naming a different host falls back,
-> and so does one that is not a path.
+> borrows your domain's good name. A referer naming a different host or port
+> falls back, and so does one whose path a browser would read as another host —
+> `//evil.example`, `/\evil.example` — or that carries a backslash or a control
+> character.
 
 There was a `BaseController` here offering `$this->view()` and
 `$this->redirect()`. It asked you to inherit a class in order to shorten two
-calls that already existed, which is inheritance paying for nothing, and it
+calls that already existed, which is inheritance that buys nothing, and it
 lived in the example application where a `composer require` never reached it —
 so the line it taught threw a fatal in an installed project. `route()` and
 `back()` were the only things on it that were not already somewhere else, and
@@ -634,12 +665,14 @@ debugging "that was not valid JSON".
 
 `GET`, `HEAD`, `OPTIONS` and `DELETE` pass straight through, since they carry no
 body — otherwise the middleware would be unusable on a group that both reads and
-writes, which is most groups. Pass `new RequireJson(required: true)` to refuse a
-write that arrives with no `Content-Type` at all.
+writes, which is most groups. A write with no `Content-Type` and no body reaches
+the action with `json` set to `[]`; one with a body but no `Content-Type` is a
+415. Pass `new RequireJson(required: true)` to refuse a write with no body at
+all.
 
-This replaced an `ApiController` you had to extend. The check then ran only
-where somebody remembered to call it, and it put a class between the framework
-and every endpoint to do a job the pipeline already existed for.
+This replaced the base class every JSON controller used to extend. The check
+then ran only where somebody remembered to call it, and it put a class between
+the framework and every endpoint to do a job the pipeline already existed for.
 
 ### Global helpers
 
@@ -647,13 +680,16 @@ Loaded on every request by `src/utils.php`:
 
 ```php
 e($value);                    // escapes for HTML: <script> → &lt;script&gt;
-asset('css/app.css');         // → /assets/css/app.css
-asset('js/sfjs.js');          // → /assets/js/sfjs.js
+asset('css/app.css');         // → /assets/css/app.css?v=3f2a9c1b
+asset('js/sfjs.js');          // → /assets/js/sfjs.js?v=81d0e4aa
 csrf_token();  csrf_field();  csrf_meta();  csrf_verify();
 ```
 
 `asset()` prefixes `/assets/` and **validates the path**: directory traversal
-and characters outside `[A-Za-z0-9._-]` throw `InvalidArgumentException`.
+and characters outside `[A-Za-z0-9._-]` throw `InvalidArgumentException`. A file
+that exists under `public/assets` gets `?v=` and a short hash of its date and
+size, so a browser that cached the previous `sfjs.min.js` fetches the new one as
+soon as it changes.
 
 Static files live in `public/assets/{css,js,images}/`.
 
@@ -755,13 +791,21 @@ dependencies in its constructor and have them autowired.
 | `RequireJson` | Refuses a body that is not JSON with 415, one that does not decode with 400 |
 | `EnableAsync` | Optional: gives each request its own async scheduler, so nothing it left pending carries over — see [ASYNC.md](./ASYNC.md) |
 
-`VerifyCsrfToken` lets safe methods and bearer-token requests through — a
-browser never attaches a bearer token by itself, so there is no cross-site
-request to forge. Path prefixes can be exempted:
+`VerifyCsrfToken` lets safe methods through, and a request with a bearer token
+and no session cookie — a browser never attaches a bearer token by itself, so
+there is no cross-site request to forge. A request that carries the session
+cookie is checked even with a bearer token, because a browser can send that one
+on its own. Paths can be exempted, by whole segment — `/api` exempts `/api` and
+`/api/posts`, not `/apikeys`:
 
 ```php
 new VerifyCsrfToken(['/api'])
 ```
+
+The check runs before routing, so a `POST` to a path with no route answers
+403 rather than 404 when it has no token: saying which paths exist to a request
+that could not prove where it came from would be a small leak, and nothing is
+lost by refusing it first.
 
 > Until this version CSRF verification existed but **nothing in the framework
 > called it**: every application had to remember to check in each action, and
@@ -853,6 +897,15 @@ The expression is real PHP — function calls, operators and indexes all work:
 @empty
   <p>No posts yet.</p>
 @endforelse
+```
+
+`@forelse` nests: an inner loop's `@empty` answers for the inner list only.
+
+A directive that takes no arguments — `@else`, `@empty`, `@endif` — reads a
+`(` only when it is right against its name, so `@else (optional)` is `@else`
+followed by the text `(optional)`.
+
+```sfht
 
 @for($i = 0; $i < 10; $i++)
   <p>{{ $i }}</p>
@@ -935,17 +988,24 @@ Chainable with `|`:
 | `truncate(n, suffix)` | Shortens to `n` **characters**; the suffix counts towards the limit |
 | `length` | Characters of a string, or items of an array |
 | `reverse` | Reverses, respecting multi-byte characters |
-| `escape` | Escapes HTML explicitly |
+| `escape` | Escapes HTML explicitly — returns markup, so `{{ }}` does not escape it twice |
 | `json` | JSON with `UNESCAPED_UNICODE` |
 | `format(fmt)` | `sprintf` |
 | `trim` | Strips surrounding whitespace |
 | `abs` / `round(n)` | Numeric |
-| `default(v)` | Replaces `null` and the empty string |
+| `default(v)` | Replaces `null` and the empty string — and a variable the view was never given |
 
 The string filters count **characters, not bytes**: `truncate(5)` over
 `日本語テキスト` returns `日本...`, never a byte cut in half.
 
-`||` is not mistaken for a filter — `{{ $a || $b ? 'y' : 'n' }}` works.
+`||` is not mistaken for a filter — `{{ $a || $b ? 'y' : 'n' }}` works — and a
+`}}` inside a quoted string does not end the expression:
+`{{ $open ? '}}' : '' }}` works too.
+
+`default()` covers a variable that was never passed: `{{ $title | default('Home') }}`
+with no `$title` prints `Home` instead of failing on an undefined variable. That
+holds for a plain variable or a path into one (`$user['name']`, `$post->title`);
+a longer expression is evaluated as written.
 
 Registering your own filter:
 
@@ -961,8 +1021,14 @@ Only known directive names become syntax. Everything else is text:
 ```sfht
 <link href="...family=Inter:wght@300;400">   {{-- preserved --}}
 Write to support@example.com                 {{-- preserved --}}
+Write to webmaster@php.net or me@if.io       {{-- preserved, although php and if are directives --}}
 @media (min-width: 40rem) { ... }            {{-- preserved --}}
+Type @@if to start a condition               {{-- @@ writes a literal @: "Type @if to start…" --}}
 ```
+
+An e-mail address is text even when its domain starts with a directive's name:
+an `@` after a letter or a digit, followed by the name and then `.` or `-`, is
+part of the address. `Ola @if($x)sim@endif` is still a condition.
 
 ### Global variables
 
@@ -974,8 +1040,15 @@ $engine->setGlobals(['version' => '1.0.0', 'year' => date('Y')]);
 ### Compilation cache
 
 Templates compile to PHP on disk and are executed with `include`, so **OPcache
-works** and runtime errors report a real file and line. The write is atomic and
-invalidates OPcache for that exact path.
+works**. The write is atomic and invalidates OPcache for that exact path.
+
+The compiled files live in `storage/cache/sfht` inside the project, created
+private (`0700`), or wherever `Bootstrap::load()`'s `cache` option says. They
+used to live under a fixed name in the system temporary directory, shared by
+every user on the machine — and a compiled template is PHP that gets
+`include`d, so whoever created that directory first could plant code in it. A
+directory another user owns is refused; one others can write to is made
+private before it is used.
 
 A compiled file is named after the template's path **and version** — its
 modification time and size — so a template that changes compiles to a different
@@ -998,8 +1071,14 @@ Unclosed @if opened on line 12.
 @endforeach on line 20 closes @if opened on line 12.
 @empty on line 8 must appear inside @forelse.
 Unclosed "{{" expression on line 3.
-Filter not registered: nosuchfilter
 ```
+
+What fails while the page renders — an exception in the page, a filter that was
+never registered (`Filter not registered: nosuchfilter`), an `@extends` chain
+deeper than 16 levels — is reported naming the template it happened in:
+`Error in template app/resources/views/home.sfht (compiled line 40): …`.
+`View::make()` reports "not found" only for a template that does not exist; any
+other failure keeps its own message.
 
 ---
 
@@ -1013,7 +1092,7 @@ demonstration at `/phpx`.
 |---|---|---|
 | What it is | A file of markup | A PHP function whose markup lives inside it |
 | Composition | `@include`, `@extends`, `@block` | Calling the function |
-| What it receives | Whatever is in scope, plus what is passed | Its parameters, and nothing else |
+| What it receives | Whatever is in scope, plus what is passed | Its parameters, and what it assigns before the markup |
 | Edited by | Anyone who knows HTML | Somebody who reads PHP |
 | Best at | Pages and layouts | Reusable pieces |
 | Build step | None — compiled on demand | `./sfphp build --phpx` |
@@ -1023,7 +1102,7 @@ demonstration at `/phpx`.
 ```php
 <?php
 
-namespace App\Components;
+namespace SfphpProject\app\components;
 
 use SfphpProject\src\View\Sfht;
 
@@ -1043,6 +1122,9 @@ element closes it, so text inside may hold an apostrophe or a lone parenthesis.
 Between them is SFHT, so `{{ }}`, `{!! !!}`, the standard filters, `@if` and
 `@foreach` all work and escaping is the same as everywhere else in the
 framework; `@include`, `@extends` and `@block` are refused at build time.
+`Sfht(` written in a comment or a string — a docblock explaining how regions
+open — is not a region. A component that throws while rendering leaves no
+output behind: its buffer is closed before the exception carries on.
 
 ```bash
 ./sfphp build --phpx                       # every .phpx under app/components
@@ -1136,7 +1218,7 @@ component's parameters are its props, so what it needs is its signature.
 ### Loading components
 
 PHP autoloads classes, not functions, so a compiled component cannot be found on
-demand. The front controller requires them once:
+demand. The front controller includes them once:
 
 ```php
 $compiled = __DIR__ . '/../app/components/compiled';
@@ -1231,9 +1313,14 @@ DB_CHARSET=utf8mb4
 ```
 
 The connection uses `ERRMODE_EXCEPTION`, `FETCH_ASSOC` and **real prepared
-statements** (`EMULATE_PREPARES => false`). A failed connection logs the detail
-and throws a generic exception — the host, database and user never reach the
-visitor.
+statements** (`EMULATE_PREPARES => false`). A failed connection logs the
+driver's message and throws one that says what can be said without it — the
+PDO extension that is missing (`the PHP extension pdo_mysql is not installed`),
+or the driver and host that did not answer. The password and the driver's own
+text stay in the log.
+
+A relative SQLite `DB_NAME` is read from the project root, so the console and
+the web server open the same file whatever directory each started in.
 
 ### Query builder
 
@@ -1254,6 +1341,9 @@ Available methods:
 ->where('age', '>', 18)           // = != <> > >= < <= LIKE "NOT LIKE"
 ->where('status', 'active')       // two arguments: equality
 ->orWhere('role', 'admin')
+->where(function (QueryBuilder $q): void {   // a group, in parentheses
+    $q->where('status', 'draft')->orWhere('status', 'review');
+})
 ->whereNull('deleted_at')
 ->whereNotNull('verified_at')
 ->whereIn('id', [1, 2, 3])        // an empty array matches no rows
@@ -1265,12 +1355,17 @@ Available methods:
 ->get()        // an array of rows
 ->first()      // the first row, or null
 ->count()      // int
-->insert(['name' => 'John'])      // returns the generated id (string)
+->insert(['name' => 'John'])      // returns the generated id, as a string
 ->update(['name' => 'Smith'])     // returns affected rows
 ->delete()                        // returns affected rows
 ->toSql()      // inspect the SQL without running it
 ->bindings()   // the bound values
 ```
+
+An `orWhere()` joins everything written before it: `where('user_id', 7)->where('a', 1)->orWhere('b', 2)`
+is `user_id = 7 AND a = 1 OR b = 2`, which returns other users' rows. Put the
+alternatives in a closure, as above, and they are one group:
+`user_id = 7 AND (status = 'draft' OR status = 'review')`.
 
 **Security.** Every value is bound with the right PDO type. Every identifier —
 table, column, alias — is validated against `^[A-Za-z_][A-Za-z0-9_]*$` and
@@ -1279,7 +1374,14 @@ quoted for the driver; an invalid identifier throws
 
 Pagination is translated per dialect: `LIMIT/OFFSET` on MySQL, PostgreSQL and
 SQLite, `TOP` on SQL Server, `FIRST` on Firebird, `OFFSET … FETCH NEXT` on
-Oracle. A driver without support fails explicitly.
+Oracle. An `offset()` without a `limit()` is valid on each of them — MySQL and
+SQLite accept `OFFSET` only after a `LIMIT`, so one that does not limit is
+written for them. A driver without support fails explicitly.
+
+The builder has no `groupBy()`, `having()`, `distinct()` or aggregates other
+than `count()`, and `select()` takes columns rather than expressions. A report
+with `GROUP BY` or `SUM()` is written with `Database::query()` — see
+[Raw SQL](#raw-sql).
 
 ### Transactions
 
@@ -1305,10 +1407,15 @@ Database::inTransaction();   // true while inside
 
 A nested call **joins** the transaction already open instead of starting a
 second one, because PDO has no nested transactions. The consequence is worth
-knowing: a failure inside the inner callback rolls back the outer work too.
-Savepoints would avoid that, but their syntax differs between drivers, and
-degrading silently on the ones that lack them would be worse than being
-explicit.
+knowing: a failure inside the inner callback rolls back the outer work too —
+even when the outer callback catches the exception and carries on. The inner
+failure marks the transaction for rollback, and the outer one then rolls back
+and throws `NestedTransactionFailed` instead of committing. Savepoints would
+avoid that, but their syntax differs between drivers, and degrading silently on
+the ones that lack them would be worse than being explicit.
+
+A transaction that is already open on the connection — the migration runner's,
+or one started with `beginTransaction()` — is joined the same way.
 
 The helper also handles a detail that is easy to get wrong by hand: a failed
 statement can leave the driver with **no** active transaction, and a bare
@@ -1385,7 +1492,7 @@ Without `$table`, the name is inferred from the class: `Post` → `posts`,
 ```php
 Post::all();                       // array<Post>
 Post::find(1);                     // Post|null
-Post::findOrFail(1);               // Post, or RuntimeException
+Post::findOrFail(1);               // Post, or ModelNotFoundException — a 404
 Post::query()->where('published', 1)->orderBy('created_at', 'desc')->limit(10)->get();
 Post::query()->count();
 
@@ -1401,11 +1508,28 @@ response:
 return Response::json(Post::findOrFail($id));
 ```
 
+A record that does not exist answers **404** by itself: `findOrFail()` throws
+`ModelNotFoundException`, which the error handler maps to that status.
+
+Every column goes into that JSON, so the ones that must never leave the server
+are named in `$hidden`:
+
+```php
+final class User extends Model
+{
+    protected static array $hidden = ['password', 'remember_token'];
+}
+```
+
+A property is an attribute, a loaded relation, or a relation to resolve — and a
+method is only run for it when it declares that it returns `Relation`. Reading
+`$post->delete` used to run `delete()`.
+
 ### Writing
 
 ```php
 $post = new Post(['title' => 'Hello']);   // only columns listed in $fillable
-$post->save();                     // INSERT, and the key comes back filled
+$post->save();                     // INSERT, and the key comes back filled, as an int
 
 $post = Post::find(1);
 $post->title = 'Another title';
@@ -1421,7 +1545,15 @@ filled. See [Security](#security) for why.
 
 A `save()` on an existing model writes **only the attributes that changed** —
 touching one field does not rewrite the whole row. A `save()` with nothing
-dirty issues no query.
+dirty issues no query. The row is found by the key it had when it was read, so
+changing the key and saving moves that row rather than writing into another.
+
+A table with `created_at` and `updated_at` — what a migration's `timestamps()`
+creates — has them kept by `save()` when the model says so:
+
+```php
+protected static bool $timestamps = true;   // insert sets both; update refreshes updated_at, in UTC
+```
 
 ### Attribute types
 
@@ -1500,8 +1632,11 @@ foreach (Post::query()->with('author')->get() as $post) {
 }
 ```
 
-`with()` takes several relations: `->with('author', 'comments')`, and it works
-for many-to-many too:
+`with()` takes several relations: `->with('author', 'comments')`. A name that is
+not a relation of the model — a typo, or a nested `'author.posts'` — throws,
+instead of quietly falling back to one query per row. The keys are sent in
+batches of a thousand, so a large page stays under PostgreSQL's limit of bound
+parameters. It works for many-to-many too:
 
 ```php
 final class Post extends Model
@@ -1689,11 +1824,12 @@ A rule of thumb:
 
 - **Model** when you work with entities and relations — CRUD, forms, a resource
   API. That is where objects and `with()` pay off.
-- **Query builder** when you work with sets — reports, aggregates, `GROUP BY`,
-  bulk updates. Hydrating into objects does not help, and sometimes gets in the
-  way.
-- **Raw SQL** (`Database::query()`) when the query is the product: a CTE, a
-  window function, something specific to the dialect.
+- **Query builder** when you work with sets — filtered lists, joins, counts,
+  bulk updates and deletes. Hydrating into objects does not help, and sometimes
+  gets in the way.
+- **Raw SQL** (`Database::query()`) when the query is the product: aggregates
+  and `GROUP BY`, a CTE, a window function, something specific to the dialect.
+  The builder deliberately stops short of those.
 
 All three coexist, and leaving the model costs one call:
 
@@ -1727,17 +1863,28 @@ Running migrations as one step of a pipeline is still the better shape. The lock
 is there because the framework should not depend on everyone having it.
 
 ```bash
-./sfphp make:migration create_users name:string email:string:unique timestamps
-./sfphp make:migration add_phone_to_users phone:string:nullable
-./sfphp make:migration drop_sessions_table
+./sfphp make:migration create_posts title:string body:text author_id:foreignId:constrained timestamps
+./sfphp make:migration add_slug_to_posts slug:string:unique
+./sfphp make:migration drop_drafts_table
 
 ./sfphp migrate
 ./sfphp migrate --step=2
 ./sfphp rollback
-./sfphp rollback --step=3
+./sfphp rollback --step=3                  # the three most recent migrations, whatever batch they ran in
 ./sfphp status
-./sfphp db:fresh                           # drops everything and rebuilds
+./sfphp db:fresh                           # rolls every migration back, then runs them again
 ```
+
+`db:fresh` asks before it does anything, and refuses in production without
+`--force`. It runs each migration's `down()`, newest first, so it drops what the
+migrations created and nothing else — a table made another way, such as the
+queue's, stays. A recorded migration whose file is gone is named in a warning,
+because what it created cannot be undone without it.
+
+Migrations made one after the other in the same second used to share a
+timestamp, and file names are the run order: `add_status_to_orders` could sort
+before `create_orders`. A new migration's stamp is now always later than the
+newest one in the directory.
 
 **The name is the instruction.** `create_users` creates a table,
 `add_phone_to_users` alters one, `drop_sessions_table` drops one — the same
@@ -1754,7 +1901,7 @@ after it are modifiers:
 | `price:decimal:8,2` | `$table->decimal('price', 8, 2)` |
 | `active:boolean:default=true` | `$table->boolean('active')->default(true)` |
 | `bio:text:nullable` | `$table->text('bio')->nullable()` |
-| `author_id:foreignId:constrained` | `$table->foreignId('author_id')->constrained()` |
+| `author_id:foreignId:constrained` | `$table->foreignId('author_id')->constrained()` — the table is read from the name: `authors` |
 | `timestamps` | `$table->timestamps()` — a bare word takes no column name |
 
 
@@ -1848,7 +1995,7 @@ $schema->table('posts', fn (Blueprint $t) => /* alters */);
 $schema->drop('posts');
 $schema->dropIfExists('posts');
 $schema->rename('posts', 'articles');
-$schema->hasTable('posts');
+$schema->hasTable('posts');          // MySQL, PostgreSQL and SQLite
 $schema->hasColumn('posts', 'title');
 $schema->hasIndex('posts', 'posts_title_index');
 $schema->statement('SET ...', $bindings);
@@ -1896,7 +2043,7 @@ $table->rememberToken();         $table->rawColumn('tags', 'TEXT[]');
 $table->string('slug')->nullable()->default('')->comment('Friendly URL');
 $table->integer('views')->unsigned()->default(0);
 $table->string('email')->unique();
-$table->string('name')->collation('en_US.utf8')->charset('utf8mb4');
+$table->string('name')->collation('utf8mb4_unicode_ci')->charset('utf8mb4');   // MySQL's names
 $table->timestamp('updated')->useCurrent()->useCurrentOnUpdate();
 $table->string('extra')->after('name');     // MySQL
 $table->string('first')->first();           // MySQL
@@ -1912,10 +2059,11 @@ $table->unique(['email', 'tenant_id']);
 $table->index('created_at');
 $table->fullText('body');
 $table->index('name')->algorithm('btree');
-$table->check('price >= 0');
+$table->check('price >= 0', 'posts_price_check');   // named, so dropCheck() can find it
 
-$table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-$table->foreign('user_id')->references('id')->table('users')->nullOnDelete();
+$table->foreignId('user_id')->constrained()->cascadeOnDelete();   // users, read from the name
+$table->foreignId('editor_id')->constrained('users');             // or named
+$table->foreign('user_id')->references('users', 'id')->nullOnDelete();
 
 $table->morphs('owner');            // owner_id + owner_type + index
 $table->nullableMorphs('owner');
@@ -1933,11 +2081,12 @@ $schema->table('posts', function (Blueprint $table): void {
     $table->renameColumn('body', 'content');
     $table->renameIndex('idx_old', 'idx_new');
     $table->dropColumn('obsolete');
-    $table->dropIndex('posts_slug_index');
-    $table->dropUnique('posts_email_unique');
-    $table->dropForeign('posts_user_id_foreign');
+    $table->dropIndex('slug');               // the column(s), as index() took them
+    $table->dropUnique(['email', 'tenant_id']);
+    $table->dropForeign('user_id');
+    $table->dropIndex([], 'idx_custom');      // or the index's own name, second
     $table->dropPrimary();
-    $table->dropCheck('posts_price_check');
+    $table->dropCheck('posts_price_check');   // the name given to check()
     $table->dropTimestamps();
     $table->dropSoftDeletes();
     $table->dropRememberToken();
@@ -1988,7 +2137,7 @@ surely — so the statements come out in the order the blueprint declares them.
 ### Seeders
 
 ```bash
-./sfphp make:seeder UserSeeder
+./sfphp make:seeder User      # writes UserSeeder; "UserSeeder" works too
 ```
 
 ```php
@@ -2028,7 +2177,9 @@ class DatabaseSeeder extends Seeder
 ./sfphp db:seed --class=UserSeeder    # runs a specific one
 ```
 
-An unknown name lists the available seeders and exits with code 1.
+An unknown name lists the available seeders and exits with code 1. The shipped
+`DatabaseSeeder` calls `UserSeeder`, which creates ten users through
+`UserFactory`, each with the password `password`.
 
 ### Factories
 
@@ -2048,10 +2199,12 @@ class UserFactory extends Factory
 {
     public function definition(): array
     {
+        $id = bin2hex(random_bytes(4));
+
         return [
-            'name' => 'User ' . mt_rand(1000, 9999),
-            'email' => 'user' . mt_rand(1000, 9999) . '@example.com',
-            'password' => password_hash('password', PASSWORD_BCRYPT),
+            'name' => 'User ' . $id,
+            'email' => 'user-' . $id . '@example.com',
+            'password' => password_hash('password', PASSWORD_DEFAULT),
         ];
     }
 
@@ -2069,8 +2222,9 @@ it for you.
 $data  = (new UserFactory())->make();                      // an array, unsaved
 $user  = (new UserFactory())->create();                    // saved, a User
 $admin = (new UserFactory())->create(['role' => 'admin']);  // overrides
-$many  = (new UserFactory())->count(50)->create([
-    'email' => fn () => 'user' . bin2hex(random_bytes(6)) . '@example.com',
+$many  = (new UserFactory())->count(50)->create();             // fifty users, fifty e-mails
+$ranked = (new UserFactory())->count(3)->create([
+    'position' => fn (Factory $factory, int $index): int => $index + 1,
 ]);
 ```
 
@@ -2078,10 +2232,14 @@ $many  = (new UserFactory())->count(50)->create([
 named by `model()` and returns Model instances — a list of them when `count()`
 is above 1. See [Models](#models).
 
-`definition()` runs **once** per call, and `count()` copies its result to every
-row: the fifty users above would all share one `mt_rand()` e-mail and trip a
-unique index. A value that must differ from row to row is given as a closure,
-which is called for each row — only when `count()` is above 1.
+`definition()` runs **once per row**, so a random value differs from row to row
+and a unique index holds. A value given as a closure is called for each row,
+with the factory and the row's index; only a closure is called — a string that
+happens to name a PHP function, such as `'key'` or `'date'`, stays a string.
+
+`create()` saves with `forceFill()`: the values are the factory's, not a
+visitor's, so a column outside `$fillable` — the password, usually — is written
+like the rest.
 
 ---
 
@@ -2090,12 +2248,13 @@ which is called for each row — only when `count()` is above 1.
 ```php
 $cache = cache();                    // global helper, driver from CACHE_DRIVER
 
-$cache->put('key', $value, 300);     // TTL in seconds; null never expires
+$cache->put('key', $value, 300);     // TTL in seconds; null or 0 never expires
 $cache->get('key');
 $cache->get('key', 'default');
-$cache->has('key');
+$cache->has('key');                  // true for a live entry, even one holding null
 $cache->forget('key');
-$cache->flush();
+$cache->flush();                     // everything
+$cache->prune();                     // only what has expired; returns how many
 $cache->pull('key');                            // reads and removes
 $cache->remember('users', 600, fn () => /* ... */);   // computes when missing
 
@@ -2107,6 +2266,14 @@ $cache->increment('window', 1, 60);  // a counter that expires in 60 seconds
 $cache->ttl('window');               // seconds left, or null
 ```
 
+Every driver reads a lifetime the same way — `null` or `0` never expires, a
+positive number is seconds, a negative one throws — and stores values as
+**JSON**: `null`, scalars and arrays. An object put in comes back as an array,
+from the file driver, from Redis and from memory alike, so code tested against
+one behaves the same against the others. The file driver used to lose every
+entry stored without a lifetime; the Redis driver used to `unserialize()`
+whatever the server held.
+
 ### Counters
 
 `increment()` is not `get()` plus `put()`, and the difference is the point.
@@ -2115,7 +2282,8 @@ lost. That is harmless for a cached page and not harmless for a rate limiter,
 which counts precisely when several requests arrive at once.
 
 The addition happens where the data lives: inside an exclusive lock for the
-file driver, and as `INCRBY` for Redis, so the driver adds rather than PHP.
+file driver, and in one Lua script for Redis — the add and the lifetime
+together, so a key cannot expire between them and come back without one.
 
 The lifetime is applied **only when the counter is created**. A counter that
 already exists keeps the expiry it had, so a client that keeps knocking cannot
@@ -2127,9 +2295,8 @@ leaves a counter that never expires, and `ttl()` answers `null`. Pass the
 lifetime on the call that creates the counter, or on every call — the rate
 limiter does the latter.
 
-> Adding `increment()` and `ttl()` to the `Cache` interface is a **breaking
-> change** for an application that ships its own driver: a class implementing
-> `Cache` must now implement both.
+> The `Cache` interface has `increment()`, `ttl()` and `prune()`. An application
+> that ships its own driver implements all three.
 
 ### Choosing the driver
 
@@ -2138,7 +2305,7 @@ CACHE_DRIVER=file          # the default
 CACHE_DRIVER=redis         # needs ext-redis
 CACHE_DRIVER=array         # memory, gone at the end of the request
 
-CACHE_PATH=storage/cache   # where the file driver writes
+CACHE_PATH=storage/cache   # where the file driver writes (the default); relative to the project
 CACHE_PREFIX=sfphp:cache:  # so two applications can share one Redis
 
 REDIS_HOST=127.0.0.1
@@ -2179,10 +2346,20 @@ use SfphpProject\src\Cache\MemoryDriver;
 $scratch = new CacheManager(new MemoryDriver());   // for this request only
 ```
 
+The file driver's directory is private (`0700`, files `0600`) and inside the
+project. It used to be a fixed name under the system temporary directory, which
+every application and every user on the machine shared.
+
 ```bash
-./sfphp cache:clear
-./sfphp cache:flush
+./sfphp cache:clear      # removes what has expired
+./sfphp cache:flush      # removes everything
 ```
+
+`cache:clear` used to flush. The cache holds the revoked-token list, the
+rate-limit counters and, with `SESSION_DRIVER=cache`, the sessions — so clearing
+"expired entries" brought revoked tokens back, reset every limit and signed
+everybody out. It prunes now; `cache:flush` is the command that empties it, and
+says what that resets.
 
 ---
 
@@ -2218,6 +2395,15 @@ at dispatch — and puts its properties back from what was stored, so a job may
 take constructor arguments like any other class. `tries`, `timeout` and `delay`
 set at dispatch are stored with the job and honoured by the worker.
 
+A job's properties are stored as JSON, so they hold what JSON holds: an id, a
+string, a number, an array of those. An object — a `DateTimeImmutable`, an enum,
+a model — is refused at dispatch with a message saying so. It used to go in as
+its fields and come back as an array the typed property refused, inside the
+worker; a model also copied its whole row, password hash included, into the
+jobs table. Store the id and load the rest in `handle()`. A stored payload that
+can no longer be rebuilt — a class renamed since — goes to the failed jobs
+instead of stopping the worker.
+
 ```bash
 ./sfphp queue:work                 # default: 3600s
 ./sfphp queue:work --timeout=7200
@@ -2231,8 +2417,12 @@ taken — and a job that runs past its `timeout` (60 seconds unless set) fails
 that attempt with a `JobTimedOutException`. Without `ext-pcntl` there is no
 graceful stop and no per-job limit: a job runs until it returns.
 
-The `jobs` and `failed_jobs` tables are created on demand, on the first
-operation that needs them — instantiating the driver opens no connection.
+The `jobs` and `failed_jobs` tables are created by `./sfphp queue:table`, or on
+the first operation that needs them — instantiating the driver opens no
+connection. Creating a table inside an open transaction would commit it on
+MySQL, so the driver refuses to and asks for `queue:table` instead. A failed job
+keeps its payload and the exception's class, message and stack trace;
+`queue:failed` lists the message.
 
 ### Choosing the driver
 
@@ -2352,20 +2542,27 @@ controller decides whether that is a form error or a failure:
 | `assertType(['image/png'])` | What the file **contains**, from its bytes |
 | `assertExtension(['png'])` | What the file is **called** |
 | `assertSmallerThan($bytes)` | Per field, unlike `upload_max_filesize` |
-| `assertImage()` | Decodes the header, so a fake image is refused |
+| `assertImage()` | Decodes the header, so a file that is not an image is refused |
 
 Type and extension are both worth checking, because they are different lies:
 what a file contains decides how a library reads it, and what its name ends in
 decides how a web server treats it. A real PNG called `avatar.php` is still a
-problem if it lands somewhere PHP is executed.
+problem if it lands somewhere PHP is executed — and a PNG can carry PHP after
+its pixels and pass both `assertType()` and `assertImage()`, which is why the
+stored name below never keeps an extension a server would run.
 
 ```php
 try {
     $file->assertType(['application/pdf'])->assertSmallerThan(5 * 1024 * 1024);
 } catch (UploadException $e) {
-    $errors['invoice'] = $e->getMessage();
+    $errors['invoice'] = 'Send a PDF of at most 5 MB.';   // the exception's message is in English
+    logger()->info('upload refused', ['reason' => $e->getMessage()]);
 }
 ```
+
+The messages of the checks are written for the developer and are in English.
+What the visitor reads is yours to word, in their language; `errorMessage()`,
+below, is the one message the framework translates.
 
 `Validator` is deliberately not involved. It works on scalars from a form, and
 an upload's real type is something only the file itself can answer.
@@ -2380,10 +2577,14 @@ $path = $file->store($directory, 'report.csv');   // still sanitised
 ```
 
 The stored name is **random**, and that is the point rather than a convenience:
-the client's name is the client's input. The extension is carried over only when
-it is plain alphanumeric, so nothing in it can be a path or a second extension.
-A name you pass yourself is reduced to something that cannot be a path, and
-refused outright when nothing usable is left.
+the client's name is the client's input. The extension comes from what the file
+**contains** when that is a common type — `jpg`, `png`, `pdf`, `txt` and the
+like — and otherwise from the client's name, only when it is plain alphanumeric
+and never one a server might run or render as a page: `php`, `phtml`, `phar`,
+`html`, `svg`, `js` and their kin are dropped. A name you pass yourself is
+reduced to something that cannot be a path — letters in any script are kept, so
+`relatório.pdf` stays `relatório.pdf` — gets `.txt` added when it ends in one
+of those extensions, and is refused outright when nothing usable is left.
 
 > **Store uploads outside the document root.** None of this stops a file being
 > executed if it is written somewhere the web server will run it. `public/` is
@@ -2398,10 +2599,10 @@ foreach ($request->files('photos') as $photo) {
 ```
 
 `$_FILES['photos']` for `name="photos[]"` is not a list of files — it is one
-file whose every property is a list. `files()` turns it the right way round, and
-`file()` answers `null` for such a field rather than handing back something
-unusable. `hasFile()` asks whether a **usable** file arrived, not whether the
-field was present.
+file whose every property is a list. `files()` turns it the right way round,
+leaving out the inputs that were left empty, and `file()` answers `null` for
+such a field rather than handing back something unusable. `hasFile()` asks
+whether a **usable** file arrived, not whether the field was present.
 
 ### Why an upload failed
 
@@ -2464,8 +2665,13 @@ invented — `send()` takes it:
 
 ```php
 Http::client()->send('OPTIONS', 'https://api.example.com/users');
+Http::client()->send('HEAD', $url);                 // headers only; returns as soon as they arrive
 Http::client()->send('REPORT', $url, $body, ['page' => 2]);
 ```
+
+A header name must be a header name and a value may not contain a line break:
+`withHeaders(['X-A' => "v\r\nX-Injected: yes"])` throws `ClientException`
+instead of sending a second header of the caller's choosing.
 
 ### A client for a service you call often
 
@@ -2482,7 +2688,7 @@ for a service can be handed around without anything being able to change it.
 
 | On the facade | On a client | Does |
 |---|---|---|
-| `Http::base($url)` | `->base($url)` | Relative paths hang off this |
+| `Http::base($url)` | `->base($url)` | Relative paths start from this, and credentials go to its origin only |
 | `Http::withToken($jwt)` | `->token($jwt)` | A bearer token |
 | `Http::withBasic($user, $pass)` | `->basic($user, $pass)` | HTTP basic credentials |
 | `Http::withHeaders([...])` | `->headers([...])` | Anything else |
@@ -2504,7 +2710,7 @@ An error **is** an answer: the server was reached, understood and said no. So a
 | `ok()` | 2xx |
 | `failed()` · `clientError()` · `serverError()` | 4xx or 5xx, 4xx, 5xx |
 | `body()` · `json()` | The body, raw or decoded |
-| `header($name)` · `headers()` | Case-insensitive |
+| `header($name)` · `headers()` | Case-insensitive; the final response's only, a repeated header joined with commas |
 | `url()` | The URL that answered, **after** any redirects |
 | `throw()` | Raise on 4xx and 5xx, and return `$this` otherwise |
 
@@ -2564,7 +2770,14 @@ forum answer is among the most common holes in PHP.
 Redirects are followed, capped at five, and **never** from `https://` to
 `http://` — a downgrade the server asks for and the client should refuse, since
 everything after it travels in the clear, including the `Authorization` header
-this may be carrying.
+this may be carrying. They are followed as a browser follows them: a `POST`
+answered with 301, 302 or 303 continues as a `GET`, and 307 and 308 repeat the
+`POST` with its body. The headers of the redirects themselves — a `Location`, a
+`Set-Cookie` — are not mixed into the response that comes back.
+
+A client built with `base()` sends its token or its basic credentials to that
+origin only. Given an absolute URL somewhere else, it makes the request without
+the `Authorization` header rather than handing the credentials over.
 
 > **A URL that came from a visitor is a request an attacker chose.** Pointed at
 > `169.254.169.254`, or at something only your network can reach, this fetches
@@ -2616,7 +2829,17 @@ MAIL_FROM_NAME="Your Product"
 The default is `log`, not `mail`. A framework whose out-of-the-box behaviour is
 to hand messages to an unconfigured local MTA sends nothing and says nothing;
 writing them to the log at least tells you what would have left, and cannot
-reach a real person by accident.
+reach a real person by accident. Outside production the log keeps the body, so a
+reset link can be followed from it; with `APP_ENV=production` the body is left
+out and the record is a warning, because there it means mail is not being sent.
+A `MAIL_DRIVER` that is not one of the four still logs, and says so in a warning
+— a misspelt `smpt` used to send nothing without a word.
+
+The `mail` driver keeps a Bcc blind by handing it to `sendmail -t` in a `Bcc:`
+header, which sendmail removes before sending; PHP's default `sendmail_path` is
+that. With a `sendmail_path` that does not read the recipients from the headers,
+a message with Bcc is refused rather than sent with the blind copies shown to
+everyone.
 
 ### One driver, every provider
 
@@ -2630,12 +2853,20 @@ Both routes to TLS work, because providers are split between them:
 
 | `MAIL_ENCRYPTION` | Port, usually | What happens |
 |---|---|---|
-| `tls` | 587 | Plain connection, upgraded with `STARTTLS` |
+| `tls` (or `starttls`) | 587 | Plain connection, upgraded with `STARTTLS` |
 | `ssl` | 465 | Encrypted from the first byte |
 | `none` | 25, 1025 | Neither — a local server only |
 
+The value is read regardless of case, and anything else is refused with that
+list: `TLS` used to fall through every comparison and mean `none`, sending the
+password in the clear while the configuration said otherwise.
+
 `AUTH PLAIN` and `AUTH LOGIN` are both supported; the server's own announcement
-decides which is used. The certificate is verified by default.
+decides which is used. The certificate is verified by default. A password is
+never sent over an unencrypted connection to another machine: with
+`MAIL_ENCRYPTION=none` and a username, only a server on this machine
+(`localhost`, `127.0.0.1`) is logged into. `MAIL_ALLOW_PLAINTEXT_AUTH=true`
+lifts that, for a relay on a network you trust.
 
 ### Sending is not arriving
 
@@ -2678,6 +2909,12 @@ A **Bcc address reaches the server and never reaches a header**. Writing one
 would show every blind recipient to everyone else, which is the one thing Bcc
 promises not to do.
 
+A display name with a comma, a quote or an `@` is written as a quoted string, so
+`replyTo('visitor@example.com', 'Visitor, attacker@evil.com')` is one address
+with an odd name rather than two addresses. A long subject is cut into encoded
+words and folded, as RFC 2047 and RFC 5322 require, and an attachment whose name
+is not ASCII is named with RFC 2231's `filename*=UTF-8''…`.
+
 ### Two things that are not conveniences
 
 **A line break in a header is refused.** A newline in a name, an address or a
@@ -2690,7 +2927,10 @@ and a mistake.
 **Everything is UTF-8 all the way out.** A subject with an accent is encoded per
 RFC 2047 and a body per RFC 2045, so "Confirmação de inscrição" arrives as
 itself rather than as mojibake. Pure ASCII is left alone, which keeps a raw
-message readable.
+message readable. An address is accepted in any script — `josé@exemplo.com.br`,
+`user@münchen.de` — and a domain outside ASCII is sent in its ASCII form when
+`ext-intl` is installed. A local part outside ASCII needs a server that speaks
+SMTPUTF8, which not every one does.
 
 ### Sending in the background
 
@@ -2723,9 +2963,12 @@ $sent->last()->subjectLine();
 ```
 
 `MAIL_ALWAYS_TO` redirects every message to one address while keeping the
-intended recipient in an `X-Intended-For` header. It is for a staging
+intended recipients in an `X-Intended-For` header. It is for a staging
 environment working from a copy of production data, where the addresses in the
-database belong to real people.
+database belong to real people. Only the recipients change: attachments,
+Reply-To and headers travel as in production, so staging sends what production
+would. `mailer()->send()` works on a copy, so the `Message` you passed is left
+as you built it.
 
 ### What is missing
 
@@ -2770,8 +3013,9 @@ event that may never happen.
 ./sfphp make:event OrderPlaced      # creates app/events/OrderPlacedEvent.php
 ```
 
-Both generators append the suffix, so the class to register is
-`SendReceiptListener`.
+Both generators append the suffix — and leave it alone when you typed it, so
+`make:listener SendReceiptListener` writes the same class. The class to
+register is `SendReceiptListener`.
 
 The container is the one you hand over. Without it, each listener is built by
 an empty `Container`, which knows nothing of the application's bindings — a
@@ -2783,8 +3027,9 @@ Dispatcher::useContainer($container);   // in public/index.php, after the bindin
 ```
 
 For tests, `Dispatcher::hasListeners(OrderPlaced::class)` says whether anything
-listens, and `Dispatcher::forget()` removes the listeners of one event, or of
-all of them with no argument.
+would hear that event — a listener for it, or for a parent class or interface of
+it — and `Dispatcher::forget()` removes the listeners of one event, or of all of
+them with no argument.
 
 Registering against a parent class or an interface catches its children, which
 is what makes "record every domain event" expressible without naming each one:
@@ -2792,6 +3037,9 @@ is what makes "record every domain event" expressible without naming each one:
 ```php
 Dispatcher::listen(DomainEvent::class, AuditTrail::class);
 ```
+
+Listeners run in the order they were registered, whichever class each was
+registered against.
 
 ### A listener that throws
 
@@ -2861,21 +3109,30 @@ $result = Validator::validate($row, ['email' => 'required|email']);
 ```
 
 Rules are a pipe-separated string or an array of rule strings. Arguments follow
-a colon.
+a colon. Rule names are read regardless of case — `minlength:5` is
+`minLength:5` — on the server and in the browser alike.
 
 | Rule | Checks |
 |---|---|
 | `required` | Not null, not empty, not only whitespace, not an empty array |
-| `email` | `FILTER_VALIDATE_EMAIL` |
-| `url` | `FILTER_VALIDATE_URL` |
+| `email` | An address, in **any script**: `josé@exemplo.com.br` passes, `a@b..com` does not |
+| `url` | An `http` or `https` address with a host, in any script — `javascript:` and `foo:bar` do not pass |
 | `number` | ASCII digits only (safe for `(int)`) |
-| `alpha` | Letters only, **any alphabet** (`\p{L}`) |
+| `alpha` | Letters only, **any alphabet**, combining marks included (`\p{L}`, `\p{M}`) |
 | `alphanum` | Letters and digits from any script |
-| `min:N` | **Follows the value**: at least N as a number, or at least N characters |
-| `max:N` | At most N as a number, or at most N characters |
-| `minLength:N` | At least N characters, **always** — whatever the value looks like |
-| `maxLength:N` | At most N characters, always |
-| `pattern:REGEX` | Matches, with `u` and the delimiters supplied for you |
+| `min:N` | **Follows the value**: at least N as a number, at least N characters, or at least N items of an array |
+| `max:N` | At most N as a number, at most N characters, or at most N items |
+| `minLength:N` | At least N characters, **always** — whatever the value looks like; items for an array |
+| `maxLength:N` | At most N characters, always; items for an array |
+| `pattern:REGEX` | Matches, with `u` and the delimiters supplied for you; an invalid pattern throws |
+
+A character is what a reader sees as one: "José" typed with a combining accent
+is four characters, not five, and an emoji family is one.
+
+An array fails every rule that is about a single value — `email`, `alpha`,
+`pattern` and the rest — and is counted by its items by the four bounds. An
+array used to read as an empty string, so `['a', 'b', 'c']` passed
+`maxLength:1`.
 
 **`required` comes first, and the other rules only when there is a value.** A
 field that is absent, empty or only whitespace is judged by `required` alone,
@@ -2958,6 +3215,17 @@ and `maxLength` use the keys `min` and `max`.
 ['age' => ['minValue' => 'You must be at least 18.']]   // for 'number|min:18'
 ```
 
+On an array the four bounds look theirs up as `minItems` and `maxItems`.
+
+`:field` in a message is the field's name as the form sends it, unless the
+catalog names it in the visitor's language:
+
+```php
+// lang/pt_BR/validation.php
+return ['attributes' => ['name' => 'nome', 'email' => 'e-mail']];
+// "nome é obrigatório." rather than "name é obrigatório."
+```
+
 ---
 
 ## Internationalisation
@@ -3007,17 +3275,21 @@ from the framework.
 ### Translating
 
 ```php
-__('http.not_found_title');                    // 404 - Page Not Found
+__('http.not_found_title');                    // 404 - Page not found
 __('app.welcome', ['name' => 'Ana']);          // Welcome, Ana!
 __('app.welcome', ['name' => 'Ana'], 'pt_BR'); // in a specific language
 locale();                                      // 'en'
-lang_tag();                                    // 'pt-BR' — for <html lang="…">
+lang_tag();                                    // 'en' — the same, as a BCP 47 tag for <html lang="…">
 Translator::has('app.welcome');                // whether a translation exists
 ```
 
 The key is `group.entry`, and it may nest deeper (`app.form.title`). **A key
 with no translation comes back as it is** — the gap shows up where it is,
 rather than rendering an empty page.
+
+A regional language reads its base language before the fallback: with
+catalogs in `es` and `en`, `es_MX` reads `es` first and `en` only after — it
+used to go straight to `en`.
 
 ### Plural
 
@@ -3035,7 +3307,9 @@ trans_choice('app.items', 5);   // 5 items
 ```
 
 Without a condition, the language's rule chooses: the first form for one, the
-second for everything else.
+second for everything else. A count that no explicit condition covers — zero
+against `{1}…|[2,*]…` — takes the last form, the general one, rather than the
+whole string with its bars and brackets.
 
 #### When ranges are not enough
 
@@ -3080,9 +3354,11 @@ It reads `Accept-Language`, respecting the quality values
 match between what the client asked for and what the application offers. Asking
 for `pt` and being served `pt_BR` beats being served English, so that happens.
 
-It also adds the `Content-Language` header, and the framework's error pages now
-declare the right `lang` on the document — before, they said `lang="en"`
-regardless of content:
+It also adds the `Content-Language` header and `Vary: Accept-Language`, so a
+shared cache keys the page on the language instead of serving the first
+visitor's to everyone after them. The framework's error pages declare the
+negotiated `lang` on the document — before, they said `lang="en"` regardless of
+content:
 
 ```html
 <html lang="pt-BR">   <!-- follows the negotiated language -->
@@ -3140,6 +3416,7 @@ caller still wins untouched:
 Validator::validate($data, ['name' => 'required|min:5']);
 // en:    "name is required."   / "name must be at least 5 characters long."
 // pt_BR: "name é obrigatório." / "name deve ter ao menos 5 caracteres."
+//        "nome é obrigatório." once validation.attributes names the field
 
 Validator::validate($data, ['name' => 'required'], [
     'name' => ['required' => 'Please enter your name.'],   // wins
@@ -3262,7 +3539,12 @@ other is not a cosmetic difference — it reads as a different number.
 | A naive string with a zone named in the second argument | That zone, converted to UTC |
 | A Unix timestamp | Already an instant; no zone to guess |
 | A `DateTimeInterface` in any zone | Converted to UTC |
-| Anything unparsable | `null`, rather than an exception |
+| Anything that is not a date as written | `null`, rather than an exception |
+
+A string is read only in the shapes a database, a date input and ISO 8601
+produce — a date, optionally a time, optionally an offset or a zone. PHP's own
+parser takes far more: `next monday` and `1 week ago` were dates, and
+`2026-02-30` quietly became the 2nd of March. Those are `null` now.
 
 ### Model attributes
 
@@ -3447,9 +3729,12 @@ moment a password's algorithm can be upgraded without asking the user to type
 it again:
 
 ```php
-if (Auth::attempt($credentials) && Hash::needsRehash($user->password)) {
-    $user->password = Hash::make($credentials['password']);
-    $user->save();
+if (Auth::attempt($credentials)) {
+    $user = Auth::user();
+
+    if (Hash::needsRehash($user->getAuthPassword())) {
+        $user->forceFill(['password' => Hash::make($credentials['password'])])->save();
+    }
 }
 ```
 
@@ -3465,12 +3750,14 @@ Router::get('/dashboard', [DashboardController::class, 'index'])
 
 // An API uses the token guard
 Router::group('/api', function (): void {
-    Router::get('/me', [ApiController::class, 'me']);
+    Router::get('/me', [ProfileController::class, 'me']);
 }, 'api.', [new Authenticate('api', required: true)]);
 ```
 
 When refusing, it answers **401** to a client expecting JSON and **redirects to
-`/login`** for a browser. The redirect is deliberate: a 401 with no
+the login page** for a browser — `/login` unless `AUTH_LOGIN_PATH` says
+otherwise, or `new Authenticate('web', required: true, loginPath: '/signin')`
+for one route. The redirect is deliberate: a 401 with no
 `WWW-Authenticate` header makes some browsers open their own credentials
 prompt, which is not your application's form.
 
@@ -3498,7 +3785,11 @@ would break deserialisation of every live session.
 
 It also **regenerates the session id** on login and on logout. On login that is
 what stops session fixation: an attacker who planted a known id beforehand
-cannot use it afterwards, because the id the victim ends up with is new.
+cannot use it afterwards, because the id the victim ends up with is new. The
+CSRF token is replaced at the same moment, since the one issued to the
+anonymous session may have been seen by whoever planted it. Logging out empties
+the session — not only the user id, but anything else the application kept for
+that user — so the next person at the same browser starts from nothing.
 
 `TokenGuard` stores nothing on the server, which is what makes it usable
 outside a web request. That is also what makes revocation something you have to
@@ -3522,7 +3813,8 @@ What keeps that cheap is that a revoked token only has to be remembered until it
 would have expired anyway. A list of everything ever revoked would grow forever;
 this one is entries with a lifetime, so it stays the size of "revoked recently".
 
-`revokeUser()` is "log out everywhere". It cannot list the user's tokens —
+`revokeUser()` is "log out everywhere", keyed by the claim the token guard
+identifies users by — `id` unless the guard was built with another. It cannot list the user's tokens —
 nothing ever recorded them — so it records the moment instead, and a token whose
 `iat` is older than that moment is refused. A login *after* it keeps working,
 which is what stops logging out everywhere from locking someone out of logging
@@ -3585,12 +3877,12 @@ Gate::define('access-admin', fn (?Authenticatable $u): bool
 ```php
 Gate::allows('update', $post);     // calls PostPolicy::update($user, $post)
 Gate::denies('update', $post);
-Gate::authorize('update', $post);  // throws AuthorizationException
+Gate::authorize('update', $post);  // throws AuthorizationException — answered with 403
 Gate::forUser($other, 'update', $post);
 ```
 
 ```bash
-./sfphp make:policy Post
+./sfphp make:policy Post       # writes PostPolicy, every ability denying until you write it
 ```
 
 ```php
@@ -3614,7 +3906,8 @@ say — live alongside the others in the same place.
 
 `AuthorizationException` is distinct from being unauthenticated: it means the
 framework knows who you are and the answer is still no. One is **403**, the
-other **401**.
+other **401**. Left uncaught, `Gate::authorize()` becomes that 403 by itself —
+see [Error handling](#error-handling).
 
 ### Account enumeration
 
@@ -3712,6 +4005,11 @@ Request::setTrustedProxies(['10.0.0.0/8', '172.16.0.5']);
 TRUSTED_PROXIES=10.0.0.0/8,172.16.0.5
 ```
 
+`public/index.php` reads `TRUSTED_PROXIES` through `Env::get()`, so it is found
+whether the variable came from `.env` or from the container's environment — it
+used to read `$_ENV` alone, which is empty under the `variables_order` many
+images use.
+
 > **Behind a TLS-terminating load balancer this is not a detail.** The PHP
 > process sees plain HTTP, so `isSecure()` answers false and **the session
 > cookie loses its `secure` flag** — it then travels in the clear as soon as a
@@ -3727,6 +4025,13 @@ $request->isSecure();   // true, reading X-Forwarded-Proto
 Without them, or coming from outside the trusted range, the headers are
 ignored — a visitor cannot forge their own address. That matters the moment
 anything rate limits or logs by IP.
+
+With them, `X-Forwarded-For` is read **from the right**. Each proxy appends the
+address it received the connection from, so only the entries the trusted proxies
+added are facts; the address is the first one, walking back from the end, that
+is not a trusted proxy. The left-most entry — what this used to read — is the
+one the client wrote itself. `X-Forwarded-Proto` is read the same way: the value
+the nearest proxy set.
 
 ### Rate limiting
 
@@ -3746,6 +4051,11 @@ attacker never needs to enumerate anything.
 Counters live in the cache, so the limit holds across processes when a shared
 driver is configured. An authenticated request counts **per user**, so several
 people behind the same office address do not consume each other's allowance.
+
+A limit counts **the route**, not the path that reached it. On
+`/reset/code:alphanum` every code used to get a counter of its own, so trying
+codes was not limited at all; now `/reset/a`, `/reset/b` and `/reset/c` are the
+same bucket for the same client.
 
 The count is an **atomic** `Cache::increment()`, not a read followed by a
 write. That distinction is the whole middleware: requests counted with `get()`
@@ -3805,7 +4115,8 @@ there would look like protection without being any.
 
 - Cookie with `httponly`, `samesite=Lax` and `secure` when the connection is
   HTTPS — decided by the request, respecting the trusted proxies
-- Session id **regenerated on login and on logout**, against session fixation
+- Session id **regenerated on login and on logout**, against session fixation;
+  the CSRF token is replaced on login, and logout empties the session
 - `session.use_strict_mode` on, so an id PHP never issued is refused rather
   than adopted
 - An **idle** and an **absolute** deadline, both enforced in the pipeline — see
@@ -3814,7 +4125,8 @@ there would look like protection without being any.
   machine
 - A 32-byte CSRF token, compared with `hash_equals`
 - `VerifyCsrfToken` applies the check **by default** to every state-changing
-  request; safe methods and bearer-token requests pass
+  request; safe methods pass, and a bearer-token request only when it carries
+  no session cookie
 
 ### Passwords and login
 
@@ -3831,8 +4143,9 @@ there would look like protection without being any.
 - Every identifier — table, column, alias — is validated against a whitelist
   and quoted for the driver; an invalid one throws rather than reaching the SQL
 - `EMULATE_PREPARES => false`, so the driver really prepares
-- A failed connection logs the detail and throws a generic exception: the host,
-  database and user never reach the visitor
+- A failed connection logs the driver's message and throws one naming only the
+  missing extension or the driver and host; the password and the driver's own
+  text never reach the visitor
 
 ### Uploads
 
@@ -3840,7 +4153,8 @@ there would look like protection without being any.
   `$_FILES` cannot make the framework read an arbitrary path
 - The media type is read from the file's own bytes, never from the header the
   client sent
-- The stored name is generated; the client's name is stripped of path segments
+- The stored name is generated, with an extension taken from the content and
+  never one a server would run; the client's name is stripped of path segments
   and null bytes and used only for display
 
 See [File uploads](#file-uploads), including why the stored file still belongs
@@ -3851,6 +4165,10 @@ outside the document root.
 - SFHT's `{{ }}` escapes by default; raw output takes `{!! !!}`
 - `e()` for raw PHP templates
 - Exception detail appears only with `APP_ENV=development`
+- A model's `$hidden` columns never reach its JSON
+- The expressions in SFJS's `@state` cannot reach the prototype chain
+- Compiled templates and the file cache live in a private directory of the
+  project, never a shared temporary one
 
 ### What is missing
 
@@ -3893,6 +4211,14 @@ SESSION_ABSOLUTE_LIFETIME=43200   # absolute: seconds since the session began
 
 Before this existed a session lasted whatever `php.ini` said, which on a shared
 host is a number nobody in the application chose.
+
+PHP's own garbage collector deletes a session file older than
+`session.gc_maxlifetime` — 1440 seconds by default, so a two-hour idle
+deadline used to end after 24 minutes. Starting the session raises that setting
+to the longer of the two deadlines. Debian and Ubuntu also clean sessions from a
+cron job that reads `php.ini` rather than this setting; there, raise
+`session.gc_maxlifetime` in `php.ini` too, or keep sessions in the cache or the
+database.
 
 The **idle** timeout closes a session left open on a machine somebody walked
 away from. The **absolute** one closes a session that has been alive too long
@@ -3940,19 +4266,25 @@ cache driver, `cache` behaves exactly like `native`: the driver decides that,
 not the handler.
 
 The database driver needs a `sessions` table, and the framework does not ship
-its migration. Write one:
+its migration. Write one — named `create_sessions_table`, which `./sfphp reset`
+keeps:
 
 ```bash
-./sfphp make:migration:create sessions
+./sfphp make:migration create_sessions_table
 ```
 
 ```php
 $schema->create('sessions', function (Blueprint $table): void {
     $table->string('id', 128)->primary();
-    $table->text('payload');
-    $table->integer('expires_at')->index();   // a Unix timestamp, UTC
+    $table->longText('payload');
+    $table->unsignedBigInteger('expires_at')->index();   // a Unix timestamp, UTC
 });
 ```
+
+The handler stores the payload base64-encoded: PHP's session format writes NUL
+bytes for private and protected properties, and a PostgreSQL text column
+refuses them — the write failed and the visitor was signed out. Rows written
+before are still read.
 
 ```bash
 ./sfphp migrate
@@ -3995,7 +4327,8 @@ store whether an id names a session that exists.
 |---|---|
 | Listing or revoking another device's session | The `database` driver's table (your own migration) makes it possible to build; nothing ships |
 | Periodic id rotation | The id changes on login, on logout and on expiry, not on a timer |
-| Encryption at rest | The payload is stored as PHP serialises it; a database or cache with its own encryption is the answer |
+| Encryption at rest | The payload is stored as PHP serialises it (base64 in the database); a database or cache with its own encryption is the answer |
+| Starting the session only when it is used | Every request starts one, so every response carries the cookie and `Cache-Control: no-store`. A page a CDN should cache is served from a route group without `StartSession` |
 | Flash data | No "keep this for exactly one more request" helper |
 
 ---
@@ -4017,16 +4350,28 @@ csrf_verify();    // validates the current request's token
 ```
 
 ```php
-if (!csrf_verify()) {
-    http_response_code(HTTP_FORBIDDEN);
-    return;
+public function store(Request $request): Response
+{
+    if (!Csrf::validate($request->body('_token'))) {
+        return Response::json(['message' => __('http.csrf_message')], HTTP_FORBIDDEN);
+    }
+
+    // ...
 }
 ```
 
 The token is 32 bytes from `random_bytes`, compared with `hash_equals` in
 constant time, and the session uses `httponly`, `samesite=Lax` and `secure`
-over HTTPS. The token is accepted from the `_token` field or from the
-`X-CSRF-Token` / `X-XSRF-Token` headers.
+over HTTPS. The token is accepted from the `_token` field of a form, from
+`_token` in a JSON body, or from the `X-CSRF-Token` / `X-XSRF-Token` headers.
+
+SFJS sends a form as JSON and adds the `X-CSRF-Token` header from
+`<meta name="csrf-token">`, so a page that uses SFJS puts `{!! csrf_meta() !!}`
+in its `<head>`; a form with `csrf_field()` works either way. The example
+application's layouts have both.
+
+`csrf_verify()` is the legacy helper and reads the superglobals itself; inside
+an action, check the request you were given, as above.
 
 In practice you rarely call `csrf_verify()` yourself: the `VerifyCsrfToken`
 middleware applies the check by default. See [Middleware](#middleware).
@@ -4038,7 +4383,8 @@ middleware applies the check by default. See [Middleware](#middleware).
 ```php
 use SfphpProject\src\JWT;
 
-$token = JWT::generate(['id' => 1, 'email' => 'john@example.com']);
+$token = JWT::generate(['id' => 1]);
+$token = JWT::generate(['id' => 1, 'role' => 'editor']);   // any other claim travels as given
 
 if (JWT::validate($token)) {
     // the token is intact and unexpired
@@ -4049,8 +4395,11 @@ $claims = JWT::claims($token);   // validates and returns the payload, or null
 
 What the signature enforces:
 
-- `generate()` **requires** the `id` and `email` claims; without them it throws
-  `InvalidArgumentException`
+- `generate()` **requires** the `id` claim — what `TokenGuard` looks the user up
+  by — and throws `InvalidArgumentException` without it. Anything else is
+  optional: an e-mail used to be required, which put personal data in every
+  token, and a token is signed, not encrypted. `iat` and `exp` are the
+  framework's own and cannot be overridden
 - `validate()` returns a **`bool`**, not the claims, and does not throw for an
   invalid token
 - `claims()` validates and returns the payload in one pass, which is what a
@@ -4071,7 +4420,7 @@ php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 ## Debugging
 
 ```php
-dump($order);              // show it and carry on
+dump($order);              // show it and carry on — in the page the action returns
 dump($a, $b, $c);          // several at once
 dd($request->all());       // show it and stop
 ```
@@ -4099,6 +4448,13 @@ What it shows, and why each part is there:
 
 Branches collapse. They use `<details>`, so collapsing works with no script at
 all — including behind a Content-Security-Policy that blocks inline scripts.
+
+`dump()` in a request waits for the response. It used to print on the spot,
+ahead of the headers, and the page it was meant to sit in was lost: the browser
+got the dump and nothing else. Now an HTML page gets the dumps just before
+`</body>`; a JSON body, a file or any other response is left untouched and the
+dump goes to the log at `debug` level. Inside a stream's producer, where the
+response has already started, it is written where it happens.
 
 ### In a terminal
 
@@ -4289,17 +4645,43 @@ an included file. Without it, those become blank pages.
 
 On both paths the response is:
 
-- **500** with a negotiated `Content-Type` — JSON if the request asked for or
-  sent JSON, HTML otherwise
+- **The exception's own status** when it has one, and **500** otherwise
+- A negotiated `Content-Type` — JSON if the request asked for or sent JSON,
+  HTML otherwise
 - The real message **only** with `APP_ENV=development`; in production, the
-  translated `http.server_error_message`
+  translated message for the status — except for an `HttpException` below 500,
+  whose message describes what the client did and is shown
 - The detail always goes to the logger, with the request id attached — see
-  [Logging](#logging)
+  [Logging](#logging). A 4xx an exception asked for is recorded as information,
+  not as an error
 
-The 404, 405 and 500 pages use inline CSS, make no external request, and
-respect `prefers-color-scheme`. All three are rendered in the visitor's
-language; until this version the 500 page alone was not, shipping a Portuguese
-title and `lang="pt-br"` whatever the request asked for.
+An exception names its status by implementing `HttpStatus`. The framework's own
+do:
+
+| Thrown | Answered with |
+|---|---|
+| `ModelNotFoundException` — from `findOrFail()` | 404 |
+| `AuthorizationException` — from `Gate::authorize()` | 403 |
+| `InvalidJsonException` — from `$request->json()` on a malformed body | 400 |
+| `HttpException(409, 'That slug is taken.')` | whatever it was given |
+
+```php
+use SfphpProject\src\Http\HttpException;
+
+throw new HttpException(404);
+throw new HttpException(409, 'That slug is taken.');
+```
+
+Every error the framework answers — 400, 401, 403, 404, 405, 429, 500, 503 —
+goes through one page, `ErrorPage`: the status, the message, a link home, in
+the visitor's language, or the same as JSON. It inlines only the part of SFCSS
+it uses, about 11 KB rather than the whole stylesheet, makes no external request
+and respects `prefers-color-scheme`. The CSRF and rate-limit refusals used to be
+bare unstyled pages of their own.
+
+A PHP deprecation is logged as a warning and the request carries on. It used to
+become an exception, so upgrading PHP or a library turned working pages into
+500s.
 
 ---
 
@@ -4347,6 +4729,10 @@ LOG_LEVEL=info              # debug in development, info otherwise
 `stderr` is the default because it needs no directory to exist and no
 permission to be granted, and it is where a container expects to find an
 application's logs. A path works too, and its directory is created if missing.
+A path that cannot be opened — a directory the web server may not write — does
+not take the application down: records go to PHP's own error log instead, with
+a note the first time saying why. It used to throw, and since every request
+logs, every request was a 500.
 
 `error_log` writes through PHP's own error log, for a deployment where
 something already collects that. `null` discards, which is what the test suite
@@ -4414,10 +4800,14 @@ Structured logging invites passing whole arrays through, and the body of a
 login form is the first array anyone reaches for. Values under these keys are
 replaced with `[redacted]`, at any depth:
 
-`password` `password_confirmation` `current_password` `new_password` `secret`
-`token` `_token` `access_token` `refresh_token` `api_key` `apikey`
-`authorization` `auth` `cookie` `set-cookie` `credit_card` `card_number` `cvv`
-`ssn` `cpf`
+`password` `password_confirmation` `current_password` `new_password` `passwd`
+`secret` `client_secret` `private_key` `token` `_token` `access_token`
+`refresh_token` `remember_token` `api_key` `apikey` `api-key` `x-api-key`
+`x-csrf-token` `x-xsrf-token` `authorization` `auth` `cookie` `set-cookie`
+`credit_card` `card_number` `cvv` `ssn` `cpf`
+
+An object in the context is written as its fields and scrubbed the same way, so
+a model or a DTO passed whole does not carry its password past the check.
 
 ```php
 logger()->redact('pin', 'account_number');
@@ -4483,6 +4873,8 @@ business.
 
 Nothing is registered by default: a health endpoint reporting on a database the
 application does not use would be answering the wrong question.
+`Health::check(['databse'])` — a name nothing registered — throws, rather than
+reporting healthy with nothing checked.
 
 ### Metrics
 
@@ -4508,13 +4900,23 @@ The collector is in-process. `snapshot()` reads it as an array, and
 rather than through a client library:
 
 ```
+# TYPE orders_placed counter
 orders_placed 2
+# TYPE payments_failed counter
 payments_failed{gateway="stripe"} 1
+# TYPE report_build_ms_count counter
 report_build_ms_count 2
+# TYPE report_build_ms_sum counter
 report_build_ms_sum 41.882
+# TYPE report_build_ms_min gauge
 report_build_ms_min 18.204
+# TYPE report_build_ms_max gauge
 report_build_ms_max 23.678
 ```
+
+Each family is declared once with `# TYPE`, values carry at most three
+decimals, and a name that would start with a digit gets a leading underscore,
+since the format does not allow one.
 
 ### What is missing
 
@@ -4528,27 +4930,40 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` exposes **38 commands**; `./sfphp list` prints them all.
+`./sfphp` exposes **41 commands**. `./sfphp list` prints every one with its
+usage, `./sfphp help` groups them, and `./sfphp help <command>` — or
+`<command> --help` — explains one; all three are printed from the same table,
+which a test holds against the dispatcher. An option takes its value after `=`
+or after a space: `--port=8080` and `--port 8080` are the same.
 
 ### Generation (14 generators)
 
 ```bash
-./sfphp make:controller Post
+./sfphp make:controller Post   # PostController, and the view its action renders
 ./sfphp make:model Post
 ./sfphp make:repository Post
 ./sfphp make:service Post
 ./sfphp make:request StorePost
-./sfphp make:test PostTest
+./sfphp make:test Post         # tests/PostTest.php, for ./sfphp test
 ./sfphp make:middleware CheckAdmin
 ./sfphp make:event UserCreated
 ./sfphp make:listener SendWelcome
-./sfphp make:policy PostPolicy
-./sfphp make:seeder UserSeeder
+./sfphp make:policy Post       # PostPolicy, denying until you write each ability
+./sfphp make:seeder User       # UserSeeder
 ./sfphp make:factory User
 ./sfphp make:pwa --name="My App" --logo=path/to/logo.png
 
-./sfphp make:scaffold Post     # controller + model + repository + service
+./sfphp make:scaffold Post     # controller + view + model + repository + service
 ```
+
+Fourteen generators here and two migration commands under
+[Database](#database-2) make the sixteen `make:*` commands.
+
+**A generator never overwrites.** A file that is already there is refused, with
+its path, and `--force` replaces it; `make:scaffold` keeps the parts that exist
+and writes the rest. The suffix is added once — `make:test PostTest` and
+`make:test Post` both write `PostTest` — and the first letter is upper-cased, so
+`make:controller product` writes `ProductController.php`.
 
 `make:pwa` reads `app/pwa/config.php` when it exists — `--name` is then
 optional, and `--short=`, `--description=`, `--color=`, `--background=`,
@@ -4563,25 +4978,29 @@ optional, and `--short=`, `--description=`, `--color=`, `--background=`,
 ### Database
 
 ```bash
-./sfphp make:migration create_users name:string email:string:unique timestamps
-./sfphp make:migration:create posts [--path=dir]
+./sfphp make:migration create_posts title:string timestamps
+./sfphp make:migration:create posts       # deprecated: the same as make:migration create_posts
 ./sfphp migrate [--step=N] [--path=dir]
 ./sfphp rollback [--step=N] [--path=dir]
 ./sfphp status [--path=dir]
-./sfphp db:fresh
+./sfphp db:fresh [--force]
 ./sfphp db:seed [--class=UserSeeder]
 ```
+
+A database command that cannot connect says which PDO extension is missing, or
+which driver and host did not answer, instead of only "connection failed".
 
 ### Cache and queue
 
 ```bash
-./sfphp cache:clear
-./sfphp cache:flush
+./sfphp cache:clear          # what has expired
+./sfphp cache:flush          # everything
+./sfphp queue:table          # the database queue's tables
 ./sfphp queue:work [--timeout=3600]
 ./sfphp queue:failed
 ```
 
-All four follow `CACHE_DRIVER` and `QUEUE_DRIVER`. A `cache:clear` that emptied
+All of them follow `CACHE_DRIVER` and `QUEUE_DRIVER`. A `cache:clear` that emptied
 a file cache while the application used Redis would report success and change
 nothing.
 
@@ -4596,8 +5015,15 @@ nothing.
 
 Copies SFCSS and SFJS out of the package and into a directory the project
 serves. `composer create-project` and `./sfphp serve` both run it (as does
-`composer run assets`), so this is for an upgrade or an unusual layout; a run that finds the same files copies nothing and
-says so.
+`composer run assets`), and `css:build` and `js:build` publish what they
+build, so this is for an upgrade or an unusual layout; a run that finds the
+same files copies nothing and says so.
+
+A published file is replaced when it is still the one the framework last
+published — a hash is kept beside the files, in `.sfphp-published.json` — and
+kept, with its name printed, when it was changed by hand. "Different from the
+package" used to count as "yours", so a rebuilt stylesheet was never published
+and the new colours never reached the browser. `--force` replaces either.
 
 > **Why the files exist twice.** The package keeps them where they are
 > version-controlled and where an upgrade replaces them; the browser can only
@@ -4614,12 +5040,14 @@ says so.
 ### Server and utilities
 
 ```bash
-./sfphp serve          # http://localhost:8000; --host= --port=
+./sfphp serve          # http://127.0.0.1:8000; --host= --port=
 ./sfphp routes         # a table of the registered routes; --path= for an unusual layout
 ./sfphp env:example    # creates .env from .env-example
-./sfphp css:build      # builds SFCSS from the config; --config= --output=
-./sfphp js:build       # joins core.js, stream.js and ui.js into sfjs.js and minifies it
+./sfphp init           # finishes a new project: .env, assets, .gitignore, composer scripts
+./sfphp css:build      # builds SFCSS from the config and publishes it; --config= --output=
+./sfphp js:build       # joins core.js, stream.js and ui.js into sfjs.js, minifies and publishes it
 ./sfphp build --phpx   # compiles the .phpx components; --from= --to=
+./sfphp test [filter]  # runs tests/*Test.php
 ./sfphp reset          # removes the example application; --force skips the question
 ./sfphp upgrade        # replaces the framework, keeps the application
 ./sfphp tinker         # REPL — local development only
@@ -4628,8 +5056,24 @@ says so.
 ./sfphp help [command]
 ```
 
-`tinker` evaluates input with `eval()`. It is a local development tool; never
-expose the CLI to untrusted input.
+`serve` tries the port before announcing anything, and exits with an error when
+it is taken; the project path may contain spaces. Every command that starts PHP
+again uses the binary running the console, not whichever `php` is first on the
+`PATH`.
+
+`test` runs the classes under `tests/` that extend
+`SfphpProject\src\Testing\TestCase` — every public method whose name starts with
+`test`, each on a fresh instance, with `assertSame()`, `assertTrue()`,
+`assertThrows()` and a few more. `make:test` writes one. A project that wants
+PHPUnit adds it to `require-dev` and uses it instead.
+
+`tinker` keeps the variables of a session from one line to the next, prints the
+value of an expression and runs a statement — `echo`, a loop — as written; an
+error is printed and the session carries on. It evaluates input with `eval()`: a
+local development tool, never to be exposed to untrusted input.
+
+`version` is the framework's own version, written into `src/`, so after an
+upgrade it names the release the project now runs.
 
 ### Upgrading
 
@@ -4642,9 +5086,15 @@ So upgrading means replacing those files, and knowing which ones they are:
 
 ```bash
 ./sfphp upgrade --dry-run          # what it would do, changing nothing
-./sfphp upgrade --to=v0.13.0       # fetches that tag with git
+./sfphp upgrade                    # the latest release
+./sfphp upgrade --to=v0.32.0       # fetches that tag with git
 ./sfphp upgrade --from=../sfphp    # a copy you already have
 ```
+
+Without `--to` it fetches the newest release tag — it used to fetch `master`,
+code nobody had released. What the package leaves out of an install — the
+framework's tests, its tooling, its documentation — is removed from the fetched
+copy too, so the upgrade brings what an install would have.
 
 | | |
 |---|---|
@@ -4712,8 +5162,8 @@ There is no undo and nothing goes to a trash bin.
 
 ## SFCSS
 
-A CSS framework of components and utilities. **It arrives built** — `composer
-require` delivers the stylesheet, and `composer create-project` and `sfphp
+A CSS framework of components and utilities. **It arrives built** — the
+package carries the stylesheet, and `composer create-project` and `sfphp
 serve` each copy it into `public/assets`, so using it is one line of HTML:
 
 ```html
@@ -4776,15 +5226,17 @@ written down: the text that stays readable on it (checked against WCAG AA,
 and active shades, a pale background with its border and text, its form as text
 on the page, and the same set for the dark theme. Each colour — including one a
 project adds — gets `btn-`, `btn-outline-`, `badge-`, `alert-`, `text-`,
-`bg-`, `border-` and the rest.
+`bg-`, `border-` and the rest. `text-{colour}` uses the colour's readable form,
+so `.text-warning` on white passes AA rather than being the raw amber at 2.2:1.
 
 Every utility comes from a map a project can extend or trim from the same
 config, and options switch features off: components, dark mode, `hover:` or
 breakpoint variants, rounding, shadows, a prefix for the CSS variables.
 
-> **A stylesheet you built is not overwritten.** `create-project` and `serve`
-> publish the framework's assets, and when one of yours differs they say they
-> kept it rather than replacing it. `assets:publish --force` takes the
+> **A stylesheet you changed by hand is not overwritten.** `css:build` publishes
+> what it builds, and `create-project` and `serve` publish the framework's
+> assets; a file under `public/assets` that differs from what was last
+> published there is kept, and named. `assets:publish --force` takes the
 > framework's version back.
 
 For a colour on one section of a page, overriding the variables is enough:
@@ -4821,7 +5273,7 @@ Full reference: [SFCSS](SFCSS.md) and
 
 ## SFJS
 
-A dependency-free JavaScript library — 104KB raw, 55KB minified, **14.4KB
+A dependency-free JavaScript library — 113KB raw, 58KB minified, **15.4KB
 gzipped**. Exposed as `window.sf`. It is **one file**, with everything in it:
 requests and swaps, validation, state, streams (`@stream`, `@sse`) and the
 interface components (modals, menus, tooltips, tabs, toasts).
@@ -4840,8 +5292,7 @@ The source is three files under `resources/assets/js/src/` — `core.js`,
 `stream.js`, `ui.js` — that the builder joins, in that order, into the bundle.
 
 ```bash
-./sfphp js:build         # joins the parts, writes sfjs.js and sfjs.min.js
-./sfphp assets:publish   # copies them into public/assets
+./sfphp js:build         # joins the parts, writes sfjs.js and sfjs.min.js, and publishes them
 ```
 
 The minifier removes comments and collapses whitespace, and deliberately does
@@ -4849,7 +5300,9 @@ not rewrite tokens — no shortened names, no dropped semicolons, no statements
 joined onto one line. Those are where a minifier changes what a program means,
 and the extra kilobyte is not worth owning a JavaScript parser in a framework
 that has no dependencies. A test checks that both builds expose the same API and
-that the minified one still parses.
+that the minified one still parses, and the build refuses a minified file that
+kept more than two thirds of the bundle's size — the sign that the minifier lost
+its place, which a quote inside a regex literal does.
 
 ### Programmatic API
 
@@ -4866,7 +5319,7 @@ sf.form.validate(inputEl);
 
 sf.dom.addClass(el, 'active');   sf.dom.removeClass(el, 'active');
 sf.dom.toggleClass(el, 'active'); sf.dom.hasClass(el, 'active');
-sf.dom.show(el); sf.dom.hide(el); sf.dom.toggle(el);
+sf.dom.show(el); sf.dom.hide(el); sf.dom.toggle(el);   // the hidden attribute, like @show
 sf.dom.on(el, 'click', fn);     sf.dom.off(el, 'click', fn);
 sf.dom.ready(fn);
 
@@ -4909,9 +5362,14 @@ sf.modal.open(dialogEl);  sf.modal.close(dialogEl);
 ```
 
 The five verbs are `@get`, `@post`, `@put`, `@patch` and `@delete`, with
-`@target` (a CSS selector) and `@swap` beside them. A form sends its fields:
-`@get` and `@delete` as a query string, the rest as the body. A named input
-sends its own value the same way.
+`@target` (a CSS selector) and `@swap` beside them. Without `@target` the answer
+goes into the element that asked — it used to go nowhere. A form sends its
+fields: `@get` and `@delete` as a query string, the rest as the body. A named
+input sends its own value the same way.
+
+Every request that changes something carries the CSRF token as `X-CSRF-Token`,
+read from `<meta name="csrf-token">` — put `{!! csrf_meta() !!}` in the page's
+`<head>`. A form's `_token` field reaches the server too, inside the JSON body.
 
 What comes back is swapped in as markup, so what answers one of these is a
 fragment — rendered by the same component that renders it inside the full page,
@@ -5008,8 +5466,8 @@ closed stays closed while the numbers inside it change.
 |---|---|
 | `@text` | the element's text becomes the expression's value |
 | `@show` | shown while the expression is true, through the `hidden` attribute |
-| `@class` | adds classes to the ones the element already has |
-| `@model` | two-way on an input, a checkbox or a select |
+| `@class` | adds classes to the ones the element was written with |
+| `@model` | two-way on an input, a textarea, a select, a checkbox (its `checked`) or a group of radios (the one whose value matches is checked; choosing one writes its value) |
 | `@on:click`, `@on:input`, … | runs an expression when that event fires |
 
 ### The first values come from PHP
@@ -5048,8 +5506,10 @@ Paths (`user.name`), string, number, boolean and null literals, `!` and unary
 `-`, `+ - * / %`, `== != === !== < > <= >=`, `&&` and `||` with short-circuit,
 the ternary, object and array literals, and assignment.
 
-**Not** function calls, arrow functions or indexing by expression. So this does
-not work:
+**Not** function calls, arrow functions or indexing by expression, and not the
+prototype chain: a path through `__proto__`, `prototype` or `constructor` reads
+`undefined` and writes nothing, so `constructor.prototype.isAdmin = true` cannot
+reach every object in the page. So this does not work:
 
 ```html
 <span @text="items.filter(i => i.active).length"></span>
@@ -5115,7 +5575,9 @@ with its focus, caret and text:
 
 Children without a key are still matched by position. A checkbox's `checked`
 and an option's `selected` follow what the server sent, as a field's value
-does, unless the visitor is on that control right now.
+does, unless the visitor is on that control right now. A field the server sends
+back without a value is emptied — the text typed before used to stay in the box
+and go out again with the next submit.
 
 With `innerHTML` and `outerHTML` the nodes are rebuilt, but when the focused
 element has an `id` that is also in the new markup, the focus and the caret are
@@ -5173,9 +5635,10 @@ While a request is in the air:
   `[aria-busy="true"] { opacity: .6 }`;
 - the element that sent it — a button, a link, or a form's submit buttons — is
   disabled and marked `aria-disabled="true"`, so a second click cannot send a
-  second order. A text field is marked busy but never disabled, because
-  disabling it would take the focus from somebody who is still typing. When the
-  answer arrives the button is enabled again and gets its focus back.
+  second order. A text field that sends is neither disabled nor marked —
+  disabling it would take the focus from somebody who is still typing — so its
+  target's `aria-busy` is what says a request is running. When the answer
+  arrives the button is enabled again and gets its focus back.
 
 **A newer request cancels the older one.** When an element sends again before
 its previous answer arrived — a search box while somebody types — the previous
@@ -5218,8 +5681,11 @@ and `sf:error` is how you hear about it. The same option exists in code:
 A field that appears more than once — three ticked checkboxes called `tags` —
 arrives as a list, and a name ending in `[]` is a list even when only one value
 was sent, so the server never receives a string one day and an array the next.
-The button that submitted the form is included with its `name` and `value`, as
-in a submit without JavaScript.
+Names are read the way PHP reads them, so the JSON means what the same form
+means without JavaScript: `tags[]` is the list `tags`, and `address[city]` is
+`city` inside `address` — the brackets used to travel as part of the key. The
+button that submitted the form is included with its `name` and `value`, as in a
+submit without JavaScript.
 
 ### Validation in the browser
 
@@ -5227,7 +5693,10 @@ in a submit without JavaScript.
 see [Validation](#validation) for the list. Several separated by `|`:
 `@validate="required|number|min:18"`. As on the server, `required` is judged
 first: an empty field shows only "required" when the rule is there, and nothing
-when it is not; the other rules check a field only once it has a value.
+when it is not; the other rules check a field only once it has a value. The
+rules decide the same way on both sides — `url` wants `http` or `https` and a
+host, `email` accepts any script, characters are counted as a reader sees them,
+and rule names are read regardless of case.
 
 ```html
 <form @post="/users" @target="#list">
@@ -5343,16 +5812,18 @@ win over any display utility; a stylesheet of your own should do the same.
 ### Streams
 
 The streaming part of SFJS adds `@stream`, and is documented in the
-[streaming guide](STREAMING.md). What changed with this version:
+[streaming guide](STREAMING.md). How it behaves:
 
-- it can be loaded in the `<head>`: it binds when the document is ready;
+- `sfjs.js` can be loaded in the `<head>`: it binds when the document is ready;
 - an element added to the page later is bound itself, not only its
   descendants, and a stream whose element is removed from the page is stopped;
 - the stream's target gets `aria-live="polite"` (unless it has its own) and
   `aria-busy="true"` while data is arriving, so a screen reader announces the
   result once instead of every chunk;
-- `@trigger` understands `delay:` as the core does — `@trigger="load delay:1s"`;
-- form fields that repeat are sent as lists, not only the last value;
+- `@trigger` reads the same list the core reads — `@trigger="load, every:10s"`,
+  `@trigger="load delay:1s"`;
+- form fields that repeat are sent as lists, not only the last value, and a form
+  with a file input is sent as `multipart/form-data`, so the file arrives;
 - an `EventSource` keeps the browser's own reconnection. The stream ends when
   the server sends a final event — `done` or `complete`, or the names given in
   `@done="finished"` — or answers a reconnection with 204;
@@ -5473,8 +5944,9 @@ What SFJS adds:
 `@tooltip` shows its text in a single shared `<div class="tooltip"
 role="tooltip" popover="manual">` — on hover after 300 ms, at once on keyboard
 focus — and hides it on leave, on blur and on Escape. The pointer can move from
-the element onto the tooltip without closing it, so the text can be read and
-selected. While it is shown, the element's `aria-describedby` points at it. The
+the element onto the tooltip without closing it — the hide waits a moment, so
+crossing the gap between them does not count as leaving — and the text can be
+read and selected, as WCAG 1.4.13 asks of content shown on hover. While it is shown, the element's `aria-describedby` points at it. The
 text is set as text, never as markup.
 
 `@tooltip-placement` is `top` (the default), `bottom`, `left` or `right`. The
@@ -5488,9 +5960,9 @@ A tooltip adds a description. An icon-only button still needs an
 ### Tabs
 
 ```html
-<div @tabs role="tablist" class="nav-tabs" aria-label="Account">
-  <button role="tab" id="tab-profile" aria-controls="panel-profile" aria-selected="true">Profile</button>
-  <button role="tab" id="tab-billing" aria-controls="panel-billing">Billing</button>
+<div @tabs role="tablist" class="nav nav-tabs" aria-label="Account">
+  <button role="tab" class="nav-link" id="tab-profile" aria-controls="panel-profile" aria-selected="true">Profile</button>
+  <button role="tab" class="nav-link" id="tab-billing" aria-controls="panel-billing">Billing</button>
 </div>
 
 <div id="panel-profile">…</div>
@@ -5510,8 +5982,9 @@ A tooltip adds a description. An icon-only button still needs an
 - `sf:tab` is fired on the list with `detail: {tab, panel}`.
 
 Write `hidden` on the panels that start closed, as above, so the page does not
-flash them before the script runs. SFCSS styles `.nav-tabs` and `.nav-pills`
-through `[aria-selected="true"]`. A tab marked `disabled` or
+flash them before the script runs. SFCSS styles the `.nav-link` of `.nav-tabs`
+and `.nav-pills` through `[aria-selected="true"]` — a tab without `nav-link`
+is left looking like a plain button. A tab marked `disabled` or
 `aria-disabled="true"` is skipped.
 
 ### Toasts
@@ -5576,6 +6049,11 @@ that is not a disclosure — a filter panel opened from a toolbar — use
 
 A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
+In a project created with `composer create-project`, `composer test` runs
+`./sfphp test`: your own tests under `tests/`, written against
+`SfphpProject\src\Testing\TestCase` — see [CLI](#cli). What follows is the
+framework's own suite, which a clone of the repository carries.
+
 ```bash
 composer run lint        # php -l across the project
 composer run test        # the unit suite (php tests/run.php); prints passed and failed
@@ -5612,10 +6090,12 @@ MySQL 8, PostgreSQL 16 and Redis 7 as services.
 languages, and prose cannot be compared mechanically — but structure can. It
 asserts the three versions have the same sections, subsections, tables and code
 blocks, in the same order and with the same fence languages, and that every
-relative link and in-page anchor resolves. That catches the two things that
-actually go wrong when three files are edited by hand: a section added to one
-language and forgotten in the others, and a link left pointing at a file that
-moved.
+relative link and in-page anchor resolves — and that each in-page link of a
+translation reaches the same heading as the English link it translates, since
+two headings translated alike can make a link land on the wrong one. That
+catches the things that actually go wrong when three files are edited by hand:
+a section added to one language and forgotten in the others, a link left
+pointing at a file that moved, and a link that resolves to the wrong place.
 
 ---
 
@@ -5637,6 +6117,17 @@ does not do, and you should know before choosing it.
 
 SFHT also has no automatic loop variables (`$loop`) and no partial block
 inheritance (`@parent`).
+
+Smaller things worth knowing before they surprise you:
+
+| | |
+|---|---|
+| Unix timestamps in `INTEGER` columns | The database queue and the sessions recipe store times as integers; a signed 32-bit column ends in 2038. The recipe uses `unsignedBigInteger`; check your own |
+| `decimal:N` casts to a float | Fine for display, wrong for money arithmetic — keep money in integer cents, or read the column raw with `getAttribute()` |
+| `LIKE` patterns | A `%` or `_` a visitor typed is a wildcard; escape it yourself when it should be literal |
+| `update()` and `delete()` without `where()` | Affect every row, as the SQL would. Nothing asks first |
+| Response size in the HTTP client | Nothing caps it; a service that answers gigabytes is read into memory. Stream it instead |
+| Default timeouts | 5 s to connect and 15 s in all for the synchronous client; the async one waits 10 and 30 |
 
 ---
 

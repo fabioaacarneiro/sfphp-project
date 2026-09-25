@@ -300,7 +300,11 @@ data: Step 1 of 3
 ```
 
 Dados em várias linhas são uma linha `data:` por linha, e o navegador as junta
-com `\n`. Um evento sem `event:` é um `message`:
+com `\n` — uma linha termina em `\n`, `\r\n` ou em um `\r` sozinho, como a
+especificação a lê. O nome do evento, o id e um comentário são uma linha cada:
+uma quebra de linha em qualquer um deles escreveria campos próprios, então o
+`send()` a recusa com uma `InvalidArgumentException`. Um evento sem `event:` é
+um `message`:
 
 ```
 data: Line 1
@@ -410,7 +414,7 @@ a conexão, e o `@done` não tem efeito sobre ele.
 | `@done` | Tipos de evento SSE que encerram o stream, separados por vírgula. Padrão `done,complete`. Sem um evento final, o `EventSource` se reconecta quando o servidor fecha e o stream recomeça |
 | `@method` | Método HTTP (padrão `GET`) |
 | `@body` | Um corpo de requisição em JSON, enviado só com `POST`, `PUT` ou `PATCH` |
-| `@trigger` | O evento do DOM que inicia o stream, opcionalmente com `delay:` — `click`, `submit`, `load`, `load delay:1s` |
+| `@trigger` | Quando o stream começa: a mesma lista que o núcleo lê — `click`, `submit`, `load`, `load delay:1s`, `load, every:30s` |
 | `@abort` | Seletor de um elemento cujo clique interrompe o stream |
 
 ```html
@@ -628,11 +632,11 @@ Http::base('https://api.example.com')->stream('/export', new class extends Abstr
 });
 ```
 
-> **Redirecionamentos.** Quando o serviço redireciona, hoje o `onStatus()`
-> também é chamado para a resposta de redirecionamento (um `302`, por exemplo)
-> antes de ser chamado para a final. Um listener que recusa tudo o que não seja
-> `200` aborta, portanto, no redirecionamento. Recuse os erros (`>= 400`), como
-> acima, em vez de tudo o que não seja um `200`.
+> **Redirecionamentos.** O `onStatus()` ouve só a resposta final. Um
+> redirecionamento que o cliente está prestes a seguir — um `3xx` com um
+> `Location` — e um `1xx` não são informados, então um listener que recusa tudo
+> o que não seja `200` vê o `200` no fim da cadeia. Antes ele ouvia o `302`
+> primeiro e abortava nele.
 
 Para parar no meio, retorne `false` do `onChunk()`:
 
@@ -731,7 +735,7 @@ $client = Http::base('https://api.example.com')
     ->timeout(300, 5)     // no máximo 300 s no total, 5 s para conectar
     ->idleTimeout(60);    // aborta depois de 60 s sem dados; 0 desativa
 
-Http::timeout(30, connect: 5); // o mesmo, pela fachada
+Http::timeout(300, connect: 5); // o mesmo, pela fachada
 ```
 
 Um timeout total passado ao `timeout()` vale também para os streams — exceto

@@ -165,7 +165,7 @@ eles.
 |---|---|
 | `grid` | `display: grid` com um gap de 1,5rem |
 | `grid-cols-{n}` | `1`–`12`, `none` |
-| `grid-auto-fit` / `grid-auto-fill` | tantas colunas quantas couberem, cada uma com pelo menos `--grid-min` (16rem) — um grid de cards sem breakpoint nenhum |
+| `grid-auto-fit` / `grid-auto-fill` | ao lado de `grid`: tantas colunas quantas couberem, cada uma com pelo menos `--grid-min` (16rem) — um grid de cards sem breakpoint nenhum |
 | `col-span-{n}` | `1`–`12`, `full`, `auto` |
 | `col-start-{n}` | `1`–`13`, `auto` |
 | `row-span-{n}` | `1`–`3`, `full` |
@@ -242,7 +242,7 @@ Para cada cor em `config.colors` — por padrão `primary` `secondary` `success`
 
 | Classe | Usa |
 |---|---|
-| `text-{c}` · `bg-{c}` · `border-{c}` | a própria cor |
+| `text-{c}` · `bg-{c}` · `border-{c}` | a própria cor — `text-{c}` na sua forma legível, `--{c}-text`, então passa no AA sobre a página |
 | `text-bg-{c}` | a cor como fundo, com a cor de texto que fica legível sobre ela |
 | `bg-{c}-subtle` · `border-{c}-subtle` · `text-{c}-emphasis` | o fundo claro, a sua borda e o texto que fica legível sobre ele — acompanham o tema escuro |
 | `link-{c}` | a cor como texto legível (`warning`, por exemplo, escurecida até ficar legível sobre a página) |

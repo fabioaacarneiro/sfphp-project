@@ -191,6 +191,9 @@ printf("%.0f ms\n", (microtime(true) - $started) * 1000);
   that part failed, the race rejects.
 
 `awaitAll(...$futures)` is shorthand for `await(CompositeFuture::all(...))`.
+Parts can be named: `awaitAll(...['user' => $a, 'posts' => $b])` resolves to
+`['user' => …, 'posts' => …]`, in the order given. A named part used to be a
+`TypeError` inside the loop, which then failed the next `await()` as well.
 
 ```php
 <?php
@@ -504,7 +507,7 @@ the synchronous client returns:
 | `body()` | The raw body (`string`). |
 | `json(bool $strict = false)` | The decoded body as an array, or `null` when it is not JSON. With `true`, throws `ClientException` instead of returning `null`. |
 | `header(string $name)` | One header, looked up case-insensitively, or `null`. |
-| `headers()` | Every header. |
+| `headers()` | Every header of the final response — not those of the redirects before it. |
 | `url()` | The URL that answered, after redirects. |
 | `throw()` | Throws `ClientException` for 4xx/5xx, otherwise returns the response. |
 
@@ -530,7 +533,8 @@ $user = await(Http::getAsync('https://api.example.com/users/1'))->throw()->json(
 you inspect `status()`. No answer at all (DNS failure, refused connection,
 timeout, TLS failure) rejects the Future with `SfphpProject\src\Http\ClientException`.
 The `curl` extension is required. Without it, the Future rejects at once with a
-`ClientException` that says so.
+`ClientException` that says so. So does a header value with a line break in it,
+and a body that JSON cannot encode — which used to be sent as an empty string.
 
 ## Database queries
 

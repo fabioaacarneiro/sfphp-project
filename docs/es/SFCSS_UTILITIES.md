@@ -42,7 +42,7 @@ Cuatro escalas de la configuración gobiernan la mayoría de las utilidades.
 
 | Clave | 0 | 0.5 | 1 | 2 | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 16 | 20 | 24 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| rem | 0 | 0.125 | 0.25 | 0.5 | 1 | 1.5 | 2 | 2.5 | 3 | 3.75 | 4.5 | 6 | 7.5 | 9 |
+| rem | 0 | 0,125 | 0,25 | 0,5 | 1 | 1,5 | 2 | 2,5 | 3 | 3,75 | 4,5 | 6 | 7,5 | 9 |
 
 **Tamaño** (`config.sizing`) — width, height, `min-*`, `max-*`, `size-*`: cada
 clave es `n × 0.25rem`, así que `w-8` es 2rem y `h-64` es 16rem.
@@ -54,13 +54,13 @@ clave es `n × 0.25rem`, así que `w-8` es 2rem y `h-64` es 16rem.
 
 | `text-xs` | `text-sm` | `text-base` | `text-lg` | `text-xl` | `text-2xl` | `text-3xl` | `text-4xl` | `text-5xl` |
 |---|---|---|---|---|---|---|---|---|
-| 0.75rem | 0.875rem | 1rem | 1.125rem | 1.25rem | 1.5rem | 1.875rem | 2.25rem | 3rem |
+| 0,75rem | 0,875rem | 1rem | 1,125rem | 1,25rem | 1,5rem | 1,875rem | 2,25rem | 3rem |
 
 **Redondeo** (`config.radii`):
 
 | `rounded-none` | `rounded-sm` | `rounded` | `rounded-md` | `rounded-lg` | `rounded-xl` | `rounded-2xl` | `rounded-full` |
 |---|---|---|---|---|---|---|---|
-| 0 | 0.125rem | 0.375rem | 0.5rem | 0.75rem | 1rem | 1.5rem | 9999px |
+| 0 | 0,125rem | 0,375rem | 0,5rem | 0,75rem | 1rem | 1,5rem | 9999px |
 
 ---
 
@@ -165,9 +165,9 @@ ellas.
 
 | Utilidad | Valores |
 |---|---|
-| `grid` | `display: grid` con una separación de 1.5rem |
+| `grid` | `display: grid` con una separación de 1,5rem |
 | `grid-cols-{n}` | `1`–`12`, `none` |
-| `grid-auto-fit` / `grid-auto-fill` | tantas columnas como quepan, cada una de al menos `--grid-min` (16rem) — una rejilla de tarjetas sin ningún punto de ruptura |
+| `grid-auto-fit` / `grid-auto-fill` | junto a `grid`: tantas columnas como quepan, cada una de al menos `--grid-min` (16rem) — una rejilla de tarjetas sin ningún punto de ruptura |
 | `col-span-{n}` | `1`–`12`, `full`, `auto` |
 | `col-start-{n}` | `1`–`13`, `auto` |
 | `row-span-{n}` | `1`–`3`, `full` |
@@ -245,7 +245,7 @@ solo `text-`, `bg-` y `border-`):
 
 | Clase | Usa |
 |---|---|
-| `text-{c}` · `bg-{c}` · `border-{c}` | el propio color |
+| `text-{c}` · `bg-{c}` · `border-{c}` | el propio color — `text-{c}` en su forma legible, `--{c}-text`, para que pase AA en la página |
 | `text-bg-{c}` | el color como fondo, con el color de texto que se lee sobre él |
 | `bg-{c}-subtle` · `border-{c}-subtle` · `text-{c}-emphasis` | el fondo pálido, su borde y el texto que se lee sobre él — siguen el tema oscuro |
 | `link-{c}` | el color como texto legible (`warning`, por ejemplo, oscurecido hasta que se lee sobre la página) |

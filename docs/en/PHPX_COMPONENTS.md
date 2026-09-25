@@ -202,7 +202,12 @@ tracked. Text inside an element is text, whatever it holds:
 
 Only **outside every element** does a parenthesis count, and there it has to be
 balanced, as in PHP: the `)` that balances `Sfht(` is the one that closes the
-region. Void elements (`<br>`, `<img>`, `<input>` …) and self-closing tags open
+region.
+
+`Sfht(` opens a region only in code. Written in a comment or a string — a
+docblock that explains how regions open, `$hint = "use Sfht( here"` — it is
+text, as PHP's own tokenizer reads it, and the old lowercase `sfht(` in a
+comment is not refused either. Void elements (`<br>`, `<img>`, `<input>` …) and self-closing tags open
 nothing, and a closing tag also closes any element left open inside it, the way
 HTML treats an `<li>` without `</li>`.
 
@@ -298,7 +303,9 @@ are never compiled again.
 
 Each region becomes a closure that is called on the spot. It receives the
 function's variables through `get_defined_vars()`, buffers the markup, and
-returns it as an `Sfht`. Every `{{ }}` becomes a call to `Compiler::text()`,
+returns it as an `Sfht`; if the markup throws, the buffer is closed before the
+exception carries on, so no half-rendered markup is left in front of the error
+page. Every `{{ }}` becomes a call to `Compiler::text()`,
 and the statements are separated by spaces rather than newlines, so each line of
 markup stays on the line it was written on. This is
 `compiled/postcode/lookup/Field.php`, generated from the component shown in
@@ -308,10 +315,10 @@ markup stays on the line it was written on. This is
 function Field(string $label, string $value): Sfht
 {
     return 
-(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="py-1">
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); $__level = ob_get_level(); ob_start(); try { echo '<div class="py-1">
             <span class="text-xs text-muted d-block">'; echo \SfphpProject\src\View\Compiler::text(($label)); echo '</span>
             <span class="font-semibold">'; echo \SfphpProject\src\View\Compiler::text(($value)); echo '</span>
-        </div>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+        </div>';  } catch (\Throwable $__e) { while (ob_get_level() > $__level) { ob_end_clean(); } throw $__e; } return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
 ;
 }
 ```
