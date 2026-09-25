@@ -68,13 +68,31 @@ final class Emitter
          * A HEAD response carries the headers a GET would, including the
          * length, but no body.
          */
+        $body = $response->body();
+        $dumps = \SfphpProject\src\Debug\PendingDumps::take();
+
+        /*
+         * dump() output made while the action ran. An HTML page shows it; any
+         * other body — JSON, a file — would be corrupted by it, so it is
+         * logged instead, where it is still found.
+         */
+        if ($dumps !== []) {
+            if (str_contains(strtolower((string) $response->header('Content-Type')), 'text/html')) {
+                $body = \SfphpProject\src\Debug\PendingDumps::inject($body, $dumps);
+            } else {
+                logger()->debug('dump() output from a response that is not HTML', [
+                    'dump' => strip_tags(implode("\n", $dumps)),
+                ]);
+            }
+        }
+
         if (strtoupper($method) === HEAD) {
-            header('Content-Length: ' . strlen($response->body()), true);
+            header('Content-Length: ' . strlen($body), true);
 
             return;
         }
 
-        echo $response->body();
+        echo $body;
     }
 
     /**

@@ -98,6 +98,23 @@ final class Session
             session_set_save_handler($handler, true);
         }
 
+        /*
+         * PHP's garbage collector deletes a session file once it is older
+         * than session.gc_maxlifetime — 1440 seconds by default — so a
+         * SESSION_LIFETIME of two hours ended after 24 idle minutes. The
+         * collector is told to keep sessions at least as long as the longer
+         * of the two deadlines.
+         *
+         * Debian and Ubuntu also clean sessions from a cron job that reads
+         * php.ini, not this setting; there, raise session.gc_maxlifetime in
+         * php.ini as well, or keep sessions in the cache or the database.
+         */
+        $keep = max($idleSeconds, $absoluteSeconds);
+
+        if ($keep > (int) ini_get('session.gc_maxlifetime')) {
+            ini_set('session.gc_maxlifetime', (string) $keep);
+        }
+
         session_start();
 
         self::enforceDeadlines($idleSeconds, $absoluteSeconds);

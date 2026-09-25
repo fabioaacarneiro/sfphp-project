@@ -205,7 +205,12 @@ contenga:
 
 Solo **fuera de todo elemento** cuenta un paréntesis, y ahí tiene que estar
 equilibrado, como en PHP: el `)` que equilibra `Sfht(` es el que cierra la
-región. Los elementos vacíos (`<br>`, `<img>`, `<input>` …) y las etiquetas
+región.
+
+`Sfht(` abre una región solo en el código. Escrito en un comentario o en una cadena — un
+docblock que explica cómo se abren las regiones, `$hint = "use Sfht( here"` — es
+texto, tal como lo lee el propio tokenizer de PHP, y el antiguo `sfht(` en minúsculas en un
+comentario tampoco se rechaza. Los elementos vacíos (`<br>`, `<img>`, `<input>` …) y las etiquetas
 autocerradas no abren nada, y una etiqueta de cierre también cierra cualquier
 elemento que haya quedado abierto dentro de ella, tal como HTML trata un `<li>`
 sin `</li>`.
@@ -303,7 +308,9 @@ dentro del fuente, así que los archivos compilados nunca se vuelven a compilar.
 
 Cada región se convierte en un closure que se llama en el acto. Recibe las
 variables de la función mediante `get_defined_vars()`, almacena el marcado en un
-búfer y lo devuelve como un `Sfht`. Cada `{{ }}` se convierte en una llamada a
+búfer y lo devuelve como un `Sfht`; si el marcado lanza una excepción, el búfer se cierra
+antes de que la excepción siga su camino, así que no queda marcado a medio renderizar
+delante de la página de error. Cada `{{ }}` se convierte en una llamada a
 `Compiler::text()`, y las sentencias se separan con espacios en lugar de saltos
 de línea, así que cada línea de marcado se queda en la línea en que se escribió.
 Este es `compiled/postcode/lookup/Field.php`, generado a partir del componente
@@ -313,10 +320,10 @@ que se muestra en [Componer componentes](#componer-componentes):
 function Field(string $label, string $value): Sfht
 {
     return 
-(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="py-1">
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); $__level = ob_get_level(); ob_start(); try { echo '<div class="py-1">
             <span class="text-xs text-muted d-block">'; echo \SfphpProject\src\View\Compiler::text(($label)); echo '</span>
             <span class="font-semibold">'; echo \SfphpProject\src\View\Compiler::text(($value)); echo '</span>
-        </div>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+        </div>';  } catch (\Throwable $__e) { while (ob_get_level() > $__level) { ob_end_clean(); } throw $__e; } return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
 ;
 }
 ```
@@ -638,9 +645,9 @@ Esa es la diferencia con una plantilla: `Response::sfht('post', ['post' =>
 $post])` entrega los datos como un array de nombres, mientras que un componente
 los recibe como argumentos tipados que el editor puede comprobar.
 
-> **Actualizar desde 0.30.** `Response::view()` ahora es `Response::sfht()`, y a
-> un componente se responde con `Response::phpx(PostcodePage())` en lugar de
-> `Response::html((string) PostcodePage())`. Una región de marcado se abre con
+> **Actualizar desde 0.30.** `Response::view()` ahora es `Response::sfht()`, y
+> para responder con un componente se usa `Response::phpx(PostcodePage())` en
+> lugar de `Response::html((string) PostcodePage())`. Una región de marcado se abre con
 > `Sfht(` — el nombre del tipo que devuelve — en lugar de `sfht(`; la
 > compilación rechaza la grafía antigua con la línea y la corrección.
 

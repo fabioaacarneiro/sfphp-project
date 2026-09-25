@@ -2,8 +2,31 @@
 
 namespace SfphpProject\src\Cache;
 
+/**
+ * A cache kept in Redis.
+ *
+ * Values are stored as JSON, as the file driver stores them. This driver used
+ * to serialize(), which made it the only one that kept objects — so code that
+ * worked against it broke on the file driver — and it unserialize()d whatever
+ * the server held, which is how a writable Redis becomes code execution.
+ */
 class RedisDriver implements Cache
 {
+    /**
+     * Adds to a counter and gives it a lifetime in one step.
+     *
+     * SET NX EX followed by INCRBY is two commands, and a key that expired
+     * between them came back from INCRBY with no lifetime at all: a rate
+     * limit that never resets. A script runs atomically on the server.
+     */
+    private const INCREMENT = <<<'LUA'
+        local value = redis.call('INCRBY', KEYS[1], ARGV[1])
+        if tonumber(ARGV[2]) > 0 and redis.call('TTL', KEYS[1]) == -1 and tonumber(value) == tonumber(ARGV[1]) then
+            redis.call('EXPIRE', KEYS[1], ARGV[2])
+        end
+        return value
+        LUA;
+
     protected \Redis $redis;
     protected string $prefix;
 
@@ -28,28 +51,18 @@ class RedisDriver implements Cache
             return $default;
         }
 
-        /*
-         * increment() stores a bare integer, because that is the only thing
-         * Redis knows how to add to. Those values are not serialised, so
-         * unserialize() would fail on them. A string that was really stored
-         * through put() cannot be mistaken for one of these: serialize('42')
-         * is 's:2:"42";', which has no bare digits to match.
-         */
-        if (preg_match('/^-?\\d+$/', $value) === 1) {
-            return (int) $value;
-        }
-
-        return unserialize($value);
+        // A counter is a bare integer, which is also valid JSON.
+        return json_decode((string) $value, true);
     }
 
     public function put(string $key, mixed $value, ?int $seconds = null): void
     {
-        $serialized = serialize($value);
+        $encoded = json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION);
 
-        if ($seconds === null) {
-            $this->redis->set($this->key($key), $serialized);
+        if (Ttl::forever($seconds)) {
+            $this->redis->set($this->key($key), $encoded);
         } else {
-            $this->redis->setEx($this->key($key), $seconds, $serialized);
+            $this->redis->setEx($this->key($key), $seconds, $encoded);
         }
     }
 
@@ -58,14 +71,24 @@ class RedisDriver implements Cache
         $this->redis->del($this->key($key));
     }
 
+    /**
+     * Remove every entry under this cache's prefix.
+     *
+     * With SCAN, a batch at a time. KEYS walks the whole keyspace in one
+     * command and blocks the server while it does, which on a shared Redis
+     * stalls every other client.
+     */
     public function flush(): void
     {
-        $pattern = $this->prefix . '*';
-        $keys = $this->redis->keys($pattern);
+        $iterator = null;
 
-        if (!empty($keys)) {
-            $this->redis->del($keys);
-        }
+        do {
+            $keys = $this->redis->scan($iterator, $this->prefix . '*', 1000);
+
+            if (is_array($keys) && $keys !== []) {
+                $this->redis->del($keys);
+            }
+        } while ($iterator !== 0 && $iterator !== null && $iterator !== false);
     }
 
     public function has(string $key): bool
@@ -74,16 +97,20 @@ class RedisDriver implements Cache
     }
 
     /**
+     * Redis expires entries itself, so there is nothing to prune.
+     */
+    public function prune(): int
+    {
+        return 0;
+    }
+
+    /**
      * Add to a counter and return its new value, atomically.
      *
-     * The addition happens in Redis with INCRBY, not in PHP, which is what
-     * makes it a counter: several processes adding at once each see their own
-     * add reflected, instead of overwriting one another.
-     *
-     * The expiry is placed with SET NX EX before the add. NX only writes when
-     * the key is absent, so the lifetime is set exactly once, when the counter
-     * is created — an existing counter keeps the expiry it had, and a client
-     * that keeps knocking cannot push its own window forward.
+     * The addition and the lifetime happen in one script on the server. The
+     * lifetime is only given to a counter that this call created, so an
+     * existing counter keeps the expiry it had and a client that keeps
+     * knocking cannot push its own window forward.
      *
      * @param string $key The counter's key
      * @param int $by How much to add
@@ -92,13 +119,9 @@ class RedisDriver implements Cache
      */
     public function increment(string $key, int $by = 1, ?int $seconds = null): int
     {
-        $redisKey = $this->key($key);
+        $lifetime = Ttl::forever($seconds) ? 0 : $seconds;
 
-        if ($seconds !== null) {
-            $this->redis->set($redisKey, 0, ['nx', 'ex' => $seconds]);
-        }
-
-        return (int) $this->redis->incrBy($redisKey, $by);
+        return (int) $this->redis->eval(self::INCREMENT, [$this->key($key), $by, $lifetime], 1);
     }
 
     /**

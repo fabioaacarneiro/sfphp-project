@@ -32,10 +32,12 @@ final class Authenticate implements Middleware
      *
      * @param string|null $guard The guard to ask, or null for the default
      * @param bool $required Whether an anonymous request is refused
+     * @param string|null $loginPath Where a browser is sent, or null for AUTH_LOGIN_PATH (default /login)
      */
     public function __construct(
         private ?string $guard = null,
-        private bool $required = false
+        private bool $required = false,
+        private ?string $loginPath = null
     ) {}
 
     /**
@@ -78,6 +80,6 @@ final class Authenticate implements Middleware
          * their own credentials prompt, which is not the form the application
          * has.
          */
-        return Response::redirect('/login');
+        return Response::redirect($this->loginPath ?? (string) \SfphpProject\src\Config::get('AUTH_LOGIN_PATH', '/login'));
     }
 }

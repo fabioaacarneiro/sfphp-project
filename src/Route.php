@@ -23,8 +23,8 @@ final class Route
      */
     private const PARAMETER_TYPES = [
         'number' => '[0-9]+',
-        'alphanum' => '[\p{L}\p{N}]+',
-        'alpha' => '\p{L}+',
+        'alphanum' => '[\p{L}\p{N}][\p{L}\p{M}\p{N}]*',
+        'alpha' => '\p{L}[\p{L}\p{M}]*',
     ];
 
     private const PARAMETER_PATTERN = '/([A-Za-z_][A-Za-z0-9_]*):(number|alphanum|alpha)/';
@@ -133,6 +133,15 @@ final class Route
 
         $parameters = [];
         foreach ($this->parameters as $name => $type) {
+            /*
+             * A number PHP cannot hold as an int is not an id that exists.
+             * It used to reach an `int $id` action as a string it could not
+             * convert, and the TypeError was a 500.
+             */
+            if ($type === 'number' && (strlen(ltrim($matches[$name], '0')) > 19 || (float) $matches[$name] > PHP_INT_MAX)) {
+                return null;
+            }
+
             $parameters[$name] = $matches[$name];
         }
 

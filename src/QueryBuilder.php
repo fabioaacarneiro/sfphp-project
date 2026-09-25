@@ -76,17 +76,29 @@ class QueryBuilder
     /**
      * Add an AND condition to the query.
      *
-     * @param string $column The column name
+     * A closure groups the conditions it adds in parentheses. Without it an
+     * OR joins everything before it — where(owner)->where(a)->orWhere(b) is
+     * "owner AND a OR b", which returns other owners' rows:
+     *
+     *     $query->where('user_id', $id)->where(function (QueryBuilder $q): void {
+     *         $q->where('status', 'draft')->orWhere('status', 'review');
+     *     });
+     *
+     * @param string|\Closure(self): void $column The column name, or a closure that adds a group
      * @param mixed $operatorOrValue The operator or value for the condition
      * @param mixed $value The value when an operator is provided
      * @return self The current query builder
      * @throws InvalidArgumentException If the operator or column is invalid
      */
     public function where(
-        string $column,
-        mixed $operatorOrValue,
+        string|\Closure $column,
+        mixed $operatorOrValue = null,
         mixed $value = null
     ): self {
+        if ($column instanceof \Closure) {
+            return $this->addGroup('AND', $column);
+        }
+
         if (func_num_args() === 2) {
             return $this->addWhere('AND', $column, '=', $operatorOrValue);
         }
@@ -104,10 +116,14 @@ class QueryBuilder
      * @throws InvalidArgumentException If the operator or column is invalid
      */
     public function orWhere(
-        string $column,
-        mixed $operatorOrValue,
+        string|\Closure $column,
+        mixed $operatorOrValue = null,
         mixed $value = null
     ): self {
+        if ($column instanceof \Closure) {
+            return $this->addGroup('OR', $column);
+        }
+
         if (func_num_args() === 2) {
             return $this->addWhere('OR', $column, '=', $operatorOrValue);
         }
@@ -518,6 +534,33 @@ class QueryBuilder
      * @param string $sql The compiled condition SQL
      * @return self The current query builder
      */
+    /**
+     * Add the conditions a closure adds, in parentheses.
+     *
+     * @param string $boolean AND or OR
+     * @param \Closure(self): void $group The closure
+     * @return self The current query builder
+     */
+    private function addGroup(string $boolean, \Closure $group): self
+    {
+        $outer = $this->conditions;
+        $this->conditions = [];
+
+        try {
+            $group($this);
+            $inner = $this->compileWhere();
+        } finally {
+            $grouped = $this->conditions;
+            $this->conditions = $outer;
+        }
+
+        if ($grouped === []) {
+            return $this;
+        }
+
+        return $this->addCondition($boolean, '(' . substr($inner, strlen(' WHERE ')) . ')');
+    }
+
     private function addCondition(string $boolean, string $sql): self
     {
         $this->conditions[] = [
@@ -662,7 +705,20 @@ class QueryBuilder
             return $offset === null ? $sql : $sql . ' OFFSET ' . $offset;
         }
 
-        if (in_array($driver, ['mysql', 'pgsql', 'sqlite'], true)) {
+        /*
+         * MySQL and SQLite accept OFFSET only after a LIMIT, so an offset on
+         * its own needs a limit that does not limit: the largest row count
+         * MySQL documents, and -1, which SQLite reads as "no limit".
+         */
+        if ($driver === 'mysql') {
+            return ' LIMIT 18446744073709551615 OFFSET ' . $offset;
+        }
+
+        if ($driver === 'sqlite') {
+            return ' LIMIT -1 OFFSET ' . $offset;
+        }
+
+        if ($driver === 'pgsql') {
             return ' OFFSET ' . $offset;
         }
 

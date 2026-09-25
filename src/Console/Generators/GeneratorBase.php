@@ -16,16 +16,42 @@ abstract class GeneratorBase
 
     private ?string $applicationNamespace = null;
 
-    public function __construct(string $projectRoot)
+    /** Whether a file that already exists may be replaced. */
+    private bool $overwrite = false;
+
+    public function __construct(string $projectRoot, bool $overwrite = false)
     {
         $this->projectRoot = $projectRoot;
+        $this->overwrite = $overwrite;
+    }
+
+    /**
+     * The word every class this generator writes ends in.
+     *
+     * Taken from the generator's own name — ControllerGenerator writes
+     * ...Controller — except for models, which are named as the thing itself.
+     *
+     * @return string The suffix, or '' for none
+     */
+    protected function suffix(): string
+    {
+        $kind = substr((string) strrchr('\\' . static::class, '\\'), 1, -strlen('Generator'));
+
+        return $kind === 'Model' ? '' : $kind;
     }
 
     /**
      * Validate and normalize a class name.
      *
+     * The suffix is taken off when it was typed, because the generator adds
+     * it: `make:test PostTest` used to write PostTestTest, and
+     * `make:controller ProductController` a ProductControllerController. The
+     * first letter is upper-cased, so `make:controller product` does not
+     * write productController.php — a file that collides with
+     * ProductController.php on macOS and Windows.
+     *
      * @param string $name The raw name
-     * @return string
+     * @return string The name, without the suffix
      */
     protected function validateName(string $name): string
     {
@@ -33,7 +59,13 @@ abstract class GeneratorBase
             throw new InvalidArgumentException("Invalid class name: $name");
         }
 
-        return $name;
+        $suffix = $this->suffix();
+
+        if ($suffix !== '' && strlen($name) > strlen($suffix) && strcasecmp(substr($name, -strlen($suffix)), $suffix) === 0) {
+            $name = substr($name, 0, -strlen($suffix));
+        }
+
+        return ucfirst($name);
     }
 
     /**
@@ -191,7 +223,22 @@ abstract class GeneratorBase
      */
     protected function writeFile(string $filePath, string $content): string
     {
-        file_put_contents($filePath, $content);
+        /*
+         * A generator never replaces a file silently. Running make:model a
+         * second time used to overwrite the model — and make:scaffold four
+         * files at once — with the edits made since lost without a word.
+         */
+        if (is_file($filePath) && !$this->overwrite) {
+            throw new GeneratorFileExists(sprintf(
+                '%s already exists. Nothing was written; pass --force to replace it.',
+                $filePath
+            ));
+        }
+
+        if (@file_put_contents($filePath, rtrim($content, "\n") . "\n") === false) {
+            throw new \RuntimeException('Could not write ' . $filePath . '.');
+        }
+
         return $filePath;
     }
 

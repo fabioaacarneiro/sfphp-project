@@ -12,4 +12,7 @@ return [
     'minValue' => ':field debe ser como mínimo :min.',
     'maxValue' => ':field debe ser como máximo :max.',
     'number' => ':field debe contener solo números.',
+    'minItems' => '{1} :field debe tener al menos un elemento.|[2,*] :field debe tener al menos :min elementos.',
+    'maxItems' => '{1} :field debe tener como máximo un elemento.|[2,*] :field debe tener como máximo :max elementos.',
+    'attributes' => [],
 ];

@@ -3,39 +3,40 @@
 namespace SfphpProject\src\Console\Generators;
 
 /**
- * Generates test class skeleton files.
+ * Generates test classes for `./sfphp test`.
  */
 final class TestGenerator extends GeneratorBase
 {
     public function generate(string $name): string
     {
         $name = $this->validateName($name);
-        $namespace = $this->getNamespace('tests');
         $filePath = $this->getFilePath('tests', $name, 'Test');
 
+        /*
+         * It used to be a class in a namespace no autoloader mapped, calling
+         * $this->assertTrue() on a class with no parent, with nothing in the
+         * project to run it. It extends the framework's TestCase now, and
+         * `./sfphp test` loads the file itself, so no autoload entry is needed.
+         */
         $content = <<<'PHP'
 <?php
 
-namespace {NAMESPACE};
+namespace Tests;
+
+use SfphpProject\src\Testing\TestCase;
 
 /**
- * {CLASS}Test covers the {CLASS} functionality.
+ * {CLASS}Test. Run it with ./sfphp test, or ./sfphp test {CLASS}Test.
  */
-final class {CLASS}Test
+final class {CLASS}Test extends TestCase
 {
     public function testExample(): void
     {
-        $this->assertTrue(true);
+        $this->assertSame(4, 2 + 2);
     }
 }
 PHP;
 
-        $content = str_replace(
-            ['{NAMESPACE}', '{CLASS}'],
-            [$namespace, $name],
-            $content
-        );
-
-        return $this->writeFile($filePath, $content);
+        return $this->writeFile($filePath, str_replace('{CLASS}', $name, $content));
     }
 }

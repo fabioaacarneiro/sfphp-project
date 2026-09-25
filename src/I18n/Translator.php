@@ -169,16 +169,17 @@ final class Translator
 
         $message = self::lookup($key, $locale);
 
-        if ($message === null && $locale !== self::$fallback) {
-            $message = self::lookup($key, self::$fallback);
-        }
-
         /*
-         * The base language is tried before giving up, so pt_BR falls back to
-         * pt when only the latter has a catalog.
+         * The base language comes before the fallback: es_MX reads es before
+         * it reads en. The fallback used to be tried first, so a Mexican
+         * visitor got English although a Spanish catalog was right there.
          */
         if ($message === null && str_contains($locale, '_')) {
             $message = self::lookup($key, strstr($locale, '_', true));
+        }
+
+        if ($message === null && $locale !== self::$fallback) {
+            $message = self::lookup($key, self::$fallback);
         }
 
         return self::interpolate($message ?? $key, $replace);
@@ -246,8 +247,14 @@ final class Translator
             }
         }
 
+        /*
+         * Only explicit forms, and none of them covers this count — zero or a
+         * negative number against "{1}…|[2,*]…". The last form is the general
+         * one; returning the whole string, bars and brackets included, showed
+         * the raw catalog entry to the visitor.
+         */
         if ($plain === []) {
-            return self::interpolate($message, $replace);
+            return $explicit === [] ? self::interpolate($message, $replace) : self::interpolate(end($explicit)['text'], $replace);
         }
 
         $index = self::selectPlural($locale, $count);

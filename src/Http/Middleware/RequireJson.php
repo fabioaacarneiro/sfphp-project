@@ -61,16 +61,23 @@ final class RequireJson implements Middleware
 
         $contentType = (string) $request->header('Content-Type');
 
+        /*
+         * No Content-Type and no body is an empty request, which is fine
+         * unless a body is required: the action gets an empty array. No
+         * Content-Type with a body is refused — it used to pass with the
+         * attribute left null, and "already decoded, already valid" was not
+         * true.
+         */
         if ($contentType === '') {
-            if (!$this->required) {
-                return $next($request);
+            if (!$this->required && trim($request->rawBody) === '') {
+                return $next($request->withAttribute('json', []));
             }
 
-            return self::refuse('Content-Type must be application/json.', HTTP_UNSUPPORTED_MEDIA_TYPE);
+            return self::refuse(__('http.json_required'), HTTP_UNSUPPORTED_MEDIA_TYPE);
         }
 
         if (!str_contains(strtolower($contentType), 'application/json')) {
-            return self::refuse('Content-Type must be application/json.', HTTP_UNSUPPORTED_MEDIA_TYPE);
+            return self::refuse(__('http.json_required'), HTTP_UNSUPPORTED_MEDIA_TYPE);
         }
 
         try {
@@ -81,7 +88,7 @@ final class RequireJson implements Middleware
              * character error" point at different mistakes and a client cannot
              * see the body the server received.
              */
-            return self::refuse('Invalid JSON body: ' . $exception->getMessage(), HTTP_BAD_REQUEST);
+            return self::refuse(__('http.json_invalid', ['reason' => $exception->getMessage()]), HTTP_BAD_REQUEST);
         }
 
         return $next($request->withAttribute('json', $decoded));

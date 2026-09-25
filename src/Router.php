@@ -5,11 +5,11 @@ namespace SfphpProject\src;
 use InvalidArgumentException;
 use LogicException;
 use RuntimeException;
-use SfphpProject\src\Assets;
+use SfphpProject\src\Http\ErrorPage;
+use SfphpProject\src\Http\HttpStatus;
 use SfphpProject\src\Http\Pipeline;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
-use SfphpProject\src\I18n\Translator;
 use Throwable;
 
 /**
@@ -95,7 +95,16 @@ class Router
              * context LogRequests set on the way in is untouched by an
              * exception on the way out.
              */
-            logger()->exception($throwable);
+            /*
+             * A 4xx an exception asked for — a missing record, a refused
+             * authorization — is the client's mistake, not a failure to be
+             * paged about, so it is recorded as information.
+             */
+            if ($throwable instanceof HttpStatus && $throwable->status() < 500) {
+                logger()->info($throwable->getMessage(), ['status' => $throwable->status(), 'exception' => $throwable::class]);
+            } else {
+                logger()->exception($throwable);
+            }
 
             $response = ErrorHandler::toResponse($throwable, $request);
 
@@ -134,12 +143,21 @@ class Router
             }
 
             $allowedMethods[] = $route->getMethod();
-            if ($route->getMethod() !== $request->method) {
+
+            /*
+             * HEAD is GET without the body, and the Emitter already leaves the
+             * body out. It used to answer 405 on every GET route, which is
+             * what link checkers and uptime probes send.
+             */
+            $answers = $route->getMethod() === $request->method
+                || ($request->method === HEAD && $route->getMethod() === GET);
+
+            if (!$answers) {
                 continue;
             }
 
             return $pipeline->run(
-                $request->withAttributes($parameters),
+                $request->withRouteParameters($parameters, $route->getPath()),
                 $route->getMiddleware(),
                 fn (Request $passed): Response => $this->call($route, $passed, $parameters)
             );
@@ -147,11 +165,7 @@ class Router
 
         $allowedMethods = array_values(array_unique($allowedMethods));
         if ($allowedMethods === []) {
-            return self::errorResponse(
-                HTTP_NOT_FOUND,
-                __('http.not_found_title'),
-                __('http.not_found_message')
-            );
+            return ErrorPage::response(HTTP_NOT_FOUND, request: $request);
         }
 
         /*
@@ -159,17 +173,18 @@ class Router
          * once with header() before the split, so both inherited it; a
          * returned response carries only what it was given.
          */
-        $allow = implode(', ', $allowedMethods);
+        if (in_array(GET, $allowedMethods, true)) {
+            $allowedMethods[] = HEAD;
+        }
+
+        $allowedMethods[] = OPTIONS;
+        $allow = implode(', ', array_values(array_unique($allowedMethods)));
 
         if ($request->isMethod(OPTIONS)) {
             return Response::noContent()->withHeader('Allow', $allow);
         }
 
-        return self::errorResponse(
-            HTTP_METHOD_NOT_ALLOWED,
-            __('http.method_not_allowed_title'),
-            __('http.method_not_allowed_message')
-        )->withHeader('Allow', $allow);
+        return ErrorPage::response(HTTP_METHOD_NOT_ALLOWED, request: $request)->withHeader('Allow', $allow);
     }
 
     /**
@@ -190,13 +205,27 @@ class Router
         $controllerClass = $route->getController();
 
         if (!class_exists($controllerClass)) {
-            throw new RuntimeException("Controller $controllerClass not found.");
+            /*
+             * Almost always a missing `use` line in the routes file: the name
+             * resolved against the file's own namespace, or the global one.
+             */
+            throw new RuntimeException(sprintf(
+                'Controller %s not found. If it lives in another namespace, import it at the top of the routes file: use Its\\Namespace\\%s;',
+                $controllerClass,
+                substr((string) strrchr('\\' . $controllerClass, '\\'), 1)
+            ));
         }
 
         $controller = $this->container->get($controllerClass);
         if (!method_exists($controller, $route->getAction())) {
             throw new RuntimeException(
                 "Action {$route->getAction()} not found in $controllerClass."
+            );
+        }
+
+        if (!(new \ReflectionMethod($controller, $route->getAction()))->isPublic()) {
+            throw new RuntimeException(
+                "Action {$route->getAction()} in $controllerClass is not public, so the router cannot call it."
             );
         }
 
@@ -522,65 +551,4 @@ class Router
         return $path === '' ? '/' : '/' . $path;
     }
 
-    /**
-     * Build an HTTP error response.
-     *
-     * @param int $statusCode The HTTP response status
-     * @param string $title The error page title
-     * @param string $message The error page message
-     * @return Response The error response
-     */
-    private static function errorResponse(
-        int $statusCode,
-        string $title,
-        string $message
-    ): Response {
-
-        /*
-         * SFCSS, inlined. Two rules meet here and both matter.
-         *
-         * The stylesheet is the framework's own, because a screen the framework
-         * renders should not be a second visual language living beside the one
-         * an application writes its pages with.
-         *
-         * It is inlined rather than linked because an earlier version pulled
-         * Tailwind from a public CDN: that made the error page depend on a
-         * third-party request, so it broke offline and behind a restrictive
-         * Content-Security-Policy, added a round trip on the slowest path of
-         * the request, and leaked visitor IPs to another origin. A <link> to
-         * the application's own asset route would be better than that and still
-         * wrong — the error page is what renders when the application is what
-         * is broken.
-         */
-        $title = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $message = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $home = htmlspecialchars(__('http.back_home'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $language = str_replace('_', '-', Translator::locale());
-        $stylesheet = Assets::css();
-
-        $html = <<<HTML
-        <!doctype html>
-        <html lang="{$language}" data-theme="auto">
-        <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>$title</title>
-        <style>{$stylesheet}</style>
-        <style>
-        body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem}
-        .sf-error h1{font-size:clamp(3.5rem,15vw,5rem);line-height:1;letter-spacing:-.02em}
-        </style>
-        </head>
-        <body>
-        <main class="sf-error text-center max-w-lg">
-        <h1 class="font-bold m-0">$statusCode</h1>
-        <p class="text-lg text-muted mt-4 mb-6">$message</p>
-        <a class="btn btn-primary" href="/">{$home}</a>
-        </main>
-        </body>
-        </html>
-        HTML;
-
-        return Response::html($html, $statusCode);
-    }
 }

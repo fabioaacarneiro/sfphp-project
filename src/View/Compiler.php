@@ -235,6 +235,19 @@ final class Compiler
         $parsed = $this->parser->extractFilters($expression);
         $code = '(' . $parsed['expression'] . ')';
 
+        /*
+         * default() is for a value that may not be there, and "not there"
+         * includes a variable the view was never given. Reading it raised an
+         * undefined-variable warning — an exception here — before default()
+         * had a chance to run. A plain variable or path read through default()
+         * is read with ??, which is silent when it is missing.
+         */
+        $usesDefault = in_array('default', array_column($parsed['filters'], 'name'), true);
+
+        if ($usesDefault && preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*(\[[^\[\]]+\]|->[A-Za-z_][A-Za-z0-9_]*)*$/', trim($parsed['expression'])) === 1) {
+            $code = '(' . trim($parsed['expression']) . ' ?? null)';
+        }
+
         foreach ($parsed['filters'] as $filter) {
             $arguments = $filter['args'] === '' ? '[]' : '[' . $filter['args'] . ']';
 
@@ -331,7 +344,7 @@ final class Compiler
             'endforeach' => "}{$this->eol}",
 
             'forelse' => $this->compileForelse($args, $line),
-            'empty' => $this->requireOpen(['forelse'], $name, $line, "}{$this->eol}if (!\$__forelse) {{$this->eol}"),
+            'empty' => $this->requireOpen(['forelse'], $name, $line, "}{$this->eol}if (!\$__forelse" . (count($this->stack) - 1) . ") {{$this->eol}"),
             'endforelse' => "}{$this->eol}",
 
             'for' => $this->openBlock('for', $line, "for ({$args}) {{$this->eol}"),
@@ -400,10 +413,18 @@ final class Compiler
      */
     private function compileForelse(string $args, int $line): string
     {
+        /*
+         * One flag per nesting depth. They all used to be $__forelse, so an
+         * inner loop's flag was the one the outer @empty read: an outer list
+         * with an item whose inner list was empty rendered the outer
+         * "nothing here" as well.
+         */
+        $flag = '$__forelse' . count($this->stack);
+
         return $this->openBlock(
             'forelse',
             $line,
-            "\$__forelse = false;{$this->eol}foreach ({$args}) {{$this->eol}    \$__forelse = true;{$this->eol}"
+            "{$flag} = false;{$this->eol}foreach ({$args}) {{$this->eol}    {$flag} = true;{$this->eol}"
         );
     }
 

@@ -94,13 +94,31 @@ final class Time
         }
 
         $zone = self::zone($zone);
+        $text = trim((string) $value);
+
+        /*
+         * A date and, optionally, a time and an offset — the shapes a database,
+         * a form's date input and ISO 8601 produce. PHP's parser accepts far
+         * more: "next monday" and "1 week ago" were dates, and 2026-02-30
+         * silently became the 2nd of March. A value this reads as a date is
+         * the one it was given, or it is null.
+         */
+        $shape = '/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,6})?)?)?\s*(Z|[+-]\d{2}(?::?\d{2})?|[A-Za-z_]+\/[A-Za-z_\/]+)?$/';
+
+        if (preg_match($shape, $text, $parts) !== 1 || !checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1])) {
+            return null;
+        }
+
+        if (isset($parts[4]) && $parts[4] !== '' && ((int) $parts[4] > 23 || (int) $parts[5] > 59 || (int) ($parts[6] ?? 0) > 59)) {
+            return null;
+        }
 
         try {
             /*
              * The zone passed to the constructor applies only when the string
              * carries none of its own, which is exactly the rule wanted here.
              */
-            return (new DateTimeImmutable((string) $value, $zone))->setTimezone(self::utc());
+            return (new DateTimeImmutable($text, $zone))->setTimezone(self::utc());
         } catch (Exception) {
             return null;
         }

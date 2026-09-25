@@ -108,15 +108,61 @@ function anchor(string $heading): string
  */
 function anchorsOf(string $path): array
 {
+    return array_fill_keys(array_keys(headingPositions($path)), true);
+}
+
+/**
+ * Every anchor a markdown file defines, with the position of its heading.
+ *
+ * A heading used twice gets "-1", "-2" and so on after the first, as GitHub
+ * does; and a line inside a code block is not a heading, whatever it starts
+ * with — "# a comment" in a bash block defined an anchor before.
+ *
+ * @param string $path Absolute path to the markdown file
+ * @return array<string, int> Anchor => index of its heading in the file
+ */
+function headingPositions(string $path): array
+{
     $anchors = [];
+    $inFence = false;
+    $index = 0;
 
     foreach (file($path) as $line) {
-        if (preg_match('/^#{1,6} (.+)$/u', rtrim($line), $match) === 1) {
-            $anchors[anchor($match[1])] = true;
+        if (preg_match('/^\s*(```|~~~)/', $line) === 1) {
+            $inFence = !$inFence;
+
+            continue;
         }
+
+        if ($inFence || preg_match('/^#{1,6} (.+)$/u', rtrim($line), $match) !== 1) {
+            continue;
+        }
+
+        $base = anchor($match[1]);
+        $candidate = $base;
+
+        for ($n = 1; isset($anchors[$candidate]); $n++) {
+            $candidate = $base . '-' . $n;
+        }
+
+        $anchors[$candidate] = $index++;
     }
 
     return $anchors;
+}
+
+/**
+ * The in-page links of a file, in order, as the position of the heading each reaches.
+ *
+ * @param string $path Absolute path to the markdown file
+ * @return list<int|null> One entry per "#…" link; null when no heading produces it
+ */
+function inPageTargets(string $path): array
+{
+    $positions = headingPositions($path);
+    preg_match_all('/\]\((#[^)\s]+)\)/', (string) file_get_contents($path), $matches);
+
+    return array_map(static fn (string $link): ?int => $positions[substr($link, 1)] ?? null, $matches[1]);
 }
 
 $problems = [];
@@ -278,6 +324,52 @@ foreach ($files as $path) {
 
         if (!isset($anchors[$target][$fragment])) {
             $problems[] = sprintf('%s links to %s, but no heading produces that anchor.', $name, $link);
+        }
+    }
+}
+
+/*
+ * Where a link lands. An anchor that exists can still be the wrong one: two
+ * Spanish headings both translated as "Registro" sent every link to Logging to
+ * the middleware subsection that came first. Each in-page link of a
+ * translation has to reach the heading at the same position as the English
+ * link it translates.
+ */
+foreach (DOCUMENTS as $document) {
+    $english = DOCS_ROOT . '/' . PRIMARY . '/' . $document . '.md';
+
+    if (!is_file($english)) {
+        continue;
+    }
+
+    $reference = inPageTargets($english);
+
+    foreach (LANGUAGES as $language) {
+        $path = DOCS_ROOT . '/' . $language . '/' . $document . '.md';
+
+        if ($language === PRIMARY || !is_file($path)) {
+            continue;
+        }
+
+        $targets = inPageTargets($path);
+
+        if (count($targets) !== count($reference)) {
+            $problems[] = sprintf('%s/%s.md has %d in-page links, English has %d.', $language, $document, count($targets), count($reference));
+
+            continue;
+        }
+
+        foreach ($targets as $i => $position) {
+            if ($position !== null && $reference[$i] !== null && $position !== $reference[$i]) {
+                $problems[] = sprintf(
+                    '%s/%s.md: in-page link %d reaches heading %d, the English one reaches heading %d.',
+                    $language,
+                    $document,
+                    $i + 1,
+                    $position + 1,
+                    $reference[$i] + 1
+                );
+            }
         }
     }
 }

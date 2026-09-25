@@ -157,7 +157,7 @@ calcula, nos dois temas:
 | `--primary` | A cor |
 | `--primary-rgb` | Os canais dela, para `rgb(var(--primary-rgb) / 0.5)` |
 | `--primary-contrast` | O texto que continua legível sobre ela |
-| `--primary-hover`, `--primary-active` | Os tons de um botão pressionado |
+| `--primary-hover`, `--primary-active` | Os tons de um botão sob o ponteiro e pressionado |
 | `--primary-subtle` | Um fundo claro — alerts, toasts, itens de lista |
 | `--primary-border` | A borda que combina com ela |
 | `--primary-emphasis` | Texto que fica legível sobre o fundo claro |
@@ -708,7 +708,7 @@ uma live region, então cada toast é anunciado. Marcação estática:
 |---|---|
 | `container`, `container-fluid`, `container-{bp}` | Uma coluna centralizada cujas larguras são os breakpoints; `-fluid` tem sempre largura total; `-md` é fluido abaixo de `md` |
 | `grid` + `grid-cols-{1–12}` | CSS grid; `md:grid-cols-3` o muda por breakpoint |
-| `grid-auto-fit`, `grid-auto-fill` | Tantas colunas quantas couberem, sem precisar de breakpoint; `--grid-min` define a mais estreita |
+| `grid-auto-fit`, `grid-auto-fill` | Com `grid`: tantas colunas quantas couberem, sem precisar de breakpoint; `--grid-min` define a mais estreita |
 | `col-span-{n}`, `col-span-full`, `col-start-{n}` | Onde um item fica no grid |
 | `hstack`, `vstack` | Uma linha ou uma coluna com gap (`--stack-gap`) |
 | `ratio ratio-16x9` | Uma caixa de formato fixo, para iframes e vídeos (`1x1`, `4x3`, `21x9`, ou `--ratio`) |

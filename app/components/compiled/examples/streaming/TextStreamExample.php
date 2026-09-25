@@ -10,7 +10,7 @@ use SfphpProject\src\View\Sfht;
 function TextStreamExample(): Sfht
 {
     return 
-(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div class="card">
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); $__level = ob_get_level(); ob_start(); try { echo '<div class="card">
             <div class="card-header">
                 <h2 class="text-lg font-bold">Text Streaming ('; echo '@stream'; echo ')</h2>
                 <p class="text-sm text-gray-600 mt-1">Progressive text delivery</p>
@@ -24,7 +24,7 @@ function TextStreamExample(): Sfht
                 <div
                     id="stream-output"
                     class="bg-white border border-gray-300 rounded p-4 font-mono text-sm min-h-40 max-h-64 overflow-y-auto whitespace-pre-wrap break-words mb-4"
-                ><span class="text-gray-400">Click "Start Stream" to see chunks arrive...</span></div>
+                ><span class="text-muted">Click "Start Stream" to see chunks arrive...</span></div>
 
                 <button
                     class="btn btn-primary w-full"
@@ -43,6 +43,6 @@ function TextStreamExample(): Sfht
 &lt;/button&gt;
                 </code>
             </div>
-        </div>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+        </div>';  } catch (\Throwable $__e) { while (ob_get_level() > $__level) { ob_end_clean(); } throw $__e; } return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
 ;
 }

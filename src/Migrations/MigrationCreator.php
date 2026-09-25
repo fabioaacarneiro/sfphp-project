@@ -28,11 +28,7 @@ final class MigrationCreator
         $normalized = $this->normalizeName($name);
         $this->ensureDirectory();
 
-        $file = sprintf(
-            '%s_%s.php',
-            date('Y_m_d_His'),
-            $normalized
-        );
+        $file = sprintf('%s_%s.php', $this->nextStamp(), $normalized);
 
         $path = rtrim($this->directory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $file;
         if (is_file($path)) {
@@ -42,6 +38,31 @@ final class MigrationCreator
         file_put_contents($path, $this->stub($normalized));
 
         return $path;
+    }
+
+    /**
+     * A timestamp later than every migration already in the directory.
+     *
+     * Migrations run in file-name order, and two made in the same second
+     * shared a timestamp: "add_status_to_orders" sorted before
+     * "create_orders", so the ALTER would have run before the table existed.
+     * A clock that went backwards has the same effect. The stamp is now, or
+     * one second past the newest existing one, whichever is later.
+     *
+     * @return string The stamp, as Y_m_d_His in UTC
+     */
+    private function nextStamp(): string
+    {
+        $next = time();
+
+        foreach (glob(rtrim($this->directory, DIRECTORY_SEPARATOR) . '/*.php') ?: [] as $existing) {
+            if (preg_match('/^(\d{4})_(\d{2})_(\d{2})_(\d{2})(\d{2})(\d{2})_/', basename($existing), $m) === 1) {
+                $at = gmmktime((int) $m[4], (int) $m[5], (int) $m[6], (int) $m[2], (int) $m[3], (int) $m[1]);
+                $next = max($next, $at + 1);
+            }
+        }
+
+        return gmdate('Y_m_d_His', $next);
     }
 
     /**

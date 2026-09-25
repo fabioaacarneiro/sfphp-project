@@ -139,8 +139,8 @@ defecto por nada.
 | `components` | `true` | `false` elimina los componentes y sus variantes por color; el reset, la base de accesibilidad, la tipografía, las ayudas de disposición, los colores de rol, la paleta y las utilidades se mantienen |
 | `rounded` | `true` | `false` pone a 0 todas las variables de redondeo, así que los componentes y las clases `rounded-*` quedan en ángulo recto (`rounded-full` sigue siendo redondo) |
 | `shadows` | `true` | `false` pone a `none` todas las variables de sombra (las clases `shadow-*` y los componentes que las leen) |
-| `transitions` | `true` | `false` pone `--transition` (la clase `transition`) a `none`; los componentes conservan sus propias transiciones cortas, que es `reducedMotion` lo que detiene |
-| `reducedMotion` | `true` | Respeta el ajuste «reducir movimiento» de quien lee (véase [Accesibilidad](#accesibilidad)) |
+| `transitions` | `true` | `false` pone `--transition` (la clase `transition`) a `none`; los componentes conservan sus propias transiciones cortas, y es `reducedMotion` lo que las detiene |
+| `reducedMotion` | `true` | Respeta el ajuste «reducir movimiento» de quien lee (consulta [Accesibilidad](#accesibilidad)) |
 | `darkMode` | `true` | Emite el tema oscuro |
 | `hoverVariants` | `true` | Emite las clases `hover:` |
 | `responsiveVariants` | `true` | Emite las clases `sm:` `md:` `lg:` `xl:` |
@@ -245,7 +245,7 @@ incorporadas:
 
 ## Temas: claro, oscuro y automático
 
-El tema oscuro es **opt-in**. Una página dice lo que quiere en el elemento raíz:
+El tema oscuro **hay que activarlo**: una página dice lo que quiere en el elemento raíz:
 
 ```html
 <html data-theme="dark">    <!-- siempre oscuro -->
@@ -669,7 +669,7 @@ los menús y el propio tooltip vienen de SFJS (`sfjs.min.js`).
 ### Modales y offcanvas
 
 Ambos son `<dialog>`. Abiertos con `showModal()` (en SFJS: `@modal="#id"`), el
-navegador deja inerte el resto de la página, mantiene el foco dentro, se cierran
+navegador deja inerte el resto de la página, mantiene el foco dentro, los cierra
 con Escape y devuelve el foco a lo que los abrió. La página de detrás no se
 desplaza.
 
@@ -701,7 +701,7 @@ Tamaños: `modal-sm`, `modal-lg`, `modal-xl`, `modal-fullscreen`, o
 
 ### Toasts
 
-`sf.toast('Saved.', { variant: 'success' })` los crea — véase SFJS. La pila es
+`sf.toast('Saved.', { variant: 'success' })` los crea — consulta SFJS. La pila es
 una región viva, así que cada toast se anuncia. Marcado estático:
 
 ```html
@@ -719,7 +719,7 @@ una región viva, así que cada toast se anuncia. Marcado estático:
 |---|---|
 | `container`, `container-fluid`, `container-{bp}` | Una columna centrada cuyas anchuras son los puntos de ruptura; `-fluid` ocupa siempre todo el ancho; `-md` es fluido por debajo de `md` |
 | `grid` + `grid-cols-{1–12}` | Rejilla CSS; `md:grid-cols-3` la cambia por punto de ruptura |
-| `grid-auto-fit`, `grid-auto-fill` | Tantas columnas como quepan, sin necesidad de puntos de ruptura; `--grid-min` fija la más estrecha |
+| `grid-auto-fit`, `grid-auto-fill` | Con `grid`: tantas columnas como quepan, sin necesidad de puntos de ruptura; `--grid-min` fija la más estrecha |
 | `col-span-{n}`, `col-span-full`, `col-start-{n}` | Dónde se sitúa un elemento en la rejilla |
 | `hstack`, `vstack` | Una fila o una columna con separación (`--stack-gap`) |
 | `ratio ratio-16x9` | Una caja de forma fija, para iframes y vídeos (`1x1`, `4x3`, `21x9`, o `--ratio`) |
@@ -784,7 +784,7 @@ cámbialo en la configuración y reconstruye.
 | Superficies | `--surface`, `--surface-raised`, `--surface-sunken`, `--surface-border`, `--surface-border-strong`, `--body-color`, `--body-color-muted`, `--code-color` |
 | Cada color | `--{c}`, `--{c}-rgb`, `--{c}-contrast`, `--{c}-hover`, `--{c}-active`, `--{c}-subtle`, `--{c}-border`, `--{c}-emphasis`, `--{c}-text` |
 | Foco | `--focus-ring`, `--focus-ring-color` |
-| Escalas | `--spacing-{n}` (`--spacing-0_5` para el paso 0.5), `--font-size-{name}`, `--font-weight-{name}`, `--radius`, `--radius-{name}`, `--shadow`, `--shadow-sm`, `--shadow-lg`, `--transition` |
+| Escalas | `--spacing-{n}` (`--spacing-0_5` para el paso 0,5), `--font-size-{name}`, `--font-weight-{name}`, `--radius`, `--radius-{name}`, `--shadow`, `--shadow-sm`, `--shadow-lg`, `--transition` |
 | Enganches de disposición | `--container-padding`, `--grid-min`, `--stack-gap`, `--lines`, `--ratio`, `--value` (barra de progreso), `--breadcrumb-divider`, `--gradient-from`, `--gradient-to` |
 | Tipografía | `--font-family`, `--font-family-mono`, `--line-height` |
 | Bordes | `--border`, `--border-width`, `--border-color`, `--border-radius` |
@@ -802,7 +802,7 @@ Lo que cambia para una página escrita contra la hoja de estilos anterior:
 | Todas las `<table>` recibían estilo, y todas las filas se resaltaban al pasar el puntero | Añade `table` (y `table-hover` si quieres el resaltado) |
 | `* { margin: 0; padding: 0 }` | Las listas conservan su sangría; los títulos, párrafos y listas reciben un margen inferior |
 | `w-3`…`w-8`, `h-3`…`h-8` iban de 1rem a 3rem | Siguen `n × 0.25rem`: `w-8` es 2rem, como ya hacían `w-10`…`w-64` (`w-80` y `w-96` son nuevas) |
-| `md:p-3` era 0.75rem mientras `p-3` era 1rem | Ambos son 1rem; cada clase de punto de ruptura lee la misma escala que su clase sin prefijo |
+| `md:p-3` era 0,75rem mientras `p-3` era 1rem | Ambos son 1rem; cada clase de punto de ruptura lee la misma escala que su clase sin prefijo |
 | `sm:` empezaba en 480px, el contenedor en 640px | Ambos en 640px |
 | Un bloque max-width forzaba `md:grid-cols-*` a una columna por debajo de 768px y aplicaba `md:p-2` en todas partes | Eliminado — las clases de punto de ruptura son solo `min-width` |
 | `primary` `#3b82f6`, `success` `#22c55e`, `danger` `#ef4444`, `info` `#06b6d4` | `#2563eb`, `#15803d`, `#dc2626`, `#0e7490`: los tonos que admiten texto blanco a 4,5:1 |

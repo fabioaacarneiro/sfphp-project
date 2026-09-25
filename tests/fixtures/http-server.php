@@ -40,6 +40,30 @@ if ($path === '/not-json') {
     return;
 }
 
+// A POST answered with 302: the client follows it with a GET, as a browser does.
+if ($path === '/post-redirect') {
+    http_response_code(302);
+    header('Location: /echo-method');
+    header('X-From-Redirect: yes');
+    header('Content-Type: text/html; charset=UTF-8');
+    echo 'Moved';
+
+    return;
+}
+
+if ($path === '/echo-method') {
+    header('Content-Type: application/json');
+    header('X-Multi: a');
+    header('X-Multi: b', false);
+    echo json_encode([
+        'method' => $_SERVER['REQUEST_METHOD'],
+        'body' => file_get_contents('php://input'),
+        'authorization' => $_SERVER['HTTP_AUTHORIZATION'] ?? null,
+    ]);
+
+    return;
+}
+
 // Bug #4: Test redirect (301 -> 200)
 if ($path === '/redirect') {
     http_response_code(301);

@@ -5,6 +5,7 @@ namespace SfphpProject\src;
 use PDO;
 use PDOException;
 use RuntimeException;
+use SfphpProject\src\Database\NestedTransactionFailed;
 use Throwable;
 
 class Database
@@ -115,7 +116,24 @@ class Database
          */
         logger()->error("database connection failed", ['detail' => $e->getMessage()]);
 
-        throw new RuntimeException("Database connection failed.");
+        /*
+         * What can be said without the driver's text: which PDO driver is
+         * missing, or which host did not answer. "Database connection
+         * failed." on its own sent people to the log for a missing extension.
+         */
+        if (!$customDsn && !in_array($driver, PDO::getAvailableDrivers(), true)) {
+          throw new RuntimeException(sprintf(
+            'Database connection failed: the PHP extension pdo_%s is not installed (DB_DRIVER=%s).',
+            $driver,
+            $driver
+          ));
+        }
+
+        throw new RuntimeException(sprintf(
+          'Database connection failed (DB_DRIVER=%s, DB_HOST=%s). The driver\'s message is in the log.',
+          $driver,
+          $driver === 'sqlite' ? '-' : $host
+        ));
       }
     }
 
@@ -150,6 +168,9 @@ class Database
    */
   private static int $transactions = 0;
 
+  /** Set when a nested callback failed: the outer commit must not happen. */
+  private static bool $rollbackOnly = false;
+
   /**
    * Run a callback inside a transaction.
    *
@@ -176,9 +197,15 @@ class Database
    * A nested call JOINS the transaction already open rather than starting a
    * second one, because PDO has no nested transactions. The consequence is
    * worth knowing: a failure inside the inner callback rolls back the outer
-   * work too. Savepoints would avoid that, but their syntax differs between
-   * drivers, and silently degrading on the ones that lack them would be worse
-   * than being explicit about this.
+   * work too — even when the outer callback catches the exception and carries
+   * on, because the inner failure marks the whole transaction for rollback,
+   * and the outer commit then rolls back and throws instead. Savepoints would
+   * avoid that, but their syntax differs between drivers, and silently
+   * degrading on the ones that lack them would be worse than being explicit.
+   *
+   * A transaction already open on the connection — the migration runner's, or
+   * one started with beginTransaction() — is joined the same way. It used to
+   * be met with a second beginTransaction(), which PDO refuses.
    *
    * @template T
    * @param callable(): T $callback The work to run
@@ -189,11 +216,15 @@ class Database
   {
     $pdo = self::connect();
 
-    if (self::$transactions > 0) {
+    if (self::$transactions > 0 || $pdo->inTransaction()) {
       self::$transactions++;
 
       try {
         return $callback();
+      } catch (Throwable $throwable) {
+        self::$rollbackOnly = true;
+
+        throw $throwable;
       } finally {
         self::$transactions--;
       }
@@ -201,9 +232,18 @@ class Database
 
     $pdo->beginTransaction();
     self::$transactions = 1;
+    self::$rollbackOnly = false;
 
     try {
       $result = $callback();
+
+      if (self::$rollbackOnly) {
+        throw new NestedTransactionFailed(
+          'A nested transaction failed, so the whole transaction was rolled back. '
+          . 'Catching the exception inside the outer callback does not keep the inner work.'
+        );
+      }
+
       $pdo->commit();
 
       return $result;
@@ -219,6 +259,7 @@ class Database
       throw $throwable;
     } finally {
       self::$transactions = 0;
+      self::$rollbackOnly = false;
     }
   }
 
@@ -259,6 +300,15 @@ class Database
         return "pgsql:host=$host;port=$port;dbname=$dbname";
 
       case 'sqlite':
+        /*
+         * A relative file is the project's, not the working directory's: the
+         * CLI started from one directory and PHP-FPM from another used to open
+         * two different databases.
+         */
+        if ($dbname !== ':memory:' && $dbname !== '' && !str_starts_with($dbname, 'file:')) {
+          $dbname = PrivateDirectory::resolve($dbname);
+        }
+
         return "sqlite:$dbname";
 
       case 'sqlsrv':

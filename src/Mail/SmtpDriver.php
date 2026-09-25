@@ -47,6 +47,8 @@ final class SmtpDriver implements Mailer
      * @param int $timeout Seconds to wait for a connection and for each reply
      * @param string|null $ehloDomain The name announced in EHLO, or null to derive one
      * @param bool $verifyPeer Whether the server's certificate must be valid
+     * @param bool $allowPlaintextAuth Whether a password may be sent over an unencrypted connection to another machine
+     * @throws \InvalidArgumentException When the encryption is not tls, ssl or none
      */
     public function __construct(
         private string $host = 'localhost',
@@ -56,8 +58,26 @@ final class SmtpDriver implements Mailer
         private string $encryption = 'none',
         private int $timeout = 30,
         private ?string $ehloDomain = null,
-        private bool $verifyPeer = true
+        private bool $verifyPeer = true,
+        private bool $allowPlaintextAuth = false
     ) {
+        /*
+         * Read case-insensitively, with the spellings people use. "TLS" or
+         * "starttls" used to fall through every comparison and mean "none",
+         * so the password went out in the clear while the configuration said
+         * otherwise. A value that is none of these is refused.
+         */
+        $normalised = strtolower(trim($encryption));
+
+        $this->encryption = match ($normalised) {
+            'tls', 'starttls' => 'tls',
+            'ssl', 'smtps', 'implicit' => 'ssl',
+            'none', '', 'null', 'false' => 'none',
+            default => throw new \InvalidArgumentException(sprintf(
+                'MAIL_ENCRYPTION "%s" is not one of tls (STARTTLS, usually port 587), ssl (usually 465) or none.',
+                $encryption
+            )),
+        };
     }
 
     /**
@@ -138,12 +158,18 @@ final class SmtpDriver implements Mailer
         );
 
         if ($socket === false) {
-            throw new MailException(sprintf(
-                'Cannot reach the mail server at %s:%d (%s).',
-                $this->host,
-                $this->port,
-                $errorMessage !== '' ? $errorMessage : 'error ' . $errorCode
-            ));
+            /*
+             * A refused certificate on an ssl:// connection arrives as
+             * "error 0" with no message, which read like the server being
+             * down.
+             */
+            $reason = $errorMessage !== ''
+                ? $errorMessage
+                : ($this->encryption === 'ssl'
+                    ? 'the TLS handshake failed — check the server certificate, and that the port speaks implicit TLS'
+                    : 'error ' . $errorCode);
+
+            throw new MailException(sprintf('Cannot reach the mail server at %s:%d (%s).', $this->host, $this->port, $reason));
         }
 
         stream_set_timeout($socket, $this->timeout);
@@ -223,6 +249,19 @@ final class SmtpDriver implements Mailer
     {
         if ($this->username === null || $this->username === '') {
             return;
+        }
+
+        /*
+         * A password sent without encryption to another machine can be read
+         * by anything on the path. Refused unless the server is this machine
+         * — a local relay, a development catcher — or it was allowed on
+         * purpose with MAIL_ALLOW_PLAINTEXT_AUTH.
+         */
+        if ($this->encryption === 'none' && !$this->allowPlaintextAuth && !self::isLoopback($this->host)) {
+            throw new MailException(sprintf(
+                'Refusing to send the SMTP password to %s without encryption. Set MAIL_ENCRYPTION to tls or ssl.',
+                $this->host
+            ));
         }
 
         $mechanisms = '';
@@ -378,6 +417,15 @@ final class SmtpDriver implements Mailer
     }
 
     /**
+     * Whether a host is this machine.
+     */
+    private static function isLoopback(string $host): bool
+    {
+        return in_array(strtolower($host), ['localhost', '127.0.0.1', '::1', '[::1]'], true)
+            || str_starts_with($host, '127.');
+    }
+
+    /**
      * Hide a credential that would otherwise reach an exception message.
      *
      * @param string $command The command being reported
@@ -385,6 +433,15 @@ final class SmtpDriver implements Mailer
      */
     private function redact(string $command): string
     {
+        /*
+         * The protocol's own verbs are not credentials: "STARTTLS" matched
+         * the base64 test, and a server refusing TLS was reported as refusing
+         * "the authentication step".
+         */
+        if (in_array(strtoupper($command), ['STARTTLS', 'QUIT', 'DATA', 'RSET', 'NOOP'], true)) {
+            return $command;
+        }
+
         if (str_starts_with($command, 'AUTH ') || preg_match('/^[A-Za-z0-9+\/=]{8,}$/', $command) === 1) {
             return 'the authentication step';
         }

@@ -4,7 +4,9 @@ namespace SfphpProject\src;
 
 use ErrorException;
 use SfphpProject\src\Http\Emitter;
-use SfphpProject\src\Assets;
+use SfphpProject\src\Http\ErrorPage;
+use SfphpProject\src\Http\HttpException;
+use SfphpProject\src\Http\HttpStatus;
 use SfphpProject\src\Http\Request;
 use SfphpProject\src\Http\Response;
 use Throwable;
@@ -51,6 +53,19 @@ final class ErrorHandler
     ): bool {
         if (!(error_reporting() & $severity)) {
             return false;
+        }
+
+        /*
+         * A deprecation is a warning about the future, not a failure now. It
+         * used to become an exception, so upgrading PHP or a library turned
+         * pages into 500s over code that still works. It is logged instead.
+         */
+        if (in_array($severity, [E_DEPRECATED, E_USER_DEPRECATED], true)) {
+            if (function_exists('logger')) {
+                logger()->warning('deprecated: ' . $message, ['file' => $file, 'line' => $line]);
+            }
+
+            return true;
         }
 
         throw new ErrorException($message, 0, $severity, $file, $line);
@@ -149,106 +164,39 @@ final class ErrorHandler
      */
     public static function toResponse(Throwable $throwable, ?Request $request = null): Response
     {
-        $message = self::message($throwable);
-
-        if (self::expectsJson($request)) {
-            return Response::json(['message' => $message], HTTP_INTERNAL_SERVER_ERROR);
-        }
-
         /*
-         * The 404 and 405 pages were translated when the i18n layer landed and
-         * this one was missed: it shipped a Portuguese title and lang="pt-br"
-         * to every visitor, whatever language they asked for. The catalog keys
-         * had existed the whole time with nothing calling them.
-         *
-         * function_exists() is checked because this also runs on the shutdown
-         * path, where a fatal during bootstrap can mean the autoloader never
-         * finished and the helpers were never defined.
+         * An exception that names its status is answered with it. Everything
+         * used to be a 500 — a missing record, a refused authorization and a
+         * malformed body all read as the server having broken.
          */
-        $translated = function_exists('__');
-        $title = $translated ? __('http.server_error_title') : 'Internal error';
-        $language = $translated ? str_replace('_', '-', locale()) : 'en';
+        $status = $throwable instanceof HttpStatus ? $throwable->status() : HTTP_INTERNAL_SERVER_ERROR;
 
-        $escaped = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $escapedTitle = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-
-        return Response::html(
-            '<!doctype html><html lang="' . $language . '" data-theme="auto">'
-            . '<head><meta charset="UTF-8">'
-            . '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
-            . '<title>' . $escapedTitle . '</title>'
-            . '<style>' . self::stylesheet() . '</style>'
-            . '<style>body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem}'
-            . '.sf-error h1{font-size:clamp(3.5rem,15vw,5rem);line-height:1;letter-spacing:-.02em}</style>'
-            . '</head>'
-            . '<body><main class="sf-error text-center max-w-lg">'
-            . '<h1 class="font-bold m-0">500</h1>'
-            . '<p class="text-lg text-muted mt-4 mb-0">' . $escaped . '</p>'
-            . '</main></body></html>',
-            HTTP_INTERNAL_SERVER_ERROR
-        );
+        return ErrorPage::response($status, self::message($throwable, $status), $request);
     }
 
-    /**
-     * SFCSS, or nothing at all.
-     *
-     * The framework's own stylesheet, inlined for the same reason the 404 page
-     * inlines it: this is what renders when the application is what is broken,
-     * so it cannot depend on a request for an asset.
-     *
-     * Guarded because this also runs on the shutdown path. A fatal during
-     * bootstrap can mean the autoloader never finished, and an error page that
-     * throws while rendering an error page leaves a visitor with a blank screen
-     * — an unstyled message is a much better failure than none.
-     *
-     * @return string The stylesheet, or an empty string
-     */
-    private static function stylesheet(): string
-    {
-        try {
-            return class_exists(Assets::class) ? Assets::css() : '';
-        } catch (Throwable) {
-            return '';
-        }
-    }
 
     /**
-     * Determine whether the client expects a JSON response.
+     * The message the visitor sees.
      *
-     * Falls back to the server environment when no request is available, which
-     * is the case on the shutdown path: a fatal error can happen before the
-     * request object is ever built.
-     *
-     * @param Request|null $request The current request, when one exists
-     * @return bool True when JSON is requested or submitted
-     */
-    private static function expectsJson(?Request $request): bool
-    {
-        if ($request !== null) {
-            return $request->expectsJson();
-        }
-
-        $accept = strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? ''));
-        $contentType = strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? ''));
-
-        return str_contains($accept, 'application/json')
-            || str_contains($contentType, 'application/json');
-    }
-
-    /**
-     * Get the client-safe error message for the active environment.
+     * A 4xx describes what the client did, so its message is shown when the
+     * exception carries one. A 5xx is the server's failure: outside
+     * development its message stays in the log, because it names files,
+     * queries and hosts.
      *
      * @param Throwable $throwable The handled failure
-     * @return string The message to send to the client
+     * @param int $status The status being answered
+     * @return string|null The message, or null for the status's standard one
      */
-    private static function message(Throwable $throwable): string
+    private static function message(Throwable $throwable, int $status): ?string
     {
         if (Config::get('APP_ENV') === 'development') {
+            return $throwable->getMessage() !== '' ? $throwable->getMessage() : null;
+        }
+
+        if ($status < 500 && $throwable instanceof HttpException && $throwable->getMessage() !== '') {
             return $throwable->getMessage();
         }
 
-        return function_exists('__')
-            ? __('http.server_error_message')
-            : 'Internal Server Error';
+        return null;
     }
 }

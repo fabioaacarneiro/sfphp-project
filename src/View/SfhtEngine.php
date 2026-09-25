@@ -103,7 +103,7 @@ final class SfhtEngine
             while ($this->parent !== null) {
                 if (++$depth > self::MAX_INHERITANCE_DEPTH) {
                     throw new RuntimeException(
-                        "Template inheritance exceeded {$depth} levels; check for a cycle in @extends."
+                        "Template inheritance is deeper than " . self::MAX_INHERITANCE_DEPTH . " levels; check for a cycle in @extends."
                     );
                 }
 
@@ -301,7 +301,28 @@ final class SfhtEngine
             $this->cache->store($file, $this->compiler->compile($source));
         }
 
-        return $this->evaluate($compiled, array_merge($this->globals, $data));
+        try {
+            return $this->evaluate($compiled, array_merge($this->globals, $data));
+        } catch (RuntimeException $exception) {
+            /*
+             * The error names the template it came from. It used to name only
+             * the compiled file in the cache — an md5 in a storage directory —
+             * which says nothing about which page to open.
+             */
+            // Already named by the partial or layout it happened in.
+            if (str_starts_with($exception->getMessage(), 'Error in template ')) {
+                throw $exception;
+            }
+
+            $previous = $exception->getPrevious();
+            $where = $previous !== null && $previous->getFile() === $compiled ? ' (compiled line ' . $previous->getLine() . ')' : '';
+
+            throw new RuntimeException(
+                'Error in template ' . $file . $where . ': ' . ($previous?->getMessage() ?? $exception->getMessage()),
+                0,
+                $previous ?? $exception
+            );
+        }
     }
 
     /**
@@ -430,8 +451,13 @@ final class SfhtEngine
             'length' => static fn (mixed $v): int
                 => is_countable($v) ? count($v) : Str::length((string) $v),
             'reverse' => static fn (mixed $v): string => Str::reverse((string) $v),
-            'escape' => static fn (mixed $v): string
-                => htmlspecialchars((string) $v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            /*
+             * Escaped markup is markup, so it is returned as such and {{ }}
+             * prints it as it is. As a plain string {{ }} escaped it again,
+             * and "<b>" came out as "&amp;lt;b&amp;gt;".
+             */
+            'escape' => static fn (mixed $v): Sfht
+                => new Sfht(htmlspecialchars((string) $v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')),
             'json' => static fn (mixed $v): string
                 => json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
             'format' => static fn (mixed $v, string $format): string => sprintf($format, $v),

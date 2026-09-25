@@ -233,6 +233,32 @@ final class Message
     }
 
     /**
+     * A copy of the message addressed to someone else.
+     *
+     * @param string $address The address
+     * @param string $name The display name
+     * @return self The copy
+     */
+    public function redirectedTo(string $address, string $name = ''): self
+    {
+        /*
+         * A copy that differs only in who receives it: the attachments, the
+         * Reply-To, the headers and both bodies travel with it. The original
+         * recipients are kept in X-Intended-For. Rebuilding the message from
+         * its subject and bodies, which is how staging redirection used to
+         * work, dropped the rest — so staging never sent what production
+         * would.
+         */
+        $copy = clone $this;
+        $copy->headers['X-Intended-For'] = implode(', ', $this->recipients());
+        $copy->to = [];
+        $copy->cc = [];
+        $copy->bcc = [];
+
+        return $copy->to($address, $name);
+    }
+
+    /**
      * The sender, or null when the manager has not filled it in yet.
      *
      * @return array{address: string, name: string}|null
@@ -296,6 +322,16 @@ final class Message
     public function toAddresses(): array
     {
         return $this->to;
+    }
+
+    /**
+     * The Cc recipients, with their names.
+     *
+     * @return list<array{address: string, name: string}>
+     */
+    public function ccAddresses(): array
+    {
+        return $this->cc;
     }
 
     /**
@@ -420,10 +456,8 @@ final class Message
         }
 
         foreach ($this->attachments as $attachment) {
-            $parts[] = 'Content-Type: ' . $attachment['type'] . '; name="'
-                . $this->encodeHeaderText($attachment['name']) . "\"\r\n"
-                . 'Content-Disposition: attachment; filename="'
-                . $this->encodeHeaderText($attachment['name']) . "\"\r\n"
+            $parts[] = 'Content-Type: ' . $attachment['type'] . '; name=' . $this->quoted(self::asciiName($attachment['name'])) . "\r\n"
+                . 'Content-Disposition: attachment; ' . $this->filenameParameter($attachment['name']) . "\r\n"
                 . "Content-Transfer-Encoding: base64\r\n\r\n"
                 . $this->encodeBody($attachment['content']);
         }
@@ -500,7 +534,74 @@ final class Message
             return $value;
         }
 
-        return '=?UTF-8?B?' . base64_encode($value) . '?=';
+        /*
+         * One encoded word may be at most 75 characters (RFC 2047), and a
+         * header line at most 998 (RFC 5322). A long subject used to become
+         * a single word of nearly two thousand characters, which servers
+         * reject or truncate. It is cut into words of at most 45 bytes —
+         * 60 characters of base64 plus the 12 around them — on character
+         * boundaries, and the words are folded onto lines of their own.
+         */
+        $words = [];
+        $current = '';
+
+        foreach (preg_split('//u', $value, -1, PREG_SPLIT_NO_EMPTY) ?: [$value] as $character) {
+            if ($current !== '' && strlen($current . $character) > 45) {
+                $words[] = '=?UTF-8?B?' . base64_encode($current) . '?=';
+                $current = '';
+            }
+
+            $current .= $character;
+        }
+
+        if ($current !== '') {
+            $words[] = '=?UTF-8?B?' . base64_encode($current) . '?=';
+        }
+
+        return implode("\r\n ", $words);
+    }
+
+    /**
+     * A MIME parameter value as a quoted string.
+     *
+     * @param string $value An ASCII value
+     * @return string The quoted value
+     */
+    private function quoted(string $value): string
+    {
+        return '"' . str_replace(['\\', '"'], ['\\\\', '\\"'], $value) . '"';
+    }
+
+    /**
+     * The filename parameter of an attachment.
+     *
+     * An ASCII name is a quoted string, with its quotes escaped: a name such
+     * as `evil".exe; x="y` used to end the parameter and start another. A
+     * name in another script is written the way RFC 2231 defines, as
+     * filename*=UTF-8''percent-encoded, with an ASCII fallback beside it —
+     * an encoded word inside a quoted string, which is what this used to
+     * send, is something RFC 2047 forbids and many clients show as it is.
+     *
+     * @param string $name The file name
+     * @return string The parameter
+     */
+    private function filenameParameter(string $name): string
+    {
+        if (preg_match('/^[\x20-\x7E]*$/', $name) === 1) {
+            return 'filename=' . $this->quoted($name);
+        }
+
+        return 'filename=' . $this->quoted(self::asciiName($name)) . "; filename*=UTF-8''" . rawurlencode($name);
+    }
+
+    /**
+     * An ASCII stand-in for a file name, for clients that read nothing else.
+     */
+    private static function asciiName(string $name): string
+    {
+        $ascii = (string) preg_replace('/[^\x20-\x7E]/', '_', $name);
+
+        return $ascii === '' ? 'attachment' : $ascii;
     }
 
     /**
@@ -515,7 +616,20 @@ final class Message
             return $address['address'];
         }
 
-        return $this->encodeHeaderText($address['name']) . ' <' . $address['address'] . '>';
+        $name = $address['name'];
+
+        /*
+         * A name with a comma, a quote, an @ or angle brackets is written as a
+         * quoted string. Unquoted, "Visitor, attacker@evil.com" was read by
+         * mail clients as two addresses, and a reply went to both.
+         */
+        if (preg_match('/^[\x20-\x7E]*$/', $name) === 1) {
+            $name = preg_match('/[()<>\[\]:;@\\\\,."]/', $name) === 1 ? $this->quoted($name) : $name;
+        } else {
+            $name = $this->encodeHeaderText($name);
+        }
+
+        return $name . ' <' . $address['address'] . '>';
     }
 
     /**
@@ -554,8 +668,22 @@ final class Message
     {
         $address = $this->rejectLineBreaks(trim($address), 'address');
 
-        if (filter_var($address, FILTER_VALIDATE_EMAIL) === false) {
+        /*
+         * The same check the validator makes, so an address a form accepted
+         * is one a message accepts. A domain in another script is sent in its
+         * ASCII form, which every server understands; a local part outside
+         * ASCII needs a server that speaks SMTPUTF8.
+         */
+        if (!\SfphpProject\src\Validator::isEmail($address)) {
             throw new InvalidArgumentException('"' . $address . '" is not a valid e-mail address.');
+        }
+
+        $at = strrpos($address, '@');
+        $domain = substr($address, $at + 1);
+
+        if (preg_match('/[^\x00-\x7F]/', $domain) === 1 && function_exists('idn_to_ascii')) {
+            $ascii = idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            $address = substr($address, 0, $at + 1) . ($ascii === false ? $domain : $ascii);
         }
 
         return [

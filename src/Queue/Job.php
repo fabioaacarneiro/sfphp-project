@@ -100,7 +100,9 @@ abstract class Job
             $property->setAccessible(true);
 
             if ($property->isInitialized($this)) {
-                $data[$property->getName()] = $property->getValue($this);
+                $value = $property->getValue($this);
+                self::assertStorable($property->getName(), $value);
+                $data[$property->getName()] = $value;
             }
         }
 
@@ -134,7 +136,51 @@ abstract class Job
 
             $property = $reflection->getProperty($name);
             $property->setAccessible(true);
-            $property->setValue($this, $value);
+
+            try {
+                $property->setValue($this, $value);
+            } catch (\TypeError $error) {
+                throw new \UnexpectedValueException(sprintf(
+                    'The stored value of %s::$%s no longer fits its type: %s',
+                    static::class,
+                    $name,
+                    $error->getMessage()
+                ), 0, $error);
+            }
+        }
+    }
+
+    /**
+     * Refuse a property the queue cannot store and bring back.
+     *
+     * A job's properties are stored as JSON. An object — a DateTimeImmutable,
+     * an enum, a Model — went in as a list of its fields and came back as an
+     * array, which the typed property refused inside the worker; a Model also
+     * copied its whole row, password hash included, into the jobs table. Store
+     * what identifies the thing instead, and load it in handle():
+     *
+     *     public function __construct(public int $invoiceId, public string $dueAt) {}
+     *
+     * @param string $name The property
+     * @param mixed $value Its value
+     * @return void
+     * @throws \InvalidArgumentException When the value holds an object or a resource
+     */
+    private static function assertStorable(string $name, mixed $value): void
+    {
+        if (is_object($value) || is_resource($value)) {
+            throw new \InvalidArgumentException(sprintf(
+                'A queued job stores its properties as JSON, and $%s holds %s. '
+                . 'Store an id or a string instead, and load the rest in handle().',
+                $name,
+                get_debug_type($value)
+            ));
+        }
+
+        if (is_array($value)) {
+            foreach ($value as $item) {
+                self::assertStorable($name, $item);
+            }
         }
     }
 

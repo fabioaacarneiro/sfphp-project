@@ -59,25 +59,42 @@ final class MailDriver implements Mailer
         }
 
         /*
-         * Bcc recipients are in the message's recipient list and in no header,
-         * so mail() would never see them. They are added here as extra "To"
-         * arguments, which is the only way this transport can deliver a blind
-         * copy at all.
+         * Bcc recipients are in the message's recipient list and in no header.
+         * They used to be added to mail()'s "to" argument, and PHP writes that
+         * argument as the To: header — so every blind copy was shown to every
+         * recipient. They go in a Bcc: header instead. PHP hands the message
+         * to `sendmail -t` (its default sendmail_path), which reads the
+         * recipients from the headers and removes Bcc: before sending, the
+         * one way this transport can deliver a blind copy that stays blind.
          */
-        $named = [];
+        $shown = [];
 
-        foreach ($message->toAddresses() as $address) {
-            $named[] = $address['address'];
+        foreach ([...$message->toAddresses(), ...$message->ccAddresses()] as $address) {
+            $shown[] = strtolower($address['address']);
         }
 
-        $blind = array_values(array_diff($message->recipients(), $named));
+        $blind = array_values(array_filter(
+            $message->recipients(),
+            static fn (string $address): bool => !in_array(strtolower($address), $shown, true)
+        ));
 
         if ($to === [] && $blind === []) {
             throw new MailException('The message has no recipient.');
         }
 
+        if ($blind !== []) {
+            if (!str_contains((string) ini_get('sendmail_path'), '-t')) {
+                throw new MailException(
+                    'This message has Bcc recipients, and mail() can only keep them blind when sendmail_path runs sendmail -t. '
+                    . 'Use the smtp driver, or send the blind copies as separate messages.'
+                );
+            }
+
+            $rest[] = 'Bcc: ' . implode(', ', $blind);
+        }
+
         $sent = @mail(
-            implode(', ', array_filter([...$to, ...$blind])),
+            implode(', ', $to),
             $subject,
             $body,
             implode("\r\n", $rest)

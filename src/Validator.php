@@ -57,7 +57,7 @@ final class Validator
         foreach ($rules as $field => $ruleSet) {
             $rulesArray = is_array($ruleSet) ? $ruleSet : explode('|', (string) $ruleSet);
             $rulesArray = array_values(array_filter(
-                array_map(static fn (mixed $rule): string => trim((string) $rule), $rulesArray),
+                array_map(static fn (mixed $rule): string => self::canonical(trim((string) $rule)), $rulesArray),
                 static fn (string $rule): bool => $rule !== ''
             ));
 
@@ -128,30 +128,46 @@ final class Validator
             return self::checkBound(strtolower($matches[1]), $matches[2], $field, $value, $stringValue, $custom);
         }
 
+        /*
+         * Only a bound counts an array — by its items. Every other rule is
+         * about a single value, and an array fails it: a text rule used to
+         * read an array as "", so ['a', 'b'] passed maxLength:1 and came back
+         * in validated().
+         */
+        if (is_array($value)) {
+            return self::message($custom, $field, str_starts_with($rule, 'pattern:') ? 'pattern' : $rule);
+        }
+
         if (preg_match('/^pattern:(.+)$/s', $rule, $matches) === 1) {
             /*
              * Delimited here rather than by the caller, so a rule cannot reach
              * into PCRE modifiers — /e is gone from PHP, but a pattern that
              * chooses its own delimiters is still a pattern that can choose
-             * its own flags.
+             * its own flags. The delimiter is a control character no pattern
+             * is written with, so nothing inside the pattern needs escaping;
+             * escaping "/" turned an already-escaped "\/" into "\\/", which
+             * ends the pattern early.
              */
-            $pattern = '/' . str_replace('/', '\/', $matches[1]) . '/u';
+            $pattern = "\x01" . $matches[1] . "\x01u";
+            $result = @preg_match($pattern, $stringValue);
 
-            return @preg_match($pattern, $stringValue) === 1
-                ? null
-                : self::message($custom, $field, 'pattern');
+            if ($result === false) {
+                throw new InvalidArgumentException(sprintf(
+                    'The pattern for field "%s" is not a valid regular expression: %s',
+                    $field,
+                    $matches[1]
+                ));
+            }
+
+            return $result === 1 ? null : self::message($custom, $field, 'pattern');
         }
 
         switch ($rule) {
             case 'email':
-                return filter_var($stringValue, FILTER_VALIDATE_EMAIL) === false
-                    ? self::message($custom, $field, 'email')
-                    : null;
+                return self::isEmail($stringValue) ? null : self::message($custom, $field, 'email');
 
             case 'url':
-                return filter_var($stringValue, FILTER_VALIDATE_URL) === false
-                    ? self::message($custom, $field, 'url')
-                    : null;
+                return self::isUrl($stringValue) ? null : self::message($custom, $field, 'url');
 
             case 'alpha':
                 return Str::isAlpha($stringValue) ? null : self::message($custom, $field, 'alpha');
@@ -172,6 +188,81 @@ final class Validator
     }
 
     /**
+     * Whether a string is an e-mail address, in any script.
+     *
+     * josé@exemplo.com.br and user@münchen.de are addresses people have, and
+     * FILTER_VALIDATE_EMAIL refused both. The local part is checked with the
+     * Unicode flag, and an internationalised domain is converted to its ASCII
+     * form first when ext-intl is there to do it.
+     *
+     * @param string $value The value
+     * @return bool
+     */
+    public static function isEmail(string $value): bool
+    {
+        $at = strrpos($value, '@');
+
+        if ($at === false || $at === 0 || $at === strlen($value) - 1) {
+            return false;
+        }
+
+        $local = substr($value, 0, $at);
+        $domain = self::asciiHost(substr($value, $at + 1));
+
+        return $domain !== null
+            && filter_var($local . '@' . $domain, FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE) !== false;
+    }
+
+    /**
+     * Whether a string is a web address: http or https, with a host.
+     *
+     * "javascript:alert(1)" and "foo:bar" are URLs to PHP's filter in the
+     * loosest sense and never what a form asking for a website means. A host
+     * or a path in another script is accepted — https://例え.jp/café — by
+     * converting the host and percent-encoding the rest before checking.
+     *
+     * @param string $value The value
+     * @return bool
+     */
+    public static function isUrl(string $value): bool
+    {
+        if (preg_match('#^(https?)://([^/?\#:]+)(:\d+)?(.*)$#iu', $value, $parts) !== 1) {
+            return false;
+        }
+
+        $host = self::asciiHost($parts[2]);
+
+        if ($host === null) {
+            return false;
+        }
+
+        $rest = (string) preg_replace_callback('/[^\x21-\x7E]/u', static fn (array $m): string => rawurlencode($m[0]), $parts[4]);
+
+        return filter_var($parts[1] . '://' . $host . $parts[3] . $rest, FILTER_VALIDATE_URL) !== false;
+    }
+
+    /**
+     * A host name in ASCII, converting an internationalised one.
+     *
+     * @param string $host The host
+     * @return string|null The ASCII host, or null when it cannot be converted
+     */
+    private static function asciiHost(string $host): ?string
+    {
+        if (preg_match('/^[\x00-\x7F]*$/', $host) === 1) {
+            return $host;
+        }
+
+        if (!function_exists('idn_to_ascii')) {
+            return null;
+        }
+
+        $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+
+        return $ascii === false ? null : $ascii;
+    }
+
+    /**
      * Whether a value counts as not given: absent, null, an empty array, or a
      * string with nothing but whitespace.
      *
@@ -187,6 +278,31 @@ final class Validator
         }
 
         return is_string($value) && preg_match('/^\s*$/u', $value) === 1;
+    }
+
+    /**
+     * A rule with its name spelled the way the validator knows it.
+     *
+     * Names are read regardless of case, as SFJS reads them, so "Required"
+     * and "minlength:3" mean what they look like on both sides. The argument
+     * is left exactly as written — a pattern is case-sensitive.
+     *
+     * @param string $rule The rule as written
+     * @return string The rule with its canonical name
+     */
+    private static function canonical(string $rule): string
+    {
+        $at = strpos($rule, ':');
+        $name = $at === false ? $rule : substr($rule, 0, $at);
+        $known = ['required', 'email', 'url', 'alpha', 'alphanum', 'number', 'min', 'max', 'minLength', 'maxLength', 'pattern'];
+
+        foreach ($known as $candidate) {
+            if (strcasecmp($candidate, $name) === 0) {
+                return $candidate . ($at === false ? '' : substr($rule, $at));
+            }
+        }
+
+        return $rule;
     }
 
     /**
@@ -239,6 +355,17 @@ final class Validator
          */
         $byValue = ($name === 'min' || $name === 'max') && is_numeric($value);
 
+        // An array is measured by its items, whichever of the four rules.
+        if (is_array($value)) {
+            $count = count($value);
+            $limitAsInt = (int) $bound;
+            $failed = $isMin ? $count < $limitAsInt : $count > $limitAsInt;
+
+            return $failed
+                ? self::message($custom, $field, $isMin ? 'minItems' : 'maxItems', [$isMin ? 'min' : 'max' => $limitAsInt], $limitAsInt)
+                : null;
+        }
+
         if ($byValue) {
             $number = (float) $stringValue;
             $failed = $isMin ? $number < $bound : $number > $bound;
@@ -274,7 +401,14 @@ final class Validator
             return $custom[$field][$rule];
         }
 
-        $replace += ['field' => $field];
+        /*
+         * The field's own name in the visitor's language, when the catalog
+         * has one: "validation.attributes.email" => "e-mail". Without it the
+         * key was printed as it is, and a Portuguese page read
+         * "name é obrigatório".
+         */
+        $attribute = 'validation.attributes.' . $field;
+        $replace += ['field' => Translator::has($attribute) ? Translator::get($attribute) : $field];
         $key = 'validation.' . $rule;
 
         return $count === null

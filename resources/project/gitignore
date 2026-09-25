@@ -1,0 +1,25 @@
+# Written by ./sfphp init when the project was created. Yours to change.
+
+# Dependencies — composer install brings them back. composer.lock is kept:
+# it is what makes every install of this project the same.
+/vendor/
+
+# Secrets and per-machine settings
+.env
+.env.local
+
+# Published copies of SFCSS and SFJS; ./sfphp assets:publish writes them.
+/public/assets/css/sfcss.css
+/public/assets/css/sfcss.min.css
+/public/assets/js/sfjs.js
+/public/assets/js/sfjs.min.js
+/public/assets/.sfphp-published.json
+
+# Cache, compiled templates, logs
+/storage/
+
+# Editors and systems
+.idea/
+.vscode/
+.DS_Store
+*.swp

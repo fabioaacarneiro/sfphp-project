@@ -9,6 +9,7 @@ use SfphpProject\src\Async\EventLoop;
 use SfphpProject\src\Async\Pending;
 use SfphpProject\src\Http\ClientException;
 use SfphpProject\src\Http\ClientResponse;
+use SfphpProject\src\Http\Curl;
 use Throwable;
 
 /**
@@ -89,7 +90,16 @@ final class HttpFuture extends Pending implements Cancellable
             return;
         }
 
-        $this->handle = $this->build(strtoupper($method), $url, $headers, $body, $options);
+        // A header that would inject others, or a body JSON cannot hold, rejects the future.
+        try {
+            $this->handle = $this->build(strtoupper($method), $url, $headers, $body, $options);
+        } catch (ClientException $exception) {
+            $this->handle = null;
+            $this->rejectWith($exception);
+
+            return;
+        }
+
         $this->state = self::RUNNING;
 
         $this->loop->addTransfer($this->handle, function (CurlHandle $handle, int $errno, string $error): void {
@@ -130,9 +140,10 @@ final class HttpFuture extends Pending implements Cancellable
     {
         $handle = curl_init();
 
-        $defaults = [
+        $this->responseHeaders = [];
+
+        $defaults = Curl::methodOptions($method) + [
             CURLOPT_URL => $url,
-            CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CONNECTTIMEOUT => self::CONNECT_TIMEOUT,
             CURLOPT_TIMEOUT => self::TIMEOUT,
@@ -145,21 +156,22 @@ final class HttpFuture extends Pending implements Cancellable
              */
             CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
-            CURLOPT_HEADERFUNCTION => function ($handle, string $line): int {
-                $parts = explode(':', $line, 2);
-
-                if (count($parts) === 2) {
-                    $this->responseHeaders[trim($parts[0])] = trim($parts[1]);
-                }
-
-                return strlen($line);
-            },
+            CURLOPT_HEADERFUNCTION => Curl::headerCollector($this->responseHeaders),
         ];
 
         if ($body !== null) {
-            $payload = is_string($body)
-                ? $body
-                : (string) json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            /*
+             * A body JSON cannot encode — invalid UTF-8, a resource — used to
+             * be sent as an empty string with a JSON content type. The
+             * synchronous client refuses it, and so does this.
+             */
+            try {
+                $payload = is_string($body)
+                    ? $body
+                    : json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            } catch (\JsonException $exception) {
+                throw new ClientException('The request body could not be encoded as JSON: ' . $exception->getMessage());
+            }
 
             $defaults[CURLOPT_POSTFIELDS] = $payload;
 
@@ -169,13 +181,7 @@ final class HttpFuture extends Pending implements Cancellable
         }
 
         if ($headers !== []) {
-            $lines = [];
-
-            foreach ($headers as $name => $value) {
-                $lines[] = $name . ': ' . $value;
-            }
-
-            $defaults[CURLOPT_HTTPHEADER] = $lines;
+            $defaults[CURLOPT_HTTPHEADER] = Curl::headerLines($headers);
         }
 
         // The caller's options win: an explicit timeout is a decision.
@@ -213,8 +219,9 @@ final class HttpFuture extends Pending implements Cancellable
 
         $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
         $body = (string) curl_multi_getcontent($handle);
+        $effective = (string) (curl_getinfo($handle, CURLINFO_EFFECTIVE_URL) ?: $this->url);
 
-        $this->resolveWith(new ClientResponse($status, $body, $this->responseHeaders, $this->url));
+        $this->resolveWith(new ClientResponse($status, $body, $this->responseHeaders, $effective));
     }
 
     /**

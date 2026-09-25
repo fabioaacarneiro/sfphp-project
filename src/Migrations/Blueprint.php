@@ -1008,14 +1008,31 @@ final class Blueprint
     /**
      * Add a foreign key that starts from the current column.
      *
-     * @param string $table The referenced table
+     * Without a table, it is inferred from the column's name: user_id points
+     * at users, category_id at categories. `make:migration` writes
+     * `author_id:foreignId:constrained`, which has no table to pass, and
+     * used to generate a call that could not run.
+     *
+     * @param string|null $table The referenced table, or null to infer it
      * @param string $references The referenced column
      * @param string|null $name The optional constraint name
      * @return self
      */
-    public function constrained(string $table, string $references = 'id', ?string $name = null): self
+    public function constrained(?string $table = null, string $references = 'id', ?string $name = null): self
     {
         $column = $this->currentColumn();
+
+        if ($table === null) {
+            if (!str_ends_with($column['name'], '_id')) {
+                throw new \InvalidArgumentException(sprintf(
+                    'constrained() cannot infer a table from "%s": name it, as in constrained(\'users\').',
+                    $column['name']
+                ));
+            }
+
+            $table = \SfphpProject\src\Str::plural(substr($column['name'], 0, -3));
+        }
+
         $this->operations[] = [
             'type' => 'foreign',
             'columns' => [$column['name']],

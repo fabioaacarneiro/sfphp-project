@@ -58,6 +58,12 @@ class Dotenv
             [$key, $value] = explode('=', $line, 2);
 
             $key = trim($key);
+
+            // "export KEY=value" is how the same file is sourced by a shell.
+            if (str_starts_with($key, 'export ')) {
+                $key = trim(substr($key, 7));
+            }
+
             $value = self::parseValue(trim($value));
 
             if ($key === '') {
@@ -85,12 +91,21 @@ class Dotenv
      */
     private static function parseValue(string $value): string
     {
-        if (strlen($value) >= 2) {
-            $first = $value[0];
-            $last = $value[strlen($value) - 1];
+        /*
+         * A quoted value ends at its closing quote, and whatever follows —
+         * usually a comment — is not part of it. Only a value that was
+         * nothing but the quotes used to lose them, so
+         * APP_NAME="My App" # the name kept both quotes and the comment.
+         */
+        if ($value !== '' && ($value[0] === '"' || $value[0] === "'")) {
+            $close = strpos($value, $value[0], 1);
 
-            if (($first === '"' || $first === "'") && $first === $last) {
-                return substr($value, 1, -1);
+            if ($close !== false) {
+                $rest = trim(substr($value, $close + 1));
+
+                if ($rest === '' || str_starts_with($rest, '#')) {
+                    return substr($value, 1, $close - 1);
+                }
             }
         }
 

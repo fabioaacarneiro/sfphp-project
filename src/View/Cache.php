@@ -2,6 +2,8 @@
 
 namespace SfphpProject\src\View;
 
+use SfphpProject\src\PrivateDirectory;
+
 /**
  * Manages SFHT template compilation cache.
  */
@@ -16,11 +18,14 @@ final class Cache
      */
     public function __construct(string $cacheDir = '')
     {
-        $this->cacheDir = $cacheDir ?: sys_get_temp_dir() . '/sfht-cache';
-
-        if (!is_dir($this->cacheDir) && !mkdir($this->cacheDir, 0755, true) && !is_dir($this->cacheDir)) {
-            throw new \RuntimeException("Cannot create template cache directory: {$this->cacheDir}");
-        }
+        /*
+         * What is written here is include()d, so the directory has to be one
+         * only this user can write to; a shared one lets anyone on the
+         * machine plant code.
+         */
+        $this->cacheDir = $cacheDir !== ''
+            ? PrivateDirectory::ensure($cacheDir)
+            : PrivateDirectory::storage('cache/sfht');
     }
 
     /**

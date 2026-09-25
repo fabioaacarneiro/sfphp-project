@@ -79,23 +79,26 @@ final class Phpx
      */
     public function compile(string $source): string
     {
-        $this->refuseOldOpening($source);
-
         $out = '';
         $offset = 0;
+        $segment = 0;
 
         while (($start = strpos($source, self::OPEN, $offset)) !== false) {
             /*
              * "Sfht(" opens a region only as a bare call: not the tail of a
              * longer name (MySfht()), not a method (->Sfht(), ::Sfht()), and
-             * not "new Sfht(", which is the class itself built by hand.
+             * not "new Sfht(", which is the class itself built by hand. Nor
+             * inside a comment or a string — "// Sfht( opens the markup" in a
+             * docblock used to open a region that never closed.
              */
-            if (!$this->opensRegion($source, $start)) {
+            if (!$this->opensRegion($source, $start) || $this->inLiteral($source, $segment, $start)) {
                 $out .= substr($source, $offset, $start + strlen(self::OPEN) - $offset);
                 $offset = $start + strlen(self::OPEN);
 
                 continue;
             }
+
+            $this->refuseOldOpening($source, $segment, $start);
 
             $open = $start + strlen(self::OPEN);
             $line = substr_count($source, "\n", 0, $start) + 1;
@@ -127,7 +130,10 @@ final class Phpx
             $out .= $this->region($markup, $line);
 
             $offset = $close + 1;
+            $segment = $offset;
         }
+
+        $this->refuseOldOpening($source, $segment, strlen($source));
 
         return $out . substr($source, $offset);
     }
@@ -173,9 +179,10 @@ final class Phpx
         $compiled = preg_replace('/\?>\s*$/', '', $compiled) ?? $compiled;
 
         /*
-         * get_defined_vars() reads the component function's own variables,
-         * which are its parameters — so what the markup can see is exactly what
-         * the signature promised, and nothing from further out.
+         * get_defined_vars() reads the component function's own variables —
+         * its parameters, and whatever it assigned before the region — so
+         * what the markup can see is what the function holds, and nothing
+         * from further out.
          *
          * No ?> around it: the SFHT compiler emits PHP statements, not HTML
          * with tags. Wrapping them in HTML context put `echo ...;` where the
@@ -189,9 +196,9 @@ final class Phpx
          */
         $expression = str_repeat("\n", $leading)
             . '(static function (array $__props): \\SfphpProject\\src\\View\\Sfht { '
-            . 'extract($__props); ob_start(); '
-            . $compiled
-            . ' return new \\SfphpProject\\src\\View\\Sfht((string) ob_get_clean()); })(get_defined_vars())';
+            . 'extract($__props); $__level = ob_get_level(); ob_start(); '
+            . 'try { ' . $compiled . ' } catch (\\Throwable $__e) { while (ob_get_level() > $__level) { ob_end_clean(); } throw $__e; } '
+            . 'return new \\SfphpProject\\src\\View\\Sfht((string) ob_get_clean()); })(get_defined_vars())';
 
         $lost = substr_count($markup, "\n") - substr_count($expression, "\n");
 
@@ -227,14 +234,14 @@ final class Phpx
      * @param string $source The .phpx source
      * @throws RuntimeException When the source still opens a region with sfht(
      */
-    private function refuseOldOpening(string $source): void
+    private function refuseOldOpening(string $source, int $from, int $to): void
     {
-        $offset = 0;
+        $offset = $from;
 
-        while (($start = strpos($source, self::OLD_OPEN, $offset)) !== false) {
+        while (($start = strpos($source, self::OLD_OPEN, $offset)) !== false && $start < $to) {
             $offset = $start + strlen(self::OLD_OPEN);
 
-            if (!$this->opensRegion($source, $start)) {
+            if (!$this->opensRegion($source, $start) || $this->inLiteral($source, $from, $start)) {
                 continue;
             }
 
@@ -243,6 +250,36 @@ final class Phpx
                 substr_count($source, "\n", 0, $start) + 1
             ));
         }
+    }
+
+    /**
+     * Whether an offset falls inside a comment or a string of the PHP code.
+     *
+     * The code between two regions is PHP, so PHP's own tokenizer reads it:
+     * what it leaves open at the offset — a comment, a string, a heredoc —
+     * is where the offset is.
+     *
+     * @param string $source The source
+     * @param int $from Where this stretch of PHP code starts
+     * @param int $at The offset to look at
+     * @return bool
+     */
+    private function inLiteral(string $source, int $from, int $at): bool
+    {
+        $code = substr($source, $from, $at - $from);
+
+        if ($from > 0 || !str_starts_with(ltrim($code), '<?php')) {
+            $code = '<?php ' . $code;
+        }
+
+        $tokens = token_get_all($code);
+        $last = end($tokens);
+
+        if (is_array($last)) {
+            return in_array($last[0], [T_COMMENT, T_DOC_COMMENT, T_ENCAPSED_AND_WHITESPACE, T_START_HEREDOC], true);
+        }
+
+        return $last === '"' || $last === '`';
     }
 
     /**

@@ -107,7 +107,11 @@ reads `APP_NAME` from `.env`.
 
 Values are resolved in this order: **flag, then `app/pwa/config.php`, then the
 built-in default.** A flag only applies to that run and does not change the
-file. `--enable-push` and `--enable-sync` can only switch a feature on. To
+file. A flag takes its value after `=` or after a space — `--name "My App"`
+works — and `--color` and `--background` must be hex colours (`#2563eb`,
+`#fff`, or eight digits with alpha); anything else stops the command before a
+file is written. The manifest is written with its text as it is, so "Café"
+stays "Café" rather than `Caf\u00e9`. `--enable-push` and `--enable-sync` can only switch a feature on. To
 switch off a feature the config enables, set it to `false` in the file.
 
 Some settings have no flag: `start_url`, `scope`, `display`, `orientation`,
@@ -201,10 +205,7 @@ Notes:
   `landscape-primary`, `landscape-secondary`, `portrait` and `landscape`.
 - **If the file is missing,** `make:pwa` uses the defaults shown above and
   requires `--name`. The package keeps a copy of this file at
-  `resources/pwa/config.php`. In a project that installed the framework with
-  Composer, it is at
-  `vendor/fabioaacarneiro/sfphp-framework/resources/pwa/config.php`. Copy it to
-  `app/pwa/config.php`.
+  `resources/pwa/config.php`; copy it to `app/pwa/config.php`.
 
 ---
 
@@ -221,7 +222,8 @@ layout, for example `app/resources/views/layouts/base.sfht`:
 ```
 
 - The `<meta name="theme-color">` value should match `theme_color`. The command
-  prints this block with your colour filled in.
+  prints this block with your colour filled in, and prints the
+  `apple-touch-icon` line only when it generated that icon.
 - `install-sw.js` registers `/service-worker.js` with scope `/` and defines
   `window.pwa`. Without it, no service worker is registered.
 - iOS ignores the manifest icons for the home screen and uses

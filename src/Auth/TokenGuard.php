@@ -66,7 +66,7 @@ final class TokenGuard implements Guard
          * device logged out, before the token would have expired on its own —
          * and it is the price of revoking something stateless.
          */
-        if ($this->checkRevocation && TokenDenylist::isRevoked($token, $claims)) {
+        if ($this->checkRevocation && TokenDenylist::isRevoked($token, $claims, $this->claim)) {
             return null;
         }
 

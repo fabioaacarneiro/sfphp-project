@@ -2,7 +2,7 @@
 
 namespace Tests;
 
-use PHPUnit\Framework\TestCase;
+use SfphpProject\src\Testing\TestCase;
 use SfphpProject\src\Async\Context;
 use SfphpProject\src\Async\Scheduler;
 use SfphpProject\src\Async\Task;
@@ -23,7 +23,7 @@ class AsyncBasicTest extends TestCase
     public function testAsyncReturnsTask()
     {
         $task = async(fn () => 42);
-        $this->assertInstanceOf(Task::class, $task);
+        $this->assertTrue($task instanceof Task);
     }
 
     public function testAwaitSimpleValue()
@@ -67,12 +67,9 @@ class AsyncBasicTest extends TestCase
         Context::pushScheduler($scheduler);
 
         try {
-            $this->expectException(\Exception::class);
-            $this->expectExceptionMessage("Test error");
-
-            await(async(function () {
+            $this->assertThrows(fn () => await(async(function () {
                 throw new \Exception("Test error");
-            }));
+            })), \Exception::class);
         } finally {
             Context::popScheduler();
         }
@@ -95,7 +92,7 @@ class AsyncBasicTest extends TestCase
             $elapsed = microtime(true) - $start;
 
             // Should take at least 50ms
-            $this->assertGreaterThanOrEqual(0.05, $elapsed);
+            $this->assertTrue($elapsed >= 0.05);
         } finally {
             Context::popScheduler();
         }
@@ -109,19 +106,20 @@ class AsyncBasicTest extends TestCase
         try {
             $start = microtime(true);
 
-            // Three tasks with delays
+            // Three tasks waiting on timers. usleep() would block the process and
+            // nothing could overlap; delay() is the loop's, so the three wait together.
             [$a, $b, $c] = await(
                 CompositeFuture::all(
                     async(function () {
-                        usleep(50000); // 50ms
+                        await(delay(50)); // 50ms, without blocking
                         return 'a';
                     }),
                     async(function () {
-                        usleep(100000); // 100ms
+                        await(delay(100)); // 100ms, without blocking
                         return 'b';
                     }),
                     async(function () {
-                        usleep(30000); // 30ms
+                        await(delay(30)); // 30ms, without blocking
                         return 'c';
                     }),
                 )
@@ -132,7 +130,7 @@ class AsyncBasicTest extends TestCase
             // Sequential would be 180ms (50+100+30)
             // Parallel should be around 100ms (max of three)
             // We allow 150ms for overhead
-            $this->assertLessThan(0.15, $elapsed);
+            $this->assertTrue($elapsed < 0.15);
             $this->assertEquals('a', $a);
             $this->assertEquals('b', $b);
             $this->assertEquals('c', $c);

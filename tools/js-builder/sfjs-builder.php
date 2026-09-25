@@ -14,9 +14,12 @@
  *
  * What it cannot do is recognise a regular expression literal. `/` is treated
  * as the start of a comment only when followed by `/` or `*`, so a regex
- * containing either — `/[/]/`, `/a\/*b/` — would be damaged. SFJS contains no
- * regex literals today, and the build checks its own output with node when node
- * is there, which is what would catch it if that changed.
+ * containing either — `/[/]/`, `/a\/*b/` — would be damaged. A regex literal
+ * containing a quote is damaged too, in the other direction: the quote is read
+ * as the start of a string, and nothing after it is minified. SFJS's regex
+ * literals hold neither, and the build checks its own output with node when
+ * node is there, and that the minified file is smaller than two thirds of the
+ * bundle, which is what catches it when that changes.
  */
 
 /*
@@ -46,6 +49,20 @@ foreach ($parts as $part) {
 
 $bundle = rtrim($bundle) . "\n";
 $minified = minifyJs($bundle);
+
+/*
+ * Comments are about half of the source. A minified file that kept most of
+ * its size means the minifier lost its place — a quote inside a regex literal
+ * reads as the start of a string — and shipped the rest unminified.
+ */
+if (strlen($minified) > strlen($bundle) * 2 / 3) {
+    fwrite(STDERR, sprintf(
+        "The minified SFJS is %d of %d bytes; the minifier lost its place, most likely at a regex literal with a quote in it.\n",
+        strlen($minified),
+        strlen($bundle)
+    ));
+    exit(1);
+}
 
 foreach (['sfjs.js' => $bundle, 'sfjs.min.js' => $minified] as $name => $contents) {
     if (file_put_contents($outputDirectory . '/' . $name, $contents) === false) {

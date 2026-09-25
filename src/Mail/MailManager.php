@@ -120,46 +120,19 @@ final class MailManager
      */
     public function send(Message $message): void
     {
+        /*
+         * The default sender is set on a copy. Setting it on the caller's
+         * message changed an object the caller still holds, so reusing one
+         * Message with two managers sent both with the first one's sender.
+         */
         if ($message->sender() === null && $this->from !== null) {
-            $message->from($this->from['address'], $this->from['name']);
+            $message = (clone $message)->from($this->from['address'], $this->from['name']);
         }
 
         if ($this->alwaysTo !== null) {
-            $message = $this->redirect($message);
+            $message = $message->redirectedTo((string) $this->alwaysTo);
         }
 
         $this->driver->send($message);
-    }
-
-    /**
-     * Rebuild a message so it goes to the redirect address.
-     *
-     * @param Message $message The original message
-     * @return Message The redirected message
-     */
-    private function redirect(Message $message): Message
-    {
-        $intended = implode(', ', $message->recipients());
-
-        $redirected = (new Message())
-            ->to((string) $this->alwaysTo)
-            ->subject($message->subjectLine())
-            ->header('X-Intended-For', $intended);
-
-        $sender = $message->sender();
-
-        if ($sender !== null) {
-            $redirected->from($sender['address'], $sender['name']);
-        }
-
-        if ($message->textBody() !== null) {
-            $redirected->text($message->textBody());
-        }
-
-        if ($message->htmlBody() !== null) {
-            $redirected->html($message->htmlBody());
-        }
-
-        return $redirected;
     }
 }

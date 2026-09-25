@@ -155,7 +155,7 @@ builder computes, in both themes:
 | `--primary` | The colour |
 | `--primary-rgb` | Its channels, for `rgb(var(--primary-rgb) / 0.5)` |
 | `--primary-contrast` | The text that stays readable on it |
-| `--primary-hover`, `--primary-active` | The pressed shades of a button |
+| `--primary-hover`, `--primary-active` | The hover and pressed shades of a button |
 | `--primary-subtle` | A pale background — alerts, toasts, list items |
 | `--primary-border` | The border that goes with it |
 | `--primary-emphasis` | Text that reads on the pale background |
@@ -697,7 +697,7 @@ is a live region, so each toast is announced. Static markup:
 |---|---|
 | `container`, `container-fluid`, `container-{bp}` | A centred column whose widths are the breakpoints; `-fluid` is always full width; `-md` is fluid below `md` |
 | `grid` + `grid-cols-{1–12}` | CSS grid; `md:grid-cols-3` changes it per breakpoint |
-| `grid-auto-fit`, `grid-auto-fill` | As many columns as fit, no breakpoint needed; `--grid-min` sets the narrowest |
+| `grid-auto-fit`, `grid-auto-fill` | With `grid`: as many columns as fit, no breakpoint needed; `--grid-min` sets the narrowest |
 | `col-span-{n}`, `col-span-full`, `col-start-{n}` | Where an item sits in the grid |
 | `hstack`, `vstack` | A row or a column with a gap (`--stack-gap`) |
 | `ratio ratio-16x9` | A box of a fixed shape, for iframes and videos (`1x1`, `4x3`, `21x9`, or `--ratio`) |

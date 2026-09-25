@@ -120,12 +120,23 @@ if (!function_exists('mailer')) {
                 Config::int('MAIL_PORT', 25),
                 Config::get('MAIL_USERNAME') ?: null,
                 Config::get('MAIL_PASSWORD') ?: null,
-                Config::get('MAIL_ENCRYPTION', 'none'),
-                Config::int('MAIL_TIMEOUT', 30)
+                (string) Config::get('MAIL_ENCRYPTION', 'none'),
+                Config::int('MAIL_TIMEOUT', 30),
+                allowPlaintextAuth: filter_var(Config::get('MAIL_ALLOW_PLAINTEXT_AUTH', false), FILTER_VALIDATE_BOOLEAN)
             ),
             'mail' => new MailDriver(),
             'array' => new MailArrayDriver(),
-            default => new MailLogDriver(),
+            'log' => new MailLogDriver(),
+            /*
+             * A misspelt driver still logs rather than taking the application
+             * down, but it says so: MAIL_DRIVER=smpt used to send nothing
+             * without a word, in production as anywhere.
+             */
+            default => (static function () use ($driver): MailLogDriver {
+                logger()->warning(sprintf('MAIL_DRIVER "%s" is not a mail driver; messages are only being logged.', (string) $driver));
+
+                return new MailLogDriver();
+            })(),
         };
 
         $mailer = new MailManager(
@@ -206,12 +217,24 @@ if (!function_exists('dump')) {
         }
 
         /*
-         * A fragment, not a page. dump() appends to a response that is already
-         * being written, so sending a second <!DOCTYPE html> into the middle of
-         * a document would be malformed — and would repeat the stylesheet on
-         * every call. dd() sends the page, because dd() is the response.
+         * A fragment, not a page: it goes into a document that already has
+         * one, so a second <!DOCTYPE html> would be malformed. dd() sends the
+         * page, because dd() is the response.
+         *
+         * Once the response has started — inside a stream's producer — the
+         * fragment is written where it happens. Before that it waits for the
+         * Emitter, which puts it into the page: echoing it here sent output
+         * ahead of the headers, and the response itself was lost.
          */
-        echo HtmlDump::fragment($values, $caller);
+        $fragment = HtmlDump::fragment($values, $caller);
+
+        if (headers_sent()) {
+            echo $fragment;
+
+            return;
+        }
+
+        \SfphpProject\src\Debug\PendingDumps::add($fragment);
     }
 }
 

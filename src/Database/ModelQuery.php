@@ -47,7 +47,24 @@ final class ModelQuery
      */
     public function with(string ...$relations): self
     {
+        /** @var class-string<Model> $model */
+        $model = $this->model;
+
         foreach ($relations as $relation) {
+            /*
+             * Refused here rather than skipped at load time. A misspelt name —
+             * with('autor') — used to be ignored without a word, and the page
+             * went back to one query per row, which is what with() is for.
+             */
+            if (!$model::declaresRelation($relation)) {
+                throw new \InvalidArgumentException(sprintf(
+                    '%s has no relation "%s". A relation is a method that declares it returns Relation; '
+                    . 'nested names such as "author.posts" are not supported.',
+                    $model,
+                    $relation
+                ));
+            }
+
             $this->with[] = $relation;
         }
 
@@ -75,11 +92,14 @@ final class ModelQuery
      * @param mixed $value The value when an operator is given
      * @return self The query
      */
-    public function where(string $column, mixed $operatorOrValue, mixed $value = null): self
+    public function where(string|\Closure $column, mixed $operatorOrValue = null, mixed $value = null): self
     {
-        func_num_args() === 2
-            ? $this->builder->where($column, $operatorOrValue)
-            : $this->builder->where($column, $operatorOrValue, $value);
+        // A closure groups its conditions; it receives the Query Builder.
+        match (true) {
+            $column instanceof \Closure => $this->builder->where($column),
+            func_num_args() === 2 => $this->builder->where($column, $operatorOrValue),
+            default => $this->builder->where($column, $operatorOrValue, $value),
+        };
 
         return $this;
     }
@@ -92,11 +112,14 @@ final class ModelQuery
      * @param mixed $value The value when an operator is given
      * @return self The query
      */
-    public function orWhere(string $column, mixed $operatorOrValue, mixed $value = null): self
+    public function orWhere(string|\Closure $column, mixed $operatorOrValue = null, mixed $value = null): self
     {
-        func_num_args() === 2
-            ? $this->builder->orWhere($column, $operatorOrValue)
-            : $this->builder->orWhere($column, $operatorOrValue, $value);
+        // A closure groups its conditions; it receives the Query Builder.
+        match (true) {
+            $column instanceof \Closure => $this->builder->orWhere($column),
+            func_num_args() === 2 => $this->builder->orWhere($column, $operatorOrValue),
+            default => $this->builder->orWhere($column, $operatorOrValue, $value),
+        };
 
         return $this;
     }
@@ -338,8 +361,10 @@ final class ModelQuery
          * which is what keeps this to one query instead of one per parent.
          */
         if ($relation->isThroughPivot()) {
-            foreach ($relation->throughPivot($keys) as $child) {
-                $grouped[(string) $child->getAttribute(Model::PIVOT_KEY)][] = $child;
+            foreach (array_chunk($keys, 1000) as $batch) {
+                foreach ($relation->throughPivot($batch) as $child) {
+                    $grouped[(string) $child->getAttribute(Model::PIVOT_KEY)][] = $child;
+                }
             }
 
             return $grouped;
@@ -348,8 +373,14 @@ final class ModelQuery
         /** @var class-string<Model> $related */
         $related = $relation->related;
 
-        foreach ($related::query()->whereIn($relation->relatedKey(), $keys)->get() as $child) {
-            $grouped[(string) $child->getAttribute($relation->relatedKey())][] = $child;
+        /*
+         * In batches: one IN list with every key passed PostgreSQL's limit of
+         * 65,535 bound parameters on a large page.
+         */
+        foreach (array_chunk($keys, 1000) as $batch) {
+            foreach ($related::query()->whereIn($relation->relatedKey(), $batch)->get() as $child) {
+                $grouped[(string) $child->getAttribute($relation->relatedKey())][] = $child;
+            }
         }
 
         return $grouped;
@@ -437,6 +468,9 @@ final class ModelQuery
      */
     public function findAsync(int|string $id): Future
     {
-        return $this->where('id', $id)->firstAsync();
+        /** @var class-string<Model> $model */
+        $model = $this->model;
+
+        return $this->where($model::primaryKey(), $id)->firstAsync();
     }
 }

@@ -294,7 +294,10 @@ data: Step 1 of 3
 ```
 
 Multi-line data is one `data:` line per line, and the browser joins them with
-`\n`. An event without `event:` is a `message`:
+`\n` — a line ends at `\n`, `\r\n` or a lone `\r`, as the specification
+reads it. The event name, the id and a comment are one line each: a line break
+in any of them would write fields of its own, so `send()` refuses it with an
+`InvalidArgumentException`. An event without `event:` is a `message`:
 
 ```
 data: Line 1
@@ -404,7 +407,7 @@ has no effect on it.
 | `@done` | Comma-separated SSE event types that end the stream. Default `done,complete`. Without a final event, `EventSource` reconnects when the server closes and the stream starts over |
 | `@method` | HTTP method (default `GET`) |
 | `@body` | A JSON request body, sent only with `POST`, `PUT` or `PATCH` |
-| `@trigger` | The DOM event that starts the stream, optionally with `delay:` — `click`, `submit`, `load`, `load delay:1s` |
+| `@trigger` | When the stream starts: the same list the core reads — `click`, `submit`, `load`, `load delay:1s`, `load, every:30s` |
 | `@abort` | Selector of an element whose click stops the stream |
 
 ```html
@@ -619,11 +622,11 @@ Http::base('https://api.example.com')->stream('/export', new class extends Abstr
 });
 ```
 
-> **Redirects.** When the service redirects, `onStatus()` is currently also
-> called for the redirect response (a `302`, say) before it is called for the
-> final one. A listener that refuses everything other than `200` therefore
-> aborts on the redirect. Refuse errors (`>= 400`), as above, rather than
-> everything that is not a `200`.
+> **Redirects.** `onStatus()` hears the final response only. A redirect the
+> client is about to follow — a `3xx` with a `Location` — and a `1xx` are not
+> reported, so a listener that refuses everything other than `200` sees the
+> `200` at the end of the chain. It used to hear the `302` first and abort on
+> it.
 
 To stop in the middle, return `false` from `onChunk()`:
 
@@ -720,7 +723,7 @@ $client = Http::base('https://api.example.com')
     ->timeout(300, 5)     // at most 300 s in total, 5 s to connect
     ->idleTimeout(60);    // abort after 60 s without data; 0 disables it
 
-Http::timeout(30, connect: 5); // the same, from the facade
+Http::timeout(300, connect: 5); // the same, from the facade
 ```
 
 A total timeout given to `timeout()` applies to streams too — except `15`, the

@@ -10,7 +10,7 @@ use SfphpProject\src\View\Sfht;
 function CodeExamples(): Sfht
 {
     return 
-(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); ob_start(); echo '<div>
+(static function (array $__props): \SfphpProject\src\View\Sfht { extract($__props); $__level = ob_get_level(); ob_start(); try { echo '<div>
             <h2 class="text-2xl font-bold mb-6">Implementation Examples</h2>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -154,6 +154,6 @@ public function events(): Response
                     <li><strong>📦 Large Exports:</strong> Export data without buffering entire result in memory</li>
                 </ul>
             </div>
-        </div>';  return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
+        </div>';  } catch (\Throwable $__e) { while (ob_get_level() > $__level) { ob_end_clean(); } throw $__e; } return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
 ;
 }

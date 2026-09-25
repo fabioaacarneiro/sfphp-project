@@ -164,7 +164,7 @@ The older fixed-list classes `h-[29px]`, `w-[120px]`, `h-[50%]` and the
 |---|---|
 | `grid` | `display: grid` with a 1.5rem gap |
 | `grid-cols-{n}` | `1`–`12`, `none` |
-| `grid-auto-fit` / `grid-auto-fill` | as many columns as fit, each at least `--grid-min` (16rem) — a card grid with no breakpoint at all |
+| `grid-auto-fit` / `grid-auto-fill` | beside `grid`: as many columns as fit, each at least `--grid-min` (16rem) — a card grid with no breakpoint at all |
 | `col-span-{n}` | `1`–`12`, `full`, `auto` |
 | `col-start-{n}` | `1`–`13`, `auto` |
 | `row-span-{n}` | `1`–`3`, `full` |
@@ -240,7 +240,7 @@ For every colour in `config.colors` — by default `primary` `secondary` `succes
 
 | Class | Uses |
 |---|---|
-| `text-{c}` · `bg-{c}` · `border-{c}` | the colour itself |
+| `text-{c}` · `bg-{c}` · `border-{c}` | the colour itself — `text-{c}` in its readable form, `--{c}-text`, so it passes AA on the page |
 | `text-bg-{c}` | the colour as background, with the text colour that reads on it |
 | `bg-{c}-subtle` · `border-{c}-subtle` · `text-{c}-emphasis` | the pale background, its border, and the text that reads on it — they follow the dark theme |
 | `link-{c}` | the colour as readable text (`warning`, for instance, darkened until it reads on the page) |

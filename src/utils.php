@@ -44,7 +44,21 @@ function asset(string $asset): string
         throw new InvalidArgumentException('Asset path is invalid.');
     }
 
-    return '/assets/' . $asset;
+    /*
+     * The file's modification time and size go in the query string, so a
+     * browser that cached the previous sfjs.min.js asks for the new one the
+     * moment it changes — after an upgrade it used to keep running the old
+     * script until its cache expired. A file that is not there gets no
+     * version, and the URL still names it.
+     */
+    static $versions = [];
+
+    if (!array_key_exists($asset, $versions)) {
+        $file = \SfphpProject\src\Bootstrap::basePath('public/assets/' . $asset);
+        $versions[$asset] = is_file($file) ? substr(md5(filemtime($file) . '-' . filesize($file)), 0, 8) : null;
+    }
+
+    return '/assets/' . $asset . ($versions[$asset] === null ? '' : '?v=' . $versions[$asset]);
 }
 
 /**

@@ -46,6 +46,14 @@ final class LogManager
         'refresh_token',
         'api_key',
         'apikey',
+        'api-key',
+        'x-api-key',
+        'client_secret',
+        'passwd',
+        'private_key',
+        'x-csrf-token',
+        'x-xsrf-token',
+        'remember_token',
         'authorization',
         'auth',
         'cookie',
@@ -220,6 +228,20 @@ final class LogManager
 
             if (is_array($value)) {
                 $context[$key] = $this->scrub($value);
+
+                continue;
+            }
+
+            /*
+             * An object is written as its fields, and those need the same
+             * treatment: a model or a DTO passed whole carried its password
+             * past the key check, which only looked at arrays. Anything that
+             * is not a plain data object — a closure, a resource wrapper — is
+             * named rather than dumped.
+             */
+            if (is_object($value) && !$value instanceof \Throwable && !$value instanceof \DateTimeInterface && !$value instanceof \Stringable) {
+                $fields = $value instanceof \JsonSerializable ? $value->jsonSerialize() : get_object_vars($value);
+                $context[$key] = is_array($fields) ? $this->scrub($fields) : $fields;
             }
         }
 

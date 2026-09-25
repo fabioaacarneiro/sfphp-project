@@ -74,54 +74,80 @@ final class MigrationRunner
             throw new InvalidArgumentException('Rollback steps must be at least 1.');
         }
 
-        $repository = $this->repository();
-        $schema = new Schema($this->pdo);
-        $latest = $repository->latest($steps);
-        $reverted = [];
+        // The same lock migrate() takes: a rollback racing a deploy's migrate breaks both.
+        $lock = new MigrationLock($this->pdo);
+        $lock->acquire();
 
-        foreach ($latest as $migration) {
-            $file = $this->filePath($migration['migration']);
-            if (!is_file($file)) {
-                throw new RuntimeException("Migration file not found: {$migration['migration']}");
+        try {
+            $repository = $this->repository();
+            $schema = new Schema($this->pdo);
+            $latest = $repository->latest($steps);
+            $reverted = [];
+
+            foreach ($latest as $migration) {
+                $file = $this->filePath($migration['migration']);
+                if (!is_file($file)) {
+                    throw new RuntimeException("Migration file not found: {$migration['migration']}");
+                }
+
+                $loaded = $this->load($file);
+                $this->transactional(function () use ($loaded, $schema, $repository, $migration): void {
+                    $loaded->down($schema);
+                    $repository->forget($migration['migration']);
+                });
+                $reverted[] = $migration['migration'];
             }
 
-            $loaded = $this->load($file);
-            $this->transactional(function () use ($loaded, $schema, $repository, $migration): void {
-                $loaded->down($schema);
-                $repository->forget($migration['migration']);
-            });
-            $reverted[] = $migration['migration'];
+            return $reverted;
+        } finally {
+            $lock->release();
         }
-
-        return $reverted;
     }
 
     /**
-     * Reset the database by rolling back all migrations and clearing the history.
+     * Roll back every applied migration and clear the history.
      *
-     * @return void
+     * Runs each migration's down(), newest first. That undoes what the
+     * migrations created, and nothing else: a table created some other way —
+     * the queue's tables, say — stays. A recorded migration whose file is gone
+     * cannot be undone, so it is skipped and reported rather than silently
+     * forgotten along with the tables it created.
+     *
+     * @return list<string> The recorded migrations whose files were missing
      */
-    public function fresh(): void
+    public function fresh(): array
     {
-        $repository = $this->repository();
-        $schema = new Schema($this->pdo);
-        $applied = $repository->all();
+        $lock = new MigrationLock($this->pdo);
+        $lock->acquire();
 
-        foreach (array_reverse($applied) as $migration) {
-            $file = $this->filePath($migration['migration']);
-            if (!is_file($file)) {
-                continue;
+        try {
+            $repository = $this->repository();
+            $schema = new Schema($this->pdo);
+            $applied = $repository->all();
+            $missing = [];
+
+            foreach (array_reverse($applied) as $migration) {
+                $file = $this->filePath($migration['migration']);
+                if (!is_file($file)) {
+                    $missing[] = $migration['migration'];
+
+                    continue;
+                }
+
+                $loaded = $this->load($file);
+                $this->transactional(function () use ($loaded, $schema): void {
+                    $loaded->down($schema);
+                });
             }
 
-            $loaded = $this->load($file);
-            $this->transactional(function () use ($loaded, $schema): void {
-                $loaded->down($schema);
+            $this->transactional(function () use ($repository): void {
+                $repository->clear();
             });
-        }
 
-        $this->transactional(function () use ($repository): void {
-            $repository->clear();
-        });
+            return $missing;
+        } finally {
+            $lock->release();
+        }
     }
 
     /**

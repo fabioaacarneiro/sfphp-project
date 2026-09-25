@@ -2,23 +2,30 @@
 
 namespace Database\Factories;
 
+use SfphpProject\app\models\User;
 use SfphpProject\src\Database\Factory;
 
+/**
+ * Example users, for tests and for `./sfphp db:seed`.
+ *
+ * definition() runs once per row, so every user gets its own e-mail and the
+ * unique index on users.email holds.
+ */
 class UserFactory extends Factory
 {
     public function definition(): array
     {
+        $id = bin2hex(random_bytes(4));
+
         return [
-            'name' => 'User ' . mt_rand(1000, 9999),
-            'email' => 'user' . mt_rand(1000, 9999) . '@example.com',
-            'password' => password_hash('password', PASSWORD_BCRYPT),
-            'is_active' => true,
-            'created_at' => date('Y-m-d H:i:s'),
+            'name' => 'User ' . $id,
+            'email' => 'user-' . $id . '@example.com',
+            'password' => password_hash('password', PASSWORD_DEFAULT),
         ];
     }
 
     protected function model(): string
     {
-        return \SfphpProject\app\Models\User::class;
+        return User::class;
     }
 }

@@ -5,7 +5,7 @@ Unicode em toda a superfície. Esta documentação descreve o que o código faz
 hoje. Onde algo não existe, está dito que não existe — veja
 [Limitações conhecidas](#limitações-conhecidas).
 
-> **Ama SFPHP?** ⭐ [Dê uma estrela no GitHub](https://github.com/fabioaacarneiro/sfphp-project) — isso nos ajuda a crescer e mantém o framework prospering!
+> **Curte o SFPHP?** ⭐ [Dê uma estrela no GitHub](https://github.com/fabioaacarneiro/sfphp-project) — isso nos ajuda a crescer e mantém o framework prosperando!
 >
 > Verificado contra PHP 8.4 · rode a suíte com `composer run test`
 >
@@ -32,7 +32,7 @@ hoje. Onde algo não existe, está dito que não existe — veja
 - [Migrations e Schema Builder](#migrations-e-schema-builder)
 - [Seeders e Factories](#seeders-e-factories)
 - [Cache](#cache)
-- [Queue](#queue)
+- [Filas](#filas)
 - [Upload de arquivos](#upload-de-arquivos)
 - [Cliente HTTP](#cliente-http)
 - [E-mail](#e-mail)
@@ -143,12 +143,28 @@ meu-app/
   resources/assets/       o SFCSS e o SFJS
   sfphp                   o console
   .env                    escrito para você, com a chave JWT gerada
+  .gitignore              escrito para você: .env, vendor/ e storage/ ficam de fora
 ```
 
-Criar o projeto também copia o `.env-example` para `.env` — **com um `JWT_KEY`
-de verdade**, porque o placeholder é recusado de propósito e gerar chave não
-deveria ser a primeira coisa sobre a qual você precisa ler — e publica o SFCSS e
-o SFJS em `public/assets`.
+Criar o projeto roda o `./sfphp init`, que faz quatro coisas:
+
+- copia o `.env-example` para `.env` — **com um `JWT_KEY` de verdade**, porque o
+  placeholder é recusado de propósito e gerar chave não deveria ser a primeira
+  coisa sobre a qual você precisa ler;
+- publica o SFCSS e o SFJS em `public/assets`;
+- escreve um `.gitignore` para o projeto, para que o primeiro `git add .` não
+  versione o `.env` e a chave dele, o `vendor/` ou os assets publicados;
+- substitui os scripts do composer que pertencem ao repositório do próprio
+  framework: o `composer test` roda o `./sfphp test`, os seus testes.
+
+Cada passo só acrescenta o que falta, então o `./sfphp init` pode ser rodado de
+novo sem risco.
+
+O `composer create-project` é o jeito de instalar o SFPHP. O pacote é um
+template de projeto, não uma biblioteca: o `composer require` põe uma segunda
+aplicação dentro do `vendor/`, e os comandos do console, os seeders de exemplo e
+o script do servidor partem todos do princípio de que a raiz do projeto é a do
+pacote.
 
 Tudo ali é **seu**. Apague o controller de exemplo e as views dele; o framework
 é o `src/` e não se importa.
@@ -167,6 +183,7 @@ framework não tem dependências e um projeto criado carrega a própria cópia d
 | `src/` | O framework em si, incluindo a camada de configuração (`Bootstrap`, `Config`) |
 | `database/` | Migrations, seeders e factories |
 | `lang/` | Os seus catálogos de mensagem |
+| `storage/` | Criado no primeiro uso, privado (`0700`): o cache em arquivo e os templates compilados |
 | `.env` | Configuração, nunca versionada |
 | `vendor/` | O autoloader. Nada para abrir, nada para editar |
 
@@ -190,7 +207,7 @@ Bootstrap::load(dirname(__DIR__), [
     'views' => 'resources/views',
     'lang' => 'resources/lang',
     'env' => null,               // a configuração vem do ambiente
-    'cache' => 'var/cache/views', // templates compilados (padrão: o diretório temporário do sistema)
+    'cache' => 'var/cache/views', // templates compilados (padrão: storage/cache/sfht)
 ]);
 ```
 
@@ -242,7 +259,7 @@ resources/      Fontes do SFCSS e do SFJS, publicadas em public/assets
 lang/           Catálogos de mensagem (en, pt_BR, es)
 database/       migrations/, seeders/, factories/ da aplicação
 tools/          Geradores do SFCSS e do SFJS, e a verificação de paridade da documentação
-tests/          Suíte própria, sem PHPUnit
+tests/          Suíte própria, sem PHPUnit (os testes de um projeto criado rodam com ./sfphp test)
 docs/           Esta documentação
 sfphp           Entrypoint do CLI
 server.php      Router script do servidor embutido
@@ -292,8 +309,8 @@ public/index.php
  └─ Emitter->emit($response, $request->method)   único ponto que escreve saída
 ```
 
-O `.env` é **opcional**. Um clone novo sobe sem configuração; quem precisa de
-valor (banco, JWT) falha por conta própria, com mensagem específica.
+O `.env` é **opcional**. Um clone novo sobe sem configuração; o que realmente
+precisa de um valor (banco, JWT) falha por conta própria, com mensagem específica.
 
 ### Ler uma configuração
 
@@ -366,7 +383,13 @@ Router::options(...);
 
 Uma rota não casada devolve **404**. Um caminho que casa mas com método errado
 devolve **405** com header `Allow`. `OPTIONS` devolve **204** automaticamente
-quando há rotas no caminho.
+quando há rotas no caminho. As duas recusas são a página de erro do framework,
+ou JSON para um cliente que pede isso (`Accept: application/json`), como
+qualquer outro erro.
+
+Uma requisição `HEAD` é respondida pela rota `GET` do mesmo caminho, com os
+headers e sem o corpo — que é o que verificadores de links e sondas de
+disponibilidade enviam. O `Allow` lista `HEAD` ao lado de `GET`, e `OPTIONS`.
 
 ### Parâmetros
 
@@ -380,9 +403,9 @@ Router::get('/codes/code:alphanum', [CodeController::class, 'show']);
 
 | Tipo | Casa | Observação |
 |---|---|---|
-| `number` | `[0-9]+` | ASCII de propósito: o valor existe para sobreviver a um `(int)`, e o cast do PHP não entende algarismos indo-arábicos ou devanágari |
-| `alpha` | `\p{L}+` | Qualquer alfabeto: `café`, `北京`, `Владимир` |
-| `alphanum` | `[\p{L}\p{N}]+` | Letras e dígitos de qualquer escrita |
+| `number` | `[0-9]+` | ASCII de propósito: o valor existe para sobreviver a um `(int)`, e o cast do PHP não entende algarismos indo-arábicos ou devanágari. Um número maior que o inteiro do PHP é um 404, não um `TypeError` numa action com `int $id` |
+| `alpha` | `\p{L}[\p{L}\p{M}]*` | Qualquer alfabeto, marcas combinantes incluídas: `café`, `北京`, `Владимир`, `हिन्दी` |
+| `alphanum` | `[\p{L}\p{N}][\p{L}\p{M}\p{N}]*` | Letras e dígitos de qualquer escrita |
 
 Os valores chegam à action **posicionalmente**, na ordem em que aparecem na
 URL, depois da requisição:
@@ -396,10 +419,18 @@ public function show(Request $request, string $tenantId, string $postId): Respon
 }
 ```
 
+Dentro de um middleware, ou em qualquer lugar em que a requisição esteja à mão,
+os mesmos valores são lidos com `$request->route('id')`; o
+`$request->routeParameters()` tem todos eles e o `$request->routePattern()`, a
+rota que casou. Eles ficam separados dos atributos da requisição, então uma rota
+declarada como `/profile/user:alpha` não substitui o usuário autenticado que o
+`$request->user()` devolve.
+
 O caminho da requisição é decodificado por segmento antes do casamento, então
 `/produtos/caf%C3%A9` casa `/produtos/nome:alpha`. Separadores codificados
 (`%2F`, `%5C`) **não** são transformados em separadores reais: `/a%2Fb` nunca
-alcança a rota `/a/b`.
+alcança a rota `/a/b`. Barras repetidas são colapsadas, como faz um servidor
+web: `//admin/panel` é o caminho `/admin/panel`.
 
 Uma rota **sem parâmetros** é casada comparando duas strings, nunca rodando uma
 expressão regular, e uma rota com parâmetros compila o padrão dela uma vez e o
@@ -500,17 +531,18 @@ $request->filled('title');
 
 $request->header('Authorization');   // busca sem diferenciar maiúsculas
 $request->bearerToken();
-$request->json();                    // decodifica o corpo, lança JsonException
+$request->json();                    // decodifica o corpo; um malformado é um 400 (InvalidJsonException)
 $request->rawBody;
 
 $request->cookie('sessao');
 $request->file('avatar');
-$request->ip();
+$request->ip();                      // o cliente, só através de proxies confiáveis
 $request->isSecure();
 $request->expectsJson();
 
 $request->user();                    // definido pelo middleware Authenticate
 $request->route('id');               // parâmetro de rota
+$request->routeParameters();         // todos eles, na ordem da URL
 $request->attribute('locale');       // anexado por um middleware
 $withUser = $request->withAttribute('user', $user);   // clona
 $request->isFragment();              // true quando o SFJS pediu um fragmento
@@ -591,11 +623,14 @@ final class PostController
 > é o visitante, o que faz dele um destino de redirect que um atacante pode
 > ditar. Seguir para outra origem é redirect aberto — o jeito clássico de um
 > link de phishing pegar emprestado o bom nome do seu domínio. Referer que
-> nomeia outro host cai no fallback, e o que não for caminho também.
+> nomeia outro host ou outra porta cai no fallback, e também o que tem um
+> caminho que um navegador leria como outro host — `//evil.example`,
+> `/\evil.example` — ou que carrega uma barra invertida ou um caractere de
+> controle.
 
 Havia aqui um `BaseController` oferecendo `$this->view()` e `$this->redirect()`.
 Ele pedia que você herdasse uma classe para encurtar duas chamadas que já
-existiam, o que é herança sem pagar nada, e morava na aplicação de exemplo, onde
+existiam, o que é herança que não compra nada, e morava na aplicação de exemplo, onde
 um `composer require` nunca chegava — então a linha que ele ensinava lançava
 fatal num projeto instalado. O `route()` e o `back()` eram as únicas coisas dele
 que ainda não existiam em outro lugar, e agora estão no `Response`.
@@ -631,10 +666,11 @@ era JSON válido".
 
 `GET`, `HEAD`, `OPTIONS` e `DELETE` passam direto, porque não carregam corpo —
 senão o middleware seria inutilizável num grupo que lê e escreve, que é a
-maioria. Passe `new RequireJson(required: true)` para recusar uma escrita que
-chegue sem `Content-Type` nenhum.
+maioria. Uma escrita sem `Content-Type` e sem corpo chega à action com `json`
+definido como `[]`; uma com corpo mas sem `Content-Type` é um 415. Passe
+`new RequireJson(required: true)` para recusar uma escrita sem corpo nenhum.
 
-Isso substituiu um `ApiController` que você tinha de estender. A verificação
+Isso substituiu a classe base que todo controller JSON estendia. A verificação
 rodava só onde alguém lembrava de chamá-la, e punha uma classe entre o framework
 e cada endpoint para fazer um trabalho que o pipeline já fazia.
 
@@ -644,13 +680,16 @@ Carregados em toda requisição por `src/utils.php`:
 
 ```php
 e($valor);                    // escapa para HTML: <script> → &lt;script&gt;
-asset('css/app.css');         // → /assets/css/app.css
-asset('js/sfjs.js');          // → /assets/js/sfjs.js
+asset('css/app.css');         // → /assets/css/app.css?v=3f2a9c1b
+asset('js/sfjs.js');          // → /assets/js/sfjs.js?v=81d0e4aa
 csrf_token();  csrf_field();  csrf_meta();  csrf_verify();
 ```
 
 `asset()` prefixa `/assets/` e **valida o caminho**: travessia de diretório e
-caracteres fora de `[A-Za-z0-9._-]` lançam `InvalidArgumentException`.
+caracteres fora de `[A-Za-z0-9._-]` lançam `InvalidArgumentException`. Um
+arquivo que existe em `public/assets` ganha `?v=` e um hash curto da data e do
+tamanho dele, então um navegador que guardou em cache o `sfjs.min.js` anterior
+busca o novo assim que ele muda.
 
 Arquivos estáticos ficam em `public/assets/{css,js,images}/`.
 
@@ -752,13 +791,21 @@ dependências no construtor e recebê-las por autowiring.
 | `RequireJson` | Recusa com 415 um corpo que não é JSON, e com 400 um que não decodifica |
 | `EnableAsync` | Opcional: dá a cada requisição o próprio agendador async, para que nada que ela deixou pendente passe adiante — veja [ASYNC.md](./ASYNC.md) |
 
-`VerifyCsrfToken` deixa passar métodos seguros e requisições com Bearer token —
-um navegador nunca anexa Bearer sozinho, então não há requisição cross-site a
-forjar. Prefixos podem ser isentados:
+`VerifyCsrfToken` deixa passar métodos seguros, e uma requisição com Bearer
+token e sem cookie de sessão — um navegador nunca anexa Bearer sozinho, então
+não há requisição cross-site a forjar. Uma requisição que carrega o cookie de
+sessão é verificada mesmo com Bearer token, porque esse o navegador pode enviar
+sozinho. Caminhos podem ser isentados, por segmento inteiro — `/api` isenta
+`/api` e `/api/posts`, não `/apikeys`:
 
 ```php
 new VerifyCsrfToken(['/api'])
 ```
+
+A verificação roda antes do roteamento, então um `POST` sem token para um
+caminho sem rota responde 403 em vez de 404: dizer quais caminhos existem a uma
+requisição que não conseguiu provar de onde veio seria um pequeno vazamento, e
+nada se perde recusando-a antes.
 
 > Até esta versão, a verificação de CSRF existia mas **nada no framework a
 > chamava**: cada aplicação tinha de lembrar de verificar em cada action, e
@@ -850,6 +897,16 @@ A expressão é PHP real — chamadas de função, operadores e índices funcion
 @empty
   <p>Nenhum post ainda.</p>
 @endforelse
+```
+
+O `@forelse` aninha: o `@empty` de um laço interno responde só pela lista
+interna.
+
+Uma diretiva que não recebe argumentos — `@else`, `@empty`, `@endif` — só lê um
+`(` quando ele está colado ao nome, então `@else (opcional)` é `@else` seguido
+do texto `(opcional)`.
+
+```sfht
 
 @for($i = 0; $i < 10; $i++)
   <p>{{ $i }}</p>
@@ -932,17 +989,24 @@ Encadeáveis com `|`:
 | `truncate(n, sufixo)` | Encurta para `n` **caracteres**; o sufixo conta no limite |
 | `length` | Caracteres de uma string, ou itens de um array |
 | `reverse` | Inverte respeitando multibyte |
-| `escape` | Escapa HTML explicitamente |
+| `escape` | Escapa HTML explicitamente — devolve markup, então o `{{ }}` não o escapa duas vezes |
 | `json` | JSON com `UNESCAPED_UNICODE` |
 | `format(fmt)` | `sprintf` |
 | `trim` | Remove espaços nas pontas |
 | `abs` / `round(n)` | Numéricos |
-| `default(v)` | Substitui `null` e string vazia |
+| `default(v)` | Substitui `null` e string vazia — e uma variável que a view nunca recebeu |
 
 Os filtros de string contam **caracteres, não bytes**: `truncate(5)` sobre
 `日本語テキスト` devolve `日本...`, nunca um byte partido ao meio.
 
-`||` não é confundido com filtro — `{{ $a || $b ? 's' : 'n' }}` funciona.
+`||` não é confundido com filtro — `{{ $a || $b ? 's' : 'n' }}` funciona — e um
+`}}` dentro de uma string entre aspas não encerra a expressão:
+`{{ $open ? '}}' : '' }}` também funciona.
+
+O `default()` cobre uma variável que nunca foi passada: `{{ $title | default('Início') }}`
+sem `$title` imprime `Início` em vez de falhar numa variável indefinida. Isso vale
+para uma variável simples ou um caminho dentro dela (`$user['name']`,
+`$post->title`); uma expressão mais longa é avaliada como foi escrita.
 
 Registrar um filtro próprio:
 
@@ -958,8 +1022,15 @@ Só nomes de diretiva conhecidos viram sintaxe. Tudo mais é texto:
 ```sfht
 <link href="...family=Inter:wght@300;400">   {{-- preservado --}}
 Escreva para suporte@exemplo.com             {{-- preservado --}}
+Escreva para webmaster@php.net ou eu@if.io   {{-- preservado, embora php e if sejam diretivas --}}
 @media (min-width: 40rem) { ... }            {{-- preservado --}}
+Digite @@if para começar uma condição        {{-- @@ escreve um @ literal: "Digite @if para começar…" --}}
 ```
+
+Um endereço de e-mail é texto mesmo quando o domínio começa com o nome de uma
+diretiva: um `@` depois de uma letra ou de um dígito, seguido do nome e depois
+de `.` ou `-`, faz parte do endereço. `Ola @if($x)sim@endif` continua sendo uma
+condição.
 
 ### Variáveis globais
 
@@ -971,8 +1042,16 @@ $engine->setGlobals(['versao' => '1.0.0', 'ano' => date('Y')]);
 ### Cache de compilação
 
 Templates compilam para PHP em disco e são executados com `include`, de modo
-que o **OPcache funciona** e erros de runtime apontam arquivo e linha reais. A
-gravação é atômica e invalida o OPcache no caminho exato.
+que o **OPcache funciona**. A gravação é atômica e invalida o OPcache no
+caminho exato.
+
+Os arquivos compilados ficam em `storage/cache/sfht` dentro do projeto, criado
+privado (`0700`), ou onde a opção `cache` do `Bootstrap::load()` disser. Antes
+eles ficavam sob um nome fixo no diretório temporário do sistema, compartilhado
+por todos os usuários da máquina — e um template compilado é PHP que passa por
+`include`, então quem criasse aquele diretório primeiro podia plantar código
+nele. Um diretório de outro usuário é recusado; um em que outros podem escrever
+é tornado privado antes de ser usado.
 
 O arquivo compilado leva o nome do caminho do template **e da versão dele** — a
 data de modificação e o tamanho —, então um template que muda compila para outro
@@ -995,8 +1074,14 @@ Unclosed @if opened on line 12.
 @endforeach on line 20 closes @if opened on line 12.
 @empty on line 8 must appear inside @forelse.
 Unclosed "{{" expression on line 3.
-Filter not registered: naoexiste
 ```
+
+O que falha enquanto a página renderiza — uma exceção na página, um filtro que
+nunca foi registrado (`Filter not registered: naoexiste`), uma cadeia de
+`@extends` com mais de 16 níveis — é informado nomeando o template em que
+aconteceu: `Error in template app/resources/views/home.sfht (compiled line 40): …`.
+O `View::make()` diz "não encontrado" só para um template que não existe;
+qualquer outra falha mantém a própria mensagem.
 
 ---
 
@@ -1010,7 +1095,7 @@ demonstração em `/phpx`.
 |---|---|---|
 | O que é | Um arquivo de markup | Uma função PHP cujo markup mora dentro dela |
 | Composição | `@include`, `@extends`, `@block` | Chamar a função |
-| O que recebe | O que estiver em escopo, mais o que for passado | Os parâmetros dela, e nada além |
+| O que recebe | O que estiver em escopo, mais o que for passado | Os parâmetros dela, e o que ela atribui antes do markup |
 | Editado por | Quem sabe HTML | Quem lê PHP |
 | Melhor para | Páginas e layouts | Pedaços reaproveitáveis |
 | Passo de build | Nenhum — compila sob demanda | `./sfphp build --phpx` |
@@ -1020,7 +1105,7 @@ demonstração em `/phpx`.
 ```php
 <?php
 
-namespace App\Components;
+namespace SfphpProject\app\components;
 
 use SfphpProject\src\View\Sfht;
 
@@ -1040,6 +1125,10 @@ elemento a fecha — então o texto dentro dela pode ter um apóstrofo ou um
 parêntese solto. Entre os dois é SFHT, então `{{ }}`, `{!! !!}`, os filtros
 padrão, `@if` e `@foreach` funcionam e o escape é o mesmo do resto do
 framework; `@include`, `@extends` e `@block` são recusados no build.
+O `Sfht(` escrito em um comentário ou em uma string — um docblock explicando como
+as regiões abrem — não é uma região. Um componente que lança uma exceção ao
+renderizar não deixa saída para trás: o buffer dele é fechado antes de a
+exceção seguir adiante.
 
 ```bash
 ./sfphp build --phpx                       # todo .phpx sob app/components
@@ -1126,15 +1215,16 @@ Use `.sfht` quando a coisa é uma **página**: layout, bloco, algo que um design
 possa abrir. Use `.phpx` quando a coisa é um **pedaço**: um card, um campo, uma
 linha de tabela — qualquer coisa que receba argumentos e apareça mais de uma vez.
 
-A diferença prática é o contrato. Um parcial vê o que por acaso estava em escopo
+A diferença prática é o contrato. Um partial vê o que por acaso estava em escopo
 onde ele foi incluído, então o que ele precisa se descobre lendo o arquivo. Os
 parâmetros de um componente são as props dele, então o que ele precisa é a
 assinatura.
 
 ### Carregar os componentes
 
-O PHP autoloada classe, não função, então um componente compilado não pode ser
-encontrado sob demanda. O front controller o inclui uma vez:
+O PHP carrega automaticamente classes, não funções, então um componente
+compilado não pode ser encontrado sob demanda. O front controller os inclui uma
+vez:
 
 ```php
 $compiled = __DIR__ . '/../app/components/compiled';
@@ -1228,8 +1318,14 @@ DB_CHARSET=utf8mb4
 ```
 
 A conexão usa `ERRMODE_EXCEPTION`, `FETCH_ASSOC` e **prepares reais**
-(`EMULATE_PREPARES => false`). Falha de conexão registra o detalhe no log e
-lança uma exceção genérica — host, banco e usuário não chegam ao visitante.
+(`EMULATE_PREPARES => false`). Falha de conexão registra no log a mensagem do
+driver e lança uma que diz o que pode ser dito sem ela — a extensão PDO que
+falta (`the PHP extension pdo_mysql is not installed`), ou o driver e o host que
+não responderam. A senha e o texto do próprio driver ficam no log.
+
+Um `DB_NAME` relativo do SQLite é lido a partir da raiz do projeto, então o
+console e o servidor web abrem o mesmo arquivo seja qual for o diretório em que
+cada um começou.
 
 ### Query Builder
 
@@ -1247,9 +1343,12 @@ Métodos disponíveis:
 ```php
 ->select('id', 'name')            // ou ->select(['id', 'name'])
 ->select('name AS nome')
-->where('age', '>', 18)           // = ! = <> > >= < <= LIKE "NOT LIKE"
+->where('age', '>', 18)           // = != <> > >= < <= LIKE "NOT LIKE"
 ->where('status', 'ativo')        // dois argumentos: igualdade
 ->orWhere('role', 'admin')
+->where(function (QueryBuilder $q): void {   // um grupo, entre parênteses
+    $q->where('status', 'rascunho')->orWhere('status', 'revisao');
+})
 ->whereNull('deleted_at')
 ->whereNotNull('verified_at')
 ->whereIn('id', [1, 2, 3])        // array vazio → nenhuma linha
@@ -1261,12 +1360,17 @@ Métodos disponíveis:
 ->get()        // array de linhas
 ->first()      // primeira linha ou null
 ->count()      // int
-->insert(['name' => 'João'])      // devolve o id gerado (string)
+->insert(['name' => 'João'])      // devolve o id gerado, como string
 ->update(['name' => 'Silva'])     // devolve linhas afetadas
 ->delete()                        // devolve linhas afetadas
 ->toSql()      // inspeciona o SQL sem executar
 ->bindings()   // valores vinculados
 ```
+
+Um `orWhere()` junta tudo o que foi escrito antes dele: `where('user_id', 7)->where('a', 1)->orWhere('b', 2)`
+é `user_id = 7 AND a = 1 OR b = 2`, que devolve linhas de outros usuários.
+Ponha as alternativas numa closure, como acima, e elas viram um grupo:
+`user_id = 7 AND (status = 'rascunho' OR status = 'revisao')`.
 
 **Segurança.** Todo valor é vinculado com tipo PDO correto. Todo identificador
 (tabela, coluna, alias) é validado contra `^[A-Za-z_][A-Za-z0-9_]*$` e citado
@@ -1275,7 +1379,14 @@ conforme o driver — um identificador inválido lança
 
 Paginação é traduzida por dialeto: `LIMIT/OFFSET` em MySQL, PostgreSQL e
 SQLite, `TOP` em SQL Server, `FIRST` em Firebird, `OFFSET … FETCH NEXT` em
-Oracle. Driver sem suporte falha explicitamente.
+Oracle. Um `offset()` sem `limit()` é válido em todos eles — MySQL e SQLite só
+aceitam `OFFSET` depois de um `LIMIT`, então um que não limita é escrito para
+eles. Driver sem suporte falha explicitamente.
+
+O builder não tem `groupBy()`, `having()`, `distinct()` nem agregações além de
+`count()`, e o `select()` recebe colunas, não expressões. Um relatório com
+`GROUP BY` ou `SUM()` é escrito com `Database::query()` — veja
+[SQL cru](#sql-cru).
 
 ### Transações
 
@@ -1301,9 +1412,15 @@ Database::inTransaction();   // true enquanto dentro
 
 Uma chamada aninhada **entra** na transação já aberta em vez de começar uma
 segunda, porque o PDO não tem transações aninhadas. A consequência vale
-conhecer: uma falha no callback interno desfaz o trabalho externo também.
-Savepoints evitariam isso, mas a sintaxe deles varia entre drivers, e degradar
-em silêncio naqueles que não os têm seria pior do que ser explícito.
+conhecer: uma falha no callback interno desfaz o trabalho externo também —
+mesmo quando o callback externo captura a exceção e segue em frente. A falha
+interna marca a transação para rollback, e a externa então desfaz e lança
+`NestedTransactionFailed` em vez de fazer commit. Savepoints evitariam isso, mas
+a sintaxe deles varia entre drivers, e degradar em silêncio naqueles que não os
+têm seria pior do que ser explícito.
+
+Uma transação que já está aberta na conexão — a do executor de migrations, ou
+uma iniciada com `beginTransaction()` — é aproveitada do mesmo jeito.
 
 O helper também resolve um detalhe fácil de errar à mão: um statement que falha
 pode deixar o driver **sem** transação ativa, e um `rollBack()` cru nesse
@@ -1379,7 +1496,7 @@ irregular deve declarar `$table`.
 ```php
 Post::all();                       // array<Post>
 Post::find(1);                     // Post|null
-Post::findOrFail(1);               // Post, ou RuntimeException
+Post::findOrFail(1);               // Post, ou ModelNotFoundException — um 404
 Post::query()->where('publicado', 1)->orderBy('criado_em', 'desc')->limit(10)->get();
 Post::query()->count();
 
@@ -1395,11 +1512,28 @@ resposta:
 return Response::json(Post::findOrFail($id));
 ```
 
+Um registro que não existe responde **404** sozinho: o `findOrFail()` lança
+`ModelNotFoundException`, que o tratador de erros mapeia para esse status.
+
+Toda coluna vai para esse JSON, então as que nunca podem sair do servidor são
+nomeadas em `$hidden`:
+
+```php
+final class User extends Model
+{
+    protected static array $hidden = ['password', 'remember_token'];
+}
+```
+
+Uma propriedade é um atributo, uma relação carregada ou uma relação a resolver —
+e um método só é executado para ela quando declara que devolve `Relation`. Ler
+`$post->delete` executava o `delete()`.
+
 ### Escrevendo
 
 ```php
 $post = new Post(['titulo' => 'Olá']);   // só colunas em $fillable
-$post->save();                     // INSERT, e a chave volta preenchida
+$post->save();                     // INSERT, e a chave volta preenchida, como int
 
 $post = Post::find(1);
 $post->titulo = 'Outro título';
@@ -1415,7 +1549,15 @@ preenchido. Ver [Segurança](#segurança) para o porquê.
 
 Um `save()` sobre modelo existente escreve **apenas os atributos alterados** —
 tocar um campo não reescreve a linha inteira. Um `save()` sem alteração não
-emite query.
+emite query. A linha é encontrada pela chave que tinha quando foi lida, então
+mudar a chave e salvar move essa linha em vez de escrever em outra.
+
+Uma tabela com `created_at` e `updated_at` — o que o `timestamps()` de uma
+migration cria — tem as duas mantidas pelo `save()` quando o model pede:
+
+```php
+protected static bool $timestamps = true;   // o insert define as duas; o update renova updated_at, em UTC
+```
 
 ### Tipos de atributo
 
@@ -1494,8 +1636,11 @@ foreach (Post::query()->with('author')->get() as $post) {
 }
 ```
 
-`with()` aceita várias relações: `->with('author', 'comments')`, e funciona
-também para muitos-para-muitos:
+`with()` aceita várias relações: `->with('author', 'comments')`. Um nome que
+não é relação do model — um erro de digitação, ou um `'author.posts'` aninhado —
+lança, em vez de cair em silêncio para uma query por linha. As chaves são
+enviadas em lotes de mil, então uma página grande fica abaixo do limite de
+parâmetros vinculados do PostgreSQL. Funciona também para muitos-para-muitos:
 
 ```php
 final class Post extends Model
@@ -1527,7 +1672,7 @@ Database::table('posts');          // sem passar pelo Model
 Database::query('SELECT ...');     // SQL cru
 ```
 
-### O que não tem, e por quê
+### O que falta, e por quê
 
 Os motivos estão detalhados em [ORM ou Query Builder?](#orm-ou-query-builder).
 
@@ -1577,7 +1722,7 @@ $entityManager->flush();      // o ORM descobre o UPDATE, a ordem e a transaçã
 |---|:--:|:--:|:--:|
 | SQL seguro, com bind e citação | ✓ | ✓ | ✓ |
 | Linhas como objetos tipados | ✗ | **✓** | ✓ |
-| Tipos declarados (data, JSON, bool) | ✗ | **✓** | ✓ |
+| Tipos de atributo declarados (data, JSON, bool) | ✗ | **✓** | ✓ |
 | Relações declaradas uma vez | ✗ | **✓** | ✓ |
 | Carga em lote contra N+1 | ✗ | **✓** | ✓ |
 | Transação explícita | ✗ | **✓** | ✓ |
@@ -1611,7 +1756,7 @@ framework** (Swoole, FrankenPHP). Num processo que atende várias requisições,
 um identity map que não seja rigorosamente reiniciado a cada requisição vira
 vazamento de dados **entre usuários** — alguém enxergando a linha que outra
 pessoa carregou. É a única peça da lista em que o objetivo do projeto
-argumenta *contra*, não apenas de forma neutra.
+argumenta *contra*, e não apenas deixa de argumentar a favor.
 
 #### Unit of work — não, porque `transaction()` entrega o que importa
 
@@ -1683,11 +1828,12 @@ Uma regra prática:
 
 - **Model** quando você trabalha com entidades e relações — CRUD, formulários,
   API de recursos. É onde objetos e `with()` pagam.
-- **Query Builder** quando você trabalha com conjuntos — relatórios,
-  agregações, `GROUP BY`, atualizações em massa. Hidratação em objeto não
+- **Query Builder** quando você trabalha com conjuntos — listas filtradas,
+  joins, contagens, atualizações e exclusões em massa. Hidratação em objeto não
   ajuda, e às vezes atrapalha.
-- **SQL cru** (`Database::query()`) quando a query é o produto: CTE, função de
-  janela, algo específico do dialeto.
+- **SQL cru** (`Database::query()`) quando a query é o produto: agregações e
+  `GROUP BY`, CTE, função de janela, algo específico do dialeto. O builder para
+  antes disso de propósito.
 
 Os três coexistem, e sair do Model custa uma chamada:
 
@@ -1722,17 +1868,28 @@ Rodar migrations como um passo do pipeline continua sendo a forma melhor. A
 trava existe porque o framework não deveria depender de todo mundo ter isso.
 
 ```bash
-./sfphp make:migration create_users name:string email:string:unique timestamps
-./sfphp make:migration add_phone_to_users phone:string:nullable
-./sfphp make:migration drop_sessions_table
+./sfphp make:migration create_posts title:string body:text author_id:foreignId:constrained timestamps
+./sfphp make:migration add_slug_to_posts slug:string:unique
+./sfphp make:migration drop_drafts_table
 
 ./sfphp migrate
 ./sfphp migrate --step=2
 ./sfphp rollback
-./sfphp rollback --step=3
+./sfphp rollback --step=3                  # as três migrations mais recentes, seja qual for o lote em que rodaram
 ./sfphp status
-./sfphp db:fresh                           # derruba tudo e recria
+./sfphp db:fresh                           # desfaz todas as migrations e depois as roda de novo
 ```
+
+O `db:fresh` pergunta antes de fazer qualquer coisa, e recusa em produção sem
+`--force`. Ele roda o `down()` de cada migration, da mais nova para a mais
+antiga, então apaga o que as migrations criaram e nada além — uma tabela criada
+de outro jeito, como as da fila, fica. Uma migration registrada cujo arquivo
+sumiu é citada num aviso, porque o que ela criou não pode ser desfeito sem ele.
+
+Migrations criadas uma depois da outra no mesmo segundo compartilhavam o
+timestamp, e os nomes dos arquivos são a ordem de execução:
+`add_status_to_orders` podia vir antes de `create_orders`. O carimbo de uma
+migration nova agora é sempre posterior ao da mais nova do diretório.
 
 **O nome é a instrução.** `create_users` cria uma tabela, `add_phone_to_users`
 altera uma, `drop_sessions_table` apaga uma — as mesmas palavras que você usaria
@@ -1749,7 +1906,7 @@ depois dele são modificadores:
 | `price:decimal:8,2` | `$table->decimal('price', 8, 2)` |
 | `active:boolean:default=true` | `$table->boolean('active')->default(true)` |
 | `bio:text:nullable` | `$table->text('bio')->nullable()` |
-| `author_id:foreignId:constrained` | `$table->foreignId('author_id')->constrained()` |
+| `author_id:foreignId:constrained` | `$table->foreignId('author_id')->constrained()` — a tabela é lida do nome: `authors` |
 | `timestamps` | `$table->timestamps()` — palavra solta não leva nome de coluna |
 
 
@@ -1843,7 +2000,7 @@ $schema->table('posts', fn (Blueprint $t) => /* altera */);
 $schema->drop('posts');
 $schema->dropIfExists('posts');
 $schema->rename('posts', 'articles');
-$schema->hasTable('posts');
+$schema->hasTable('posts');          // MySQL, PostgreSQL e SQLite
 $schema->hasColumn('posts', 'title');
 $schema->hasIndex('posts', 'posts_title_index');
 $schema->statement('SET ...', $bindings);
@@ -1891,7 +2048,7 @@ $table->rememberToken();         $table->rawColumn('tags', 'TEXT[]');
 $table->string('slug')->nullable()->default('')->comment('URL amigável');
 $table->integer('views')->unsigned()->default(0);
 $table->string('email')->unique();
-$table->string('nome')->collation('pt_BR.utf8')->charset('utf8mb4');
+$table->string('nome')->collation('utf8mb4_unicode_ci')->charset('utf8mb4');   // os nomes do MySQL
 $table->timestamp('atualizado')->useCurrent()->useCurrentOnUpdate();
 $table->string('extra')->after('nome');     // MySQL
 $table->string('primeiro')->first();        // MySQL
@@ -1907,10 +2064,11 @@ $table->unique(['email', 'tenant_id']);
 $table->index('created_at');
 $table->fullText('corpo');
 $table->index('nome')->algorithm('btree');
-$table->check('preco >= 0');
+$table->check('preco >= 0', 'posts_preco_check');   // com nome, para o dropCheck() encontrá-lo
 
-$table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-$table->foreign('user_id')->references('id')->table('users')->nullOnDelete();
+$table->foreignId('user_id')->constrained()->cascadeOnDelete();   // users, lido do nome
+$table->foreignId('editor_id')->constrained('users');             // ou nomeada
+$table->foreign('user_id')->references('users', 'id')->nullOnDelete();
 
 $table->morphs('owner');            // owner_id + owner_type + índice
 $table->nullableMorphs('owner');
@@ -1928,11 +2086,12 @@ $schema->table('posts', function (Blueprint $table): void {
     $table->renameColumn('corpo', 'conteudo');
     $table->renameIndex('idx_velho', 'idx_novo');
     $table->dropColumn('obsoleto');
-    $table->dropIndex('posts_slug_index');
-    $table->dropUnique('posts_email_unique');
-    $table->dropForeign('posts_user_id_foreign');
+    $table->dropIndex('slug');               // a(s) coluna(s), como o index() as recebeu
+    $table->dropUnique(['email', 'tenant_id']);
+    $table->dropForeign('user_id');
+    $table->dropIndex([], 'idx_custom');      // ou o nome do próprio índice, em segundo
     $table->dropPrimary();
-    $table->dropCheck('posts_preco_check');
+    $table->dropCheck('posts_preco_check');   // o nome dado ao check()
     $table->dropTimestamps();
     $table->dropSoftDeletes();
     $table->dropRememberToken();
@@ -1984,7 +2143,7 @@ declara.
 ### Seeders
 
 ```bash
-./sfphp make:seeder UserSeeder
+./sfphp make:seeder User      # escreve UserSeeder; "UserSeeder" também funciona
 ```
 
 ```php
@@ -2024,7 +2183,9 @@ class DatabaseSeeder extends Seeder
 ./sfphp db:seed --class=UserSeeder    # roda um específico
 ```
 
-Um nome inexistente lista os seeders disponíveis e sai com código 1.
+Um nome inexistente lista os seeders disponíveis e sai com código 1. O
+`DatabaseSeeder` que acompanha o projeto chama o `UserSeeder`, que cria dez
+usuários pela `UserFactory`, cada um com a senha `password`.
 
 ### Factories
 
@@ -2044,10 +2205,12 @@ class UserFactory extends Factory
 {
     public function definition(): array
     {
+        $id = bin2hex(random_bytes(4));
+
         return [
-            'name' => 'User ' . mt_rand(1000, 9999),
-            'email' => 'user' . mt_rand(1000, 9999) . '@exemplo.com',
-            'password' => password_hash('password', PASSWORD_BCRYPT),
+            'name' => 'User ' . $id,
+            'email' => 'user-' . $id . '@exemplo.com',
+            'password' => password_hash('password', PASSWORD_DEFAULT),
         ];
     }
 
@@ -2065,8 +2228,9 @@ escreve para você.
 $dados  = (new UserFactory())->make();                      // array, sem salvar
 $user   = (new UserFactory())->create();                    // salvo, um User
 $admin  = (new UserFactory())->create(['role' => 'admin']);  // sobrescreve
-$muitos = (new UserFactory())->count(50)->create([
-    'email' => fn () => 'user' . bin2hex(random_bytes(6)) . '@exemplo.com',
+$muitos = (new UserFactory())->count(50)->create();             // cinquenta usuários, cinquenta e-mails
+$ranking = (new UserFactory())->count(3)->create([
+    'position' => fn (Factory $factory, int $index): int => $index + 1,
 ]);
 ```
 
@@ -2074,11 +2238,15 @@ $muitos = (new UserFactory())->count(50)->create([
 em `model()` e devolve instâncias de Model — uma lista delas quando `count()`
 passa de 1. Veja [Models](#models).
 
-`definition()` roda **uma vez** por chamada, e o `count()` copia o resultado para
-todas as linhas: os cinquenta usuários acima compartilhariam um mesmo e-mail de
-`mt_rand()` e esbarrariam num índice único. Um valor que precisa mudar de linha
-para linha é passado como closure, que é chamada para cada linha — só quando
-`count()` passa de 1.
+`definition()` roda **uma vez por linha**, então um valor aleatório muda de
+linha para linha e um índice único se sustenta. Um valor passado como closure é
+chamado para cada linha, com a factory e o índice da linha; só uma closure é
+chamada — uma string que por acaso nomeia uma função do PHP, como `'key'` ou
+`'date'`, continua sendo string.
+
+O `create()` salva com `forceFill()`: os valores são da factory, não de um
+visitante, então uma coluna fora do `$fillable` — a senha, em geral — é escrita
+como as demais.
 
 ---
 
@@ -2087,12 +2255,13 @@ para linha é passado como closure, que é chamada para cada linha — só quand
 ```php
 $cache = cache();                    // helper global, driver de CACHE_DRIVER
 
-$cache->put('chave', $valor, 300);   // TTL em segundos; null = sem expirar
+$cache->put('chave', $valor, 300);   // TTL em segundos; null ou 0 = sem expirar
 $cache->get('chave');
 $cache->get('chave', 'padrão');
-$cache->has('chave');
+$cache->has('chave');                // true para uma entrada viva, mesmo guardando null
 $cache->forget('chave');
-$cache->flush();
+$cache->flush();                     // tudo
+$cache->prune();                     // só o que expirou; devolve quantas
 $cache->pull('chave');                          // lê e remove
 $cache->remember('users', 600, fn () => /* ... */);   // calcula se faltar
 
@@ -2104,6 +2273,14 @@ $cache->increment('window', 1, 60);  // um contador que expira em 60 segundos
 $cache->ttl('window');               // segundos restantes, ou null
 ```
 
+Todo driver lê um tempo de vida do mesmo jeito — `null` ou `0` nunca expira, um
+número positivo é segundos, um negativo lança — e guarda os valores como
+**JSON**: `null`, escalares e arrays. Um objeto guardado volta como array, do
+driver de arquivo, do Redis e da memória igualmente, então código testado
+contra um se comporta igual contra os outros. O driver de arquivo perdia toda
+entrada guardada sem tempo de vida; o driver Redis fazia `unserialize()` do que
+quer que o servidor guardasse.
+
 ### Contadores
 
 `increment()` não é `get()` mais `put()`, e a diferença é justamente o ponto.
@@ -2113,7 +2290,8 @@ limitador de requisições, que conta precisamente quando várias chegam ao mesm
 tempo.
 
 A soma acontece onde o dado está: dentro de um lock exclusivo no driver de
-arquivo, e como `INCRBY` no Redis, de modo que quem soma é o driver, não o PHP.
+arquivo, e em um único script Lua no Redis — a soma e o tempo de vida juntos,
+então uma chave não consegue expirar entre os dois e voltar sem tempo de vida.
 
 O tempo de vida é aplicado **só quando o contador é criado**. Um contador que
 já existe mantém a expiração que tinha, então um cliente que continua batendo
@@ -2126,9 +2304,8 @@ que não expira nunca, e `ttl()` responde `null`. Passe o tempo de vida na
 chamada que cria o contador, ou em todas — o limitador de requisições faz a
 segunda coisa.
 
-> Acrescentar `increment()` e `ttl()` à interface `Cache` é uma **quebra de
-> compatibilidade** para uma aplicação que traga o próprio driver: uma classe
-> que implementa `Cache` passa a precisar implementar os dois.
+> A interface `Cache` tem `increment()`, `ttl()` e `prune()`. Uma aplicação que
+> traga o próprio driver implementa os três.
 
 ### Escolher o driver
 
@@ -2137,7 +2314,7 @@ CACHE_DRIVER=file          # o padrão
 CACHE_DRIVER=redis         # exige ext-redis
 CACHE_DRIVER=array         # memória, some no fim da requisição
 
-CACHE_PATH=storage/cache   # onde o driver de arquivo escreve
+CACHE_PATH=storage/cache   # onde o driver de arquivo escreve (o padrão); relativo ao projeto
 CACHE_PREFIX=sfphp:cache:  # para duas aplicações dividirem um Redis
 
 REDIS_HOST=127.0.0.1
@@ -2179,14 +2356,24 @@ use SfphpProject\src\Cache\MemoryDriver;
 $rascunho = new CacheManager(new MemoryDriver());   // só durante a requisição
 ```
 
+O diretório do driver de arquivo é privado (`0700`, arquivos `0600`) e fica
+dentro do projeto. Antes era um nome fixo sob o diretório temporário do sistema,
+que toda aplicação e todo usuário da máquina compartilhavam.
+
 ```bash
-./sfphp cache:clear
-./sfphp cache:flush
+./sfphp cache:clear      # remove o que expirou
+./sfphp cache:flush      # remove tudo
 ```
+
+O `cache:clear` esvaziava tudo. O cache guarda a lista de tokens revogados, os
+contadores de rate limit e, com `SESSION_DRIVER=cache`, as sessões — então
+limpar "entradas expiradas" trazia de volta tokens revogados, zerava todo
+limite e deslogava todo mundo. Agora ele poda; o `cache:flush` é o comando que
+o esvazia, e diz o que isso zera.
 
 ---
 
-## Queue
+## Filas
 
 ```php
 use SfphpProject\src\Queue\Job;
@@ -2219,6 +2406,16 @@ pode receber argumentos no construtor como qualquer outra classe. `tries`,
 `timeout` e `delay` definidos no dispatch são guardados com o job e respeitados
 pelo worker.
 
+As propriedades de um job são guardadas como JSON, então guardam o que o JSON
+guarda: um id, uma string, um número, um array deles. Um objeto — um
+`DateTimeImmutable`, um enum, um model — é recusado no dispatch com uma mensagem
+que diz isso. Antes ele entrava como os seus campos e voltava como um array que
+a propriedade tipada recusava, dentro do worker; um model também copiava a linha
+inteira, hash da senha incluído, para a tabela de jobs. Guarde o id e carregue o
+resto no `handle()`. Um payload guardado que não pode mais ser reconstruído —
+uma classe renomeada desde então — vai para os jobs que falharam em vez de parar
+o worker.
+
 ```bash
 ./sfphp queue:work                 # padrão: 3600s
 ./sfphp queue:work --timeout=7200
@@ -2232,8 +2429,12 @@ um job que passa do seu `timeout` (60 segundos, se não for definido) falha
 aquela tentativa com uma `JobTimedOutException`. Sem `ext-pcntl` não há parada
 ordenada nem limite por job: um job roda até retornar.
 
-As tabelas `jobs` e `failed_jobs` são criadas sob demanda, na primeira operação
-que precisa delas — instanciar o driver não abre conexão.
+As tabelas `jobs` e `failed_jobs` são criadas pelo `./sfphp queue:table`, ou na
+primeira operação que precisa delas — instanciar o driver não abre conexão.
+Criar uma tabela dentro de uma transação aberta faria commit dela no MySQL,
+então o driver se recusa e pede o `queue:table`. Um job que falhou guarda o
+payload e a classe, a mensagem e o stack trace da exceção; o `queue:failed`
+lista a mensagem.
 
 ### Escolher o driver
 
@@ -2268,7 +2469,7 @@ A reserva agora é uma reivindicação. O `UPDATE` carrega a condição de o job
 ainda estar sem reserva, e só o worker cuja instrução afeta uma linha o tem;
 quem perde procura o próximo em vez de executar o de outro. Um update
 condicional em vez de `SELECT … FOR UPDATE SKIP LOCKED`, porque o framework
-suporta sete drivers e não todos têm isso.
+suporta sete drivers e nem todos têm isso.
 
 ```php
 new DatabaseDriver(reservationSeconds: 900);
@@ -2294,7 +2495,7 @@ continuam sendo executados.
 
 ### O que falta
 
-| Ausência | Situação |
+| Ausente | Situação |
 |---|---|
 | Várias filas nomeadas | Tudo vai para `default`; a coluna existe e nada a lê |
 | Recuperar um job cujo worker Redis morreu | O id retirado sai do sorted set; o payload fica em `queue:jobs`, mas nada o recoloca — o tempo de reserva do driver de banco ainda não tem equivalente no Redis |
@@ -2337,7 +2538,7 @@ quando essa extensão falta.
 **O nome informado também é uma alegação.** Usá-lo para montar um caminho é como
 `../../public/shell.php` é gravado. O `clientName()` remove tudo que parece
 caminho, inclusive o byte nulo que faz `shell.php\0.png` passar por uma
-verificação de extensão e cair como `shell.php` — e o `store()` não o usa.
+verificação de extensão e cair como `shell.php` — e o `store()` nem sequer o usa.
 
 **Um arquivo que não foi enviado não é um arquivo.** O `$_FILES` pode ser
 forjado quando um script fica alcançável de um jeito que o autor não previu,
@@ -2355,20 +2556,28 @@ o controller decide se aquilo é erro de formulário ou falha:
 | `assertType(['image/png'])` | O que o arquivo **contém**, pelos bytes |
 | `assertExtension(['png'])` | Como o arquivo se **chama** |
 | `assertSmallerThan($bytes)` | Por campo, diferente do `upload_max_filesize` |
-| `assertImage()` | Decodifica o cabeçalho, então imagem falsa é recusada |
+| `assertImage()` | Decodifica o cabeçalho, então um arquivo que não é imagem é recusado |
 
 Tipo e extensão valem os dois, porque são mentiras diferentes: o que um arquivo
 contém decide como uma biblioteca o lê, e no que o nome dele termina decide como
 um servidor web o trata. Um PNG de verdade chamado `avatar.php` continua sendo
-problema se cair onde PHP é executado.
+problema se cair onde PHP é executado — e um PNG pode carregar PHP depois dos
+pixels e passar tanto no `assertType()` quanto no `assertImage()`, e é por isso
+que o nome guardado, abaixo, nunca mantém uma extensão que um servidor
+executaria.
 
 ```php
 try {
     $file->assertType(['application/pdf'])->assertSmallerThan(5 * 1024 * 1024);
 } catch (UploadException $e) {
-    $errors['nota'] = $e->getMessage();
+    $errors['nota'] = 'Envie um PDF de no máximo 5 MB.';   // a mensagem da exceção é em inglês
+    logger()->info('upload refused', ['reason' => $e->getMessage()]);
 }
 ```
+
+As mensagens das verificações são escritas para quem desenvolve e são em inglês.
+O que o visitante lê é seu para redigir, no idioma dele; o `errorMessage()`,
+abaixo, é a única mensagem que o framework traduz.
 
 O `Validator` deliberadamente não entra nisso. Ele trabalha com escalares de um
 formulário, e o tipo real de um upload é algo que só o próprio arquivo responde.
@@ -2383,10 +2592,14 @@ $path = $file->store($diretorio, 'relatorio.csv');   // ainda sanitizado
 ```
 
 O nome guardado é **aleatório**, e isso é o ponto, não uma conveniência: o nome
-do cliente é entrada do cliente. A extensão é levada adiante só quando é
-alfanumérica simples, então nada nela pode ser um caminho ou uma segunda
-extensão. Um nome que você mesmo passe é reduzido a algo que não pode ser
-caminho, e recusado de vez quando não sobra nada usável.
+do cliente é entrada do cliente. A extensão vem do que o arquivo **contém**
+quando é um tipo comum — `jpg`, `png`, `pdf`, `txt` e parecidos — e, fora isso,
+do nome do cliente, só quando é alfanumérica simples e nunca uma que um servidor
+pudesse executar ou renderizar como página: `php`, `phtml`, `phar`, `html`,
+`svg`, `js` e afins são descartadas. Um nome que você mesmo passe é reduzido a
+algo que não pode ser caminho — letras de qualquer escrita são mantidas, então
+`relatório.pdf` continua `relatório.pdf` —, ganha `.txt` quando termina numa
+dessas extensões, e é recusado de vez quando não sobra nada usável.
 
 > **Guarde uploads fora do document root.** Nada disso impede um arquivo de ser
 > executado se for gravado onde o servidor web o roda. O `public/` é o único
@@ -2401,8 +2614,9 @@ foreach ($request->files('fotos') as $foto) {
 ```
 
 O `$_FILES['fotos']` para `name="fotos[]"` não é uma lista de arquivos — é um
-arquivo cujas propriedades são todas listas. O `files()` inverte isso, e o
-`file()` responde `null` para um campo assim em vez de devolver algo inutilizável.
+arquivo cujas propriedades são todas listas. O `files()` inverte isso, deixando
+de fora os inputs que ficaram vazios, e o `file()` responde `null` para um campo
+assim em vez de devolver algo inutilizável.
 O `hasFile()` pergunta se chegou um arquivo **usável**, não se o campo veio.
 
 ### Por que um upload falhou
@@ -2415,7 +2629,7 @@ que o framework traz nos três idiomas.
 
 ### O que falta
 
-| Ausência | Situação |
+| Ausente | Situação |
 |---|---|
 | Abstração de armazenamento | O `store()` grava num caminho local. S3 ou volume compartilhado é da aplicação, e disco local não é compartilhado entre instâncias |
 | Processamento de imagem | Sem redimensionar nem recodificar. O `ext-gd` faz isso e o framework não o embrulha |
@@ -2466,8 +2680,13 @@ inventou — o `send()` aceita:
 
 ```php
 Http::client()->send('OPTIONS', 'https://api.exemplo.com/users');
+Http::client()->send('HEAD', $url);                 // só headers; volta assim que eles chegam
 Http::client()->send('REPORT', $url, $corpo, ['page' => 2]);
 ```
+
+O nome de um header precisa ser um nome de header, e um valor não pode conter
+quebra de linha: `withHeaders(['X-A' => "v\r\nX-Injected: yes"])` lança
+`ClientException` em vez de enviar um segundo header escolhido por quem chamou.
 
 ### Um cliente para um serviço que você chama sempre
 
@@ -2484,7 +2703,7 @@ configurado para um serviço pode circular sem que nada consiga alterá-lo.
 
 | Na fachada | No cliente | Faz |
 |---|---|---|
-| `Http::base($url)` | `->base($url)` | Os caminhos relativos penduram aqui |
+| `Http::base($url)` | `->base($url)` | Os caminhos relativos partem daqui, e as credenciais vão só para a origem dele |
 | `Http::withToken($jwt)` | `->token($jwt)` | Um bearer token |
 | `Http::withBasic($usuario, $senha)` | `->basic($usuario, $senha)` | Credenciais HTTP basic |
 | `Http::withHeaders([...])` | `->headers([...])` | Qualquer outro header |
@@ -2506,7 +2725,7 @@ Um erro **é** uma resposta: o servidor foi alcançado, entendeu e disse não. E
 | `ok()` | 2xx |
 | `failed()` · `clientError()` · `serverError()` | 4xx ou 5xx, 4xx, 5xx |
 | `body()` · `json()` | O corpo, cru ou decodificado |
-| `header($nome)` · `headers()` | Sem diferenciar maiúsculas |
+| `header($nome)` · `headers()` | Sem diferenciar maiúsculas; só os da resposta final, um header repetido juntado com vírgulas |
 | `url()` | A URL que respondeu, **depois** dos redirects |
 | `throw()` | Lança em 4xx e 5xx, e devolve `$this` nos outros casos |
 
@@ -2565,7 +2784,14 @@ resposta de fórum está entre os buracos mais comuns em PHP.
 Redirects são seguidos, limitados a cinco, e **nunca** de `https://` para
 `http://` — um rebaixamento que o servidor pede e o cliente deve recusar, já que
 tudo depois dele viaja em claro, inclusive o header `Authorization` que a
-requisição possa estar carregando.
+requisição possa estar carregando. Eles são seguidos como um navegador os
+segue: um `POST` respondido com 301, 302 ou 303 continua como `GET`, e 307 e 308
+repetem o `POST` com o corpo. Os headers dos próprios redirects — um `Location`,
+um `Set-Cookie` — não se misturam à resposta que volta.
+
+Um cliente montado com `base()` envia o token ou as credenciais basic só para
+essa origem. Recebendo uma URL absoluta em outro lugar, ele faz a requisição sem
+o header `Authorization` em vez de entregar as credenciais.
 
 > **Uma URL que veio de um visitante é uma requisição que um atacante escolheu.**
 > Apontada para `169.254.169.254`, ou para algo que só a sua rede alcança, isto
@@ -2618,7 +2844,17 @@ MAIL_FROM_NAME="Seu Produto"
 O padrão é `log`, não `mail`. Um framework cujo comportamento de fábrica é
 entregar mensagens a um MTA local não configurado não envia nada e não avisa
 nada; escrever no log pelo menos diz o que teria saído, e não alcança uma pessoa
-real por acidente.
+real por acidente. Fora de produção o log guarda o corpo, então um link de
+redefinição pode ser seguido a partir dele; com `APP_ENV=production` o corpo fica
+de fora e o registro é um aviso, porque ali ele significa que o e-mail não está
+sendo enviado. Um `MAIL_DRIVER` que não é um dos quatro continua indo para o log,
+e diz isso num aviso — um `smpt` mal digitado não enviava nada sem dizer nada.
+
+O driver `mail` mantém um Bcc oculto entregando-o ao `sendmail -t` num cabeçalho
+`Bcc:`, que o sendmail remove antes de enviar; o `sendmail_path` padrão do PHP é
+esse. Com um `sendmail_path` que não lê os destinatários dos cabeçalhos, uma
+mensagem com Bcc é recusada em vez de enviada com as cópias ocultas à mostra
+para todos.
 
 ### Um driver, todos os provedores
 
@@ -2633,12 +2869,20 @@ eles:
 
 | `MAIL_ENCRYPTION` | Porta, em geral | O que acontece |
 |---|---|---|
-| `tls` | 587 | Conexão limpa, elevada com `STARTTLS` |
+| `tls` (ou `starttls`) | 587 | Conexão limpa, elevada com `STARTTLS` |
 | `ssl` | 465 | Criptografada desde o primeiro byte |
 | `none` | 25, 1025 | Nenhum dos dois — só servidor local |
 
+O valor é lido sem diferenciar maiúsculas, e qualquer outro é recusado com essa
+lista: `TLS` passava por todas as comparações e significava `none`, enviando a
+senha em claro enquanto a configuração dizia outra coisa.
+
 `AUTH PLAIN` e `AUTH LOGIN` são os dois suportados; o que o servidor anuncia
-decide qual é usado. O certificado é verificado por padrão.
+decide qual é usado. O certificado é verificado por padrão. Uma senha nunca é
+enviada por uma conexão sem criptografia para outra máquina: com
+`MAIL_ENCRYPTION=none` e um usuário, só um servidor nesta máquina (`localhost`,
+`127.0.0.1`) recebe login. `MAIL_ALLOW_PLAINTEXT_AUTH=true` libera isso, para um
+relay numa rede em que você confia.
 
 ### Enviar não é chegar
 
@@ -2679,6 +2923,12 @@ Um **endereço em Bcc chega ao servidor e nunca chega a um cabeçalho**. Escreve
 um mostraria cada destinatário oculto para todos os outros, que é justamente o
 que o Bcc promete não fazer.
 
+Um nome de exibição com vírgula, aspas ou `@` é escrito como string entre aspas,
+então `replyTo('visitante@exemplo.com', 'Visitante, attacker@evil.com')` é um
+endereço com um nome estranho e não dois endereços. Um assunto longo é cortado
+em palavras codificadas e dobrado, como pedem a RFC 2047 e a RFC 5322, e um
+anexo cujo nome não é ASCII é nomeado com o `filename*=UTF-8''…` da RFC 2231.
+
 ### Duas coisas que não são conveniência
 
 **Uma quebra de linha num cabeçalho é recusada.** Um newline num nome, num
@@ -2691,7 +2941,10 @@ ataque quanto para um engano.
 **Tudo é UTF-8 até o fim.** Um assunto com acento é codificado conforme a RFC
 2047 e um corpo conforme a RFC 2045, então "Confirmação de inscrição" chega como
 ele mesmo e não como mojibake. ASCII puro fica intocado, o que mantém uma
-mensagem crua legível.
+mensagem crua legível. Um endereço é aceito em qualquer escrita —
+`josé@exemplo.com.br`, `user@münchen.de` — e um domínio fora do ASCII é enviado
+na forma ASCII quando o `ext-intl` está instalado. Uma parte local fora do ASCII
+precisa de um servidor que fale SMTPUTF8, e nem todos falam.
 
 ### Enviando em segundo plano
 
@@ -2724,13 +2977,16 @@ $sent->last()->subjectLine();
 ```
 
 O `MAIL_ALWAYS_TO` redireciona toda mensagem para um endereço, mantendo o
-destinatário pretendido num cabeçalho `X-Intended-For`. É para um ambiente de
+destinatários pretendidos num cabeçalho `X-Intended-For`. É para um ambiente de
 homologação trabalhando sobre cópia de dados de produção, onde os endereços no
-banco pertencem a pessoas reais.
+banco pertencem a pessoas reais. Só os destinatários mudam: anexos, Reply-To e
+cabeçalhos viajam como em produção, então a homologação envia o que a produção
+enviaria. O `mailer()->send()` trabalha sobre uma cópia, então a `Message` que
+você passou fica como você a montou.
 
 ### O que falta
 
-| Ausência | Situação |
+| Ausente | Situação |
 |---|---|
 | Retorno de entrega | Bounces e reclamações chegam por webhook no provedor; nada os consome |
 | Imagens embutidas (`cid:`) | Anexos são enviados como anexos, sem referência a partir do HTML |
@@ -2771,8 +3027,9 @@ causa de um evento que pode nunca acontecer.
 ./sfphp make:event OrderPlaced      # cria app/events/OrderPlacedEvent.php
 ```
 
-Os dois geradores acrescentam o sufixo, então a classe a registrar é
-`SendReceiptListener`.
+Os dois geradores acrescentam o sufixo — e o deixam como está quando você o
+digitou, então `make:listener SendReceiptListener` escreve a mesma classe. A
+classe a registrar é `SendReceiptListener`.
 
 O container é o que você entrega. Sem ele, cada listener é montado por um
 `Container` vazio, que não sabe nada dos bindings da aplicação — um listener com
@@ -2782,9 +3039,10 @@ um parâmetro `PDO` não pode ser montado. Entregue o da aplicação no boot:
 Dispatcher::useContainer($container);   // em public/index.php, depois dos bindings
 ```
 
-Para testes, `Dispatcher::hasListeners(OrderPlaced::class)` diz se algo está
-escutando, e `Dispatcher::forget()` remove os listeners de um evento, ou de
-todos quando chamado sem argumento.
+Para testes, `Dispatcher::hasListeners(OrderPlaced::class)` diz se algo
+ouviria esse evento — um listener dele, ou de uma classe pai ou interface dele —
+e `Dispatcher::forget()` remove os listeners de um evento, ou de todos quando
+chamado sem argumento.
 
 Registrar contra uma classe pai ou uma interface pega os filhos, que é o que
 torna "registrar todo evento de domínio" exprimível sem nomear cada um:
@@ -2792,6 +3050,9 @@ torna "registrar todo evento de domínio" exprimível sem nomear cada um:
 ```php
 Dispatcher::listen(DomainEvent::class, AuditTrail::class);
 ```
+
+Os listeners rodam na ordem em que foram registrados, seja qual for a classe
+contra a qual cada um foi registrado.
 
 ### Um listener que lança
 
@@ -2816,7 +3077,7 @@ requisição que o criou e seria visto pela seguinte.
 
 ### O que falta
 
-| Ausência | Situação |
+| Ausente | Situação |
 |---|---|
 | Listener em fila | Um listener roda na requisição que disparou o evento; despache um job a partir dele para mover o trabalho |
 | Interromper a propagação | Todo listener roda; não existe "tratado, pare" |
@@ -2846,7 +3107,7 @@ public function store(Request $request): Response
 ```
 
 Os dados são os da própria requisição — query string, corpo, JSON, o que aquela
-requisição de fato carregou. **Nada mexe no `$_POST`**, e isso importa além do
+requisição de fato carregou. **Nada lê o `$_POST`**, e isso importa além do
 gosto: superglobal é estado do processo inteiro, então um teste precisa forjá-la,
 uma segunda requisição no mesmo worker herda o que sobrou, e um controller
 escrito contra ela não pode ser chamado duas vezes com entradas diferentes.
@@ -2861,21 +3122,30 @@ $resultado = Validator::validate($linha, ['email' => 'required|email']);
 ```
 
 As regras são uma string separada por `|` ou um array de strings de regra.
-Argumentos vêm depois de `:`.
+Argumentos vêm depois de `:`. Os nomes das regras são lidos sem diferenciar
+maiúsculas — `minlength:5` é `minLength:5` —, no servidor e no navegador igualmente.
 
 | Regra | Verifica |
 |---|---|
 | `required` | Não nulo, não vazio, não só espaços, não lista vazia |
-| `email` | `FILTER_VALIDATE_EMAIL` |
-| `url` | `FILTER_VALIDATE_URL` |
+| `email` | Um endereço, em **qualquer escrita**: `josé@exemplo.com.br` passa, `a@b..com` não |
+| `url` | Um endereço `http` ou `https` com host, em qualquer escrita — `javascript:` e `foo:bar` não passam |
 | `number` | Só dígitos ASCII (seguro para `(int)`) |
-| `alpha` | Só letras, **qualquer alfabeto** (`\p{L}`) |
+| `alpha` | Só letras, **qualquer alfabeto**, marcas combinantes incluídas (`\p{L}`, `\p{M}`) |
 | `alphanum` | Letras e dígitos de qualquer escrita |
-| `min:N` | **Segue o valor**: no mínimo N como número, ou no mínimo N caracteres |
-| `max:N` | No máximo N como número, ou no máximo N caracteres |
-| `minLength:N` | No mínimo N caracteres, **sempre** — não importa o que o valor pareça |
-| `maxLength:N` | No máximo N caracteres, sempre |
-| `pattern:REGEX` | Casa, com `u` e com os delimitadores postos para você |
+| `min:N` | **Segue o valor**: no mínimo N como número, no mínimo N caracteres, ou no mínimo N itens de um array |
+| `max:N` | No máximo N como número, no máximo N caracteres, ou no máximo N itens |
+| `minLength:N` | No mínimo N caracteres, **sempre** — não importa o que o valor pareça; itens, para um array |
+| `maxLength:N` | No máximo N caracteres, sempre; itens, para um array |
+| `pattern:REGEX` | Casa, com `u` e com os delimitadores postos para você; um padrão inválido lança |
+
+Um caractere é o que um leitor vê como um: "José" digitado com acento
+combinante tem quatro caracteres, não cinco, e uma família de emoji é um.
+
+Um array falha em toda regra que trata de um valor único — `email`, `alpha`,
+`pattern` e as demais — e é contado pelos itens nos quatro limites. Antes um
+array era lido como string vazia, então `['a', 'b', 'c']` passava em
+`maxLength:1`.
 
 **O `required` vem primeiro, e as outras regras só quando há valor.** Um campo
 ausente, vazio ou só com espaços é julgado apenas pelo `required`, em qualquer
@@ -2958,6 +3228,17 @@ um número, `min` e `max` procuram a mensagem como `minValue` e `maxValue`.
 ['idade' => ['minValue' => 'Você precisa ter ao menos 18 anos.']]   // para 'number|min:18'
 ```
 
+Num array, os quatro limites procuram as suas como `minItems` e `maxItems`.
+
+O `:field` numa mensagem é o nome do campo como o formulário o envia, a menos
+que o catálogo o nomeie no idioma do visitante:
+
+```php
+// lang/pt_BR/validation.php
+return ['attributes' => ['name' => 'nome', 'email' => 'e-mail']];
+// "nome é obrigatório." em vez de "name é obrigatório."
+```
+
 ---
 
 ## Internacionalização
@@ -3007,17 +3288,20 @@ do framework.
 ### Traduzindo
 
 ```php
-__('http.not_found_title');                    // 404 - Página Não Encontrada
+__('http.not_found_title');                    // 404 - Página não encontrada
 __('app.welcome', ['name' => 'Ana']);          // Bem-vindo, Ana!
 __('app.welcome', ['name' => 'Ana'], 'en');    // num idioma específico
 locale();                                      // 'pt_BR'
-lang_tag();                                    // 'pt-BR' — para <html lang="…">
+lang_tag();                                    // 'pt-BR' — o mesmo, como tag BCP 47 para <html lang="…">
 Translator::has('app.welcome');                // se existe tradução
 ```
 
 A chave é `grupo.entrada`, e pode aninhar mais fundo (`app.form.titulo`).
 **Uma chave sem tradução volta como está** — a falta aparece onde ela é, em
 vez de virar uma página vazia.
+
+Um idioma regional lê o idioma base antes do fallback: com catálogos em `es` e
+`en`, o `es_MX` lê `es` primeiro e `en` só depois — antes ia direto para `en`.
 
 ### Plural
 
@@ -3035,7 +3319,9 @@ trans_choice('app.items', 5);   // 5 itens
 ```
 
 Sem condição, a regra do idioma escolhe: a primeira forma para um, a segunda
-para o resto.
+para o resto. Um número que nenhuma condição explícita cobre — zero diante de
+`{1}…|[2,*]…` — fica com a última forma, a geral, em vez da string inteira com
+as barras e os colchetes.
 
 #### Quando faixas não bastam
 
@@ -3081,9 +3367,11 @@ descarta o que vier com `q=0`, e escolhe o melhor par entre o que o cliente
 pediu e o que a aplicação oferece. Pedir `pt` e receber `pt_BR` é melhor do que
 receber inglês, então isso acontece.
 
-Também acrescenta o header `Content-Language` à resposta, e as páginas de erro
-do framework passam a declarar o `lang` correto no documento — antes elas
-diziam `lang="en"` independentemente do conteúdo:
+Também acrescenta os headers `Content-Language` e `Vary: Accept-Language` à
+resposta, então um cache compartilhado separa a página pelo idioma em vez de
+servir a do primeiro visitante para todos depois dele. As páginas de erro do
+framework declaram o `lang` negociado no documento — antes elas diziam
+`lang="en"` independentemente do conteúdo:
 
 ```html
 <html lang="pt-BR">   <!-- segue o idioma negociado -->
@@ -3141,6 +3429,7 @@ chamador continua vencendo intocada:
 Validator::validate($dados, ['nome' => 'required|min:5']);
 // pt_BR: "nome é obrigatório." / "nome deve ter ao menos 5 caracteres."
 // en:    "nome is required."   / "nome must be at least 5 characters long."
+//        "nome é obrigatório." também quando validation.attributes nomeia o campo
 
 Validator::validate($dados, ['nome' => 'required'], [
     'nome' => ['required' => 'Informe seu nome.'],   // vence
@@ -3164,7 +3453,7 @@ Cannot resolve parameter $foo in App\Service. Bind a service or provide a defaul
 Elas são lidas num stack trace ou num log, por um desenvolvedor, e traduzi-las
 tornaria mais difícil pesquisar por uma delas, não mais fácil.
 
-### O que não tem
+### O que falta
 
 | Ausente | Situação |
 |---|---|
@@ -3264,7 +3553,12 @@ O `Time::parse()` aceita o que um banco, um formulário ou uma API entregam:
 | Uma string ingênua com um fuso nomeado no segundo argumento | Aquele fuso, convertido para UTC |
 | Um timestamp Unix | Já é um instante; não há fuso a adivinhar |
 | Um `DateTimeInterface` em qualquer fuso | Convertido para UTC |
-| Qualquer coisa impossível de interpretar | `null`, em vez de uma exceção |
+| Qualquer coisa que não seja uma data como foi escrita | `null`, em vez de uma exceção |
+
+Uma string é lida só nos formatos que um banco, um input de data e o ISO 8601
+produzem — uma data, opcionalmente uma hora, opcionalmente um offset ou um fuso.
+O parser do próprio PHP aceita muito mais: `next monday` e `1 week ago` eram
+datas, e `2026-02-30` virava em silêncio o dia 2 de março. Agora são `null`.
 
 ### Atributos de modelo
 
@@ -3305,7 +3599,7 @@ outros clientes dele não está. Um driver que recuse o comando é registrado co
 aviso em vez de recusado, porque uma inconsistência de timestamp não deve virar
 uma indisponibilidade.
 
-### Testes
+### Testando com o relógio
 
 Um teste que afirma sobre "agora" corre contra o relógio. Dá para segurá-lo:
 
@@ -3321,7 +3615,7 @@ a hora errada.
 
 ### O que falta
 
-| Ausência | Situação |
+| Ausente | Situação |
 |---|---|
 | Dados do CLDR próprios | O `Time::localised()` os lê do `ext-intl`; sem a extensão o fallback é no estilo ISO, e não errado |
 | Tempo relativo ("3 horas atrás") | Não existe; a frase é por idioma e pertence à aplicação |
@@ -3444,14 +3738,17 @@ Escrever algo mais esperto aqui seria um retrocesso.
 
 Usa `PASSWORD_DEFAULT` em vez de nomear um algoritmo, então uma atualização do
 PHP que adote um padrão melhor é aproveitada automaticamente para senhas
-novas. As antigas alcançam com `needsRehash()`, logo após um login bem
-sucedido — é o único momento em que dá para atualizar o algoritmo de uma senha
+novas. As antigas se atualizam com `needsRehash()`, logo após um login
+bem-sucedido — é o único momento em que dá para atualizar o algoritmo de uma senha
 sem pedir que o usuário a digite de novo:
 
 ```php
-if (Auth::attempt($credenciais) && Hash::needsRehash($usuario->password)) {
-    $usuario->password = Hash::make($credenciais['password']);
-    $usuario->save();
+if (Auth::attempt($credenciais)) {
+    $usuario = Auth::user();
+
+    if (Hash::needsRehash($usuario->getAuthPassword())) {
+        $usuario->forceFill(['password' => Hash::make($credenciais['password'])])->save();
+    }
 }
 ```
 
@@ -3467,12 +3764,14 @@ Router::get('/painel', [PainelController::class, 'index'])
 
 // Uma API usa o guard de token
 Router::group('/api', function (): void {
-    Router::get('/eu', [ApiController::class, 'eu']);
+    Router::get('/eu', [ProfileController::class, 'eu']);
 }, 'api.', [new Authenticate('api', required: true)]);
 ```
 
-Recusando, ele responde **401** para quem espera JSON e **redireciona para
-`/login`** para um navegador. O redirecionamento é deliberado: um 401 sem
+Recusando, ele responde **401** para quem espera JSON e **redireciona para a
+página de login** para um navegador — `/login`, a menos que o `AUTH_LOGIN_PATH`
+diga outra coisa, ou `new Authenticate('web', required: true, loginPath: '/entrar')`
+para uma rota. O redirecionamento é deliberado: um 401 sem
 header `WWW-Authenticate` faz alguns navegadores abrirem o próprio prompt de
 credenciais, que não é o formulário da sua aplicação.
 
@@ -3501,7 +3800,11 @@ desserialização de todas as sessões vivas.
 
 Ele também **regenera o id da sessão** no login e no logout. No login isso é o
 que impede *session fixation*: um atacante que tenha plantado um id conhecido
-antes não consegue usá-lo depois, porque o id com que a vítima termina é novo.
+antes não consegue usá-lo depois, porque o id com que a vítima termina é novo. O
+token CSRF é substituído no mesmo momento, já que o emitido para a sessão
+anônima pode ter sido visto por quem a plantou. Sair esvazia a sessão — não só o
+id do usuário, mas qualquer outra coisa que a aplicação guardou para ele —, então
+a próxima pessoa no mesmo navegador começa do zero.
 
 O `TokenGuard` não guarda nada no servidor, e é isso que o torna usável fora de
 uma requisição web. É também o que faz da revogação uma decisão em vez de algo
@@ -3527,8 +3830,9 @@ hora em que ele expiraria de qualquer forma. Uma lista de tudo que já foi
 revogado cresceria para sempre; esta é feita de entradas com prazo, então fica
 do tamanho de "revogado recentemente".
 
-`revokeUser()` é o "sair de todos os dispositivos". Ele não tem como listar os
-tokens do usuário — nada nunca os registrou — então registra o momento, e um
+`revokeUser()` é o "sair de todos os dispositivos", indexado pela claim pela
+qual o guard de token identifica os usuários — `id`, a menos que o guard tenha
+sido montado com outra. Ele não tem como listar os tokens do usuário — nada nunca os registrou — então registra o momento, e um
 token cujo `iat` é mais antigo que esse momento é recusado. Um login *depois*
 continua funcionando, e é isso que impede que sair de todo lugar tranque a
 pessoa para fora de entrar de novo.
@@ -3590,12 +3894,12 @@ Gate::define('acessar-admin', fn (?Authenticatable $u): bool
 ```php
 Gate::allows('update', $post);     // chama PostPolicy::update($usuario, $post)
 Gate::denies('update', $post);
-Gate::authorize('update', $post);  // lança AuthorizationException
+Gate::authorize('update', $post);  // lança AuthorizationException — respondida com 403
 Gate::forUser($outro, 'update', $post);
 ```
 
 ```bash
-./sfphp make:policy Post
+./sfphp make:policy Post       # escreve PostPolicy, toda habilidade negando até você escrevê-la
 ```
 
 ```php
@@ -3619,7 +3923,8 @@ por exemplo — conviver com as demais no mesmo lugar.
 
 `AuthorizationException` é distinta de não estar autenticado: significa que o
 framework sabe quem você é e a resposta ainda é não. Um é **403**, o outro é
-**401**.
+**401**. Sem ser capturado, o `Gate::authorize()` vira esse 403 sozinho — veja
+[Tratamento de erros](#tratamento-de-erros).
 
 ### Enumeração de contas
 
@@ -3641,7 +3946,7 @@ uma mudança futura do PHP é pega pelo CI.
 vêm nos três idiomas que o framework acompanha. Veja
 [Internacionalização](#internacionalização).
 
-### O que não tem
+### O que falta
 
 | Ausente | Situação |
 |---|---|
@@ -3717,6 +4022,10 @@ Request::setTrustedProxies(['10.0.0.0/8', '172.16.0.5']);
 TRUSTED_PROXIES=10.0.0.0/8,172.16.0.5
 ```
 
+O `public/index.php` lê o `TRUSTED_PROXIES` pelo `Env::get()`, então ele é
+encontrado venha a variável do `.env` ou do ambiente do container — antes ele
+lia só o `$_ENV`, que fica vazio com o `variables_order` que muitas imagens usam.
+
 > **Atrás de um balanceador que termina TLS isto não é detalhe.** O processo
 > PHP vê HTTP puro, então `isSecure()` responde falso e **o cookie de sessão
 > perde o flag `secure`** — ele passa a trafegar em texto claro assim que o
@@ -3732,6 +4041,13 @@ $request->isSecure();   // true, lendo X-Forwarded-Proto
 Sem eles, ou vindo de fora da faixa confiável, os headers são ignorados — um
 visitante não consegue forjar o próprio endereço. Isso importa no momento em
 que qualquer coisa limita taxa ou registra log por IP.
+
+Com eles, o `X-Forwarded-For` é lido **da direita**. Cada proxy acrescenta o
+endereço de onde recebeu a conexão, então só as entradas que os proxies
+confiáveis acrescentaram são fatos; o endereço é o primeiro, andando de trás
+para a frente, que não é um proxy confiável. A entrada mais à esquerda — a que
+se lia antes — é a que o próprio cliente escreveu. O `X-Forwarded-Proto` é lido
+do mesmo jeito: o valor que o proxy mais próximo definiu.
 
 ### Limite de requisições
 
@@ -3751,6 +4067,11 @@ Os contadores ficam no cache, então o limite vale entre processos quando há um
 driver compartilhado. Uma requisição autenticada conta **por usuário**, para
 que várias pessoas atrás do mesmo endereço de escritório não consumam a cota
 umas das outras.
+
+Um limite conta **a rota**, não o caminho que chegou nela. Em
+`/reset/code:alphanum` cada código ganhava um contador próprio, então tentar
+códigos não era limitado de forma alguma; agora `/reset/a`, `/reset/b` e
+`/reset/c` são o mesmo balde para o mesmo cliente.
 
 A contagem é um `Cache::increment()` **atômico**, não uma leitura seguida de
 escrita. Essa distinção é o middleware inteiro: requisições contadas com
@@ -3810,7 +4131,8 @@ enviá-lo ali pareceria proteção sem ser.
 
 - Cookie com `httponly`, `samesite=Lax` e `secure` quando a conexão é HTTPS —
   determinado pela requisição, respeitando os proxies confiáveis
-- Id da sessão **regenerado no login e no logout**, contra *session fixation*
+- Id da sessão **regenerado no login e no logout**, contra *session fixation*;
+  o token CSRF é substituído no login, e o logout esvazia a sessão
 - `session.use_strict_mode` ligado, então um id que o PHP nunca emitiu é
   recusado em vez de adotado
 - Um prazo **ocioso** e um **absoluto**, os dois aplicados no pipeline — ver
@@ -3819,7 +4141,8 @@ enviá-lo ali pareceria proteção sem ser.
   presa a uma máquina
 - Token CSRF de 32 bytes, comparado com `hash_equals`
 - `VerifyCsrfToken` aplica a verificação **por padrão** a toda requisição que
-  altera estado; métodos seguros e requisições com Bearer passam
+  altera estado; métodos seguros passam, e uma requisição com Bearer só quando
+  não carrega cookie de sessão
 
 ### Senhas e login
 
@@ -3837,8 +4160,9 @@ enviá-lo ali pareceria proteção sem ser.
   citado conforme o driver — um identificador inválido lança em vez de ir para
   o SQL
 - `EMULATE_PREPARES => false`, então o driver prepara de verdade
-- Falha de conexão registra o detalhe no log e lança exceção genérica: host,
-  banco e usuário não chegam ao visitante
+- Falha de conexão registra no log a mensagem do driver e lança uma que nomeia
+  só a extensão que falta ou o driver e o host; a senha e o texto do próprio
+  driver nunca chegam ao visitante
 
 ### Upload
 
@@ -3846,7 +4170,8 @@ enviá-lo ali pareceria proteção sem ser.
   então um `$_FILES` forjado não faz o framework ler um caminho arbitrário
 - O tipo é lido dos próprios bytes do arquivo, nunca do cabeçalho que o cliente
   mandou
-- O nome guardado é gerado; o nome do cliente tem caminho e byte nulo removidos
+- O nome guardado é gerado, com uma extensão tirada do conteúdo e nunca uma que
+  um servidor executaria; o nome do cliente tem caminho e byte nulo removidos
   e serve só para exibição
 
 Ver [Upload de arquivos](#upload-de-arquivos), inclusive por que o arquivo
@@ -3857,12 +4182,16 @@ guardado ainda pertence a fora do document root.
 - `{{ }}` do SFHT escapa por padrão; a saída crua exige `{!! !!}`
 - `e()` para templates PHP crus
 - Detalhe de exceção só aparece com `APP_ENV=development`
+- As colunas em `$hidden` de um model nunca chegam ao JSON dele
+- As expressões do `@state` do SFJS não alcançam a cadeia de protótipos
+- Templates compilados e o cache em arquivo ficam num diretório privado do
+  projeto, nunca num temporário compartilhado
 
-### O que não tem
+### O que falta
 
 | Ausente | Situação |
 |---|---|
-| Recuperação de senha, verificação de e-mail, 2FA | Os fluxos são da aplicação; o [E-mail](#e-mail) é a peça que o framework devia a eles |
+| Recuperação de senha, verificação de e-mail, 2FA | Os fluxos são da aplicação; o [E-mail](#e-mail) é a peça que o framework deve a eles |
 | Um padrão seguro para mais de uma instância | O `CACHE_DRIVER` vem como `file`, o que está certo para uma máquina e errado para várias. O framework não tem como saber qual é o seu caso, então avisa em vez de adivinhar. Ver [Escolher o driver](#escolher-o-driver) |
 | Abstração de armazenamento para upload | Arquivos são validados e guardados localmente; S3 ou volume compartilhado é da aplicação. Ver [Upload de arquivos](#upload-de-arquivos) |
 | Log de auditoria | Os registros são estruturados e carregam id de requisição, mas nada escreve uma trilha deliberada de "quem mudou o quê". Ver [Log](#log) |
@@ -3886,7 +4215,7 @@ Session::id();
 ```
 
 O `$_SESSION` continua existindo e funcionando, mas nada no framework encosta
-nele mais. Passar pelo `Session` é o que torna os dois prazos abaixo
+mais nele. Passar pelo `Session` é o que torna os dois prazos abaixo
 inescapáveis: um código que iniciasse a sessão de outro jeito teria pulado eles.
 
 ### Dois prazos
@@ -3899,9 +4228,17 @@ SESSION_ABSOLUTE_LIFETIME=43200   # absoluto: segundos desde o início da sessã
 Antes disso, uma sessão durava o que o `php.ini` dissesse, que num host
 compartilhado é um número que ninguém da aplicação escolheu.
 
+O coletor de lixo do próprio PHP apaga um arquivo de sessão mais velho que
+`session.gc_maxlifetime` — 1440 segundos por padrão, então um prazo ocioso de
+duas horas acabava depois de 24 minutos. Iniciar a sessão eleva essa
+configuração ao maior dos dois prazos. O Debian e o Ubuntu também limpam as
+sessões por um cron job que lê o `php.ini`, e não essa configuração; ali, eleve
+também o `session.gc_maxlifetime` no `php.ini`, ou guarde as sessões no cache ou
+no banco.
+
 O prazo **ocioso** fecha uma sessão deixada aberta numa máquina de que alguém se
 afastou. O **absoluto** fecha uma sessão viva há tempo demais por mais movimento
-que tenha tido, e é o que uma auditoria pergunta: é ele que limita por quanto
+que tenha tido, e é sobre ele que uma auditoria pergunta: é ele que limita por quanto
 tempo um cookie roubado vale alguma coisa. Cada um pode ser desligado com `0`, e
 os dois são aplicados pelo `StartSession`, que é o único lugar onde dá para
 aplicá-los uma vez e cobrir todas as rotas.
@@ -3944,19 +4281,25 @@ em arquivo, o `cache` se comporta exatamente como o `native`: quem decide isso �
 o driver, não o handler.
 
 O driver de banco precisa de uma tabela `sessions`, e o framework não traz a
-migration dela. Escreva uma:
+migration dela. Escreva uma — com o nome `create_sessions_table`, que o
+`./sfphp reset` preserva:
 
 ```bash
-./sfphp make:migration:create sessions
+./sfphp make:migration create_sessions_table
 ```
 
 ```php
 $schema->create('sessions', function (Blueprint $table): void {
     $table->string('id', 128)->primary();
-    $table->text('payload');
-    $table->integer('expires_at')->index();   // um timestamp Unix, UTC
+    $table->longText('payload');
+    $table->unsignedBigInteger('expires_at')->index();   // um timestamp Unix, UTC
 });
 ```
+
+O handler guarda o payload em base64: o formato de sessão do PHP escreve bytes
+NUL para propriedades privadas e protegidas, e uma coluna text do PostgreSQL os
+recusa — a escrita falhava e o visitante era deslogado. Linhas escritas antes
+continuam sendo lidas.
 
 ```bash
 ./sfphp migrate
@@ -3996,11 +4339,12 @@ pergunta ao store se um id nomeia uma sessão que existe.
 
 ### O que falta
 
-| Ausência | Situação |
+| Ausente | Situação |
 |---|---|
 | Listar ou revogar a sessão de outro dispositivo | A tabela do driver `database` (uma migration sua) torna possível construir; nada vem pronto |
 | Rotação periódica do id | O id muda no login, no logout e na expiração, não por tempo |
-| Criptografia em repouso | O payload é guardado como o PHP serializa; um banco ou cache com criptografia própria é a resposta |
+| Criptografia em repouso | O payload é guardado como o PHP serializa (em base64 no banco); um banco ou cache com criptografia própria é a resposta |
+| Iniciar a sessão só quando ela é usada | Toda requisição inicia uma, então toda resposta carrega o cookie e `Cache-Control: no-store`. Uma página que um CDN deveria guardar em cache é servida por um grupo de rotas sem `StartSession` |
 | Dados de uma requisição só | Não há helper de "guarde isto por exatamente mais uma requisição" |
 
 ---
@@ -4022,16 +4366,28 @@ csrf_verify();    // valida o token da requisição atual
 ```
 
 ```php
-if (!csrf_verify()) {
-    http_response_code(HTTP_FORBIDDEN);
-    return;
+public function store(Request $request): Response
+{
+    if (!Csrf::validate($request->body('_token'))) {
+        return Response::json(['message' => __('http.csrf_message')], HTTP_FORBIDDEN);
+    }
+
+    // ...
 }
 ```
 
 O token tem 32 bytes de `random_bytes`, é comparado com `hash_equals` (tempo
 constante), e a sessão usa `httponly`, `samesite=Lax` e `secure` sob HTTPS. O
-token é aceito por campo `_token` ou pelos headers `X-CSRF-Token` /
-`X-XSRF-Token`.
+token é aceito pelo campo `_token` de um formulário, por `_token` num corpo JSON,
+ou pelos headers `X-CSRF-Token` / `X-XSRF-Token`.
+
+O SFJS envia um formulário como JSON e acrescenta o header `X-CSRF-Token` a
+partir de `<meta name="csrf-token">`, então uma página que usa o SFJS põe
+`{!! csrf_meta() !!}` no `<head>`; um formulário com `csrf_field()` funciona dos
+dois jeitos. Os layouts da aplicação de exemplo têm os dois.
+
+O `csrf_verify()` é o helper legado e lê as superglobais por conta própria;
+dentro de uma action, verifique a requisição que você recebeu, como acima.
 
 Na prática você raramente chama `csrf_verify()` à mão: o middleware
 `VerifyCsrfToken` aplica a verificação por padrão. Veja
@@ -4044,7 +4400,8 @@ Na prática você raramente chama `csrf_verify()` à mão: o middleware
 ```php
 use SfphpProject\src\JWT;
 
-$token = JWT::generate(['id' => 1, 'email' => 'joao@exemplo.com']);
+$token = JWT::generate(['id' => 1]);
+$token = JWT::generate(['id' => 1, 'role' => 'editor']);   // qualquer outra claim viaja como foi dada
 
 if (JWT::validate($token)) {
     // token íntegro e não expirado
@@ -4055,8 +4412,11 @@ $claims = JWT::claims($token);   // valida e devolve o payload, ou null
 
 Pontos que a assinatura impõe:
 
-- `generate()` **exige** as claims `id` e `email`; sem elas lança
-  `InvalidArgumentException`
+- `generate()` **exige** a claim `id` — pela qual o `TokenGuard` procura o
+  usuário — e lança `InvalidArgumentException` sem ela. Todo o resto é
+  opcional: um e-mail era exigido, o que punha dado pessoal em todo token, e um
+  token é assinado, não criptografado. `iat` e `exp` são do próprio framework e
+  não podem ser sobrescritas
 - `validate()` devolve **`bool`**, não as claims, e não lança para token
   inválido
 - `claims()` valida e devolve o payload numa passada só, que é o que um guard
@@ -4076,7 +4436,7 @@ php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 ## Depuração
 
 ```php
-dump($pedido);             // mostra e segue
+dump($pedido);             // mostra e segue — na página que a action devolve
 dump($a, $b, $c);          // vários de uma vez
 dd($request->all());       // mostra e para
 ```
@@ -4105,6 +4465,13 @@ O que ela mostra, e por que cada parte está lá:
 Os ramos colapsam. Usam `<details>`, então colapsar funciona sem nenhum script —
 inclusive atrás de um Content-Security-Policy que bloqueie script inline.
 
+O `dump()` numa requisição espera pela resposta. Antes ele imprimia na hora,
+antes dos headers, e a página em que ele devia ficar se perdia: o navegador
+recebia o dump e mais nada. Agora uma página HTML recebe os dumps logo antes do
+`</body>`; um corpo JSON, um arquivo ou qualquer outra resposta fica intocado e
+o dump vai para o log no nível `debug`. Dentro do produtor de um stream, em que
+a resposta já começou, ele é escrito onde acontece.
+
 ### No terminal
 
 ```bash
@@ -4130,7 +4497,7 @@ Um dump entregue a um visitante mostra o que quer que tenham passado para ele:
 um registro de usuário, os headers da requisição, um array de configuração.
 Funcionar igual em todo ambiente significaria que um `dd()` esquecido é um
 vazamento de dados; deste jeito é uma entrada no seu log e um 500 para ele. O
-log passa pelo `LogManager`, então senhas e tokens são redigidos no caminho.
+log passa pelo `LogManager`, então senhas e tokens são mascarados no caminho.
 
 O `dump()` em produção também grava no log, e não para.
 
@@ -4297,17 +4664,43 @@ parse num arquivo incluído. Sem ele, esses casos viram página em branco.
 
 Em ambos os caminhos a resposta é:
 
-- **500** com `Content-Type` negociado — JSON se a requisição pediu ou enviou
-  JSON, HTML caso contrário
-- Mensagem real **apenas** com `APP_ENV=development`; em produção, o
-  `http.server_error_message` traduzido
+- **O status da própria exceção** quando ela tem um, e **500** caso contrário
+- Um `Content-Type` negociado — JSON se a requisição pediu ou enviou JSON, HTML
+  caso contrário
+- Mensagem real **apenas** com `APP_ENV=development`; em produção, a mensagem
+  traduzida para o status — exceto para uma `HttpException` abaixo de 500, cuja
+  mensagem descreve o que o cliente fez e é mostrada
 - O detalhe sempre vai para o logger, com o id da requisição anexado — ver
-  [Log](#log)
+  [Log](#log). Um 4xx que uma exceção pediu é registrado como informação, não
+  como erro
 
-As páginas 404, 405 e 500 usam CSS inline, sem nenhuma requisição externa, e
-respeitam `prefers-color-scheme`. As três são renderizadas no idioma do
-visitante; até esta versão só a de 500 não era, entregando título em português
-e `lang="pt-br"` fosse qual fosse o pedido.
+Uma exceção nomeia o seu status implementando `HttpStatus`. As do próprio
+framework fazem isso:
+
+| Lançada | Respondida com |
+|---|---|
+| `ModelNotFoundException` — do `findOrFail()` | 404 |
+| `AuthorizationException` — do `Gate::authorize()` | 403 |
+| `InvalidJsonException` — do `$request->json()` num corpo malformado | 400 |
+| `HttpException(409, 'Esse slug já está em uso.')` | o que ela recebeu |
+
+```php
+use SfphpProject\src\Http\HttpException;
+
+throw new HttpException(404);
+throw new HttpException(409, 'Esse slug já está em uso.');
+```
+
+Todo erro que o framework responde — 400, 401, 403, 404, 405, 429, 500, 503 —
+passa por uma página só, a `ErrorPage`: o status, a mensagem, um link para o
+início, no idioma do visitante, ou o mesmo em JSON. Ela embute só a parte do
+SFCSS que usa, cerca de 11 KB em vez da folha inteira, não faz nenhuma
+requisição externa e respeita `prefers-color-scheme`. As recusas de CSRF e de
+rate limit eram páginas próprias, cruas e sem estilo.
+
+Uma deprecação do PHP é registrada como aviso e a requisição segue. Antes ela
+virava uma exceção, então atualizar o PHP ou uma biblioteca transformava páginas
+que funcionavam em 500.
 
 ---
 
@@ -4355,6 +4748,10 @@ LOG_LEVEL=info              # debug em desenvolvimento, info nos demais
 O `stderr` é o padrão porque não exige que um diretório exista nem que uma
 permissão seja concedida, e é onde um container espera encontrar os logs da
 aplicação. Um caminho também funciona, e o diretório dele é criado se faltar.
+Um caminho que não pode ser aberto — um diretório em que o servidor web não pode
+escrever — não derruba a aplicação: os registros vão para o log de erro do
+próprio PHP, com uma nota na primeira vez dizendo por quê. Antes ele lançava, e
+como toda requisição registra log, toda requisição era um 500.
 
 O `error_log` escreve pelo log de erro do próprio PHP, para um deploy em que
 algo já coleta aquilo. O `null` descarta, que é o que a suíte de testes usa
@@ -4422,21 +4819,26 @@ Log estruturado convida a passar arrays inteiros adiante, e o corpo de um
 formulário de login é o primeiro array em que alguém pega. Valores sob estas
 chaves são trocados por `[redacted]`, em qualquer profundidade:
 
-`password` `password_confirmation` `current_password` `new_password` `secret`
-`token` `_token` `access_token` `refresh_token` `api_key` `apikey`
-`authorization` `auth` `cookie` `set-cookie` `credit_card` `card_number` `cvv`
-`ssn` `cpf`
+`password` `password_confirmation` `current_password` `new_password` `passwd`
+`secret` `client_secret` `private_key` `token` `_token` `access_token`
+`refresh_token` `remember_token` `api_key` `apikey` `api-key` `x-api-key`
+`x-csrf-token` `x-xsrf-token` `authorization` `auth` `cookie` `set-cookie`
+`credit_card` `card_number` `cvv` `ssn` `cpf`
+
+Um objeto no contexto é escrito como os seus campos e limpo do mesmo jeito,
+então um model ou um DTO passado inteiro não leva a senha dele além da
+verificação.
 
 ```php
 logger()->redact('pin', 'account_number');
 ```
 
-Redigir por chave é grosseiro, e é a diferença entre uma senha chegar a um
+Mascarar por chave é grosseiro, e é a diferença entre uma senha chegar a um
 agregador de logs e não chegar.
 
 ### O que falta
 
-| Ausência | Situação |
+| Ausente | Situação |
 |---|---|
 | Tracing | O id de requisição amarra os registros de uma requisição; seguir uma chamada entre serviços exige um trace id propagado entre eles |
 | Amostragem | Todo registro que passa do nível é escrito; não existe "um a cada cem" |
@@ -4490,6 +4892,8 @@ não o trace, que nomeia caminhos e classes que não são da conta de mais ningu
 
 Nada é registrado por padrão: um endpoint reportando sobre um banco que a
 aplicação não usa estaria respondendo à pergunta errada.
+`Health::check(['databse'])` — um nome que nada registrou — lança, em vez de
+relatar saudável sem ter verificado nada.
 
 ### Métricas
 
@@ -4514,17 +4918,27 @@ renderiza o formato texto que um scraper entende, montado aqui e não por uma
 biblioteca cliente:
 
 ```
+# TYPE orders_placed counter
 orders_placed 2
+# TYPE payments_failed counter
 payments_failed{gateway="stripe"} 1
+# TYPE report_build_ms_count counter
 report_build_ms_count 2
+# TYPE report_build_ms_sum counter
 report_build_ms_sum 41.882
+# TYPE report_build_ms_min gauge
 report_build_ms_min 18.204
+# TYPE report_build_ms_max gauge
 report_build_ms_max 23.678
 ```
 
+Cada família é declarada uma vez com `# TYPE`, os valores levam no máximo três
+casas decimais, e um nome que começaria com dígito ganha um sublinhado na
+frente, já que o formato não permite isso.
+
 ### O que falta
 
-| Ausência | Situação |
+| Ausente | Situação |
 |---|---|
 | Agregação entre instâncias | Cada processo guarda a própria contagem; um scraper ou um push gateway faz a junção |
 | Histogramas e percentis | Contagem, soma, mínimo e máximo são registrados; um p99 exige buckets que isso não guarda |
@@ -4534,27 +4948,40 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` expõe **38 comandos**; `./sfphp list` imprime todos.
+`./sfphp` expõe **41 comandos**. O `./sfphp list` imprime cada um com o seu
+uso, o `./sfphp help` os agrupa, e o `./sfphp help <comando>` — ou
+`<comando> --help` — explica um; os três são impressos da mesma tabela, que um
+teste confere contra o despachante. Uma opção recebe o seu valor depois de `=`
+ou depois de um espaço: `--port=8080` e `--port 8080` são a mesma coisa.
 
 ### Geração (14 geradores)
 
 ```bash
-./sfphp make:controller Post
+./sfphp make:controller Post   # PostController, e a view que a action dele renderiza
 ./sfphp make:model Post
 ./sfphp make:repository Post
 ./sfphp make:service Post
 ./sfphp make:request StorePost
-./sfphp make:test PostTest
+./sfphp make:test Post         # tests/PostTest.php, para o ./sfphp test
 ./sfphp make:middleware CheckAdmin
 ./sfphp make:event UserCreated
 ./sfphp make:listener SendWelcome
-./sfphp make:policy PostPolicy
-./sfphp make:seeder UserSeeder
+./sfphp make:policy Post       # PostPolicy, negando até você escrever cada habilidade
+./sfphp make:seeder User       # UserSeeder
 ./sfphp make:factory User
 ./sfphp make:pwa --name="My App" --logo=path/to/logo.png
 
-./sfphp make:scaffold Post     # controller + model + repository + service
+./sfphp make:scaffold Post     # controller + view + model + repository + service
 ```
+
+Os catorze geradores daqui e os dois comandos de migration em
+[Banco](#banco) somam os dezesseis comandos `make:*`.
+
+**Um gerador nunca sobrescreve.** Um arquivo que já existe é recusado, com o
+caminho dele, e o `--force` o substitui; o `make:scaffold` mantém as partes que
+existem e escreve o resto. O sufixo é acrescentado uma vez — `make:test PostTest`
+e `make:test Post` escrevem os dois `PostTest` — e a primeira letra vira
+maiúscula, então `make:controller product` escreve `ProductController.php`.
 
 O `make:pwa` lê o `app/pwa/config.php` quando ele existe — o `--name` passa a ser
 opcional, e `--short=`, `--description=`, `--color=`, `--background=`,
@@ -4569,25 +4996,29 @@ opcional, e `--short=`, `--description=`, `--color=`, `--background=`,
 ### Banco
 
 ```bash
-./sfphp make:migration create_users name:string email:string:unique timestamps
-./sfphp make:migration:create posts [--path=dir]
+./sfphp make:migration create_posts title:string timestamps
+./sfphp make:migration:create posts       # obsoleto: o mesmo que make:migration create_posts
 ./sfphp migrate [--step=N] [--path=dir]
 ./sfphp rollback [--step=N] [--path=dir]
 ./sfphp status [--path=dir]
-./sfphp db:fresh
+./sfphp db:fresh [--force]
 ./sfphp db:seed [--class=UserSeeder]
 ```
+
+Um comando de banco que não consegue conectar diz qual extensão PDO falta, ou
+qual driver e host não responderam, em vez de só "falha na conexão".
 
 ### Cache e fila
 
 ```bash
-./sfphp cache:clear
-./sfphp cache:flush
+./sfphp cache:clear          # o que expirou
+./sfphp cache:flush          # tudo
+./sfphp queue:table          # as tabelas da fila em banco
 ./sfphp queue:work [--timeout=3600]
 ./sfphp queue:failed
 ```
 
-Os quatro seguem o `CACHE_DRIVER` e o `QUEUE_DRIVER`. Um `cache:clear` que
+Todos eles seguem o `CACHE_DRIVER` e o `QUEUE_DRIVER`. Um `cache:clear` que
 esvaziasse um cache de arquivo enquanto a aplicação usa Redis relataria sucesso
 e não teria mudado nada.
 
@@ -4602,9 +5033,15 @@ e não teria mudado nada.
 
 Copia o SFCSS e o SFJS de dentro do pacote para um diretório que o projeto
 serve. O `composer create-project` e o `./sfphp serve` já rodam isso (assim como
-o `composer run assets`), então o comando
-serve para uma atualização ou um layout fora do comum; uma execução que encontra
-os mesmos arquivos não copia nada e avisa.
+o `composer run assets`), e o `css:build` e o `js:build` publicam o que geram,
+então o comando serve para uma atualização ou um layout fora do comum; uma
+execução que encontra os mesmos arquivos não copia nada e avisa.
+
+Um arquivo publicado é substituído quando ainda é o que o framework publicou por
+último — um hash fica ao lado dos arquivos, em `.sfphp-published.json` — e
+mantido, com o nome impresso, quando foi alterado à mão. "Diferente do pacote"
+contava como "seu", então uma folha de estilo regerada nunca era publicada e as
+cores novas nunca chegavam ao navegador. O `--force` substitui os dois casos.
 
 > **Por que os arquivos existem duas vezes.** O pacote os guarda onde eles são
 > versionados e onde uma atualização os substitui; o navegador só consegue ler o
@@ -4621,12 +5058,14 @@ os mesmos arquivos não copia nada e avisa.
 ### Servidor e utilitários
 
 ```bash
-./sfphp serve          # http://localhost:8000; --host= --port=
+./sfphp serve          # http://127.0.0.1:8000; --host= --port=
 ./sfphp routes         # tabela de rotas registradas; --path= para layout fora do comum
 ./sfphp env:example    # cria .env a partir de .env-example
-./sfphp css:build      # gera o SFCSS a partir do config; --config= --output=
-./sfphp js:build       # junta core.js, stream.js e ui.js em sfjs.js e o minifica
+./sfphp init           # termina um projeto novo: .env, assets, .gitignore, scripts do composer
+./sfphp css:build      # gera o SFCSS a partir do config e o publica; --config= --output=
+./sfphp js:build       # junta core.js, stream.js e ui.js em sfjs.js, minifica e publica
 ./sfphp build --phpx   # compila os componentes .phpx; --from= --to=
+./sfphp test [filtro]  # roda tests/*Test.php
 ./sfphp reset          # remove a aplicação de exemplo; --force pula a pergunta
 ./sfphp upgrade        # troca o framework, mantém a aplicação
 ./sfphp tinker         # REPL — só para desenvolvimento local
@@ -4635,8 +5074,25 @@ os mesmos arquivos não copia nada e avisa.
 ./sfphp help [comando]
 ```
 
-`tinker` avalia entrada com `eval()`. É uma ferramenta de desenvolvimento
-local; nunca exponha o CLI a entrada não confiável.
+O `serve` testa a porta antes de anunciar qualquer coisa, e sai com erro quando
+ela está ocupada; o caminho do projeto pode ter espaços. Todo comando que inicia
+o PHP de novo usa o binário que está rodando o console, e não o `php` que
+estiver primeiro no `PATH`.
+
+O `test` roda as classes em `tests/` que estendem
+`SfphpProject\src\Testing\TestCase` — todo método público cujo nome começa com
+`test`, cada um numa instância nova, com `assertSame()`, `assertTrue()`,
+`assertThrows()` e mais alguns. O `make:test` escreve uma. Um projeto que quer
+PHPUnit o acrescenta ao `require-dev` e o usa no lugar.
+
+O `tinker` mantém as variáveis de uma sessão de uma linha para a outra, imprime
+o valor de uma expressão e roda uma instrução — `echo`, um laço — como foi
+escrita; um erro é impresso e a sessão continua. Ele avalia a entrada com
+`eval()`: uma ferramenta de desenvolvimento local, que nunca deve ser exposta a
+entrada não confiável.
+
+O `version` é a versão do próprio framework, gravada em `src/`, então depois de
+uma atualização ele nomeia o release que o projeto roda agora.
 
 ### Atualizar
 
@@ -4649,9 +5105,15 @@ Atualizar, então, é substituir esses arquivos sabendo quais são:
 
 ```bash
 ./sfphp upgrade --dry-run          # o que faria, sem mudar nada
-./sfphp upgrade --to=v0.13.0       # busca essa tag com o git
+./sfphp upgrade                    # o release mais recente
+./sfphp upgrade --to=v0.32.0       # busca essa tag com o git
 ./sfphp upgrade --from=../sfphp    # uma cópia que você já tem
 ```
+
+Sem `--to` ele busca a tag de release mais nova — antes buscava o `master`,
+código que ninguém tinha lançado. O que o pacote deixa de fora de uma instalação
+— os testes do framework, as ferramentas, a documentação — também é removido da
+cópia buscada, então a atualização traz o que uma instalação teria trazido.
 
 | | |
 |---|---|
@@ -4722,15 +5184,15 @@ e nada vai para uma lixeira.
 
 ## SFCSS
 
-Framework CSS de componentes e utilitários. **Ele chega pronto** — o `composer
-require` entrega a folha de estilo, e o `composer create-project` e o `sfphp
-serve` copiam para `public/assets`, então usar é uma linha de HTML:
+Framework CSS de componentes e utilitários. **Ele chega pronto** — o pacote
+traz a folha de estilo, e o `composer create-project` e o `sfphp serve`
+copiam para `public/assets`, então usar é uma linha de HTML:
 
 ```html
 <link rel="stylesheet" href="/assets/css/sfcss.min.css">
 ```
 
-Nada precisa ser gerado para usar o SFCSS. O gerador existe para **mudá-lo**, o
+Nada precisa ser gerado para usar o SFCSS. O gerador existe para mudá-lo, o
 que está [mais abaixo](#mudar-o-sfcss).
 
 Ele traz os componentes de que uma página é feita — botões, formulários com
@@ -4778,7 +5240,7 @@ O `css:build` escreve em `resources/assets/css` num projeto criado com
 `create-project` ou clonado — rode `./sfphp assets:publish` em seguida, como ele
 lembra — e direto em `public/assets/css`, que é o que o navegador lê, quando o
 framework está instalado em `vendor/`. O `--output=` sobrescreve os dois. Os
-avisos do gerador são impressos na saída de erro mesmo quando o build dá certo.
+avisos do gerador são impressos na saída de erro padrão mesmo quando o build dá certo.
 
 Tudo o que decorre de uma cor é calculado pelo gerador em vez de escrito à mão:
 o texto que continua legível sobre ela (conferido contra o WCAG AA, 4,5:1, com
@@ -4786,16 +5248,18 @@ aviso no build para uma cor sobre a qual nada é legível), os tons de hover e d
 active, um fundo suave com sua borda e seu texto, a forma dela como texto na
 página, e o mesmo conjunto para o tema escuro. Cada cor — inclusive uma que o
 projeto acrescente — ganha `btn-`, `btn-outline-`, `badge-`, `alert-`, `text-`,
-`bg-`, `border-` e o resto.
+`bg-`, `border-` e o resto. O `text-{cor}` usa a forma legível da cor, então o
+`.text-warning` sobre branco passa no AA em vez de ser o âmbar cru a 2,2:1.
 
 Todo utilitário vem de um mapa que o projeto pode ampliar ou enxugar pelo mesmo
 config, e opções desligam recursos: componentes, tema escuro, variantes `hover:`
 ou de breakpoint, arredondamento, sombras, um prefixo para as variáveis CSS.
 
-> **Uma folha que você gerou não é sobrescrita.** O `create-project` e o
-> `serve` publicam os assets do framework e, quando um dos seus é diferente,
-> avisam que o mantiveram em vez de substituí-lo. O `assets:publish --force`
-> traz de volta a versão do framework.
+> **Uma folha que você alterou à mão não é sobrescrita.** O `css:build` publica
+> o que gera, e o `create-project` e o `serve` publicam os assets do framework;
+> um arquivo em `public/assets` que difere do que foi publicado ali por último é
+> mantido, e nomeado. O `assets:publish --force` traz de volta a versão do
+> framework.
 
 Para uma cor numa seção da página, sobrescrever as variáveis basta:
 
@@ -4831,8 +5295,8 @@ Referência completa: [SFCSS](SFCSS.md) e
 
 ## SFJS
 
-Biblioteca JavaScript sem dependências — 104KB crus, 55KB minificados,
-**14,4KB gzipped**. Exposta como `window.sf`. É **um arquivo só**, com tudo:
+Biblioteca JavaScript sem dependências — 113KB crus, 58KB minificados,
+**15,4KB gzipped**. Exposta como `window.sf`. É **um arquivo só**, com tudo:
 requisições e swaps, validação, estado, streams (`@stream`, `@sse`) e os
 componentes de interface (modais, menus, tooltips, abas, toasts).
 
@@ -4850,8 +5314,7 @@ O código-fonte são três arquivos em `resources/assets/js/src/` — `core.js`,
 `stream.js`, `ui.js` — que o gerador junta, nessa ordem, no pacote.
 
 ```bash
-./sfphp js:build         # junta as partes, escreve sfjs.js e sfjs.min.js
-./sfphp assets:publish   # copia-os para public/assets
+./sfphp js:build         # junta as partes, escreve sfjs.js e sfjs.min.js, e os publica
 ```
 
 O minificador remove comentários e colapsa espaço em branco, e de propósito não
@@ -4859,7 +5322,9 @@ reescreve tokens — nada de encurtar nomes, remover ponto e vírgula ou juntar
 instruções numa linha. É aí que um minificador muda o sentido de um programa, e
 o quilobyte a mais não compensa manter um parser de JavaScript num framework sem
 dependências. Um teste confere que os dois builds expõem a mesma API e que o
-minificado ainda é analisável.
+minificado ainda é analisável, e o build recusa um arquivo minificado que
+manteve mais de dois terços do tamanho do pacote — o sinal de que o minificador
+se perdeu, o que uma aspa dentro de um literal de regex provoca.
 
 ### API programática
 
@@ -4876,7 +5341,7 @@ sf.form.validate(inputEl);
 
 sf.dom.addClass(el, 'ativo');   sf.dom.removeClass(el, 'ativo');
 sf.dom.toggleClass(el, 'ativo'); sf.dom.hasClass(el, 'ativo');
-sf.dom.show(el); sf.dom.hide(el); sf.dom.toggle(el);
+sf.dom.show(el); sf.dom.hide(el); sf.dom.toggle(el);   // o atributo hidden, como o @show
 sf.dom.on(el, 'click', fn);     sf.dom.off(el, 'click', fn);
 sf.dom.ready(fn);
 
@@ -4919,9 +5384,15 @@ sf.modal.open(dialogEl);  sf.modal.close(dialogEl);
 ```
 
 Os cinco verbos são `@get`, `@post`, `@put`, `@patch` e `@delete`, com o
-`@target` (um seletor CSS) e o `@swap` ao lado. Um formulário manda os campos
-dele: `@get` e `@delete` como query string, os outros no corpo. Um input com
-`name` manda o próprio valor do mesmo jeito.
+`@target` (um seletor CSS) e o `@swap` ao lado. Sem `@target` a resposta vai
+para o elemento que pediu — antes não ia para lugar nenhum. Um formulário manda
+os campos dele: `@get` e `@delete` como query string, os outros no corpo. Um
+input com `name` manda o próprio valor do mesmo jeito.
+
+Toda requisição que muda alguma coisa leva o token CSRF como `X-CSRF-Token`,
+lido de `<meta name="csrf-token">` — ponha `{!! csrf_meta() !!}` no `<head>` da
+página. O campo `_token` de um formulário também chega ao servidor, dentro do
+corpo JSON.
 
 O que volta é trocado como markup, então quem responde a um desses é um
 fragmento — renderizado pelo mesmo componente que o renderiza dentro da página
@@ -5020,8 +5491,8 @@ mudam.
 |---|---|
 | `@text` | o texto do elemento passa a ser o valor da expressão |
 | `@show` | exibido enquanto a expressão for verdadeira, pelo atributo `hidden` |
-| `@class` | soma classes às que o elemento já tem |
-| `@model` | mão dupla em input, checkbox ou select |
+| `@class` | soma classes às que o elemento tinha quando foi escrito |
+| `@model` | mão dupla em input, textarea, select, checkbox (o `checked` dele) ou grupo de rádios (o que tem o valor igual fica marcado; escolher um escreve o valor dele) |
 | `@on:click`, `@on:input`, … | roda uma expressão quando o evento acontece |
 
 ### Os primeiros valores vêm do PHP
@@ -5060,8 +5531,10 @@ Caminhos (`user.name`), literais de texto, número, booleano e nulo, `!` e `-`
 unário, `+ - * / %`, `== != === !== < > <= >=`, `&&` e `||` com curto-circuito,
 o ternário, literais de objeto e de lista, e atribuição.
 
-**Não** há chamada de função, arrow function nem índice por expressão. Então
-isto não funciona:
+**Não** há chamada de função, arrow function nem índice por expressão, nem a
+cadeia de protótipos: um caminho por `__proto__`, `prototype` ou `constructor`
+lê `undefined` e não escreve nada, então `constructor.prototype.isAdmin = true`
+não alcança todos os objetos da página. Então isto não funciona:
 
 ```html
 <span @text="itens.filter(i => i.ativo).length"></span>
@@ -5125,7 +5598,9 @@ digitando continua sendo o mesmo campo, com o foco, o cursor e o texto:
 
 Filhos sem chave continuam sendo casados pela posição. O `checked` de um
 checkbox e o `selected` de uma opção seguem o que o servidor mandou, como o
-valor de um campo, a não ser que o visitante esteja naquele controle agora.
+valor de um campo, a não ser que o visitante esteja naquele controle agora. Um
+campo que o servidor manda de volta sem valor é esvaziado — o texto digitado
+antes ficava na caixa e saía de novo no envio seguinte.
 
 Com `innerHTML` e `outerHTML` os nós são reconstruídos, mas quando o elemento
 focado tem um `id` que também está na marcação nova, o foco e o cursor voltam
@@ -5184,10 +5659,11 @@ Enquanto uma requisição está no ar:
   `[aria-busy="true"] { opacity: .6 }`;
 - o elemento que a enviou — um botão, um link ou os botões de envio de um
   formulário — fica desabilitado e marcado com `aria-disabled="true"`, para que
-  um segundo clique não mande um segundo pedido. Um campo de texto é marcado,
-  mas nunca desabilitado, porque desabilitá-lo tiraria o foco de quem ainda
-  está digitando. Quando a resposta chega, o botão volta a ficar habilitado e
-  recebe o foco de volta.
+  um segundo clique não mande um segundo pedido. Um campo de texto que envia
+  não é desabilitado nem marcado — desabilitá-lo tiraria o foco de quem ainda
+  está digitando —, então é o `aria-busy` do alvo dele que diz que há uma
+  requisição em andamento. Quando a resposta chega, o botão volta a ficar
+  habilitado e recebe o foco de volta.
 
 **Uma requisição mais nova cancela a mais antiga.** Quando um elemento envia de
 novo antes de a resposta anterior chegar — uma caixa de busca enquanto alguém
@@ -5231,8 +5707,11 @@ pelo `sf:error` que você fica sabendo. A mesma opção existe em código:
 Um campo que aparece mais de uma vez — três checkboxes marcados chamados `tags`
 — chega como lista, e um nome terminado em `[]` é lista mesmo quando só um
 valor foi enviado, para que o servidor nunca receba uma string num dia e um
-array no outro. O botão que enviou o formulário vai junto com o seu `name` e o
-seu `value`, como num envio sem JavaScript.
+array no outro. Os nomes são lidos do jeito que o PHP os lê, então o JSON
+significa o mesmo que o mesmo formulário sem JavaScript: `tags[]` é a lista
+`tags`, e `address[city]` é `city` dentro de `address` — antes os colchetes
+viajavam como parte da chave. O botão que enviou o formulário vai junto com o
+seu `name` e o seu `value`, como num envio sem JavaScript.
 
 ### Validação no navegador
 
@@ -5240,7 +5719,10 @@ seu `value`, como num envio sem JavaScript.
 veja [Validação](#validação) para a lista. Várias separadas por `|`:
 `@validate="required|number|min:18"`. Como no servidor, o `required` é julgado
 primeiro: um campo vazio mostra só "obrigatório" quando a regra está lá, e nada
-quando não está; as outras regras só verificam o campo quando ele tem valor.
+quando não está; as outras regras só verificam o campo quando ele tem valor. As
+regras decidem do mesmo jeito dos dois lados — `url` quer `http` ou `https` e um
+host, `email` aceita qualquer escrita, os caracteres são contados como um leitor
+os vê, e os nomes das regras são lidos sem diferenciar maiúsculas.
 
 ```html
 <form @post="/usuarios" @target="#lista">
@@ -5359,17 +5841,19 @@ fazer o mesmo.
 ### Streams
 
 A parte de streaming do SFJS acrescenta o `@stream` e está documentada no
-[guia de streaming](STREAMING.md). O que mudou nesta versão:
+[guia de streaming](STREAMING.md). Como ela se comporta:
 
-- ele pode ser carregado no `<head>`: faz o bind quando o documento está pronto;
+- o `sfjs.js` pode ser carregado no `<head>`: faz o bind quando o documento está pronto;
 - um elemento acrescentado à página depois recebe o bind ele mesmo, e não só os
   descendentes, e o stream de um elemento removido da página é interrompido;
 - o alvo do stream recebe `aria-live="polite"` (a não ser que já tenha o seu) e
   `aria-busy="true"` enquanto os dados chegam, para que um leitor de tela
   anuncie o resultado uma vez em vez de cada pedaço;
-- o `@trigger` entende `delay:` como o núcleo — `@trigger="load delay:1s"`;
+- o `@trigger` lê a mesma lista que o núcleo lê — `@trigger="load, every:10s"`,
+  `@trigger="load delay:1s"`;
 - campos de formulário que se repetem são enviados como lista, e não só o
-  último valor;
+  último valor, e um formulário com input de arquivo é enviado como
+  `multipart/form-data`, para que o arquivo chegue;
 - um `EventSource` mantém a reconexão do próprio navegador. O stream termina
   quando o servidor manda um evento final — `done` ou `complete`, ou os nomes
   dados em `@done="finished"` — ou responde 204 a uma reconexão;
@@ -5492,8 +5976,9 @@ O que o SFJS acrescenta:
 `@tooltip` mostra o seu texto num único `<div class="tooltip" role="tooltip"
 popover="manual">` compartilhado — no hover depois de 300 ms, na hora no foco
 pelo teclado — e o esconde ao sair, no blur e no Escape. O ponteiro pode passar
-do elemento para o tooltip sem fechá-lo, para que o texto possa ser lido e
-selecionado. Enquanto ele aparece, o `aria-describedby` do elemento aponta para
+do elemento para o tooltip sem fechá-lo — o esconder espera um instante, então
+atravessar o espaço entre os dois não conta como sair — e o texto pode ser lido
+e selecionado, como o WCAG 1.4.13 pede de conteúdo mostrado no hover. Enquanto ele aparece, o `aria-describedby` do elemento aponta para
 ele. O texto é posto como texto, nunca como marcação.
 
 `@tooltip-placement` é `top` (o padrão), `bottom`, `left` ou `right`. O tooltip
@@ -5507,9 +5992,9 @@ de um `aria-label` próprio.
 ### Abas
 
 ```html
-<div @tabs role="tablist" class="nav-tabs" aria-label="Conta">
-  <button role="tab" id="aba-perfil" aria-controls="painel-perfil" aria-selected="true">Perfil</button>
-  <button role="tab" id="aba-cobranca" aria-controls="painel-cobranca">Cobrança</button>
+<div @tabs role="tablist" class="nav nav-tabs" aria-label="Conta">
+  <button role="tab" class="nav-link" id="aba-perfil" aria-controls="painel-perfil" aria-selected="true">Perfil</button>
+  <button role="tab" class="nav-link" id="aba-cobranca" aria-controls="painel-cobranca">Cobrança</button>
 </div>
 
 <div id="painel-perfil">…</div>
@@ -5530,8 +6015,9 @@ de um `aria-label` próprio.
 - `sf:tab` é disparado na lista com `detail: {tab, panel}`.
 
 Escreva `hidden` nos painéis que começam fechados, como acima, para que a página
-não os mostre por um instante antes de o script rodar. O SFCSS estiliza
-`.nav-tabs` e `.nav-pills` por `[aria-selected="true"]`. Uma aba marcada com
+não os mostre por um instante antes de o script rodar. O SFCSS estiliza o
+`.nav-link` de `.nav-tabs` e `.nav-pills` por `[aria-selected="true"]` — uma aba
+sem `nav-link` fica com cara de botão comum. Uma aba marcada com
 `disabled` ou `aria-disabled="true"` é pulada.
 
 ### Toasts
@@ -5596,6 +6082,11 @@ barra de ferramentas — use o [`@toggle`](#toggle).
 
 Runner próprio, sem PHPUnit — coerente com zero dependências.
 
+Num projeto criado com `composer create-project`, o `composer test` roda o
+`./sfphp test`: os seus próprios testes em `tests/`, escritos contra
+`SfphpProject\src\Testing\TestCase` — veja [CLI](#cli). O que vem a seguir é a
+suíte do próprio framework, que um clone do repositório carrega.
+
 ```bash
 composer run lint        # php -l em todo o projeto
 composer run test        # a suíte unitária (php tests/run.php); imprime aprovados e falhos
@@ -5631,10 +6122,13 @@ MySQL 8, PostgreSQL 16 e Redis 7 como serviços.
 idiomas, e prosa não dá para comparar mecanicamente — mas estrutura dá. Ele
 afirma que as três versões têm as mesmas seções, subseções, tabelas e blocos de
 código, na mesma ordem e com a mesma linguagem de cerca, e que todo link
-relativo e toda âncora interna resolvem. Isso pega as duas coisas que realmente
-dão errado quando três arquivos são editados à mão: uma seção acrescentada num
-idioma e esquecida nos outros, e um link deixado apontando para um arquivo que
-mudou de lugar.
+relativo e toda âncora interna resolvem — e que cada link interno de uma
+tradução chega ao mesmo título que o link em inglês que ele traduz, já que dois
+títulos traduzidos do mesmo jeito podem fazer um link cair no lugar errado. Isso
+pega as coisas que realmente dão errado quando três arquivos são editados à mão:
+uma seção acrescentada num idioma e esquecida nos outros, um link deixado
+apontando para um arquivo que mudou de lugar, e um link que resolve para o
+lugar errado.
 
 ---
 
@@ -5643,19 +6137,30 @@ mudou de lugar.
 Aqui estão as ausências reais. Elas não são bugs — são coisas que o framework
 não faz, e que você deve saber antes de escolhê-lo.
 
-| Ausência | Impacto |
+| Ausente | Impacto |
 |---|---|
 | **Recuperação de senha e dois fatores** | O login existe; esses fluxos não, e são da aplicação escrever. Ver [Autenticação](#autenticação) e [E-mail](#e-mail) |
 | **Barramento de eventos entre processos** | O `Dispatcher` entrega no mesmo processo, de forma síncrona. Avisar outro serviço de que algo aconteceu é um job na fila ou um message broker, não isto |
 | **ORM completo** | Existe uma camada de [Models](#models) com hidratação, tipos de atributo, relacionamentos (incluindo muitos-para-muitos) e `with()`. Não existe identity map, unit of work, proxy de lazy loading, relação polimórfica nem schema derivado da classe — e [ORM ou Query Builder?](#orm-ou-query-builder) explica o motivo de cada um |
 | **Datas relativas** | "3 horas atrás" não existe: a frase é por idioma e pertence à aplicação. Data e número localizados existem, pelo `Time::localised()` e pelo `Time::number()`. Ver [Tempo e fusos horários](#tempo-e-fusos-horários) |
-| **Backend de métricas** | O `Metrics` conta e cronometra dentro do processo e imprime o texto do Prometheus; levar isso a um coletor, e mantê-lo entre requisições, é do deploy. Ver [Health e métricas](#health-check-e-métricas) |
+| **Backend de métricas** | O `Metrics` conta e cronometra dentro do processo e imprime o texto do Prometheus; levar isso a um coletor, e mantê-lo entre requisições, é do deploy. Ver [Health check e métricas](#health-check-e-métricas) |
 | **Cache de rotas em disco** | Um caminho estático é casado por comparação e não por `preg_match`, mas uma rota com parâmetro ainda custa um match, e nada é compilado de antemão. Adequado a centenas, não a milhares |
 | **Um language server para `.phpx`** | O editor ganha coloração, Emmet e autocomplete pela configuração que o pacote distribui, mas um `.phpx` não é PHP válido, então o diagnóstico fica desligado — e desligado para todo `.php` ao lado dele. Quem pega erro de verdade é o `./sfphp build --phpx` e o `composer run lint`. Veja [Componentes e .phpx](#componentes-e-phpx) |
 | **Revogar sessão de outro lugar** | Encerrar a sessão de outro dispositivo dá para construir sobre a tabela do driver `database` (uma migration sua); nada vem pronto. Ver [Sessões](#sessões) |
 
 O SFHT também não tem variáveis automáticas de laço (`$loop`) nem herança
 parcial de bloco (`@parent`).
+
+Coisas menores que vale saber antes que elas surpreendam:
+
+| | |
+|---|---|
+| Timestamps Unix em colunas `INTEGER` | A fila em banco e a receita de sessões guardam horários como inteiros; uma coluna de 32 bits com sinal acaba em 2038. A receita usa `unsignedBigInteger`; confira as suas |
+| `decimal:N` converte para float | Serve para exibir, é errado para aritmética de dinheiro — guarde dinheiro em centavos inteiros, ou leia a coluna crua com `getAttribute()` |
+| Padrões de `LIKE` | Um `%` ou `_` que o visitante digitou é curinga; escape você mesmo quando ele deve ser literal |
+| `update()` e `delete()` sem `where()` | Afetam todas as linhas, como o SQL faria. Nada pergunta antes |
+| Tamanho da resposta no cliente HTTP | Nada limita; um serviço que responde gigabytes é lido para a memória. Use stream |
+| Timeouts padrão | 5 s para conectar e 15 s no total para o cliente síncrono; o assíncrono espera 10 e 30 |
 
 ---
 

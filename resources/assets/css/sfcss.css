@@ -2366,7 +2366,6 @@ textarea.form-control {
   color: var(--tooltip-color);
   font-size: 0.8125rem;
   line-height: 1.4;
-  pointer-events: none;
 }
 
 @supports (position-area: top) {
@@ -2615,28 +2614,28 @@ html:has(.offcanvas[open]) {
 
 
 /* Role colours — generated for every entry in config.colors */
-.text-primary { color: var(--primary); }
+.text-primary { color: var(--primary-text); }
 .bg-primary { background-color: var(--primary); }
 .border-primary { border-color: var(--primary); }
-.text-secondary { color: var(--secondary); }
+.text-secondary { color: var(--secondary-text); }
 .bg-secondary { background-color: var(--secondary); }
 .border-secondary { border-color: var(--secondary); }
-.text-success { color: var(--success); }
+.text-success { color: var(--success-text); }
 .bg-success { background-color: var(--success); }
 .border-success { border-color: var(--success); }
-.text-danger { color: var(--danger); }
+.text-danger { color: var(--danger-text); }
 .bg-danger { background-color: var(--danger); }
 .border-danger { border-color: var(--danger); }
-.text-warning { color: var(--warning); }
+.text-warning { color: var(--warning-text); }
 .bg-warning { background-color: var(--warning); }
 .border-warning { border-color: var(--warning); }
-.text-info { color: var(--info); }
+.text-info { color: var(--info-text); }
 .bg-info { background-color: var(--info); }
 .border-info { border-color: var(--info); }
-.text-light { color: var(--light); }
+.text-light { color: var(--light-text); }
 .bg-light { background-color: var(--light); }
 .border-light { border-color: var(--light); }
-.text-dark { color: var(--dark); }
+.text-dark { color: var(--dark-text); }
 .bg-dark { background-color: var(--dark); }
 .border-dark { border-color: var(--dark); }
 .text-white { color: var(--white); }

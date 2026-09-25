@@ -24,7 +24,7 @@ function SseExample(): Sfht
                 <div
                     id="sse-output"
                     class="bg-white border border-gray-300 rounded p-4 font-mono text-sm min-h-40 max-h-64 overflow-y-auto whitespace-pre-wrap break-words"
-                ><span class="text-gray-400">Click "Connect" to receive events...</span></div>
+                ><span class="text-muted">Click "Connect" to receive events...</span></div>
 
                 <button
                     class="btn btn-success w-full mt-4"

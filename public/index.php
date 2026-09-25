@@ -79,7 +79,9 @@ $container->set(PDO::class, fn (): PDO => Database::connect());
  */
 Request::setTrustedProxies(array_values(array_filter(array_map(
     'trim',
-    explode(',', (string) ($_ENV['TRUSTED_PROXIES'] ?? ''))
+    // Env::get(), not $_ENV: with variables_order=GPCS, the default in many
+    // container images, $_ENV is empty and the proxies were silently ignored.
+    explode(',', (string) (\SfphpProject\src\Env::get('TRUSTED_PROXIES') ?? ''))
 ))));
 
 /*

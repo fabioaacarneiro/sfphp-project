@@ -27,7 +27,7 @@ function SseStreamBox(): Sfht
                 <div
                     id="sse-output"
                     class="bg-white border border-gray-300 rounded p-4 mb-4 font-mono text-sm min-h-32 max-h-64 overflow-y-auto whitespace-pre-wrap break-words"
-                ><span class="text-gray-400">Events appear here...</span></div>
+                ><span class="text-muted">Events appear here...</span></div>
 
                 <button
                     class="btn btn-success w-full"

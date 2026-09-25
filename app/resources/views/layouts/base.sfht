@@ -1,10 +1,13 @@
 <!DOCTYPE html>
-<html lang="{{ lang_tag() }}">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@block('title')SFPHP Framework@endblock</title>
     <link rel="stylesheet" href="{{ asset('css/sfcss.min.css') }}">
+    <link rel="icon" href="data:,">
+    {{-- SFJS sends this token with every request that changes something. --}}
+    {!! csrf_meta() !!}
     @block('head')@endblock
 </head>
 <body>
@@ -12,7 +15,7 @@
         <header class="bg-primary text-white p-4">
             <div class="container">
                 <h1 class="m-0">SFPHP Framework</h1>
-                <p class="text-light m-0 mt-2">Simple, Educational, PHP 8.1+</p>
+                <p class="text-light m-0 mt-2">Zero dependencies, PHP 8.1+</p>
             </div>
         </header>
 

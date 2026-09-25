@@ -416,17 +416,49 @@ const sf = (() => {
     serialize: (formElement, submitter = null) => {
       const formData = submitter ? new FormData(formElement, submitter) : new FormData(formElement);
       const obj = {};
+
+      /*
+       * Field names are read the way PHP reads them, so a form means the same
+       * thing sent by SFJS as JSON and sent by the browser without it:
+       * "tags[]" is the list "tags", and "address[city]" is "city" inside
+       * "address". The brackets used to travel as part of the key, and the
+       * server received {"tags[]": [...]} where it expected "tags".
+       */
       formData.forEach((value, key) => {
-        if (key in obj) {
-          if (Array.isArray(obj[key])) {
-            obj[key].push(value);
+        const match = /^([^[\]]+)((?:\[[^\]]*\])*)$/.exec(key);
+
+        if (!match || match[2] === '') {
+          if (key in obj) {
+            obj[key] = Array.isArray(obj[key]) ? [...obj[key], value] : [obj[key], value];
           } else {
-            obj[key] = [obj[key], value];
+            obj[key] = value;
           }
-        } else {
-          obj[key] = key.endsWith('[]') ? [value] : value;
+
+          return;
+        }
+
+        const steps = [match[1], ...Array.from(match[2].matchAll(/\[([^\]]*)\]/g), (m) => m[1])];
+        let holder = obj;
+
+        for (let i = 0; i < steps.length - 1; i++) {
+          const step = steps[i];
+          const nextIsList = steps[i + 1] === '';
+
+          if (!safeStep(step)) return;
+
+          if (typeof holder[step] !== 'object' || holder[step] === null) holder[step] = nextIsList ? [] : {};
+          holder = holder[step];
+        }
+
+        const last = steps[steps.length - 1];
+
+        if (last === '') {
+          if (Array.isArray(holder)) holder.push(value);
+        } else if (safeStep(last)) {
+          holder[last] = value;
         }
       });
+
       return obj;
     },
 
@@ -499,19 +531,29 @@ const sf = (() => {
       return element?.classList.contains(className) || false;
     },
 
+    /*
+     * The hidden attribute, as @show, @toggle and SFCSS use it. An inline
+     * display could not reveal an element hidden with the attribute, and it
+     * overrode whatever display — flex, grid — the element's own CSS gave it.
+     * An inline "display: none" written to avoid a flash is cleared on show.
+     */
     show: (element) => {
       if (typeof element === 'string') element = document.querySelector(element);
-      if (element) element.style.display = '';
+      if (!element) return;
+      element.hidden = false;
+      if (element.style.display === 'none') element.style.display = '';
     },
 
     hide: (element) => {
       if (typeof element === 'string') element = document.querySelector(element);
-      if (element) element.style.display = 'none';
+      if (element) element.hidden = true;
     },
 
     toggle: (element) => {
       if (typeof element === 'string') element = document.querySelector(element);
-      if (element) element.style.display = element.style.display === 'none' ? '' : 'none';
+      if (!element) return;
+      if (element.hidden || element.style.display === 'none') dom.show(element);
+      else dom.hide(element);
     },
 
     on: (element, event, handler) => {
@@ -544,12 +586,16 @@ const sf = (() => {
    */
   const validate = {
     required: (value) => String(value).trim().length > 0,
-    email: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+    /*
+     * The server's rule: a local part and a dotted domain, in any script, with
+     * no empty label — "josé@exemplo.com.br" passes, "a@b..com" does not.
+     */
+    email: (value) => /^[^\s@(),:;<>[\]\\]+@(?!.*\.\.)[^\s@.][^\s@]*\.[^\s@.]+$/u.test(value),
     number: (value) => /^[0-9]+$/.test(value),
-    alpha: (value) => /^\p{L}+$/u.test(value),
-    alphanum: (value) => /^[\p{L}\p{N}]+$/u.test(value),
-    minLength: (value, min) => [...String(value)].length >= Number(min),
-    maxLength: (value, max) => [...String(value)].length <= Number(max),
+    alpha: (value) => /^\p{L}[\p{L}\p{M}]*$/u.test(value),
+    alphanum: (value) => /^[\p{L}\p{N}][\p{L}\p{M}\p{N}]*$/u.test(value),
+    minLength: (value, min) => characters(value) >= Number(min),
+    maxLength: (value, max) => characters(value) <= Number(max),
     /*
      * min and max follow the value, as they do on the server: a number is
      * compared, anything else is counted. "age must be at least 18" and "name
@@ -558,20 +604,45 @@ const sf = (() => {
      */
     min: (value, bound) => (isNumeric(value)
       ? Number(value) >= Number(bound)
-      : [...String(value)].length >= Number(bound)),
+      : characters(value) >= Number(bound)),
     max: (value, bound) => (isNumeric(value)
       ? Number(value) <= Number(bound)
-      : [...String(value)].length <= Number(bound)),
+      : characters(value) <= Number(bound)),
     pattern: (value, regex) => new RegExp(regex, 'u').test(value),
+    /*
+     * A web address, as the server has it: http or https, with a host. The
+     * URL parser alone accepted "javascript:alert(1)" and "foo:bar", which
+     * the server refuses, so the browser said yes and the server said no.
+     */
     url: (value) => {
       try {
-        new URL(value);
-        return true;
+        const parsed = new URL(value);
+
+        return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && parsed.hostname !== '';
       } catch {
         return false;
       }
     },
   };
+
+  /**
+   * How many characters a reader sees, the way the server counts them.
+   *
+   * "José" typed with a combining accent is four, and an emoji family is one.
+   * Code points counted them as five and seven.
+   *
+   * @param {*} value The value
+   * @returns {number}
+   */
+  function characters(value) {
+    const text = String(value);
+
+    if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+      return Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)).length;
+    }
+
+    return [...text].length;
+  }
 
   /**
    * Whether a value is a number, the way the server decides it.
@@ -611,10 +682,16 @@ const sf = (() => {
     const rules = spec.split('|').map((one) => {
       const at = one.indexOf(':');
 
-      return {
-        name: (at === -1 ? one : one.slice(0, at)).trim(),
-        argument: at === -1 ? null : one.slice(at + 1),
-      };
+      const written = (at === -1 ? one : one.slice(0, at)).trim();
+
+      /*
+       * Rule names are read regardless of case, as the server reads them:
+       * "minlength:3" is minLength, and used to be "a rule SFJS does not
+       * know" while the server applied it.
+       */
+      const name = Object.keys(validate).find((rule) => rule.toLowerCase() === written.toLowerCase()) || written;
+
+      return { name, argument: at === -1 ? null : one.slice(at + 1) };
     }).filter((rule) => rule.name !== '');
 
     for (const { name } of rules) {
@@ -915,7 +992,17 @@ const sf = (() => {
 
     Array.from(there.attributes).forEach((attribute) => {
       if (here.getAttribute(attribute.name) !== attribute.value) {
-        here.setAttribute(attribute.name, attribute.value);
+        /*
+         * setAttribute() refuses a name that starts with "@" in some
+         * browsers, which would stop the morph half-way through a node.
+         * Copying the attribute node itself carries any name the parser
+         * accepted.
+         */
+        try {
+          here.setAttribute(attribute.name, attribute.value);
+        } catch (error) {
+          here.setAttributeNode(attribute.cloneNode());
+        }
       }
     });
 
@@ -930,10 +1017,19 @@ const sf = (() => {
      * different, so a refresh that changed nothing about this field leaves
      * what is being typed exactly where it is.
      */
-    if ('value' in here && here.value !== undefined) {
-      const sent = there.getAttribute('value');
+    const typed = here.tagName === 'TEXTAREA'
+      || (here.tagName === 'INPUT' && !['checkbox', 'radio', 'file', 'button', 'submit', 'reset', 'image'].includes(here.type));
 
-      if (sent !== null && here.value !== sent && document.activeElement !== here) {
+    /*
+     * A field the server sends back with no value is an empty field. Only a
+     * field with a value attribute used to be touched, so after a form was
+     * answered with a fresh, empty copy of itself the text typed before
+     * stayed in the box — and was sent again with the next submit.
+     */
+    if (typed) {
+      const sent = here.tagName === 'TEXTAREA' ? there.textContent : (there.getAttribute('value') ?? '');
+
+      if (here.value !== sent && document.activeElement !== here) {
         here.value = sent;
       }
     }
@@ -1191,6 +1287,17 @@ const sf = (() => {
    * @param {Object} scope The state
    * @returns {*} The value
    */
+  /**
+   * Whether a property name may be read or written by an expression.
+   *
+   * The prototype chain is out of reach: "__proto__", "prototype" and
+   * "constructor" are how an expression walks from its state to every object
+   * in the page.
+   */
+  function safeStep(step) {
+    return step !== '__proto__' && step !== 'prototype' && step !== 'constructor';
+  }
+
   function evaluate(node, scope) {
     switch (node.kind) {
       case 'literal': return node.value;
@@ -1207,7 +1314,7 @@ const sf = (() => {
         let value = scope;
 
         for (const step of node.path) {
-          if (value === null || value === undefined) return undefined;
+          if (value === null || value === undefined || !safeStep(step)) return undefined;
           value = value[step];
         }
 
@@ -1219,7 +1326,20 @@ const sf = (() => {
         const value = evaluate(node.value, scope);
         let holder = scope;
 
-        for (let i = 0; i < node.path.length - 1; i++) holder = holder[node.path[i]];
+        /*
+         * Every step is checked, so an expression cannot reach the prototype
+         * chain: "constructor.prototype.isAdmin = true" used to set isAdmin
+         * on every object in the page, which is what a strict CSP was meant
+         * to rule out.
+         */
+        if (!node.path.every(safeStep)) return undefined;
+
+        for (let i = 0; i < node.path.length - 1; i++) {
+          if (holder === null || typeof holder !== 'object' || !Object.prototype.hasOwnProperty.call(holder, node.path[i])) return undefined;
+          holder = holder[node.path[i]];
+        }
+
+        if (holder === null || typeof holder !== 'object') return undefined;
 
         holder[node.path[node.path.length - 1]] = value;
 
@@ -1409,7 +1529,16 @@ const sf = (() => {
         }
 
         if (name === '@class') {
-          const fixed = element.getAttribute('class') || '';
+          /*
+           * The element's own classes are read once, the first time it is
+           * bound. Bindings are collected again after every swap, and reading
+           * them then took the classes the expression had added for its own —
+           * "btn active" became the fixed part, and toggling off never took
+           * "active" away again.
+           */
+          if (element.__sfFixedClass === undefined) element.__sfFixedClass = element.getAttribute('class') || '';
+
+          const fixed = element.__sfFixedClass;
 
           bindings.push(() => {
             const extra = read(source, state);
@@ -1429,9 +1558,20 @@ const sf = (() => {
 
           if (!element.__sfOn[name]) {
             element.__sfOn[name] = true;
-            element.addEventListener('input', () => {
-              write(path, element.type === 'checkbox' ? element.checked : element.value, state);
-            });
+
+            /*
+             * A radio button writes its own value when it is the one chosen,
+             * on change. Treated as a text field it wrote on input and had
+             * its value overwritten by the state, so every radio in a group
+             * ended up holding the same value and none was checked.
+             */
+            if (element.type === 'radio') {
+              element.addEventListener('change', () => { if (element.checked) write(path, element.value, state); });
+            } else {
+              element.addEventListener('input', () => {
+                write(path, element.type === 'checkbox' ? element.checked : element.value, state);
+              });
+            }
           }
 
           bindings.push(() => {
@@ -1439,6 +1579,12 @@ const sf = (() => {
 
             if (element.type === 'checkbox') {
               element.checked = !!value;
+
+              return;
+            }
+
+            if (element.type === 'radio') {
+              element.checked = value !== undefined && value !== null && String(value) === element.value;
 
               return;
             }
@@ -1527,8 +1673,14 @@ const sf = (() => {
     const busy = attributeOf(element, 'loading');
     const state = into || busy ? scopeOf(element) : null;
 
+    /*
+     * Without @target the answer goes into the element that asked. It used
+     * to go nowhere: the request was sent and its answer dropped, so the
+     * documentation's own <div @get="/dashboard/sales" @trigger="load">
+     * stayed empty.
+     */
     const options = {
-      target: declared.target,
+      target: declared.target || element,
       swap: declared.swap,
       source: element,
       errorTarget: attributeOf(element, 'error-target'),
