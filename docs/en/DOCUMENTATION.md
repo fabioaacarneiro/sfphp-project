@@ -7,7 +7,7 @@ code does today. Where something does not exist, it says so — see
 
 > **Love SFPHP?** ⭐ [Give us a star on GitHub](https://github.com/fabioaacarneiro/sfphp-project) — it helps us grow and keeps the framework thriving!
 >
-> Verified against PHP 8.4 · suite: 169 tests, 0 failures
+> Verified against PHP 8.4 · run the suite with `composer run test`
 >
 > 🌍 Also available in [Português](../pt-BR/DOCUMENTATION.md) and
 > [Español](../es/DOCUMENTATION.md).
@@ -33,11 +33,11 @@ code does today. Where something does not exist, it says so — see
 - [Seeders and factories](#seeders-and-factories)
 - [Cache](#cache)
 - [Queue](#queue)
-- [Events](#events)
+- [File uploads](#file-uploads)
 - [HTTP client](#http-client)
 - [Mail](#mail)
+- [Events](#events)
 - [Validation](#validation)
-- [File uploads](#file-uploads)
 - [Internationalisation](#internationalisation)
 - [Time and time zones](#time-and-time-zones)
 - [UTF-8 strings](#utf-8-strings)
@@ -56,6 +56,7 @@ code does today. Where something does not exist, it says so — see
 - [SFJS](#sfjs)
 - [Tests](#tests)
 - [Known limitations](#known-limitations)
+- [Related Guides](#related-guides)
 
 ---
 
@@ -64,7 +65,7 @@ code does today. Where something does not exist, it says so — see
 **It is** a lean framework for web applications and APIs, with routing,
 Request/Response objects, a middleware pipeline, a DI container, a query
 builder, a schema builder with MySQL/PostgreSQL parity, a template engine,
-components in `.phpx`, an HTTP client, events, cache, queues, and a CLI with 35
+components in `.phpx`, an HTTP client, events, cache, queues, and a CLI with 38
 commands.
 
 **It is not** a replacement for Laravel or Symfony. There is no full ORM,
@@ -74,8 +75,25 @@ or two-factor. What exists is small enough to read end to end.
 
 ### Zero dependencies, literally
 
-`composer.json` requires only `php ^8.1`, `ext-json` and `ext-pdo`. The
+`composer.json` requires PHP and extensions that ship with it — no package. The
 `vendor/` directory contains **nothing but Composer's autoloader**.
+
+| Required extension | Used by |
+|---|---|
+| `ext-ctype` | Argument checks in the CLI |
+| `ext-curl` | The HTTP client and every `Http::*Async` request |
+| `ext-fileinfo` | An upload's real media type, read from its bytes |
+| `ext-filter` | E-mail and URL validation, and mail addresses |
+| `ext-json` | Responses, logs, the queue payloads, the config |
+| `ext-mbstring` | Unicode case conversion (`upper`, `lower`, `capitalize`) |
+| `ext-openssl` | TLS for SMTP (`MAIL_ENCRYPTION=tls` or `ssl`) |
+| `ext-pdo` | The database layer (plus the PDO driver for your database) |
+| `ext-session` | Sessions, the session guard and CSRF |
+| `ext-tokenizer` | Compiling `.sfht` templates |
+
+Each of these is part of a standard PHP build; `composer install` stops, naming
+the missing one, on a server that lacks it — at install time rather than in
+production.
 
 The same holds for the browser runtime: no page the framework serves —
 including the 404 and 500 error pages — loads CSS, fonts or JavaScript from a
@@ -85,9 +103,13 @@ Optional extensions, declared under `suggest`:
 
 | Extension | Enables |
 |---|---|
-| `ext-mbstring` | More accurate Unicode case conversion. Without it `upper`/`lower` fall back to ASCII; the rest of the UTF-8 handling does not depend on it |
-| `ext-redis` | The Redis cache and queue drivers |
-| `ext-pcntl` | Graceful shutdown of the queue worker |
+| `ext-pdo_mysql`, `ext-pdo_pgsql`, `ext-pdo_sqlite` | The driver for the database you use |
+| `ext-redis` | The Redis cache, session and queue drivers — not bundled with PHP (PECL) |
+| `ext-pcntl` | Graceful shutdown of the queue worker, and its per-job `timeout`. Unix only, which is why it is not required |
+| `ext-posix` | Terminal detection for coloured `dump()` output in the console |
+| `ext-gd` | The PWA icons that `make:pwa` generates |
+| `ext-intl` | Locale-correct dates and numbers; without it they fall back to ISO dates and guessed separators |
+| `ext-readline` | The `./sfphp tinker` shell |
 
 ---
 
@@ -114,9 +136,9 @@ my-app/
   app/controllers/        a controller, answering the home page
   app/models/             a model
   app/resources/views/    the templates that page is made of
-  src/routes.php          the routes
+  app/routes/             web.php and api.php, the routes
   src/                    the framework
-  database/migrations/    users and sessions, ready to run
+  database/migrations/    the users table, ready to run
   public/index.php        the front controller
   resources/assets/       SFCSS and SFJS
   sfphp                   the console
@@ -141,14 +163,15 @@ no dependencies and a created project carries its own copy of it.
 |---|---|
 | `public/` | What the web server serves — the front controller, and the published assets |
 | `app/` | Your code and your templates: controllers, models, services, views |
-| `src/` | The framework, and what configures it: routes, middleware, migrations, the settings layer |
+| `app/routes/` | The routes: `web.php` for pages, `api.php` for JSON endpoints |
+| `src/` | The framework itself, including the settings layer (`Bootstrap`, `Config`) |
 | `database/` | Migrations, seeders and factories |
 | `lang/` | Your message catalogs |
 | `.env` | Configuration, never committed |
 | `vendor/` | The autoloader. Nothing to open, nothing to edit |
 
-The one call the framework asks for is already in the front controller `init`
-wrote, and it is worth knowing because it is what ties the two halves together:
+The one call the framework asks for is already in the front controller the
+project ships with (`public/index.php`), and it is worth knowing because it is what ties the two halves together:
 
 ```php
 require __DIR__ . '/../vendor/autoload.php';
@@ -167,6 +190,7 @@ Bootstrap::load(dirname(__DIR__), [
     'views' => 'resources/views',
     'lang' => 'resources/lang',
     'env' => null,               // configuration comes from the environment
+    'cache' => 'var/cache/views', // compiled templates (default: the system temp directory)
 ]);
 ```
 
@@ -194,7 +218,7 @@ knowing because everything above depends on it.
 
 | | |
 |---|---|
-| The package autoloads | `src/` only, plus four files inside it |
+| The package autoloads | `src/`, `app/` and `database/` (PSR-4), plus five files inside `src/` |
 | The application owns | `.env`, its constants, its views, its catalogs, its routes |
 | `Bootstrap::load()` | Is how the second tells the first about itself |
 
@@ -214,8 +238,10 @@ See [Time and time zones](#time-and-time-zones).
 src/            The framework (namespace SfphpProject\src)
 app/            EXAMPLE application code — illustrative, not prescriptive
 public/         Document root: index.php and assets/ (css, js, images)
+resources/      SFCSS and SFJS sources, published into public/assets
+lang/           Message catalogs (en, pt_BR, es)
 database/       The application's migrations/, seeders/, factories/
-tools/          The SFCSS builder
+tools/          The SFCSS and SFJS builders, and the docs-parity check
 tests/          A bespoke suite, no PHPUnit
 docs/           This documentation
 sfphp           The CLI entry point
@@ -231,14 +257,13 @@ PSR-4 autoloading:
 | `Database\Seeders\` | `database/seeders/` |
 | `Database\Factories\` | `database/factories/` |
 
-The first mapping is the package's; the other three are this repository's own,
-declared under `autoload-dev` so they never reach a project that installs the
-framework.
+All four mappings are declared under `autoload`; the last three point at
+directories a created project owns (`app/`, `database/`).
 
-Four files are always loaded (`autoload.files`), and all four live in `src/`:
-`runtime.php`, `utils.php`, `http.php` and `helpers.php`. The example
-application's `app/config/config.php` is loaded too, through `autoload-dev`,
-and all it does is call `Bootstrap::load()`.
+Five files are always loaded (`autoload.files`), all in `src/`: `runtime.php`,
+`utils.php`, `http.php`, `helpers.php` and `Async/functions.php` (`async()`,
+`await()`, …). Nothing in `app/` is autoloaded as a file: the front controller
+calls `Bootstrap::load()` itself.
 
 ---
 
@@ -251,16 +276,20 @@ public/index.php
  │      utils.php  → global helpers: e(), asset(), csrf_*()
  │      http.php   → HTTP_OK, GET, POST, ... constants
  │      helpers.php→ cache(), logger(), mailer(), now(), dispatch(), __(), ...
- │      config.php → Bootstrap::load(): .env, constants, view and lang paths
+ │      Async/functions.php → async(), await(), delay(), ...
+ ├─ Bootstrap::load()         .env, constants, view and lang paths
  ├─ ErrorHandler::register()  safety net for fatals and bootstrap failures
- ├─ require src/routes.php    fills the static route registry
+ ├─ require app/components/compiled/**.php   compiled .phpx components
+ ├─ require app/routes/web.php, app/routes/api.php   fill the route registry
  ├─ new Container()
  │   └─ set(PDO::class, closure)   lazy connection
- ├─ Request::setTrustedProxies()   nothing is trusted until declared
+ ├─ Request::setTrustedProxies()   from TRUSTED_PROXIES; nothing until declared
+ ├─ new Router(): global middleware
+ │   └─ LogRequests, SecurityHeaders, SetLocale, StartSession, VerifyCsrfToken
  ├─ Request::fromGlobals()    the only place that reads superglobals
  ├─ Router->dispatch($request)
  │   └─ global → group → route middleware → action → Response
- └─ Emitter->emit($response)  the only place that writes output
+ └─ Emitter->emit($response, $request->method)   the only place that writes output
 ```
 
 `.env` is **optional**. A fresh clone boots with no configuration; whatever
@@ -300,7 +329,8 @@ Config::forget('SESSION_LIFETIME');   // back to the constant
 
 ## Routing
 
-Routes live in `src/routes.php`. The API is **static**.
+Routes live in `app/routes/web.php` (pages) and `app/routes/api.php` (JSON
+endpoints), both required by the front controller. The API is **static**.
 
 ```php
 use SfphpProject\src\Router;
@@ -397,8 +427,9 @@ Router::url('users.profile', ['username' => 'café']);      // /users/caf%C3%A9
 ```
 
 `url()` validates values against the parameter's type and throws
-`InvalidArgumentException` for a missing, invalid or unknown one. Duplicate
-names are rejected at registration.
+`InvalidArgumentException` for a missing, invalid or unknown one. An unknown
+route name throws `RuntimeException`. Duplicate names are rejected at
+registration.
 
 ---
 
@@ -476,6 +507,9 @@ $request->user();                    // set by the Authenticate middleware
 $request->route('id');               // route parameter
 $request->attribute('locale');       // attached by a middleware
 $withUser = $request->withAttribute('user', $user);   // clones
+$request->isFragment();              // true when SFJS asked for a fragment
+
+Request::create('POST', '/posts', ['body' => ['title' => 'Hi']]);   // one built without superglobals, for tests and the CLI
 ```
 
 Values come back **unchanged**, by design. Escaping is a property of a
@@ -544,6 +578,8 @@ final class PostController
 | `Response::route($name, $parameters, $query)` | A redirect to a named route |
 | `Response::back($request, $fallback)` | A redirect to where the visitor came from |
 | `Response::noContent()` | 204 |
+| `Response::stream($producer, $status, $headers)` | A body written chunk by chunk — see [STREAMING.md](./STREAMING.md) |
+| `Response::fragment($request, $fragment, page: …)` | A fragment for SFJS, or the whole page without JavaScript — see [Answering with a fragment](#answering-with-a-fragment) |
 
 > **`back()` will not leave your site.** The referer is a header, so the visitor
 > chooses it, which makes it a redirect destination an attacker can pick.
@@ -616,14 +652,17 @@ Static files live in `public/assets/{css,js,images}/`.
 And by `src/helpers.php`:
 
 ```php
-cache();                      // a CacheManager with the file driver
+cache();                      // a CacheManager for CACHE_DRIVER (file by default)
 logger();                     // a LogManager, configured from LOG_*
 mailer();                     // a MailManager, configured from MAIL_*
+queue();                      // the QueueManager for QUEUE_DRIVER
 now();                        // the current instant, in UTC
 dispatch(new MyJob());        // queues a job
 __('app.welcome', ['name' => 'Ana']);
 trans_choice('app.items', 3);
 locale();
+lang_tag();                   // the locale as a BCP 47 tag ('pt-BR'), for <html lang>
+dump($x);  dd($x);            // see Debugging
 ```
 
 ---
@@ -668,12 +707,14 @@ Three levels, running in this order: **global → group → route → action.**
 ```php
 // Global, in public/index.php — applies to 404 and 405 as well
 $router = (new Router($container))->middleware(
-    SecurityHeaders::class,
+    new LogRequests(),            // first, so every record carries the request id
+    new SecurityHeaders(),
+    new SetLocale(APP_LOCALES, APP_LOCALE),
     StartSession::class,
     VerifyCsrfToken::class
 );
 
-// Per group, in src/routes.php
+// Per group, in app/routes/web.php (or api.php)
 Router::group('/admin', function (): void {
     Router::get('/panel', 'AdminController', 'index');
 }, 'admin.', [RequireTokenMiddleware::class]);
@@ -704,6 +745,7 @@ dependencies in its constructor and have them autowired.
 | `Authenticate` | Identifies the user, and refuses anonymous requests when required |
 | `RateLimit` | Limits how often the same client may hit a route |
 | `RequireJson` | Refuses a body that is not JSON with 415, one that does not decode with 400 |
+| `EnableAsync` | Optional: gives each request its own async scheduler, so nothing it left pending carries over — see [ASYNC.md](./ASYNC.md) |
 
 `VerifyCsrfToken` lets safe methods and bearer-token requests through — a
 browser never attaches a bearer token by itself, so there is no cross-site
@@ -851,6 +893,11 @@ cycles are caught, with a limit of 16 levels.
 A partial inherits the variables in scope at the point of inclusion; the
 explicit array wins. `@component` is a synonym of `@include`.
 
+A `.phpx` component is a function, not a partial: import it once with
+`@use(function SfphpProject\app\components\Card)` — anywhere in the
+template — and call it as `{{ Card('Hello', $body) }}`. See
+[Components and .phpx](#components-and-phpx).
+
 ### Inline PHP
 
 ```sfht
@@ -983,9 +1030,11 @@ function Card(string $title, string $body, string $colour = 'blue'): Sfht
 }
 ```
 
-`sfht(` opens a markup region and its matching `)` closes it. Between them is
-SFHT, so `{{ }}`, `{!! !!}`, `@if` and `@foreach` all work and escaping is the
-same as everywhere else in the framework.
+`sfht(` opens a markup region, and the `)` that balances it outside every
+element closes it, so text inside may hold an apostrophe or a lone parenthesis.
+Between them is SFHT, so `{{ }}`, `{!! !!}`, the standard filters, `@if` and
+`@foreach` all work and escaping is the same as everywhere else in the
+framework; `@include`, `@extends` and `@block` are refused at build time.
 
 ```bash
 ./sfphp build --phpx                       # every .phpx under app/components
@@ -993,9 +1042,11 @@ same as everywhere else in the framework.
 ./sfphp build --phpx --to=build/components # output somewhere else
 ```
 
-The build writes PHP next to the source and runs `php -l` over each result, so a
+The build writes PHP into `app/components/compiled/`, mirroring the source tree,
+and runs `php -l` over each result, so a
 syntax error is reported at build time with the line number of the `.phpx` — the
-compiler pads its output to keep those aligned.
+compiled file keeps every line where it was written, inside a region and after
+it.
 
 ### One component per file
 
@@ -1028,6 +1079,9 @@ controller, is a `use function`, the same as for any other function in PHP:
 ```php
 use function SfphpProject\app\components\postcode\lookup\Address;
 ```
+
+From a `.sfht` template, import it with
+`@use(function SfphpProject\app\components\Card)` and call it by name.
 
 ### Why a component returns Sfht
 
@@ -1922,6 +1976,7 @@ surely — so the statements come out in the order the blueprint declares them.
 
 namespace Database\Seeders;
 
+use SfphpProject\src\Database;
 use SfphpProject\src\Database\Seeder;
 
 class UserSeeder extends Seeder
@@ -1966,6 +2021,7 @@ An unknown name lists the available seeders and exits with code 1.
 
 namespace Database\Factories;
 
+use SfphpProject\app\models\User;
 use SfphpProject\src\Database\Factory;
 
 class UserFactory extends Factory
@@ -1978,25 +2034,41 @@ class UserFactory extends Factory
             'password' => password_hash('password', PASSWORD_BCRYPT),
         ];
     }
+
+    protected function model(): string
+    {
+        return User::class;
+    }
 }
 ```
 
+`model()` names the Model that `create()` saves through; the generator writes
+it for you.
+
 ```php
 $data  = (new UserFactory())->make();                      // an array, unsaved
-$user  = (new UserFactory())->create();                    // saved
-$many  = (new UserFactory())->count(50)->create();
+$user  = (new UserFactory())->create();                    // saved, a User
 $admin = (new UserFactory())->create(['role' => 'admin']);  // overrides
+$many  = (new UserFactory())->count(50)->create([
+    'email' => fn () => 'user' . bin2hex(random_bytes(6)) . '@example.com',
+]);
 ```
 
-`make()` and `create()` return **arrays**, not objects. To work with objects,
-see [Models](#models).
+`make()` returns arrays, unsaved. `create()` saves each one through the model
+named by `model()` and returns Model instances — a list of them when `count()`
+is above 1. See [Models](#models).
+
+`definition()` runs **once** per call, and `count()` copies its result to every
+row: the fifty users above would all share one `mt_rand()` e-mail and trip a
+unique index. A value that must differ from row to row is given as a closure,
+which is called for each row — only when `count()` is above 1.
 
 ---
 
 ## Cache
 
 ```php
-$cache = cache();                    // global helper, file driver
+$cache = cache();                    // global helper, driver from CACHE_DRIVER
 
 $cache->put('key', $value, 300);     // TTL in seconds; null never expires
 $cache->get('key');
@@ -2061,8 +2133,9 @@ REDIS_DB=0
 > revoked token still works on the other instances and a limit of 60 requests is
 > really 60 *per instance*. **More than one instance means `redis`.**
 
-Selecting `redis` without `ext-redis` **fails at startup** rather than falling
-back to the file driver. A silent fallback would leave an operator believing
+Selecting `redis` without `ext-redis` **fails on first use** — the first
+`cache()`, `queue()` or cache-backed session — with an explicit error, rather
+than falling back to the file driver. A silent fallback would leave an operator believing
 those three things are shared when each machine is keeping its own — a hole that
 surfaces months later and never as an error.
 
@@ -2100,6 +2173,8 @@ use SfphpProject\src\Queue\Job;
 
 final class SendEmailJob extends Job
 {
+    protected int $tries = 5;          // the class default; ->tries() overrides it
+
     public function __construct(private string $to) {}
 
     public function handle(): void
@@ -2115,8 +2190,13 @@ final class SendEmailJob extends Job
 dispatch(new SendEmailJob('a@b.com'));         // global helper
 dispatch(new SendEmailJob('a@b.com'), 300);    // with a delay in seconds
 
-(new SendEmailJob('a@b.com'))->tries(5)->timeout(120);
+dispatch((new SendEmailJob('a@b.com'))->tries(10)->timeout(120)->delay(300));
 ```
+
+The worker rebuilds a job **without calling its constructor** — that ran once,
+at dispatch — and puts its properties back from what was stored, so a job may
+take constructor arguments like any other class. `tries`, `timeout` and `delay`
+set at dispatch are stored with the job and honoured by the worker.
 
 ```bash
 ./sfphp queue:work                 # default: 3600s
@@ -2124,9 +2204,12 @@ dispatch(new SendEmailJob('a@b.com'), 300);    // with a delay in seconds
 ./sfphp queue:failed
 ```
 
-The worker processes until the timeout, increments attempts on failure, and
+The worker processes until the timeout, counts each failed attempt once, and
 moves a job to `failed_jobs` once its tries run out. With `ext-pcntl`, `SIGTERM`
-and `SIGINT` shut it down gracefully.
+and `SIGINT` stop it gracefully — the running job finishes and no other is
+taken — and a job that runs past its `timeout` (60 seconds unless set) fails
+that attempt with a `JobTimedOutException`. Without `ext-pcntl` there is no
+graceful stop and no per-job limit: a job runs until it returns.
 
 The `jobs` and `failed_jobs` tables are created on demand, on the first
 operation that needs them — instantiating the driver opens no connection.
@@ -2179,11 +2262,20 @@ longest a job can legitimately take, or a slow job will be picked up twice.
 The Redis driver had the same flaw for the same reason: `zRem` reports how many
 members it removed and nothing checked the answer. It does now.
 
+In Redis the queue is three keys: `queue:default`, a sorted set of job ids
+scored by when each becomes available; `queue:jobs`, a hash of payloads by id;
+and `queue:failed`, a hash of the jobs that ran out of tries. Deleting,
+releasing and claiming a job are each one operation on its id, and
+`flush()` removes those keys and nothing else — it used to call `flushDb()`,
+which erased the whole database, cache and sessions included. Jobs queued with
+the earlier layout, which kept the payload in the sorted set, are still run.
+
 ### What is missing
 
 | Missing | Situation |
 |---|---|
 | Several named queues | Everything goes to `default`; the column exists and nothing reads it |
+| Recovering a job whose Redis worker died | A popped id leaves the sorted set; its payload stays in `queue:jobs`, but nothing puts it back — the database driver's reservation timeout has no Redis counterpart yet |
 | Retrying a failed job | `failed_jobs` records them; putting one back is manual |
 | Backoff between attempts | A retry waits a fixed 60 seconds |
 | A supervisor | Keeping the worker alive is `systemd`, `supervisor` or the platform's job |
@@ -2332,6 +2424,9 @@ A body given as an array is sent as JSON, with the `Content-Type` and `Accept`
 headers that implies. `->asForm()` sends it as a form instead, and a string is
 sent as it is — a caller who encoded the body owns its type.
 
+The client is built on `ext-curl`. Without the extension every call throws
+`ClientException` rather than degrading.
+
 Every verb exists on the facade and on a client, with the same signature:
 
 ```php
@@ -2400,6 +2495,33 @@ instead.
 A request that produced **no** answer — a refused connection, a name that does
 not resolve, a timeout, a certificate that failed to verify — throws
 `ClientException`. There is nothing to return.
+
+### Streaming a response
+
+A large export or a feed that never ends is read chunk by chunk rather than
+held in memory. A listener receives the status first, then each chunk, then the
+end; returning `false` from `onStatus()` or `onChunk()` aborts the transfer:
+
+```php
+use SfphpProject\src\Http\AbstractClientStreamListener;
+
+Http::client()
+    ->idleTimeout(30)      // abort after 30 seconds without a byte
+    ->stream('https://api.example.com/export', new class extends AbstractClientStreamListener {
+        public function onChunk(string $chunk): bool
+        {
+            file_put_contents('/tmp/export.csv', $chunk, FILE_APPEND);
+
+            return true;   // keep receiving
+        }
+    });
+
+Http::client()->streamRequest('POST', $url, $listener, $body);   // any method
+```
+
+`idleTimeout()` watches for silence, not slowness: a stream at 100 bytes a
+second is fine. See [STREAMING.md](./STREAMING.md#client-side-streaming-http--php)
+for the listener API and proxying a stream to the browser.
 
 ### What it does not do
 
@@ -2602,7 +2724,7 @@ database belong to real people.
 ```php
 use SfphpProject\src\Events\Dispatcher;
 
-Dispatcher::listen(OrderPlaced::class, SendReceipt::class);
+Dispatcher::listen(OrderPlaced::class, SendReceiptListener::class);
 Dispatcher::listen(OrderPlaced::class, fn (OrderPlaced $e) => Metrics::count('orders.placed'));
 
 Dispatcher::dispatch(new OrderPlaced($order));
@@ -2624,8 +2746,25 @@ a listener that needs a database connection does not open one at boot for an
 event that may never happen.
 
 ```bash
-./sfphp make:listener SendReceipt
+./sfphp make:listener SendReceipt   # creates app/listeners/SendReceiptListener.php
+./sfphp make:event OrderPlaced      # creates app/events/OrderPlacedEvent.php
 ```
+
+Both generators append the suffix, so the class to register is
+`SendReceiptListener`.
+
+The container is the one you hand over. Without it, each listener is built by
+an empty `Container`, which knows nothing of the application's bindings — a
+listener with a `PDO` parameter cannot be built. Hand it the application's at
+boot:
+
+```php
+Dispatcher::useContainer($container);   // in public/index.php, after the bindings
+```
+
+For tests, `Dispatcher::hasListeners(OrderPlaced::class)` says whether anything
+listens, and `Dispatcher::forget()` removes the listeners of one event, or of
+all of them with no argument.
 
 Registering against a parent class or an interface catches its children, which
 is what makes "record every domain event" expressible without naming each one:
@@ -2680,7 +2819,7 @@ public function store(Request $request): Response
         return Response::json(['errors' => $result->errors()], HTTP_UNPROCESSABLE_ENTITY);
     }
 
-    $clean = $result->validated();
+    $clean = $result->validated();   // name, email and age — nothing else
 
     // ...
 }
@@ -2701,7 +2840,8 @@ use SfphpProject\src\Validator;
 $result = Validator::validate($row, ['email' => 'required|email']);
 ```
 
-Rules are a **pipe-separated string**, not an array. Arguments follow a colon.
+Rules are a pipe-separated string or an array of rule strings. Arguments follow
+a colon.
 
 | Rule | Checks |
 |---|---|
@@ -2755,6 +2895,11 @@ than silently passing validation.
 
 `ValidationResult`: `passes()`, `fails()`, `errors()`, `validated()`.
 
+`validated()` returns **only the fields that had rules and were present** in the
+input; anything else the client sent is left out, so the result is safe to hand
+to `Model::create()` without leaning on `$fillable` alone. It throws
+`LogicException` when validation failed — check `passes()` first.
+
 Custom messages:
 
 ```php
@@ -2764,6 +2909,14 @@ Validator::validate($data, ['name' => 'required|min:3'], [
         'min' => 'The name needs at least 3 letters.',
     ],
 ]);
+```
+
+Messages are keyed by rule name, with one exception: when the value is a number,
+`min` and `max` look their message up as `minValue` and `maxValue`. `minLength`
+and `maxLength` use the keys `min` and `max`.
+
+```php
+['age' => ['minValue' => 'You must be at least 18.']]   // for 'number|min:18'
 ```
 
 ---
@@ -2819,6 +2972,8 @@ __('http.not_found_title');                    // 404 - Page Not Found
 __('app.welcome', ['name' => 'Ana']);          // Welcome, Ana!
 __('app.welcome', ['name' => 'Ana'], 'pt_BR'); // in a specific language
 locale();                                      // 'en'
+lang_tag();                                    // 'pt-BR' — for <html lang="…">
+Translator::has('app.welcome');                // whether a translation exists
 ```
 
 The key is `group.entry`, and it may nest deeper (`app.form.title`). **A key
@@ -2930,7 +3085,8 @@ APP_LOCALES=en,pt_BR,es
 
 `APP_LOCALE` is the language used when the client asks for none of the ones the
 application offers; `APP_LOCALES` are the ones it offers, in order of
-preference. With no configuration, both default to English.
+preference. With no configuration, `APP_LOCALE` is `en` and `APP_LOCALES` is
+`en,pt_BR,es`: the three languages the framework ships catalogs for.
 
 The application's `lang/` path is registered by `Bootstrap::load()`, which every
 entry point calls — so the CLI, a queue worker and the test suite all see the
@@ -3152,12 +3308,11 @@ Str::isUtf8($value);
 Str::upper('ação');  Str::lower('AÇÃO');  Str::ucfirst('ação');
 ```
 
-Built on **PCRE with `/u`**, not on `mbstring`. PCRE is always compiled into
-PHP; `mbstring` is optional, and requiring it would put a hard dependency in
-front of every install. The exception is case conversion, which needs
-per-locale tables PCRE does not expose: there `mbstring` is used when present
-and ASCII folding is the fallback when it is not — degrading a display detail
-rather than corrupting data.
+Built on **PCRE with `/u`**, which is always compiled into PHP, for length,
+validation and matching. Case conversion needs the Unicode tables PCRE does not
+expose, so it uses `mbstring` — a required extension. The ASCII folding that
+remains in the code is for a runtime that lacks the extension anyway: it
+degrades a display detail rather than corrupting data.
 
 ---
 
@@ -3745,7 +3900,20 @@ application is already using, and survives a restart. With the default file
 cache driver, `cache` behaves exactly like `native`: the driver decides that,
 not the handler.
 
-The database driver needs its table:
+The database driver needs a `sessions` table, and the framework does not ship
+its migration. Write one:
+
+```bash
+./sfphp make:migration:create sessions
+```
+
+```php
+$schema->create('sessions', function (Blueprint $table): void {
+    $table->string('id', 128)->primary();
+    $table->text('payload');
+    $table->integer('expires_at')->index();   // a Unix timestamp, UTC
+});
+```
 
 ```bash
 ./sfphp migrate
@@ -3786,7 +3954,7 @@ store whether an id names a session that exists.
 
 | Missing | Situation |
 |---|---|
-| Listing or revoking another device's session | The `database` driver's table makes it possible to build; nothing ships |
+| Listing or revoking another device's session | The `database` driver's table (your own migration) makes it possible to build; nothing ships |
 | Periodic id rotation | The id changes on login, on logout and on expiry, not on a timer |
 | Encryption at rest | The payload is stored as PHP serialises it; a database or cache with its own encryption is the answer |
 | Flash data | No "keep this for exactly one more request" helper |
@@ -3941,6 +4109,7 @@ blocks anyway teaches you something false about your own program.
 ```php
 use function SfphpProject\src\Async\async;
 use function SfphpProject\src\Async\await;
+use function SfphpProject\src\Async\delay;
 
 $a = Http::getAsync('https://billing.internal/invoices/7');
 $b = Http::getAsync('https://catalog.internal/products/42');
@@ -4047,12 +4216,13 @@ function UserPanel(string $url): Sfht
 ```
 
 A `.phpx` component is a function, so it suspends and resumes like anything
-else. Two components each awaiting a 300 ms request render in about 300 ms
-together.
+else. Suspending is not overlapping, though: a template renders its components
+one after another, so two components each awaiting a 300 ms request take about
+600 ms (measured: 604 ms). Rendered inside `async()` tasks and awaited together,
+the same two take about 300 ms (measured: 301 ms).
 
-> The full audit — what was blocking, what is not, what PHP's extensions allow,
-> and every benchmark with the command that produces it — is in
-> `ASYNC_RUNTIME_AUDIT.md` in the repository.
+> The full guide — every Future type, the scheduler, `EnableAsync`, what blocks
+> and what does not — is [ASYNC.md](./ASYNC.md).
 
 ---
 
@@ -4319,9 +4489,9 @@ report_build_ms_max 23.678
 
 ## CLI
 
-`./sfphp` exposes **36 commands**.
+`./sfphp` exposes **38 commands**; `./sfphp list` prints them all.
 
-### Generation (12 generators)
+### Generation (14 generators)
 
 ```bash
 ./sfphp make:controller Post
@@ -4336,9 +4506,15 @@ report_build_ms_max 23.678
 ./sfphp make:policy PostPolicy
 ./sfphp make:seeder UserSeeder
 ./sfphp make:factory User
+./sfphp make:pwa --name="My App" --logo=path/to/logo.png
 
 ./sfphp make:scaffold Post     # controller + model + repository + service
 ```
+
+`make:pwa` reads `app/pwa/config.php` when it exists — `--name` is then
+optional, and `--short=`, `--description=`, `--color=`, `--background=`,
+`--enable-push` and `--enable-sync` override the file. See
+[PWA_GUIDE.md](./PWA_GUIDE.md).
 
 > Every generator now produces code against something that exists and runs —
 > `make:event` and `make:listener` included, since `Dispatcher` arrived. What a
@@ -4349,9 +4525,10 @@ report_build_ms_max 23.678
 
 ```bash
 ./sfphp make:migration create_users name:string email:string:unique timestamps
+./sfphp make:migration:create posts [--path=dir]
 ./sfphp migrate [--step=N] [--path=dir]
-./sfphp rollback [--step=N]
-./sfphp status
+./sfphp rollback [--step=N] [--path=dir]
+./sfphp status [--path=dir]
 ./sfphp db:fresh
 ./sfphp db:seed [--class=UserSeeder]
 ```
@@ -4379,8 +4556,8 @@ nothing.
 ```
 
 Copies SFCSS and SFJS out of the package and into a directory the project
-serves. `composer install` and `./sfphp serve` both run it, so this is for an
-upgrade or an unusual layout; a run that finds the same files copies nothing and
+serves. `composer create-project` and `./sfphp serve` both run it (as does
+`composer run assets`), so this is for an upgrade or an unusual layout; a run that finds the same files copies nothing and
 says so.
 
 > **Why the files exist twice.** The package keeps them where they are
@@ -4398,12 +4575,12 @@ says so.
 ### Server and utilities
 
 ```bash
-./sfphp serve          # http://localhost:8000
+./sfphp serve          # http://localhost:8000; --host= --port=
 ./sfphp routes         # a table of the registered routes; --path= for an unusual layout
 ./sfphp env:example    # creates .env from .env-example
 ./sfphp css:build      # builds SFCSS from the config; --config= --output=
-./sfphp js:build       # minifies SFJS
-./sfphp build --phpx   # compiles the .phpx components
+./sfphp js:build       # joins core.js, stream.js and ui.js into sfjs.js and minifies it
+./sfphp build --phpx   # compiles the .phpx components; --from= --to=
 ./sfphp reset          # removes the example application; --force skips the question
 ./sfphp upgrade        # replaces the framework, keeps the application
 ./sfphp tinker         # REPL — local development only
@@ -4480,11 +4657,11 @@ It empties `app/components`, `app/controllers`, `app/models`, `app/Jobs`,
 the application would boot into a controller that is no longer there. The
 directories stay, because they are where the next thing goes.
 
-**The two migrations the framework ships are kept**: the users and sessions
-tables, which the authentication guard and the database session driver are
-written against, and which a project that dropped them would miss at its first
-login rather than here. A migration you wrote is yours, and goes with the rest
-of what you wrote. A `.gitkeep` stays too — it exists to hold an empty
+**The migration the framework ships is kept**: the users table, which the
+authentication guard is written against, and which a project that dropped it
+would miss at its first login rather than here. A `create_sessions_table`
+migration, if you wrote one for the database session driver, is kept too. Any
+other migration you wrote is yours, and goes with the rest of what you wrote. A `.gitkeep` stays too — it exists to hold an empty
 directory, which is what this leaves behind.
 
 Before deleting anything it prints what it is about to delete, with a count per
@@ -4496,9 +4673,9 @@ There is no undo and nothing goes to a trash bin.
 
 ## SFCSS
 
-A utility CSS framework. **It arrives built** — `composer require` delivers the
-stylesheet, and `composer create-project` and `sfphp serve` each copy it
-into `public/assets`, so using it is one line of HTML:
+A CSS framework of components and utilities. **It arrives built** — `composer
+require` delivers the stylesheet, and `composer create-project` and `sfphp
+serve` each copy it into `public/assets`, so using it is one line of HTML:
 
 ```html
 <link rel="stylesheet" href="/assets/css/sfcss.min.css">
@@ -4507,67 +4684,96 @@ into `public/assets`, so using it is one line of HTML:
 Nothing has to be generated to use SFCSS. The generator is there for changing
 it, which is [further down](#changing-sfcss).
 
+It ships the components a page is built from — buttons, forms with validation
+states, cards, alerts, badges, tables, navs and tabs, a navbar, breadcrumb,
+pagination, list groups, progress bars, spinners, an accordion, and the styles
+of the dropdowns, tooltips, modals, offcanvas panels and toasts that
+SFJS drives — and the utilities to adjust them, with breakpoint,
+`hover:` and `print:` variants.
+
 | | |
 |---|---|
-| Classes in total | **2,339** |
-| — base utilities | 1,211 |
-| — `hover:` variants | 600 |
-| — responsive variants (`sm` `md` `lg` `xl`) | 528 |
-| Colour classes | 600 palette (20 families × 10 shades × `bg`/`text`/`border`) + 25 theme |
-| Size | 112KB raw · 94KB minified · **16.4KB gzipped** |
+| Classes in total | **3,836** |
+| — base utilities and components | 2,091 |
+| — `hover:` variants | 628 |
+| — breakpoint variants (`sm` `md` `lg` `xl`) | 1,096 |
+| — `print:` variants | 21 |
+| Colour classes | 600 palette (20 families × 10 shades × `bg`/`text`/`border`), plus every role colour's variants |
+| Size | 237KB raw · 195KB minified · **33.1KB gzipped** |
 | Dependencies | none |
+
+Forms and tables are styled **by class** — `form-control`, `form-select`,
+`form-check-input`, `table` — so a bare `<input>` or `<table>` is left alone.
 
 ### Changing SFCSS
 
-The colours, the spacing scale, the type scale and the breakpoints come from a
-config, and it is in your project — `tools/css-builder/sfcss.config.json`, next
-to the generator that reads it. Edit it and rebuild:
+The design lives in a config: colours, the spacing and sizing scales, type,
+radii, breakpoints and options. A project keeps its own `sfcss.config.json` next
+to `composer.json`, and it is **merged over the defaults**, so it holds only
+what it changes:
 
-```bash
-# tools/css-builder/sfcss.config.json — palettes, spacing, breakpoints, fonts
-./sfphp css:build
+```json
+{
+  "colors": { "primary": "#7c3aed", "brand": "#0f766e" },
+  "options": { "darkMode": true, "hoverVariants": false }
+}
 ```
 
-`css:build` writes into `public/assets/css`, which is what the browser reads.
-A config placed next to `composer.json` wins over the one in `tools/`, for a
-project that would rather keep its design apart from the generator.
-
 ```bash
+./sfphp css:build
 ./sfphp css:build --config=design/sfcss.json --output=web/css
 ```
 
-> **A stylesheet you built is not overwritten.** `composer install` and `serve`
+`css:build` writes into `resources/assets/css` in a project created with
+`create-project` or cloned — run `./sfphp assets:publish` afterwards, as it
+reminds you — and straight into `public/assets/css`, which is what the browser
+reads, when the framework is installed under `vendor/`. `--output=` overrides
+both. The builder's warnings are printed on standard error even when the build
+succeeds.
+
+Everything that follows from a colour is computed by the builder rather than
+written down: the text that stays readable on it (checked against WCAG AA,
+4.5:1, with a warning at build time for a colour nothing reads on), its hover
+and active shades, a pale background with its border and text, its form as text
+on the page, and the same set for the dark theme. Each colour — including one a
+project adds — gets `btn-`, `btn-outline-`, `badge-`, `alert-`, `text-`,
+`bg-`, `border-` and the rest.
+
+Every utility comes from a map a project can extend or trim from the same
+config, and options switch features off: components, dark mode, `hover:` or
+breakpoint variants, rounding, shadows, a prefix for the CSS variables.
+
+> **A stylesheet you built is not overwritten.** `create-project` and `serve`
 > publish the framework's assets, and when one of yours differs they say they
 > kept it rather than replacing it. `assets:publish --force` takes the
 > framework's version back.
 
-For a change of colour alone, editing the config is more than you need: the
-theme reads CSS variables, so overriding them in your own stylesheet is enough.
+For a colour on one section of a page, overriding the variables is enough:
 
 ```css
-:root { --primary: #ff6600; }
+.checkout { --primary: #047857; --primary-rgb: 4 120 87; }
 ```
 
-### What the framework's own screens use
+That does not recompute the derived values (`--primary-contrast`,
+`--primary-subtle`…); for the whole site, change the config and rebuild.
 
-`code`, `pre` and `kbd` are styled, `font-mono` and `font-sans` set the family,
-and the neutral surfaces are variables rather than fixed hex values:
-
-```css
---surface  --surface-raised  --surface-sunken
---surface-border  --surface-border-strong
---body-color  --body-color-muted  --code-color
-```
+### Themes and accessibility
 
 A page opts into a theme with `data-theme` on its root element — `light` (the
-default), `dark`, or `auto` to follow the reader's system setting. Only those
-eight change. Brand and palette colours keep their meaning in both themes; what
-has to change is the paper they sit on, and a page that says nothing stays
-light.
+default), `dark`, or `auto` to follow the reader's system setting. Surfaces,
+body text and each colour's pale, border, emphasis and text forms change;
+alerts, tables, forms, cards and toasts follow. Palette classes such as
+`bg-blue-50` keep their value, because they are colours, not roles.
 
-That set exists because the error page and the dump screen are built from SFCSS
-and inline it — a framework with its own stylesheet should not have its own
-screens written in a second one.
+Keyboard focus is always visible (`:focus-visible`), the reader's
+reduced-motion setting is honoured, `.visually-hidden` and `.skip-link` are
+there for screen-reader text, components mirror under `dir="rtl"`, and the
+current tab, page or invalid field is styled from its ARIA attribute — markup
+that tells a screen reader the truth is markup that looks right.
+
+The error page and the dump screen are built from SFCSS and inline it — a
+framework with its own stylesheet should not have its own screens written in a
+second one.
 
 Full reference: [SFCSS](SFCSS.md) and
 [utilities reference](SFCSS_UTILITIES.md).
@@ -4576,17 +4782,27 @@ Full reference: [SFCSS](SFCSS.md) and
 
 ## SFJS
 
-A dependency-free JavaScript library — 35KB raw, 21KB minified, **6.0KB
-gzipped**. Exposed as `window.sf`.
+A dependency-free JavaScript library — 104KB raw, 55KB minified, **14.4KB
+gzipped**. Exposed as `window.sf`. It is **one file**, with everything in it:
+requests and swaps, validation, state, streams (`@stream`, `@sse`) and the
+interface components (modals, menus, tooltips, tabs, toasts).
 
 ```html
 <script src="/assets/js/sfjs.min.js"></script>
-<script src="/assets/js/sfjs.js"></script>     <!-- readable, for debugging -->
+<!-- or sfjs.js, readable, for debugging — never both: each is the whole bundle -->
 ```
 
+Up to 0.27, streams and the interface components were `sfjs-stream.js` and
+`sfjs-ui.js`, two extra files that only worked when loaded after this one. They
+are part of `sfjs.js` now and are no longer published: a page that includes
+them should drop those two tags.
+
+The source is three files under `resources/assets/js/src/` — `core.js`,
+`stream.js`, `ui.js` — that the builder joins, in that order, into the bundle.
+
 ```bash
-./sfphp js:build         # rebuilds sfjs.min.js from sfjs.js
-./sfphp assets:publish   # copies both into public/assets
+./sfphp js:build         # joins the parts, writes sfjs.js and sfjs.min.js
+./sfphp assets:publish   # copies them into public/assets
 ```
 
 The minifier removes comments and collapses whitespace, and deliberately does
@@ -4623,6 +4839,19 @@ sf.storage.set('k', {a: 1});  sf.storage.get('k');
 sf.storage.remove('k');       sf.storage.clear();
 
 sf.util.debounce(fn, 300);  sf.util.throttle(fn, 300);  sf.util.wait(500);
+sf.util.id(el, 'prefix');   // el's id, giving it a unique one first if it has none
+
+sf.form.check(inputEl);     // validates, and shows or clears the message
+sf.messages = { required: 'Campo obrigatório.' };   // see "What SFJS says, in any language"
+sf.config({ swapStrategy: 'innerHTML', messages: { close: 'Fechar' } });
+sf.t('minLength', { min: 3 });          // a message by key, placeholders filled in
+sf.emit(el, 'app:saved', { id: 7 });    // a bubbling CustomEvent
+sf.onBind((root) => { /* runs on the page and on every fragment a swap brings in */ });
+sf.bind(el);                            // wire up markup you inserted yourself
+sf.morph(el, html);                     // the default swap, without a request
+
+sf.toast('Saved.', { variant: 'success' });   // an interface component
+sf.modal.open(dialogEl);  sf.modal.close(dialogEl);
 ```
 
 ### Declarative attributes
@@ -4636,8 +4865,8 @@ sf.util.debounce(fn, 300);  sf.util.throttle(fn, 300);  sf.util.wait(500);
   <button type="submit">Create</button>
 </form>
 
-<button @toggle="menu">Menu</button>
-<div id="menu">...</div>
+<button @toggle="#menu">Menu</button>
+<div id="menu" hidden>...</div>
 ```
 
 The five verbs are `@get`, `@post`, `@put`, `@patch` and `@delete`, with
@@ -4739,7 +4968,7 @@ closed stays closed while the numbers inside it change.
 | | |
 |---|---|
 | `@text` | the element's text becomes the expression's value |
-| `@show` | shown while the expression is true |
+| `@show` | shown while the expression is true, through the `hidden` attribute |
 | `@class` | adds classes to the ones the element already has |
 | `@model` | two-way on an input, a checkbox or a select |
 | `@on:click`, `@on:input`, … | runs an expression when that event fires |
@@ -4832,6 +5061,27 @@ work for nothing:
 > reinitialising itself, say — should now say `@swap="innerHTML"` for that
 > target.
 
+**Children are matched by key before position.** A child with `@key`, or with
+an `id`, is found wherever it now sits in the new markup, so a row inserted at
+the top of a list is inserted — it does not shift every row below it by one and
+morph each into its neighbour. The field being typed into stays the same field,
+with its focus, caret and text:
+
+```html
+<ul id="messages" @get="/messages" @trigger="every:5s" @target="#messages">
+  <li @key="msg-41">…</li>
+  <li @key="msg-40">…</li>
+</ul>
+```
+
+Children without a key are still matched by position. A checkbox's `checked`
+and an option's `selected` follow what the server sent, as a field's value
+does, unless the visitor is on that control right now.
+
+With `innerHTML` and `outerHTML` the nodes are rebuilt, but when the focused
+element has an `id` that is also in the new markup, the focus and the caret are
+put back on it — a keyboard user is not thrown to the top of the page.
+
 ### Answering with a fragment
 
 One action serves both the swap and a browser with no JavaScript running:
@@ -4849,9 +5099,435 @@ SFJS sends `X-Requested-With`, so it gets the piece that changed; a form
 submitted without JavaScript gets the whole page with the fragment already in
 place. `$request->isFragment()` is the same question if you need it directly.
 
+### The life of a request
+
+Every request an element sends goes through the same steps, and each step is an
+event dispatched on that element. The events bubble, so one listener on
+`document` hears the whole page:
+
+| | |
+|---|---|
+| `sf:before` | before sending. Cancelable: `preventDefault()` stops the request. `detail`: `{url, method, target}` |
+| `sf:after` | after a successful answer was swapped in. `detail`: `{response, target}` |
+| `sf:error` | on a non-2xx answer or a network failure. `detail`: `{error, response, target}` — `response` is `null` when nothing came back, and `target` is the `@error-target` element when the body was shown there |
+
+```js
+document.addEventListener('sf:before', (e) => {
+  if (e.detail.method === 'DELETE' && !confirm(sf.t('confirmDelete'))) e.preventDefault();
+});
+
+document.addEventListener('sf:error', (e) => {
+  console.warn('Request failed', e.detail.error, e.detail.response?.status);
+});
+```
+
+`confirmDelete` is not a built-in key: `sf.t()` returns the key itself when
+there is no message, so an application adds its own keys to `sf.messages` and
+reads them the same way. An element that a swap has already removed from the
+page cannot bubble, so its events go to `document` instead, and so do the
+events of `sf.ajax.*` calls made without an element.
+
+While a request is in the air:
+
+- the target carries `aria-busy="true"`, so a screen reader waits for the new
+  content instead of reading half of it, and CSS can show it —
+  `[aria-busy="true"] { opacity: .6 }`;
+- the element that sent it — a button, a link, or a form's submit buttons — is
+  disabled and marked `aria-disabled="true"`, so a second click cannot send a
+  second order. A text field is marked busy but never disabled, because
+  disabling it would take the focus from somebody who is still typing. When the
+  answer arrives the button is enabled again and gets its focus back.
+
+**A newer request cancels the older one.** When an element sends again before
+its previous answer arrived — a search box while somebody types — the previous
+request is aborted, so a slow answer to "ab" can never overwrite the answer to
+"abc".
+
+**Ctrl, Cmd, Shift and middle clicks on a link are left to the browser.** They
+are the visitor asking for a new tab or window, and a link with `@get` opens
+there as any other link would.
+
+**`every:` and `load delay:` stop with their element.** A polling panel that a
+swap took out of the page stops at its next tick, instead of polling for an
+element nobody can see for as long as the tab is open.
+
+### When the server says no
+
+A non-2xx answer is still an answer. A 422 carrying the form back with its
+messages is the most useful thing the server can send, so `@error-target` says
+where that body goes:
+
+```html
+<form id="signup" @post="/signup" @target="#welcome" @error-target="#signup" @swap="outerHTML">
+  …
+</form>
+```
+
+With `@error-target`, the body is swapped there with the element's `@swap`
+strategy, and `sf:error` still fires. Without it, nothing on the page changes
+and `sf:error` is how you hear about it. The same option exists in code:
+`sf.ajax.post(url, data, { target: '#welcome', errorTarget: '#signup' })`.
+
+### What a request sends
+
+| | |
+|---|---|
+| `GET` and `DELETE` | the fields as a query string, with no body and no `Content-Type` |
+| a form with an `<input type="file">`, or with `enctype="multipart/form-data"` | `multipart/form-data`, exactly as the browser would send it without JavaScript — which is how a file reaches the server |
+| anything else | JSON |
+
+A field that appears more than once — three ticked checkboxes called `tags` —
+arrives as a list, and a name ending in `[]` is a list even when only one value
+was sent, so the server never receives a string one day and an array the next.
+The button that submitted the form is included with its `name` and `value`, as
+in a submit without JavaScript.
+
+### Validation in the browser
+
 `@validate` runs on `blur` and takes the same rules the server validates with —
 see [Validation](#validation) for the list. Several separated by `|`:
 `@validate="required|number|min:18"`.
+
+```html
+<form @post="/users" @target="#list">
+  <label for="email">Email</label>
+  <input id="email" name="email" @validate="required|email">
+
+  <label for="nick">Nickname</label>
+  <input id="nick" name="nick" @validate="required|minLength:3"
+         data-msg-minlength="Pick a nickname of {min} letters or more.">
+
+  <button type="submit">Create</button>
+</form>
+```
+
+When a field breaks a rule:
+
+- it gets `aria-invalid="true"` and the class `is-invalid`;
+- a message is inserted right after it —
+  `<div class="invalid-feedback" id="sf-error-3" aria-live="polite">` — and
+  linked to it through `aria-describedby`, so a screen reader reads the message
+  when the field is focused. The id is generated, so two fields without an id
+  never share a message, and ids the page had already put in
+  `aria-describedby` are kept;
+- from then on the field is checked again as the visitor types, and the message
+  goes away as soon as the value is right.
+
+**An invalid form is not sent.** On submit, every `@validate` field in the form
+is checked; if any fails, the submit is cancelled — whether the form is sent by
+SFJS or by a plain `action` — and the focus moves to the first field at fault,
+which is where a screen reader reads its message.
+
+The look belongs to the stylesheet: SFCSS styles `is-invalid` and
+`invalid-feedback`, and SFJS adds no utility classes of its own. In code,
+`sf.form.check(field)` validates and updates the page, returning whether the
+field passed; `sf.form.validate(field)` only answers.
+
+### What SFJS says, in any language
+
+Everything SFJS shows to a visitor is a key in `sf.messages`, and the defaults
+are English:
+
+| Key | Default |
+|---|---|
+| `required` | This field is required. |
+| `email` | Enter a valid email address. |
+| `number` | Use digits only. |
+| `alpha` | Use letters only. |
+| `alphanum` | Use letters and numbers only. |
+| `min`, `max` | Enter a value of at least {min}. — Enter a value of at most {max}. |
+| `minLength`, `maxLength` | Use at least {min} characters. — Use at most {max} characters. |
+| `pattern` | Use the format requested. |
+| `url` | Enter a valid URL. |
+| `invalid` | This value is not valid. — used for a rule that has no message of its own |
+| `close` | Close — the accessible name of a toast's close button |
+| `streamClosed` | [Connection closed] |
+| `streamError` | Error: {error} |
+
+`min` and `max` on a value that is not a number count characters, as they do on
+the server, so they are worded with `minLength` and `maxLength`. `{min}`, `{max}`
+and `{error}` are replaced where they appear.
+
+There are four ways to change them, from the widest to the narrowest:
+
+```html
+{{-- 1. From the server's catalogs, in a meta element: no inline script, so it
+     works under a strict Content-Security-Policy, and {{ }} escapes it. --}}
+<meta name="sf-messages" content="{{ state([
+    'required' => __('app.form.required'),
+    'email' => __('app.form.email'),
+    'minLength' => __('app.form.min_length'),
+    'close' => __('app.close'),
+]) }}">
+```
+
+```js
+// 2. Assigning: only the keys given change, the rest stay in English.
+sf.messages = { required: 'Campo obrigatório.', minLength: 'Use ao menos {min} caracteres.' };
+
+// 3. Together with the other defaults.
+sf.config({ swapStrategy: 'morph', messages: { close: 'Fechar' } });
+```
+
+```html
+<!-- 4. One field, one rule: data-msg- followed by the rule name in lower case. -->
+<input name="age" @validate="number|min:18" data-msg-min="You must be {min} or older.">
+```
+
+A catalog entry that SFJS will read writes its placeholders the SFJS way —
+`{min}`, not `:min` — since it is filled in by the browser, not by `__()`.
+
+### @toggle
+
+`@toggle` shows and hides another element. It takes a CSS selector; a bare id,
+which is what it took before, keeps working:
+
+```html
+<button @toggle="#filters">Filters</button>
+<div id="filters" hidden>…</div>
+```
+
+The panel is shown and hidden with the `hidden` attribute rather than an inline
+`display`, so it keeps the display its own CSS gives it. Every trigger of the
+panel gets `aria-controls` and an `aria-expanded` that follows the panel, which
+is what a screen reader announces as "collapsed" and "expanded" — two buttons
+opening the same panel both say the same thing. The panel receives `sf:show` or
+`sf:hide` before it changes, and both are cancelable. A panel hidden with an
+inline `display: none`, as the older version required, still works on the first
+click.
+
+`@show` in a state scope uses the `hidden` attribute too. SFCSS makes `[hidden]`
+win over any display utility; a stylesheet of your own should do the same.
+
+### Streams
+
+The streaming part of SFJS adds `@stream`, and is documented in the
+[streaming guide](STREAMING.md). What changed with this version:
+
+- it can be loaded in the `<head>`: it binds when the document is ready;
+- an element added to the page later is bound itself, not only its
+  descendants, and a stream whose element is removed from the page is stopped;
+- the stream's target gets `aria-live="polite"` (unless it has its own) and
+  `aria-busy="true"` while data is arriving, so a screen reader announces the
+  result once instead of every chunk;
+- `@trigger` understands `delay:` as the core does — `@trigger="load delay:1s"`;
+- form fields that repeat are sent as lists, not only the last value;
+- an `EventSource` keeps the browser's own reconnection. The stream ends when
+  the server sends a final event — `done` or `complete`, or the names given in
+  `@done="finished"` — or answers a reconnection with 204;
+- `[Connection closed]` and `Error:` come from `sf.messages`
+  (`streamClosed`, `streamError`).
+
+### Interface components
+
+The interface part of SFJS adds modals,
+offcanvas panels, dropdown menus, tooltips, tabs and toasts, built on what the
+browser already does: `<dialog>` supplies the focus trap, the top layer and
+Escape; the `popover` attribute supplies light dismiss. The script adds the
+keyboard and ARIA work those elements leave to the page, and SFCSS supplies the
+look — the script writes no CSS except the coordinates of a floating element.
+It is in `sfjs.min.js`; there is nothing else to load.
+
+Everything is delegated from the document, and markup that arrives through a
+swap is wired up like the rest.
+
+### Modal and offcanvas
+
+```html
+<button @modal="#confirm">Delete account</button>
+
+<dialog id="confirm" class="modal" aria-labelledby="confirm-title">
+  <div class="modal-header">
+    <h2 class="modal-title" id="confirm-title">Delete your account?</h2>
+    <button class="btn-close" @dismiss aria-label="Close"></button>
+  </div>
+  <div class="modal-body">This cannot be undone.</div>
+  <div class="modal-footer">
+    <button class="btn" @dismiss>Cancel</button>
+    <button class="btn btn-danger" @delete="/account">Delete</button>
+  </div>
+</dialog>
+```
+
+`@modal="#confirm"` opens the dialog with `showModal()`: the rest of the page
+becomes inert and the focus stays inside. It closes with Escape, with a
+`@dismiss` inside it, or with a click on the backdrop — unless the dialog has
+`data-static`, for a form that must not be lost to a stray click. When it
+closes, the focus goes back to the button that opened it. The trigger gets
+`aria-haspopup="dialog"` and `aria-controls`.
+
+An offcanvas panel is the same script on a dialog with another class; SFCSS
+slides it in from the side it names:
+
+```html
+<button @modal="#cart">Cart</button>
+<dialog id="cart" class="offcanvas offcanvas-end" aria-label="Cart">…</dialog>
+```
+
+`offcanvas-start`, `offcanvas-end`, `offcanvas-top` and `offcanvas-bottom` are
+the four sides. Both fire the same events on the dialog:
+
+| | |
+|---|---|
+| `sf:show` | before opening; cancelable. `detail.relatedTarget` is the trigger |
+| `sf:shown` | after opening |
+| `sf:hide` | before closing, however it closes; cancelable — a form with unsaved changes can say no |
+| `sf:hidden` | after closing |
+
+In code: `sf.modal.open(dialog, trigger)` and `sf.modal.close(dialog)`.
+
+### Dismiss
+
+`@dismiss` on a button closes what it is inside: a `dialog` is closed, an
+`.alert` or a `.toast` is removed from the page after `sf:dismissed` is fired on
+it.
+
+```html
+<div class="alert alert-warning" role="alert">
+  Your trial ends tomorrow.
+  <button class="btn-close" @dismiss aria-label="Close"></button>
+</div>
+```
+
+### Dropdown menus
+
+A menu is a native popover: the browser opens it from its button, closes it on
+Escape and on a click outside, and puts it above everything else.
+
+```html
+<button popovertarget="account-menu" class="dropdown-toggle">Account</button>
+
+<div id="account-menu" popover class="dropdown-menu" role="menu">
+  <a class="dropdown-item" href="/profile">Profile</a>
+  <a class="dropdown-item" href="/settings">Settings</a>
+  <hr class="dropdown-divider">
+  <button class="dropdown-item" @post="/logout">Sign out</button>
+</div>
+```
+
+What SFJS adds:
+
+- `aria-haspopup` and an `aria-expanded` that follows the menu on the button;
+  `role="menuitem"` on `.dropdown-item` and `role="separator"` on
+  `.dropdown-divider` when the markup did not say;
+- the focus moves to the first item when the menu opens; ArrowDown and ArrowUp
+  move between items, wrapping at the ends, and Home and End go to the first and
+  the last; ArrowDown on the closed menu's button opens it;
+- choosing an item closes the menu (unless it has `data-keep-open`), and so does
+  tabbing out of it; on Escape the focus goes back to the button;
+- positioning. Where the browser has CSS anchor positioning, the button gets an
+  `anchor-name` and the menu a `--sf-anchor` custom property naming it, and
+  SFCSS places the menu with `position-anchor: var(--sf-anchor)`. Where it does
+  not, SFJS places the menu under its button with fixed coordinates — above it
+  when there is no room below, aligned to the right in a right-to-left page — and
+  follows the button on scroll and resize while the menu is open.
+
+### Tooltips
+
+```html
+<button @tooltip="Copies the address of this page">Copy link</button>
+<a href="/help" @tooltip="Opens in this tab" @tooltip-placement="bottom">Help</a>
+```
+
+`@tooltip` shows its text in a single shared `<div class="tooltip"
+role="tooltip" popover="manual">` — on hover after 300 ms, at once on keyboard
+focus — and hides it on leave, on blur and on Escape. The pointer can move from
+the element onto the tooltip without closing it, so the text can be read and
+selected. While it is shown, the element's `aria-describedby` points at it. The
+text is set as text, never as markup.
+
+`@tooltip-placement` is `top` (the default), `bottom`, `left` or `right`. The
+tooltip moves to the opposite side when there is no room, and its class says
+where it ended up — `tooltip-top`, `tooltip-bottom`, `tooltip-left`,
+`tooltip-right` — so SFCSS can point its arrow the right way.
+
+A tooltip adds a description. An icon-only button still needs an
+`aria-label` of its own.
+
+### Tabs
+
+```html
+<div @tabs role="tablist" class="nav-tabs" aria-label="Account">
+  <button role="tab" id="tab-profile" aria-controls="panel-profile" aria-selected="true">Profile</button>
+  <button role="tab" id="tab-billing" aria-controls="panel-billing">Billing</button>
+</div>
+
+<div id="panel-profile">…</div>
+<div id="panel-billing" hidden>…</div>
+```
+
+`@tabs` on the tab list makes it follow the ARIA tabs pattern:
+
+- only the selected tab is in the Tab order (roving `tabindex`); ArrowLeft and
+  ArrowRight move to the previous and next tab and select it, wrapping at the
+  ends — reversed in a right-to-left page — and Home and End go to the first and
+  the last. With `aria-orientation="vertical"` on the list it is ArrowUp and
+  ArrowDown;
+- the selected tab has `aria-selected="true"`, the others `"false"`;
+- each panel gets `role="tabpanel"`, `aria-labelledby` pointing at its tab, and
+  `tabindex="0"` when it has none; the panels of the other tabs get `hidden`;
+- `sf:tab` is fired on the list with `detail: {tab, panel}`.
+
+Write `hidden` on the panels that start closed, as above, so the page does not
+flash them before the script runs. SFCSS styles `.nav-tabs` and `.nav-pills`
+through `[aria-selected="true"]`. A tab marked `disabled` or
+`aria-disabled="true"` is skipped.
+
+### Toasts
+
+```js
+sf.toast('Saved.', { variant: 'success' });
+sf.toast('The payment was refused.', { variant: 'danger', timeout: 0 });
+```
+
+| Option | Default | |
+|---|---|---|
+| `variant` | `info` | becomes the class `toast-{variant}`: `success`, `danger`, `warning`, `info`, or any name SFCSS styles |
+| `timeout` | `5000` | milliseconds until it goes away; `0` keeps it until it is dismissed |
+| `dismissible` | `true` | adds a close button, `<button class="btn-close" @dismiss>`, labelled with `sf.messages.close` |
+
+The toasts go into a `<div class="toast-stack" aria-live="polite">` created when
+the page loads — a screen reader only announces changes to a live region it
+already knew about. A toast is `role="status"`; a `danger` toast is
+`role="alert"`, which interrupts, because an error the visitor never heard is
+worse than an interruption. The timer pauses while the pointer or the focus is
+on the toast. The message is set as text; pass a DOM node for anything richer.
+`sf.toast()` returns the toast element.
+
+**The server can raise a toast.** When the answer to an SFJS request carries an
+`SF-Toast` header, it is shown — on success and on error:
+
+```php
+return Response::fragment($request, $row)
+    ->withHeader('SF-Toast', json_encode(['message' => __('app.saved'), 'variant' => 'success']));
+```
+
+The header is JSON with `message` and, optionally, `variant` and `timeout`, or
+plain text. Header values are Latin-1, so a message in any other script has to
+travel as JSON with `\u` escapes — which is exactly what `json_encode` writes by
+default. Do not pass `JSON_UNESCAPED_UNICODE` here.
+
+### Accordions and collapse
+
+An accordion needs no script: `<details>` opens and closes natively, and giving
+several the same `name` makes opening one close the others.
+
+```html
+<div class="accordion">
+  <details name="faq" open>
+    <summary>How long does delivery take?</summary>
+    <p>Two to five working days.</p>
+  </details>
+  <details name="faq">
+    <summary>Can I return an item?</summary>
+    <p>Within thirty days.</p>
+  </details>
+</div>
+```
+
+SFCSS styles `.accordion` on `details` and `summary`. For a collapsible region
+that is not a disclosure — a filter panel opened from a toolbar — use
+[`@toggle`](#toggle).
 
 ---
 
@@ -4861,7 +5537,7 @@ A bespoke runner, no PHPUnit — consistent with zero dependencies.
 
 ```bash
 composer run lint        # php -l across the project
-composer run test        # 169 unit cases
+composer run test        # the unit suite (php tests/run.php); prints passed and failed
 composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
@@ -4888,9 +5564,8 @@ unit suite, because that code reads correctly and still does nothing: the
 migration lock is `GET_LOCK` and `pg_try_advisory_lock`, so only a second real
 connection being refused shows that it holds.
 
-CI runs two jobs: `unit` on a PHP 8.1–8.4 matrix **without `mbstring`**, which
-is what keeps the UTF-8 handling from depending on the extension; and
-`integration` with MySQL 8, PostgreSQL 16 and Redis 7 as services.
+CI runs two jobs: `unit` on a PHP 8.1–8.4 matrix, and `integration` with
+MySQL 8, PostgreSQL 16 and Redis 7 as services.
 
 `composer run docs` runs in the unit job too. The documentation exists in three
 languages, and prose cannot be compared mechanically — but structure can. It
@@ -4917,7 +5592,7 @@ does not do, and you should know before choosing it.
 | **A metrics backend** | `Metrics` counts and times in the process and prints Prometheus text; shipping it to a collector, and keeping it across requests, is the deployment's. See [Health and metrics](#health-and-metrics) |
 | **Route caching to disk** | A static path is matched by comparison rather than by `preg_match`, but a parameterised route still costs one match, and nothing is compiled ahead of time. Fine for hundreds, not thousands |
 | **A language server for `.phpx`** | The editor gets highlighting, Emmet and completion through the configuration the package ships, but a `.phpx` is not valid PHP, so diagnostics are turned off — and turned off for every `.php` alongside it. `./sfphp build --phpx` and `composer run lint` are what catch a real error. See [Components and .phpx](#components-and-phpx) |
-| **Session revocation from elsewhere** | Ending another device's session is buildable on the `database` driver's table; nothing ships. See [Sessions](#sessions) |
+| **Session revocation from elsewhere** | Ending another device's session is buildable on the `database` driver's table (a migration of your own); nothing ships. See [Sessions](#sessions) |
 
 SFHT also has no automatic loop variables (`$loop`) and no partial block
 inheritance (`@parent`).
@@ -4928,10 +5603,13 @@ inheritance (`@parent`).
 
 Beyond this framework reference, explore our specialized guides:
 
-- **[Async/Await Complete Guide](../ASYNC_COMPLETE_GUIDE.md)** — Comprehensive guide to async programming with PHP Fibers, WebSockets, streams, event broadcasting, and reactive components
-- **[PWA Guide](../PWA_GUIDE.md)** — Build Progressive Web Apps with offline support, push notifications, background sync, and home screen installation
-- **[SFCSS Framework](./SFCSS.md)** — Styling guide for the built-in Pico-inspired CSS framework with Tailwind-style utilities
+- **[Async guide](./ASYNC.md)** — Futures, the scheduler and `EnableAsync`, what blocks and what does not, event broadcasting, streams and reactive state
+- **[Streaming](./STREAMING.md)** — `Response::stream()`, Server-Sent Events, `@stream` in the browser, streaming an HTTP client response, and server configuration
+- **[PWA guide](./PWA_GUIDE.md)** — `make:pwa`, `app/pwa/config.php`, the manifest, the service worker, offline support, push and background sync
+- **[.phpx components](./PHPX_COMPONENTS.md)** — writing, compiling and loading components in depth
+- **[SFCSS framework](./SFCSS.md)** — the built-in CSS framework, with components, utilities and variants generated from a config
+- **[SFCSS utilities](./SFCSS_UTILITIES.md)** — every utility class, by group
 
 ---
 
-*Documentation reviewed on 2026-09-22 against the running code.*
+*Documentation reviewed on 2026-09-25 against the running code.*
