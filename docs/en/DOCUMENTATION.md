@@ -48,7 +48,6 @@ code does today. Where something does not exist, it says so — see
 - [JWT](#jwt)
 - [Debugging](#debugging)
 - [Async](#async)
-- [PWA](#pwa)
 - [Error handling](#error-handling)
 - [Logging](#logging)
 - [Health and metrics](#health-and-metrics)

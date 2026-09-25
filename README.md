@@ -77,7 +77,7 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 
 | Feature | What You Get |
 |---------|-------------|
-| **Async/Await System** | PHP Fibers over a real event loop: HTTP requests overlap, timers and timeouts are the loop's. Queries are scheduled, not overlapped — see [the audit](ASYNC_RUNTIME_AUDIT.md) |
+| **Async/Await System** | PHP Fibers over a real event loop: HTTP requests overlap, timers and timeouts are the loop's. Queries are scheduled, not overlapped. |
 | **Event Broadcasting** | Pub/sub with wildcards, event history, async dispatch |
 | **Caching** | File, memory, Redis drivers with smart invalidation |
 | **Job Queues** | Background workers with retries, database or Redis drivers |
@@ -187,9 +187,8 @@ Measured: 301 ms for three 300 ms requests, 309 ms for fifty.
 > **Queries do not work this way.** `await(User::query()->getAsync())` schedules
 > the query — it does not overlap it, because PDO has no asynchronous API and no
 > Fiber changes that. Three queries awaited together take as long as three
-> queries: 609 ms against 603 ms, measured. The difference between *async
-> scheduling* and *non-blocking I/O*, and what it would take to close it, is in
-> [ASYNC_RUNTIME_AUDIT.md](ASYNC_RUNTIME_AUDIT.md).
+> queries: 609 ms against 603 ms, measured. This shows the difference between
+> *async scheduling* and *non-blocking I/O*.
 
 ### Built for any language
 
@@ -243,8 +242,8 @@ with its markup inside it. Both ship, and the documentation says when each one
 is the right shape.
 
 **Quick start?**
-- ⚡ [5-minute async guide](ASYNC_QUICK_START.md)
 - 📱 [PWA setup guide](docs/PWA_GUIDE.md)
+- 📖 [Full documentation](docs/DOCUMENTATION.md)
 
 ---
 
