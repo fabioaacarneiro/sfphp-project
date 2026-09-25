@@ -69,7 +69,7 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 |---------|-------------|
 | **SFHT Templates** | Auto-escaping, layout inheritance, component composition |
 | **.phpx Components** | Markup inside PHP functions, compiled on build |
-| **SFCSS Framework** | 2,337+ utility classes, 16.6KB gzipped, Tailwind-compatible |
+| **SFCSS Framework** | 2,382 utility classes, 16.8KB gzipped, Tailwind-compatible |
 | **SFJS Library** | AJAX, DOM utilities, form validation, 6KB gzipped |
 | **Built-in Assets** | Published to `public/` with zero config |
 
