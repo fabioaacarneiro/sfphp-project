@@ -33,6 +33,15 @@ Full class list: [utilities reference](SFCSS_UTILITIES.md).
 
 ## Installing
 
+In an SFPHP template or component:
+
+```sfht
+@sfcss        {{-- @sfcss('normal') for the readable build --}}
+```
+
+It writes the tag below, with the version that makes a browser fetch the file
+again when it changes. Anywhere else, write the tag:
+
 ```html
 <link rel="stylesheet" href="/assets/css/sfcss.min.css">
 ```

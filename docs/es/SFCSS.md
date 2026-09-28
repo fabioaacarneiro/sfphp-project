@@ -34,6 +34,15 @@ Lista completa de clases: [referencia de utilidades](SFCSS_UTILITIES.md).
 
 ## Instalación
 
+En una plantilla o componente de SFPHP:
+
+```sfht
+@sfcss        {{-- @sfcss('normal') para el build legible --}}
+```
+
+Escribe la etiqueta de abajo, con la versión que hace que el navegador vuelva a
+pedir el archivo cuando cambia. En cualquier otro sitio, escribe la etiqueta:
+
 ```html
 <link rel="stylesheet" href="/assets/css/sfcss.min.css">
 ```
