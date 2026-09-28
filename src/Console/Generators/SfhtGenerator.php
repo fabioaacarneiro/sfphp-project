@@ -23,7 +23,7 @@ final class SfhtGenerator extends GeneratorBase
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ $title ?? '{NAME}' }}</title>
-    <link rel="stylesheet" href="{{ asset('css/sfcss.min.css') }}">
+    @sfcss
 </head>
 <body>
     <main class="container py-8">
@@ -32,6 +32,8 @@ final class SfhtGenerator extends GeneratorBase
 
         @* Add your content here *@
     </main>
+
+    @sfjs
 </body>
 </html>
 SFHT;

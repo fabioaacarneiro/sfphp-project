@@ -12,6 +12,7 @@ use SfphpProject\src\Console\Generators\ListenerGenerator;
 use SfphpProject\src\Console\Generators\MiddlewareGenerator;
 use SfphpProject\src\Console\Generators\ModelGenerator;
 use SfphpProject\src\Console\Generators\PhpxGenerator;
+use SfphpProject\src\Console\Generators\PluginGenerator;
 use SfphpProject\src\Console\Generators\PolicyGenerator;
 use SfphpProject\src\Console\Generators\RepositoryGenerator;
 use SfphpProject\src\Console\Generators\RequestGenerator;
@@ -24,6 +25,7 @@ use SfphpProject\src\Database\Seeder;
 use SfphpProject\src\Migrations\MigrationCreator;
 use SfphpProject\src\Migrations\MigrationDraft;
 use SfphpProject\src\Migrations\MigrationRunner;
+use SfphpProject\src\View\ScriptBundler;
 use FilesystemIterator;
 use RecursiveCallbackFilterIterator;
 use RecursiveDirectoryIterator;
@@ -102,6 +104,7 @@ final class Application
 
         'make:controller' => ['group' => 'Generate', 'usage' => 'make:controller <Name> [--no-view|--template=sfht|phpx] [--force]', 'summary' => 'A controller (optionally with view)'],
         'make:phpx' => ['group' => 'Generate', 'usage' => 'make:phpx <Name> [--force]', 'summary' => 'A PHPX component'],
+        'make:plugin' => ['group' => 'Generate', 'usage' => 'make:plugin <name> [--force]', 'summary' => 'An SFJS plugin: the attribute @<name>'],
         'make:sfht' => ['group' => 'Generate', 'usage' => 'make:sfht <Name> [--force]', 'summary' => 'An SFHT view template'],
         'make:model' => ['group' => 'Generate', 'usage' => 'make:model <Name> [--force]', 'summary' => 'A model'],
         'make:request' => ['group' => 'Generate', 'usage' => 'make:request <Name> [--force]', 'summary' => 'A validation class for a form'],
@@ -154,7 +157,7 @@ final class Application
 
         'css:build' => ['group' => 'Assets', 'usage' => 'css:build [--config=sfcss.config.json] [--output=dir]', 'summary' => 'Build SFCSS and publish it',
             'details' => ['Reads sfcss.config.json at the project root, or --config. Writes resources/assets/css and copies the result to public/assets/css.']],
-        'js:build' => ['group' => 'Assets', 'usage' => 'js:build', 'summary' => 'Bundle SFJS and publish it'],
+        'js:build' => ['group' => 'Assets', 'usage' => 'js:build', 'summary' => 'Bundle SFJS, the project\'s plugins and page scripts, and publish them'],
         'assets:publish' => ['group' => 'Assets', 'usage' => 'assets:publish [--path=public/assets] [--force] [--symlink]', 'summary' => 'Copy SFCSS and SFJS where the browser can reach them',
             'details' => ['A published file you changed yourself is kept unless --force; one the framework published is replaced.']],
 
@@ -297,6 +300,7 @@ final class Application
                 'make:migration:create' => $this->makeMigrationCreate($arguments),
                 'make:controller' => $this->makeController($arguments),
                 'make:phpx' => $this->makePhpx($arguments),
+                'make:plugin' => $this->makePlugin($arguments),
                 'make:sfht' => $this->makeSfht($arguments),
                 'make:model' => $this->makeModel($arguments),
                 'make:pwa' => $this->makePwa($arguments),
@@ -653,6 +657,28 @@ final class Application
         $file = $generator->generate($name);
 
         $this->writeLine('Created PHPX component: ' . $this->relativePath($file));
+
+        return 0;
+    }
+
+    /**
+     * Generate an SFJS plugin.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makePlugin(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('Plugin name is required: make:plugin countdown writes the plugin for @countdown.');
+        }
+
+        $generator = new PluginGenerator($this->rootPath(), in_array('--force', $arguments, true));
+        $file = $generator->generate($name);
+
+        $this->writeLine('Created SFJS plugin: ' . $this->relativePath($file));
+        $this->writeLine('Run ./sfphp js:build to bundle it; @sfjs loads it on every page.');
 
         return 0;
     }
@@ -2029,6 +2055,11 @@ final class Application
             $this->writeLine(implode(PHP_EOL, $output));
             $this->writeLine('');
             $this->publishAfterBuild();
+
+            // The project's own plugins and page scripts, which @sfjs loads after SFJS.
+            foreach ((new ScriptBundler($this->rootPath()))->build() as $line) {
+                $this->writeLine($line);
+            }
 
             return 0;
         } catch (Throwable $e) {

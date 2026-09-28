@@ -29,6 +29,9 @@
  * parts stay separate to work on and are joined here, in this order, into the
  * one script a page includes.
  */
+// The minifier lives in src/, where the console can use it on a project's own scripts too.
+require __DIR__ . '/../../vendor/autoload.php';
+
 $sourceDirectory = __DIR__ . '/../../resources/assets/js/src';
 $outputDirectory = __DIR__ . '/../../resources/assets/js';
 $parts = ['core.js', 'stream.js', 'ui.js'];
@@ -48,7 +51,7 @@ foreach ($parts as $part) {
 }
 
 $bundle = rtrim($bundle) . "\n";
-$minified = minifyJs($bundle);
+$minified = \SfphpProject\src\JsMinifier::minify($bundle);
 
 /*
  * Comments are about half of the source. A minified file that kept most of
@@ -99,88 +102,3 @@ printf(
     number_format(strlen($bundle)),
     count($parts)
 );
-
-/**
- * Strip comments and needless whitespace from JavaScript.
- *
- * @param string $js The source
- * @return string The minified source
- */
-function minifyJs(string $js): string
-{
-    $out = '';
-    $length = strlen($js);
-    $i = 0;
-
-    while ($i < $length) {
-        $char = $js[$i];
-        $next = $i + 1 < $length ? $js[$i + 1] : '';
-
-        // A comment, of either kind.
-        if ($char === '/' && $next === '/') {
-            while ($i < $length && $js[$i] !== "\n") {
-                $i++;
-            }
-
-            continue;
-        }
-
-        if ($char === '/' && $next === '*') {
-            $end = strpos($js, '*/', $i + 2);
-            $i = $end === false ? $length : $end + 2;
-
-            // A block comment between two tokens has to leave something behind,
-            // or `a /* x */ b` becomes `ab`.
-            $out .= ' ';
-
-            continue;
-        }
-
-        // A string or a template literal is copied through untouched.
-        if ($char === '"' || $char === "'" || $char === '`') {
-            $out .= $char;
-            $i++;
-
-            while ($i < $length) {
-                $out .= $js[$i];
-
-                if ($js[$i] === '\\' && $i + 1 < $length) {
-                    // An escaped character, including an escaped quote.
-                    $out .= $js[$i + 1];
-                    $i += 2;
-
-                    continue;
-                }
-
-                if ($js[$i] === $char) {
-                    $i++;
-                    break;
-                }
-
-                $i++;
-            }
-
-            continue;
-        }
-
-        $out .= $char;
-        $i++;
-    }
-
-    /*
-     * Line by line rather than all at once, because joining lines is what makes
-     * automatic semicolon insertion change the meaning of a program. Each line
-     * is trimmed and its internal runs of whitespace collapsed; blank lines go.
-     */
-    $lines = [];
-
-    foreach (explode("\n", $out) as $line) {
-        $line = trim(preg_replace('/[ \t]+/', ' ', $line) ?? '');
-
-        if ($line !== '') {
-            $lines[] = $line;
-        }
-    }
-
-    return implode("\n", $lines) . "\n";
-}
