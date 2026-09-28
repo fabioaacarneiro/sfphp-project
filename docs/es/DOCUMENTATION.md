@@ -2148,8 +2148,8 @@ $schema->drop('posts');
 $schema->dropIfExists('posts');
 $schema->rename('posts', 'articles');
 $schema->hasTable('posts');          // MySQL, PostgreSQL y SQLite
-$schema->hasColumn('posts', 'title');
-$schema->hasIndex('posts', 'posts_title_index');
+$schema->hasColumn('posts', 'title');  // MySQL, PostgreSQL y SQLite
+$schema->hasIndex('posts', 'posts_title_index');  // MySQL, PostgreSQL y SQLite
 $schema->statement('SET ...', $bindings);
 $schema->driver();
 ```
@@ -5308,7 +5308,7 @@ Actualizar, entonces, es reemplazar esos archivos sabiendo cuáles son:
 ```bash
 ./sfphp upgrade --dry-run          # lo que haría, sin cambiar nada
 ./sfphp upgrade                    # la última versión publicada
-./sfphp upgrade --to=v0.39.0       # trae esa etiqueta con git
+./sfphp upgrade --to=v0.40.0       # trae esa etiqueta con git
 ./sfphp upgrade --from=../sfphp    # una copia que ya tienes
 ```
 
@@ -6655,6 +6655,26 @@ composer run test:db     # integración contra MySQL/PostgreSQL reales
 composer run test:all
 composer run docs        # los tres idiomas concuerdan, y todo enlace resuelve
 ```
+
+La suite unitaria es `tests/run.php` y los archivos de `tests/suite/`, uno por
+parte del framework — `01-http.php`, `02-database.php` y así hasta
+`22-sqlite.php` —, ejecutados en el orden de sus nombres. `tests/bootstrap.php`
+y `tests/support.php` guardan lo que comparten: los fixtures, los fakes y
+`sfjsInBrowser()`, que carga una página con SFJS en un Chrome headless y lee lo
+que la página informó. Un test nuevo va en el archivo de la parte que prueba.
+
+```bash
+php tests/run.php                   # todo, en unos quince segundos
+php tests/run.php --filter=sfjs     # solo los tests cuyo nombre, o el nombre de su archivo, contiene sfjs
+```
+
+Cada resultado se imprime en el momento, en STDERR, y los fallos otra vez,
+juntos, al final. La suite no lee el `.env` del proyecto: el
+`APP_ENV=development` de quien desarrolla omitía las aserciones que solo valen
+en producción, así que cada ejecución local pasaba mientras el CI fallaba. Un
+test que necesita un ajuste lo fija, y devuelve lo que había. Los tests de
+navegador se omiten donde no hay Chrome, y los de SQLite donde no hay
+`pdo_sqlite`; el CI tiene ambos, y un job propio falla si falta SQLite.
 
 `tests/db.php` necesita los DSN en el entorno y se omite con un aviso cuando no
 los hay:

@@ -2118,8 +2118,8 @@ $schema->drop('posts');
 $schema->dropIfExists('posts');
 $schema->rename('posts', 'articles');
 $schema->hasTable('posts');          // MySQL, PostgreSQL e SQLite
-$schema->hasColumn('posts', 'title');
-$schema->hasIndex('posts', 'posts_title_index');
+$schema->hasColumn('posts', 'title');  // MySQL, PostgreSQL e SQLite
+$schema->hasIndex('posts', 'posts_title_index');  // MySQL, PostgreSQL e SQLite
 $schema->statement('SET ...', $bindings);
 $schema->driver();
 ```
@@ -5225,7 +5225,7 @@ Atualizar, então, é substituir esses arquivos sabendo quais são:
 ```bash
 ./sfphp upgrade --dry-run          # o que faria, sem mudar nada
 ./sfphp upgrade                    # o release mais recente
-./sfphp upgrade --to=v0.39.0       # busca essa tag com o git
+./sfphp upgrade --to=v0.40.0       # busca essa tag com o git
 ./sfphp upgrade --from=../sfphp    # uma cópia que você já tem
 ```
 
@@ -6554,6 +6554,26 @@ composer run test:db     # integração contra MySQL/PostgreSQL reais
 composer run test:all
 composer run docs        # os três idiomas concordam, e todo link resolve
 ```
+
+A suíte unitária é o `tests/run.php` e os arquivos em `tests/suite/`, um por
+parte do framework — `01-http.php`, `02-database.php` e assim até
+`22-sqlite.php` —, executados na ordem dos nomes. O `tests/bootstrap.php` e o
+`tests/support.php` guardam o que eles compartilham: as fixtures, os fakes e o
+`sfjsInBrowser()`, que carrega uma página com SFJS num Chrome headless e lê de
+volta o que ela reportou. Um teste novo vai no arquivo da parte que ele testa.
+
+```bash
+php tests/run.php                   # tudo, em uns quinze segundos
+php tests/run.php --filter=sfjs     # só os testes cujo nome, ou o nome do arquivo, contém sfjs
+```
+
+Cada resultado é impresso na hora, no STDERR, e as falhas de novo, juntas, no
+fim. A suíte não lê o `.env` do projeto: o `APP_ENV=development` de quem
+desenvolve pulava as asserções que só valem em produção, então toda rodada
+local passava enquanto o CI falhava. Um teste que precisa de uma configuração a
+define, e devolve o que havia antes. Os testes de navegador são pulados onde
+não há Chrome, e os de SQLite onde não há `pdo_sqlite`; o CI tem os dois, e um
+job próprio falha se faltar o SQLite.
 
 `tests/db.php` precisa de DSN nas variáveis de ambiente e pula com aviso
 quando não há:
