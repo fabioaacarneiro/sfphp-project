@@ -5182,7 +5182,7 @@ So upgrading means replacing those files, and knowing which ones they are:
 ```bash
 ./sfphp upgrade --dry-run          # what it would do, changing nothing
 ./sfphp upgrade                    # the latest release
-./sfphp upgrade --to=v0.37.0       # fetches that tag with git
+./sfphp upgrade --to=v0.38.0       # fetches that tag with git
 ./sfphp upgrade --from=../sfphp    # a copy you already have
 ```
 
