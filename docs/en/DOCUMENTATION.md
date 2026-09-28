@@ -1411,8 +1411,27 @@ PDO extension that is missing (`the PHP extension pdo_mysql is not installed`),
 or the driver and host that did not answer. The password and the driver's own
 text stay in the log.
 
-A relative SQLite `DB_NAME` is read from the project root, so the console and
-the web server open the same file whatever directory each started in.
+**SQLite** takes the file in `DB_NAME`, anywhere the server can reach:
+
+| `DB_NAME` | Opens |
+|---|---|
+| `database/app.sqlite` | the project's `database/app.sqlite`, whatever directory the console or the web server started in |
+| `/var/lib/app/app.sqlite` | that file |
+| `~/data/app.sqlite` | `data/app.sqlite` in the home directory of the user PHP runs as |
+| `file:database/app.sqlite?mode=ro` | an SQLite URI, its parameters kept and its path resolved the same way — here, read-only |
+| `:memory:` | a database that lives as long as the connection |
+
+SQLite creates a missing file, but not a missing directory. The directory is
+checked before connecting, and the error names it rather than SQLite's
+`unable to open database file`. It is not created for you: a typo in the path
+would otherwise become a new, empty database that nobody notices.
+
+A file on a disk the server mounts works like any other file. **A hosted
+SQLite service — Turso, Cloudflare D1, SQLite Cloud — is not a file**: each
+speaks its own protocol over the network, and `pdo_sqlite` only opens files,
+so none of them is supported yet. A network file system (NFS, SMB) is best
+avoided for a database that is written to: SQLite relies on file locks that
+those implement unreliably.
 
 ### Query builder
 

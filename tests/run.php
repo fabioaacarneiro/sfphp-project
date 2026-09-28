@@ -6834,6 +6834,48 @@ $tests->run('what the server noticed while writing the page is said in the conso
     $tests->assertSame(['SFPHP: the first', 'SFPHP: the second'], $result);
 });
 
+$tests->run('an SQLite DB_NAME can be relative, absolute, in the home directory or a URI, and a missing directory is named', function () use ($tests): void {
+    /*
+     * "~/data/app.sqlite" used to open a folder called ~ inside the project,
+     * a relative path inside a file: URI was still the working directory's,
+     * and a file in a directory that does not exist failed with SQLite's own
+     * "unable to open database file", which names nothing.
+     */
+    $dsn = static fn (string $name): string => (new ReflectionMethod(Database::class, 'buildDsn'))
+        ->invoke(null, 'sqlite', '', null, $name, 'utf8');
+
+    $root = Bootstrap::basePath();
+    $home = sys_get_temp_dir() . '/sfphp-home-' . bin2hex(random_bytes(6));
+    mkdir($home, 0755, true);
+    $previousHome = getenv('HOME');
+    putenv('HOME=' . $home);
+
+    try {
+        $tests->assertSame('sqlite:' . $root . '/database/app.sqlite', $dsn('database/app.sqlite'));
+        $tests->assertSame('sqlite:' . $home . '/app.sqlite', $dsn($home . '/app.sqlite'));
+        $tests->assertSame('sqlite:' . $home . '/app.sqlite', $dsn('~/app.sqlite'));
+        $tests->assertSame('sqlite::memory:', $dsn(':memory:'));
+
+        // A URI keeps its parameters, and its relative path is the project's too.
+        $tests->assertSame('sqlite:file:' . $root . '/database/app.sqlite?mode=ro&cache=shared', $dsn('file:database/app.sqlite?mode=ro&cache=shared'));
+        $tests->assertSame('sqlite:file:' . $home . '/app.sqlite?mode=ro', $dsn('file:' . $home . '/app.sqlite?mode=ro'));
+        $tests->assertSame('sqlite:file::memory:?cache=shared', $dsn('file::memory:?cache=shared'));
+
+        try {
+            $dsn($home . '/missing/app.sqlite');
+            $tests->assertSame('an exception', 'none');
+        } catch (RuntimeException $e) {
+            $tests->assertSame(true, str_contains($e->getMessage(), 'the directory ' . $home . '/missing does not exist'));
+        }
+
+        // Nothing was created on the way.
+        $tests->assertSame(false, is_dir($home . '/missing'));
+    } finally {
+        putenv($previousHome === false ? 'HOME' : 'HOME=' . $previousHome);
+        exec('rm -rf ' . escapeshellarg($home));
+    }
+});
+
 $tests->run('a pattern that needs a pipe is given as an array', function () use ($tests): void {
     /*
      * Rules are pipe separated, so a pattern containing one cannot be written
