@@ -2197,10 +2197,21 @@ $tests->run('error responses are rendered, negotiated and redacted', function ()
 
     /*
      * Outside development the driver message must not reach the client: it
-     * carries the host, the database and the user.
+     * carries the host, the database and the user. What goes instead is the
+     * standard message for the status, in the visitor's language.
+     *
+     * This branch only runs where APP_ENV is not development — in CI, which
+     * has no .env — so a local run with a development .env never saw it. It
+     * still expected the "Internal Server Error" that came before the
+     * translated error page, and CI failed on every commit while every local
+     * run passed.
      */
     if (APP_ENV !== 'development') {
-        $tests->assertSame('{"message":"Internal Server Error"}', $json->body());
+        $tests->assertSame(
+            ['message' => \SfphpProject\src\Http\ErrorPage::text(HTTP_INTERNAL_SERVER_ERROR, 'message')],
+            json_decode($json->body(), true)
+        );
+        $tests->assertSame(false, str_contains($json->body(), '10.0.0.5'));
         $tests->assertSame(false, str_contains($html->body(), '10.0.0.5'));
     }
 });
@@ -3422,6 +3433,13 @@ $tests->run('the file cache lives in a private directory inside the project', fu
     // A directory others can write to is tightened before it is used.
     chmod($directory, 0777);
     new FileDriver($directory);
+
+    /*
+     * Before PHP 8.3 chmod() does not clear the stat cache, so without this the
+     * test read back the mode it had set itself — 0777 on 8.1 and 8.2 — while
+     * the directory on disk was already 0700.
+     */
+    clearstatcache();
     $tests->assertSame('0700', substr(sprintf('%o', fileperms($directory)), -4));
 
     // A relative CACHE_PATH resolves against the project, not the working directory.
