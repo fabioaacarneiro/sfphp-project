@@ -339,11 +339,12 @@ O heartbeat é uma única linha de comentário, sem linha em branco depois. Ele 
 ## Streaming no navegador (SFJS `@stream`)
 
 O SFJS lê uma resposta em stream para dentro de um elemento da página sem
-nenhum JavaScript seu. O streaming faz parte do pacote único do SFJS, então a
-única tag de script basta — não existe um arquivo separado de streaming:
+nenhum JavaScript seu. O streaming faz parte do pacote único do SFJS, então o
+`@sfjs` — a única tag de script que ele escreve — basta; não existe um arquivo
+separado de streaming:
 
-```html
-<script src="{{ asset('js/sfjs.min.js') }}"></script>
+```sfht
+@sfjs
 ```
 
 ### Streams de texto

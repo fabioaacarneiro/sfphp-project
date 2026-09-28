@@ -22,7 +22,7 @@ function StreamsPage(): Sfht
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>HTTP Streaming + SSE — SFPHP</title>
-            <link rel="stylesheet" href="{{ asset('css/sfcss.min.css') }}">
+            @sfcss
             <link rel="icon" href="data:,">
             {!! csrf_meta() !!}
         </head>
@@ -40,7 +40,7 @@ function StreamsPage(): Sfht
 
             {{ PageFooter() }}
 
-            <script src="{{ asset('js/sfjs.min.js') }}"></script>
+            @sfjs
         </body>
         </html>
     );

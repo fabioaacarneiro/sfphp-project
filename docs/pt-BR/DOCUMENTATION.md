@@ -960,6 +960,103 @@ Um componente `.phpx` é uma função, não um partial: importe-o uma vez com
 template — e chame como `{{ Card('Hello', $body) }}`. Veja
 [Componentes e .phpx](#componentes-e-phpx).
 
+### SFCSS, SFJS e scripts de página
+
+```sfht
+<head>
+    @sfcss
+    {!! csrf_meta() !!}
+</head>
+<body>
+    …
+    @sfjs
+</body>
+```
+
+O `@sfcss` escreve o `<link>` do SFCSS e o `@sfjs` as tags `<script>` do SFJS,
+cada um com o `?v=` que o `asset()` acrescenta, para que o navegador busque um
+arquivo de novo assim que ele muda. Os dois recebem o build — `'min'`, o
+padrão, ou `'normal'`, o legível, para depurar:
+
+```sfht
+@sfcss                                              {{-- o mesmo que @sfcss() e @sfcss('min') --}}
+@sfjs('normal')
+@sfjs(APP_ENV === 'development' ? 'normal' : 'min')
+```
+
+O argumento é PHP, como em toda diretiva, então pode ser uma expressão. Um
+valor que não é nenhum dos dois não quebra a página: o arquivo minificado é
+usado, e a página avisa — no console do navegador, por um atributo
+`data-sf-warning` que o SFJS lê, e no log do PHP, para uma página que não tem
+SFJS para lê-lo. O aviso vai como atributo, e não como script inline, porque
+uma Content-Security-Policy estrita recusa scripts inline.
+
+**O `@sfjs` escreve mais que o SFJS**, nesta ordem: o SFJS, os plugins do
+projeto (`plugins.js`, quando há algum — veja [Plugins: sf.plugin](#plugins-sfplugin))
+e todo script que a página declarou com `@script`. Escritos nessa ordem por
+uma diretiva só, um plugin nunca carrega antes do `sf` que ele usa.
+
+**O `@script('home')` declara que a página precisa de
+`app/resources/js/scripts/home.js`.** Qualquer template ou componente pode
+declarar um, por mais fundo que esteja, e um script pedido duas vezes é
+carregado uma vez:
+
+```php
+function SalesChart(array $sales): Sfht
+{
+    return Sfht(
+        @script('chart')
+        <canvas data-sales="{{ json_encode($sales) }}"></canvas>
+    );
+}
+```
+
+Uma página com cinco `SalesChart()` carrega o `chart.js` uma vez. Um nome pode
+ter pastas — `@script('admin/users')` — e o `.js` é a diretiva que acrescenta.
+
+O que decorre do jeito como uma página é renderizada:
+
+- **O `@sfjs` vai no fim do `<body>`.** Uma página é renderizada de cima para
+  baixo, então tudo dentro do body já declarou seus scripts quando ele é
+  alcançado. Um `@script` que vem depois do `@sfjs` é um erro que diz isso, em
+  vez de um script que nunca carrega sem ninguém saber. Num layout, um
+  `@script` dentro do `@block` de uma página filha funciona: os blocos da filha
+  são renderizados antes do layout.
+- **Um fragmento não passa pelo `@sfjs`**, então um `@script` num fragmento
+  trazido por uma troca não carrega nada. Comportamento de que fragmentos
+  precisam fica num plugin, que toda página carrega.
+- **A lista pertence à requisição.** O `Router::dispatch()` a limpa, então num
+  worker persistente os scripts de um visitante nunca chegam à página do
+  próximo.
+- **O `csrf_meta()` continua explícito.** Ele abre uma sessão, e uma diretiva
+  que fizesse isso em toda página com SFJS abriria uma — e mandaria um
+  `Set-Cookie` que um CDN não consegue cachear — para todo visitante de toda
+  página pública.
+
+O `./sfphp js:build` monta o que as diretivas carregam:
+
+| Origem | Montado em | Carregado |
+|---|---|---|
+| `app/resources/js/plugins/*.js` | `public/assets/js/plugins.js`, `plugins.min.js` | em toda página com `@sfjs` |
+| `app/resources/js/scripts/**/*.js` | `public/assets/js/scripts/<nome>.js`, `<nome>.min.js` | onde uma página diz `@script('<nome>')` |
+
+Os plugins dividem um arquivo, então uma página faz uma requisição para todos,
+e cada um é embrulhado num escopo próprio: dois plugins que declaram
+`const format` seriam, de outro modo, um erro de sintaxe, e um plugin que lança
+um erro ao carregar pararia os que vêm depois. Toda origem é conferida com o
+node antes de ser montada, então um erro é relatado com o nome do arquivo que o
+tem. O que o minificador escreve também é conferido: ele não entende expressões
+regulares, e uma regex com `//` ou com aspas sairia quebrada, então o `.min.js`
+desse arquivo é a origem sem mudança — maior, nunca quebrado. Sem o node, nada
+pode ser conferido, e todo `.min.js` é a origem. O que foi montado de uma
+origem que não existe mais é removido.
+
+Em desenvolvimento, plugins editados depois do último build, ou nunca
+montados, são relatados do mesmo jeito que um nome de build errado — no console
+e no log —, porque um plugin que "não faz nada" costuma ser um que não foi
+montado de novo. Um `@script` sem arquivo montado é relatado em qualquer
+ambiente.
+
 ### PHP embutido
 
 ```sfht
@@ -4954,7 +5051,7 @@ uso, o `./sfphp help` os agrupa, e o `./sfphp help <comando>` — ou
 teste confere contra o despachante. Uma opção recebe o seu valor depois de `=`
 ou depois de um espaço: `--port=8080` e `--port 8080` são a mesma coisa.
 
-### Geração (14 geradores)
+### Geração (17 geradores)
 
 ```bash
 ./sfphp make:controller Post   # PostController, e a view que a action dele renderiza
@@ -4970,12 +5067,15 @@ ou depois de um espaço: `--port=8080` e `--port 8080` são a mesma coisa.
 ./sfphp make:seeder User       # UserSeeder
 ./sfphp make:factory User
 ./sfphp make:pwa --name="My App" --logo=path/to/logo.png
+./sfphp make:phpx Card         # app/components/Card.phpx
+./sfphp make:sfht Dashboard    # app/resources/views/dashboard/index.sfht
+./sfphp make:plugin countdown  # app/resources/js/plugins/countdown.js, o plugin do @countdown
 
 ./sfphp make:scaffold Post     # controller + view + model + repository + service
 ```
 
-Os catorze geradores daqui e os dois comandos de migration em
-[Banco](#banco) somam os dezesseis comandos `make:*`.
+Os dezessete geradores daqui e o `make:migration` em [Banco](#banco) somam os
+dezoito comandos `make:*`.
 
 **Um gerador nunca sobrescreve.** Um arquivo que já existe é recusado, com o
 caminho dele, e o `--force` o substitui; o `make:scaffold` mantém as partes que
@@ -5063,7 +5163,7 @@ cores novas nunca chegavam ao navegador. O `--force` substitui os dois casos.
 ./sfphp env:example    # cria .env a partir de .env-example
 ./sfphp init           # termina um projeto novo: .env, assets, .gitignore, scripts do composer
 ./sfphp css:build      # gera o SFCSS a partir do config e o publica; --config= --output=
-./sfphp js:build       # junta core.js, stream.js e ui.js em sfjs.js, minifica e publica
+./sfphp js:build       # monta o SFJS, os plugins e os scripts de página do projeto, e os publica
 ./sfphp build --phpx   # compila os componentes .phpx; --from= --to=
 ./sfphp test [filtro]  # roda tests/*Test.php
 ./sfphp reset          # remove a aplicação de exemplo; --force pula a pergunta
@@ -5192,6 +5292,9 @@ copiam para `public/assets`, então usar é uma linha de HTML:
 <link rel="stylesheet" href="/assets/css/sfcss.min.css">
 ```
 
+Num template, o `@sfcss` escreve essa linha — veja
+[SFCSS, SFJS e scripts de página](#sfcss-sfjs-e-scripts-de-página).
+
 Nada precisa ser gerado para usar o SFCSS. O gerador existe para mudá-lo, o
 que está [mais abaixo](#mudar-o-sfcss).
 
@@ -5305,6 +5408,9 @@ componentes de interface (modais, menus, tooltips, abas, toasts).
 <!-- ou sfjs.js, legível, para depurar — nunca os dois: cada um é o pacote inteiro -->
 ```
 
+Num template, o `@sfjs` escreve essa tag, e depois dela os plugins e os
+scripts de página do projeto — veja [SFCSS, SFJS e scripts de página](#sfcss-sfjs-e-scripts-de-página).
+
 Até a 0.27, os streams e os componentes de interface eram `sfjs-stream.js` e
 `sfjs-ui.js`, dois arquivos a mais que só funcionavam se carregados depois
 deste. Agora fazem parte do `sfjs.js` e não são mais publicados: uma página que
@@ -5314,7 +5420,7 @@ O código-fonte são três arquivos em `resources/assets/js/src/` — `core.js`,
 `stream.js`, `ui.js` — que o gerador junta, nessa ordem, no pacote.
 
 ```bash
-./sfphp js:build         # junta as partes, escreve sfjs.js e sfjs.min.js, e os publica
+./sfphp js:build         # junta as partes, escreve sfjs.js e sfjs.min.js, os publica, e depois monta os plugins e scripts do projeto
 ```
 
 O minificador remove comentários e colapsa espaço em branco, e de propósito não
@@ -5553,12 +5659,18 @@ sf.plugin('countdown', {
 });
 ```
 
-Um plugin é um script carregado depois do SFJS:
+Um plugin mora em `app/resources/js/plugins/`, um arquivo cada. O
+`make:plugin` escreve um, o `./sfphp js:build` junta todos no `plugins.js`, e o
+`@sfjs` o carrega em toda página, logo depois do SFJS:
 
-```html
-<script src="/assets/js/sfjs.min.js"></script>
-<script src="/assets/js/countdown.js"></script>
+```bash
+./sfphp make:plugin countdown   # app/resources/js/plugins/countdown.js, para o @countdown
+./sfphp js:build                # public/assets/js/plugins.js e plugins.min.js
 ```
+
+O `make:plugin` recusa os nomes que o `sf.plugin` recusa, listados abaixo,
+então o erro aparece antes de qualquer build. Uma página sem templates carrega
+o pacote ela mesma, depois do SFJS: `<script src="/assets/js/plugins.min.js"></script>`.
 
 **O que um plugin fica sabendo, e quando:**
 
@@ -5637,8 +5749,8 @@ porquê:
 - **as diretivas de template** — `if`, `foreach`, `include`, `block` e as
   demais. O parser do SFPHP lê `@include` num arquivo `.phpx` ou `.sfht` como
   sintaxe dele antes que qualquer navegador o veja, então `<div @include="x">`
-  nem chega ao SFJS: impede o template de compilar. `script`, `scripts`,
-  `sfcss` e `sfjs` estão reservados para diretivas que estão chegando;
+  nem chega ao SFJS: impede o template de compilar. `script`, `sfcss` e
+  `sfjs` estão entre elas, e `scripts` fica reservado ao lado delas;
 - **os atributos que o próprio SFJS lê** — `get`, `post`, `target`, `swap`,
   `trigger`, `state`, `show`, `text`, `model`, `on`, `modal`, `tabs`,
   `tooltip` e os demais;

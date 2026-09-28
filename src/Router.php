@@ -71,6 +71,13 @@ class Router
      */
     public function dispatch(Request $request): Response
     {
+        /*
+         * The scripts a page declared with @script belong to that request. In
+         * a persistent worker the list would otherwise carry over to the next
+         * visitor's page.
+         */
+        \SfphpProject\src\View\PageScripts::reset();
+
         $pipeline = new Pipeline($this->container);
 
         /*

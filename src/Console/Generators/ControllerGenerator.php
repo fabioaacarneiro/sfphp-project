@@ -122,13 +122,15 @@ PHP;
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ $title }}</title>
-    <link rel="stylesheet" href="{{ asset('css/sfcss.min.css') }}">
+    @sfcss
 </head>
 <body>
     <main class="container py-8">
         <h1>{{ $title }}</h1>
         <p class="text-muted">Rendered by {CLASS}Controller::index(). Edit app/resources/views/{ROUTE}/index.sfht.</p>
     </main>
+
+    @sfjs
 </body>
 </html>
 SFHT;

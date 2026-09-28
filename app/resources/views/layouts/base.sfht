@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@block('title')SFPHP Framework@endblock</title>
-    <link rel="stylesheet" href="{{ asset('css/sfcss.min.css') }}">
+    @sfcss
     <link rel="icon" href="data:,">
     {{-- SFJS sends this token with every request that changes something. --}}
     {!! csrf_meta() !!}
@@ -39,7 +39,7 @@
         </footer>
     </main>
 
-    <script src="{{ asset('js/sfjs.min.js') }}"></script>
+    @sfjs
     @block('scripts')@endblock
 </body>
 </html>
