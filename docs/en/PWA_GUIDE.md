@@ -174,6 +174,7 @@ return [
         'static_assets' => [           // precached when the service worker installs
             '/assets/css/sfcss.min.css',
             '/assets/js/sfjs.min.js',
+            '/assets/js/plugins.min.js',   // skipped when the project has no plugins
             '/offline.html',
         ],
         'api_routes' => [],            // path patterns, '*' as a wildcard; never cached
@@ -251,9 +252,22 @@ What this means in practice:
   The list is only precached at install, so those files are available offline
   before the first visit. Any `.css`/`.js`/image/font URL the app loads is
   cached the first time it is fetched, from any origin, CDN included.
-- **Cache-first never revalidates.** Once `sfcss.min.css` is cached, the
-  service worker serves that copy until the cache is replaced, even after you
-  deploy a new one. See [Cache Name and Versioning](#cache-name-and-versioning).
+- **Cache-first never revalidates a URL, and `asset()` changes the URL.** Once
+  a URL is cached it is served from the cache until the cache is replaced. But
+  `asset()` — and so `@sfcss`, `@sfjs` and `@script` — puts the file's version
+  in the URL, `sfjs.min.js?v=81d0e4aa`, so a deploy is a new URL and reaches the
+  network without a new cache name. When the new version is stored, the older
+  versions of the same file are removed. A URL without a version is still
+  never revalidated; see [Cache Name and Versioning](#cache-name-and-versioning).
+- **Offline, an older version is better than none.** The exact URL is looked
+  for first. Only when the network fails is the same file under another
+  version — or the precached copy, listed without one — used instead. That is
+  what makes `static_assets` useful at all: the page asks for
+  `sfjs.min.js?v=…`, and the list names `sfjs.min.js`.
+- **Page scripts are not precached by default.** A script loaded with
+  `@script('home')` is cached the first time a page uses it. List
+  `/assets/js/scripts/home.min.js` in `static_assets` to have it offline before
+  that.
 - **Pages and API responses are never stored**, so a logged-in user's HTML or
   JSON never ends up in the cache. `api_routes` states which paths are API
   paths. Right now they are handled the same way as every other non-static
@@ -263,10 +277,11 @@ What this means in practice:
 - **An `api_routes` pattern is anchored and `*` matches anything**, so
   `/api/*` covers `/api/users/7`. The rest of the pattern is used as a regular
   expression.
-- **Precaching is all or nothing.** `cache.addAll()` fails as a whole if one
-  URL fails, for example with a 404. The service worker still installs, but
-  with nothing precached, and the console logs `Some assets failed to cache`.
-  Keep `static_assets` to URLs that exist. `/offline.html` must be one of them.
+- **Each file is precached on its own.** A URL that fails — a 404, such as
+  `plugins.min.js` in a project with no plugins — is skipped and named in the
+  console (`Not cached for offline use: …`), and the rest are precached. It
+  used to be `cache.addAll()`, which is all or nothing: one missing file left
+  nothing precached. `/offline.html` must be in the list.
 
 ---
 
@@ -295,8 +310,9 @@ To push new static files to users who already have them cached:
    into `my-app-v2` and delete `my-app-v1`.
 
 Changing the app name also changes the cache name. For a single file, a
-versioned URL works too. `/assets/css/sfcss.min.css?v=2` is a different cache
-entry from the unversioned URL.
+versioned URL is enough, and every URL `asset()` writes already is one:
+`/assets/css/sfcss.min.css?v=2` is a different cache entry from the
+unversioned URL.
 
 ---
 

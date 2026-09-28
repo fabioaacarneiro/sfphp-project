@@ -8623,6 +8623,126 @@ $tests->run('make:pwa builds from app/pwa/config.php, and flags override it', fu
     }
 });
 
+$tests->run('the service worker precaches what exists, keeps asset versions apart, and falls back to one offline', function () use ($tests): void {
+    /*
+     * asset() versions every URL, and the service worker matched the whole
+     * URL, so the precached /assets/js/sfjs.min.js never answered a page that
+     * asks for sfjs.min.js?v=81d0e4aa: the precache was never used. And
+     * addAll() is all or nothing, so one missing file — plugins.min.js in a
+     * project with no plugins — left nothing precached at all.
+     *
+     * Service workers do not run from file://, so the generated script runs
+     * in node here, over a fake Cache Storage and a fake network.
+     */
+    $node = trim((string) shell_exec('command -v node 2>/dev/null'));
+
+    if ($node === '') {
+        return;
+    }
+
+    $directory = sys_get_temp_dir() . '/sfphp-sw-' . bin2hex(random_bytes(6));
+    mkdir($directory, 0755, true);
+
+    file_put_contents($directory . '/sw.js', (new \SfphpProject\src\Pwa\ServiceWorkerGenerator())->generate());
+    file_put_contents($directory . '/harness.js', <<<'JS'
+    const base = 'https://app.test';
+    const abs = (what) => new URL(typeof what === 'string' ? what : what.url, base).href;
+    const store = new Map();
+    let online = true;
+
+    const cache = {
+      add: async (what) => {
+        const response = await fetch(abs(what));
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        store.set(abs(what), response);
+      },
+      put: async (request, response) => { store.set(abs(request), response); },
+      keys: async () => [...store.keys()].map((url) => new Request(url)),
+      delete: async (request) => store.delete(abs(request)),
+    };
+
+    globalThis.caches = {
+      open: async () => cache,
+      keys: async () => [],
+      delete: async () => true,
+      match: async (request, options = {}) => {
+        const wanted = new URL(abs(request));
+        for (const [url, response] of store) {
+          const cached = new URL(url);
+          if (url === wanted.href || (options.ignoreSearch && cached.pathname === wanted.pathname)) return response.clone();
+        }
+        return undefined;
+      },
+    };
+
+    globalThis.fetch = async (what) => {
+      const url = abs(what);
+      if (!online) throw new TypeError('Failed to fetch');
+      if (url.includes('plugins.min.js')) return new Response('missing', { status: 404 });
+      return new Response('body of ' + url.slice(base.length), { status: 200 });
+    };
+
+    const listeners = {};
+    globalThis.self = {
+      addEventListener: (type, listener) => { listeners[type] = listener; },
+      skipWaiting: async () => {},
+      clients: { claim: async () => {} },
+    };
+
+    require(process.argv[2]);
+
+    const event = (extra = {}) => {
+      const holder = {};
+      return [holder, { waitUntil: (p) => { holder.p = p; }, respondWith: (p) => { holder.p = p; }, ...extra }];
+    };
+
+    (async () => {
+      const [installed, install] = event();
+      listeners.install(install);
+      await installed.p;
+      const precached = [...store.keys()].map((url) => url.slice(base.length));
+
+      store.set(base + '/assets/js/sfjs.min.js?v=old', new Response('old'));
+
+      const [fresh, online1] = event({ request: new Request(base + '/assets/js/sfjs.min.js?v=new') });
+      listeners.fetch(online1);
+      const freshText = await (await fresh.p).text();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const afterNew = [...store.keys()].map((url) => url.slice(base.length)).filter((url) => url.includes('sfjs'));
+
+      online = false;
+      const [fallback, offline1] = event({ request: new Request(base + '/assets/css/sfcss.min.css?v=zzz') });
+      listeners.fetch(offline1);
+      const fallbackText = await (await fallback.p).text();
+
+      console.log(JSON.stringify({ precached, freshText, afterNew, fallbackText }));
+    })();
+    JS);
+
+    try {
+        $output = [];
+        exec(escapeshellarg($node) . ' ' . escapeshellarg($directory . '/harness.js') . ' ' . escapeshellarg($directory . '/sw.js') . ' 2>&1', $output);
+        $result = json_decode((string) end($output), true);
+
+        $tests->assertSame(true, is_array($result));
+
+        // One missing file does not cost the others their place.
+        $tests->assertSame(true, in_array('/assets/css/sfcss.min.css', $result['precached'], true));
+        $tests->assertSame(true, in_array('/assets/js/sfjs.min.js', $result['precached'], true));
+        $tests->assertSame(false, in_array('/assets/js/plugins.min.js', $result['precached'], true));
+
+        // Online, a new version comes from the network, and the one it replaces goes.
+        $tests->assertSame('body of /assets/js/sfjs.min.js?v=new', $result['freshText']);
+        sort($result['afterNew']);
+        $tests->assertSame(['/assets/js/sfjs.min.js', '/assets/js/sfjs.min.js?v=new'], $result['afterNew']);
+
+        // Offline, a version never seen is answered with the copy that was precached.
+        $tests->assertSame('body of /assets/css/sfcss.min.css', $result['fallbackText']);
+    } finally {
+        exec('rm -rf ' . escapeshellarg($directory));
+    }
+});
+
 $tests->run('a PWA config list replaces the default list instead of merging into it', function () use ($tests): void {
     $config = new \SfphpProject\src\Pwa\PwaConfig([
         'service_worker' => ['static_assets' => ['/a.css']],

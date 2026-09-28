@@ -96,6 +96,7 @@ return [
         'static_assets' => [
             '/assets/css/sfcss.min.css',
             '/assets/js/sfjs.min.js',
+            '/assets/js/plugins.min.js',
             '/offline.html',
         ],
 

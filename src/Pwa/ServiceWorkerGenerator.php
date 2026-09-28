@@ -20,6 +20,7 @@ final class ServiceWorkerGenerator
     private array $staticAssets = [
         '/assets/css/sfcss.min.css',
         '/assets/js/sfjs.min.js',
+        '/assets/js/plugins.min.js',
         '/offline.html',
     ];
 
@@ -93,9 +94,11 @@ const OFFLINE_FALLBACK = {OFFLINE_FALLBACK};
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(STATIC_ASSETS).catch(err => {
-        console.log('Some assets failed to cache:', err);
-        return Promise.resolve();
+      // One by one: addAll() is all or nothing, so a single missing file —
+      // plugins.min.js in a project with no plugins — left nothing cached.
+      return Promise.allSettled(STATIC_ASSETS.map(asset => cache.add(asset))).then(results => {
+        const failed = STATIC_ASSETS.filter((asset, i) => results[i].status === 'rejected');
+        if (failed.length) console.log('Not cached for offline use:', failed.join(', '));
       });
     }).then(() => self.skipWaiting())
   );
@@ -125,6 +128,13 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  /*
+   * asset() versions every URL — /assets/js/sfjs.min.js?v=81d0e4aa — so the
+   * exact URL is looked for first and a new version always reaches the
+   * network. Only when the network fails is the same file under another
+   * version, or the precached copy that has none, good enough: offline, the
+   * previous SFJS beats no SFJS.
+   */
   if (isStaticAsset(url.pathname)) {
     event.respondWith(
       caches.match(request).then(response => {
@@ -136,9 +146,11 @@ self.addEventListener('fetch', event => {
           }
           return caches.open(CACHE_NAME).then(cache => {
             cache.put(request, networkResponse.clone());
+            forgetOtherVersions(cache, url);
             return networkResponse;
           });
-        }).catch(() => caches.match(OFFLINE_FALLBACK));
+        }).catch(() => caches.match(request, { ignoreSearch: true })
+          .then(older => older || caches.match(OFFLINE_FALLBACK)));
       })
     );
     return;
@@ -155,6 +167,16 @@ self.addEventListener('fetch', event => {
     fetch(request).catch(() => caches.match(OFFLINE_FALLBACK))
   );
 });
+
+// A new version of a file makes the ones before it dead weight.
+function forgetOtherVersions(cache, url) {
+  if (!url.search) return;
+
+  cache.keys().then(keys => keys.forEach(key => {
+    const cached = new URL(key.url);
+    if (cached.pathname === url.pathname && cached.search !== url.search && cached.search !== '') cache.delete(key);
+  }));
+}
 
 function isStaticAsset(pathname) {
   return /\.(js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot)$/i.test(pathname);

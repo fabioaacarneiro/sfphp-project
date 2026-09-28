@@ -176,6 +176,7 @@ return [
         'static_assets' => [           // pré-cacheados quando o service worker é instalado
             '/assets/css/sfcss.min.css',
             '/assets/js/sfjs.min.js',
+            '/assets/js/plugins.min.js',   // ignorado quando o projeto não tem plugins
             '/offline.html',
         ],
         'api_routes' => [],            // padrões de caminho, '*' como curinga; nunca cacheados
@@ -255,10 +256,23 @@ O que isso quer dizer na prática:
   arquivos fiquem disponíveis offline antes da primeira visita. Qualquer URL
   `.css`/`.js`/de imagem/de fonte que o app carregue é cacheada na primeira vez
   em que é buscada, de qualquer origem, CDN incluída.
-- **Cache-first nunca revalida.** Depois que o `sfcss.min.css` está no cache, o
-  service worker serve essa cópia até o cache ser substituído, mesmo depois de
-  você fazer deploy de uma nova. Veja
+- **Cache-first nunca revalida uma URL, e o `asset()` muda a URL.** Depois que
+  uma URL está no cache, ela é servida do cache até o cache ser substituído.
+  Mas o `asset()` — e portanto o `@sfcss`, o `@sfjs` e o `@script` — põe a
+  versão do arquivo na URL, `sfjs.min.js?v=81d0e4aa`, então um deploy é uma URL
+  nova e chega à rede sem precisar de um nome de cache novo. Quando a versão
+  nova é guardada, as versões anteriores do mesmo arquivo são removidas. Uma
+  URL sem versão continua nunca sendo revalidada; veja
   [Nome do cache e versionamento](#nome-do-cache-e-versionamento).
+- **Offline, uma versão anterior é melhor que nenhuma.** A URL exata é
+  procurada primeiro. Só quando a rede falha é que o mesmo arquivo em outra
+  versão — ou a cópia do pré-cache, listada sem versão — é usado no lugar. É
+  isso que dá sentido ao `static_assets`: a página pede `sfjs.min.js?v=…`, e a
+  lista nomeia `sfjs.min.js`.
+- **Scripts de página não entram no pré-cache por padrão.** Um script
+  carregado com `@script('home')` é guardado na primeira vez que uma página o
+  usa. Liste `/assets/js/scripts/home.min.js` em `static_assets` para tê-lo
+  offline antes disso.
 - **Páginas e respostas de API nunca são guardadas**, então o HTML ou o JSON de
   um usuário logado nunca vai parar no cache. O `api_routes` declara quais
   caminhos são de API. Por enquanto eles são tratados do mesmo jeito que
@@ -268,11 +282,11 @@ O que isso quer dizer na prática:
 - **Um padrão de `api_routes` é ancorado e `*` casa com qualquer coisa**, então
   `/api/*` cobre `/api/users/7`. O resto do padrão é usado como expressão
   regular.
-- **O pré-cache é tudo ou nada.** O `cache.addAll()` falha por inteiro se uma
-  URL falhar, por exemplo com um 404. O service worker ainda é instalado, mas
-  sem nada pré-cacheado, e o console registra `Some assets failed to cache`.
-  Mantenha em `static_assets` só URLs que existem. `/offline.html` tem de ser
-  uma delas.
+- **Cada arquivo entra no pré-cache sozinho.** Uma URL que falha — um 404,
+  como o `plugins.min.js` num projeto sem plugins — é ignorada e nomeada no
+  console (`Not cached for offline use: …`), e as demais entram no pré-cache.
+  Antes era o `cache.addAll()`, que é tudo ou nada: um arquivo ausente não deixava
+  nada no pré-cache. O `/offline.html` tem de estar na lista.
 
 ---
 
@@ -301,8 +315,9 @@ Para entregar novos arquivos estáticos a usuários que já os têm no cache:
    instalam, pré-cacheiam em `my-app-v2` e apagam o `my-app-v1`.
 
 Mudar o nome do app também muda o nome do cache. Para um único arquivo, uma URL
-versionada também funciona. `/assets/css/sfcss.min.css?v=2` é uma entrada de
-cache diferente da URL sem versão.
+versionada basta, e toda URL que o `asset()` escreve já é uma:
+`/assets/css/sfcss.min.css?v=2` é uma entrada de cache diferente da URL sem
+versão.
 
 ---
 
