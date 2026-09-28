@@ -1716,6 +1716,13 @@ Available: `int`, `float`, `bool`, `string`, `json`, `array`, `datetime`,
 `date` and `decimal:N`. A null column stays null — it does not become a zero
 value.
 
+**A `decimal:N` is a string**, `"19.90"`, with exactly N digits after the point,
+worked out on the digits and never through a float — a float cannot hold 19.99,
+and `19.99 * 3` is `59.970000000000006`. Rounding is half away from zero, as for
+money, and a value that is not a number is refused. Before 0.42.0 it was a float;
+code that compared it with `===` to a float, or read it as a number in JSON,
+now gets the string. For arithmetic, work in integer cents or with `bcmath`.
+
 The conversion works both ways: `$article->meta = ['colour' => 'green']` is
 stored as JSON, and a `DateTimeImmutable` is stored in the database's format.
 
@@ -5232,7 +5239,7 @@ So upgrading means replacing those files, and knowing which ones they are:
 ```bash
 ./sfphp upgrade --dry-run          # what it would do, changing nothing
 ./sfphp upgrade                    # the latest release
-./sfphp upgrade --to=v0.41.0       # fetches that tag with git
+./sfphp upgrade --to=v0.42.0       # fetches that tag with git
 ./sfphp upgrade --from=../sfphp    # a copy you already have
 ```
 
@@ -6625,7 +6632,6 @@ Smaller things worth knowing before they surprise you:
 | | |
 |---|---|
 | Unix timestamps in `INTEGER` columns | A signed 32-bit column ends in 2038. The framework's own tables use 64-bit integers — the queue's since 0.41.0, see [Queue](#queue) — so check the ones you write |
-| `decimal:N` casts to a float | Fine for display, wrong for money arithmetic — keep money in integer cents, or read the column raw with `getAttribute()` |
 | Response size in the HTTP client | Nothing caps it; a service that answers gigabytes is read into memory. Stream it instead |
 | Default timeouts | 5 s to connect and 15 s in all for the synchronous client; the async one waits 10 and 30 |
 

@@ -2,6 +2,8 @@
 
 namespace SfphpProject\src\Database;
 
+use InvalidArgumentException;
+
 use DateTimeImmutable;
 use DateTimeInterface;
 use JsonException;
@@ -104,7 +106,8 @@ abstract class Model implements JsonSerializable
      *     ];
      *
      * Available casts: int, float, bool, string, json, array, datetime, date
-     * and decimal:N.
+     * and decimal:N. A decimal is a string — "19.90" — never a float: a float
+     * cannot hold 19.99 exactly, and 19.99 * 3 is 59.970000000000006.
      *
      * @var array<string, string>
      */
@@ -784,6 +787,70 @@ abstract class Model implements JsonSerializable
     }
 
     /**
+     * A decimal value as a string with exactly $scale digits after the point.
+     *
+     * Worked out on the digits, never through a float: the cast used to be
+     * round((float) $value), which turned the exact 19.99 the database holds
+     * into a float that is not 19.99, and a total of twenty-digit money into
+     * one that had lost its last cents. Rounding is half away from zero, as
+     * for money: 2.345 at two places is 2.35, and -2.345 is -2.35.
+     *
+     * A float that arrives anyway — some drivers return one — is read as the
+     * shortest decimal that means it, so 19.99 stays "19.99".
+     *
+     * @param mixed $value An int, a numeric string or a float
+     * @param int $scale Digits after the point
+     * @param string $key The attribute, for the error
+     * @return string
+     * @throws InvalidArgumentException If the value is not a number
+     */
+    private static function decimal(mixed $value, int $scale, string $key): string
+    {
+        $scale = max(0, $scale);
+
+        if (is_float($value)) {
+            if (!is_finite($value)) {
+                throw new InvalidArgumentException(sprintf('The attribute "%s" is a decimal, and %s is not a number.', $key, var_export($value, true)));
+            }
+
+            $text = json_encode($value);
+            $value = is_string($text) && stripos($text, 'e') === false ? $text : sprintf('%.' . ($scale + 1) . 'F', $value);
+        }
+
+        $text = trim((string) $value);
+
+        if (preg_match('/^([+-]?)(\d*)(?:\.(\d*))?$/', $text, $parts) !== 1 || ($parts[2] === '' && ($parts[3] ?? '') === '')) {
+            throw new InvalidArgumentException(sprintf('The attribute "%s" is a decimal, and "%s" is not a number.', $key, $text));
+        }
+
+        $negative = $parts[1] === '-';
+        $whole = ltrim($parts[2], '0');
+        $fraction = $parts[3] ?? '';
+
+        $roundUp = strlen($fraction) > $scale && $fraction[$scale] >= '5';
+        $digits = ($whole === '' ? '0' : $whole) . str_pad(substr($fraction, 0, $scale), $scale, '0');
+
+        if ($roundUp) {
+            $i = strlen($digits) - 1;
+
+            while ($i >= 0 && $digits[$i] === '9') {
+                $digits[$i] = '0';
+                $i--;
+            }
+
+            $digits = $i < 0 ? '1' . $digits : substr_replace($digits, (string) ((int) $digits[$i] + 1), $i, 1);
+        }
+
+        $whole = ltrim(substr($digits, 0, strlen($digits) - $scale), '0');
+        $whole = $whole === '' ? '0' : $whole;
+        $fraction = substr($digits, strlen($digits) - $scale);
+        $result = $scale > 0 ? $whole . '.' . $fraction : $whole;
+
+        // No negative zero: -0.001 at two places is 0.00, not -0.00.
+        return $negative && trim($result, '0.') !== '' ? '-' . $result : $result;
+    }
+
+    /**
      * Apply the declared cast when reading an attribute.
      *
      * @param string $key The attribute name
@@ -805,7 +872,7 @@ abstract class Model implements JsonSerializable
             'float', 'double' => (float) $value,
             'bool', 'boolean' => (bool) $value,
             'string' => (string) $value,
-            'decimal' => round((float) $value, (int) ($argument ?? 2)),
+            'decimal' => self::decimal($value, (int) ($argument ?? 2), $key),
             'json', 'array' => $this->decodeJson($value),
             'datetime', 'date' => $this->toDateTime($value),
             default => $value,
@@ -839,7 +906,7 @@ abstract class Model implements JsonSerializable
              */
             'bool', 'boolean' => $value ? 1 : 0,
             'string' => (string) $value,
-            'decimal' => number_format((float) $value, (int) ($argument ?? 2), '.', ''),
+            'decimal' => self::decimal($value, (int) ($argument ?? 2), $key),
             'json', 'array' => is_string($value)
                 ? $value
                 : json_encode($value, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
