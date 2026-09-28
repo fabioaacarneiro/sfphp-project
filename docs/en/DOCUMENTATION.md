@@ -1458,6 +1458,9 @@ Available methods:
 ->whereNull('deleted_at')
 ->whereNotNull('verified_at')
 ->whereIn('id', [1, 2, 3])        // an empty array matches no rows
+->whereContains('title', $term)   // LIKE, with a % or _ in $term taken literally
+->whereStartsWith('sku', 'AB-')
+->whereEndsWith('email', '@example.com')
 ->join('posts', 'users.id', '=', 'posts.user_id')
 ->join('posts', 'users.id', '=', 'posts.user_id', 'LEFT')
 ->orderBy('created_at', 'desc')
@@ -1467,11 +1470,28 @@ Available methods:
 ->first()      // the first row, or null
 ->count()      // int
 ->insert(['name' => 'John'])      // returns the generated id, as a string
-->update(['name' => 'Smith'])     // returns affected rows
-->delete()                        // returns affected rows
+->update(['name' => 'Smith'])     // returns affected rows; refuses without a where()
+->updateAll(['active' => false])  // every row, on purpose
+->delete()                        // returns affected rows; refuses without a where()
+->deleteAll()                     // every row, on purpose
 ->toSql()      // inspect the SQL without running it
 ->bindings()   // the bound values
 ```
+
+**`update()` and `delete()` refuse to run without a `where()`.** They used to
+change or remove every row, and the way that happens is almost never a query
+written to do it: it is a filter added inside an `if` that did not run —
+`if ($id) { $query->where('id', $id); }` with no id in the request. The error
+says so and names the call that means every row, `updateAll()` or
+`deleteAll()`, which in turn refuse a `where()`, so each intent has one
+spelling.
+
+**`whereContains()`, `whereStartsWith()` and `whereEndsWith()` take the text
+literally.** `where('title', 'LIKE', "%{$term}%")` reads a `%` or `_` a visitor
+typed as a wildcard — `%` alone matches every row. These escape it, with
+`ESCAPE '!'`, which MySQL, PostgreSQL, SQLite and SQL Server read alike. Whether
+case is ignored is the database's: MySQL's usual collations ignore it,
+PostgreSQL's `LIKE` does not.
 
 An `orWhere()` joins everything written before it: `where('user_id', 7)->where('a', 1)->orWhere('b', 2)`
 is `user_id = 7 AND a = 1 OR b = 2`, which returns other users' rows. Put the
@@ -2534,6 +2554,18 @@ connection. Creating a table inside an open transaction would commit it on
 MySQL, so the driver refuses to and asks for `queue:table` instead. A failed job
 keeps its payload and the exception's class, message and stack trace;
 `queue:failed` lists the message.
+
+A `jobs` table created before 0.41.0 has `available_at` and `created_at` as a
+signed 32-bit `INTEGER`, which ends on 19 January 2038 — and a job delayed past
+that date cannot be pushed before then. New tables are 64-bit; an existing one
+is widened in place:
+
+```sql
+ALTER TABLE jobs MODIFY available_at BIGINT UNSIGNED NOT NULL, MODIFY created_at BIGINT UNSIGNED NOT NULL;  -- MySQL
+ALTER TABLE jobs ALTER COLUMN available_at TYPE BIGINT, ALTER COLUMN created_at TYPE BIGINT;              -- PostgreSQL
+```
+
+SQLite needs nothing: its integers are 64-bit already.
 
 ### Choosing the driver
 
@@ -5200,7 +5232,7 @@ So upgrading means replacing those files, and knowing which ones they are:
 ```bash
 ./sfphp upgrade --dry-run          # what it would do, changing nothing
 ./sfphp upgrade                    # the latest release
-./sfphp upgrade --to=v0.40.0       # fetches that tag with git
+./sfphp upgrade --to=v0.41.0       # fetches that tag with git
 ./sfphp upgrade --from=../sfphp    # a copy you already have
 ```
 
@@ -6592,10 +6624,8 @@ Smaller things worth knowing before they surprise you:
 
 | | |
 |---|---|
-| Unix timestamps in `INTEGER` columns | The database queue and the sessions recipe store times as integers; a signed 32-bit column ends in 2038. The recipe uses `unsignedBigInteger`; check your own |
+| Unix timestamps in `INTEGER` columns | A signed 32-bit column ends in 2038. The framework's own tables use 64-bit integers — the queue's since 0.41.0, see [Queue](#queue) — so check the ones you write |
 | `decimal:N` casts to a float | Fine for display, wrong for money arithmetic — keep money in integer cents, or read the column raw with `getAttribute()` |
-| `LIKE` patterns | A `%` or `_` a visitor typed is a wildcard; escape it yourself when it should be literal |
-| `update()` and `delete()` without `where()` | Affect every row, as the SQL would. Nothing asks first |
 | Response size in the HTTP client | Nothing caps it; a service that answers gigabytes is read into memory. Stream it instead |
 | Default timeouts | 5 s to connect and 15 s in all for the synchronous client; the async one waits 10 and 30 |
 

@@ -280,8 +280,8 @@ class DatabaseDriver implements Queue
     {
         $this->ensureTables();
 
-        $this->query($this->table)->delete();
-        $this->query($this->failedTable)->delete();
+        $this->query($this->table)->deleteAll();
+        $this->query($this->failedTable)->deleteAll();
     }
 
     public function size(): int
@@ -334,14 +334,16 @@ class DatabaseDriver implements Queue
                 $table->text('payload');
                 $table->unsignedInteger('attempts')->default(0);
                 /*
-                 * An integer, like available_at and created_at beside it. This
-                 * was a timestamp column receiving time(), which MySQL refuses
+                 * Unix times, all three, and all 64-bit. reserved_at was a
+                 * timestamp column receiving time(), which MySQL refuses
                  * outright — "Incorrect datetime value: '1790041711'" — so the
-                 * driver could push a job and never reserve one.
+                 * driver could push a job and never reserve one. available_at
+                 * and created_at were a signed 32-bit INTEGER, which ends on
+                 * 19 January 2038; a job delayed past it could not be pushed.
                  */
                 $table->unsignedBigInteger('reserved_at')->nullable();
-                $table->integer('available_at');
-                $table->integer('created_at');
+                $table->unsignedBigInteger('available_at');
+                $table->unsignedBigInteger('created_at');
             });
         }
 

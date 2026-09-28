@@ -1469,6 +1469,9 @@ Métodos disponíveis:
 ->whereNull('deleted_at')
 ->whereNotNull('verified_at')
 ->whereIn('id', [1, 2, 3])        // array vazio → nenhuma linha
+->whereContains('title', $termo)  // LIKE, com um % ou _ em $termo lido literalmente
+->whereStartsWith('sku', 'AB-')
+->whereEndsWith('email', '@exemplo.com')
 ->join('posts', 'users.id', '=', 'posts.user_id')
 ->join('posts', 'users.id', '=', 'posts.user_id', 'LEFT')
 ->orderBy('created_at', 'desc')
@@ -1478,11 +1481,28 @@ Métodos disponíveis:
 ->first()      // primeira linha ou null
 ->count()      // int
 ->insert(['name' => 'João'])      // devolve o id gerado, como string
-->update(['name' => 'Silva'])     // devolve linhas afetadas
-->delete()                        // devolve linhas afetadas
+->update(['name' => 'Silva'])     // devolve linhas afetadas; recusa sem um where()
+->updateAll(['active' => false])  // todas as linhas, de propósito
+->delete()                        // devolve linhas afetadas; recusa sem um where()
+->deleteAll()                     // todas as linhas, de propósito
 ->toSql()      // inspeciona o SQL sem executar
 ->bindings()   // valores vinculados
 ```
+
+**O `update()` e o `delete()` se recusam a rodar sem um `where()`.** Antes
+eles alteravam ou apagavam todas as linhas, e o jeito como isso acontece quase
+nunca é uma consulta escrita para isso: é um filtro acrescentado dentro de um
+`if` que não rodou — `if ($id) { $query->where('id', $id); }` sem id na
+requisição. O erro diz isso e nomeia a chamada que significa todas as linhas,
+`updateAll()` ou `deleteAll()`, que por sua vez recusam um `where()`, para cada
+intenção ter uma grafia só.
+
+**O `whereContains()`, o `whereStartsWith()` e o `whereEndsWith()` leem o texto
+literalmente.** `where('title', 'LIKE', "%{$termo}%")` lê um `%` ou `_` que o
+visitante digitou como curinga — um `%` sozinho casa com todas as linhas. Estes
+o escapam, com `ESCAPE '!'`, que MySQL, PostgreSQL, SQLite e SQL Server leem do
+mesmo jeito. Ignorar maiúsculas é do banco: as collations usuais do MySQL
+ignoram, o `LIKE` do PostgreSQL não.
 
 Um `orWhere()` junta tudo o que foi escrito antes dele: `where('user_id', 7)->where('a', 1)->orWhere('b', 2)`
 é `user_id = 7 AND a = 1 OR b = 2`, que devolve linhas de outros usuários.
@@ -2552,6 +2572,18 @@ Criar uma tabela dentro de uma transação aberta faria commit dela no MySQL,
 então o driver se recusa e pede o `queue:table`. Um job que falhou guarda o
 payload e a classe, a mensagem e o stack trace da exceção; o `queue:failed`
 lista a mensagem.
+
+Uma tabela `jobs` criada antes da 0.41.0 tem `available_at` e `created_at` como
+`INTEGER` de 32 bits com sinal, que acaba em 19 de janeiro de 2038 — e um job
+adiado para depois dessa data não pode ser enviado antes dela. Tabelas novas
+são de 64 bits; uma que já existe é alargada no lugar:
+
+```sql
+ALTER TABLE jobs MODIFY available_at BIGINT UNSIGNED NOT NULL, MODIFY created_at BIGINT UNSIGNED NOT NULL;  -- MySQL
+ALTER TABLE jobs ALTER COLUMN available_at TYPE BIGINT, ALTER COLUMN created_at TYPE BIGINT;              -- PostgreSQL
+```
+
+O SQLite não precisa de nada: os inteiros dele já são de 64 bits.
 
 ### Escolher o driver
 
@@ -5225,7 +5257,7 @@ Atualizar, então, é substituir esses arquivos sabendo quais são:
 ```bash
 ./sfphp upgrade --dry-run          # o que faria, sem mudar nada
 ./sfphp upgrade                    # o release mais recente
-./sfphp upgrade --to=v0.40.0       # busca essa tag com o git
+./sfphp upgrade --to=v0.41.0       # busca essa tag com o git
 ./sfphp upgrade --from=../sfphp    # uma cópia que você já tem
 ```
 
@@ -6635,10 +6667,8 @@ Coisas menores que vale saber antes que elas surpreendam:
 
 | | |
 |---|---|
-| Timestamps Unix em colunas `INTEGER` | A fila em banco e a receita de sessões guardam horários como inteiros; uma coluna de 32 bits com sinal acaba em 2038. A receita usa `unsignedBigInteger`; confira as suas |
+| Timestamps Unix em colunas `INTEGER` | Uma coluna de 32 bits com sinal acaba em 2038. As tabelas do próprio framework usam inteiros de 64 bits — a da fila desde a 0.41.0, veja [Filas](#filas) — então confira as que você escreve |
 | `decimal:N` converte para float | Serve para exibir, é errado para aritmética de dinheiro — guarde dinheiro em centavos inteiros, ou leia a coluna crua com `getAttribute()` |
-| Padrões de `LIKE` | Um `%` ou `_` que o visitante digitou é curinga; escape você mesmo quando ele deve ser literal |
-| `update()` e `delete()` sem `where()` | Afetam todas as linhas, como o SQL faria. Nada pergunta antes |
 | Tamanho da resposta no cliente HTTP | Nada limita; um serviço que responde gigabytes é lido para a memória. Use stream |
 | Timeouts padrão | 5 s para conectar e 15 s no total para o cliente síncrono; o assíncrono espera 10 e 30 |
 
