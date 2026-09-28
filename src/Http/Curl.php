@@ -71,6 +71,52 @@ final class Curl
         return $lines;
     }
 
+    /** How large a response body may be, by default, before a request gives up on it. */
+    public const MAX_SIZE = 16 * 1024 * 1024;
+
+    /**
+     * A CURLOPT_WRITEFUNCTION that keeps the body, up to a size.
+     *
+     * CURLOPT_RETURNTRANSFER keeps all of it, however large: a service that
+     * answers two gigabytes — by mistake, or because the URL came from
+     * somebody else — exhausts memory_limit, and in a queue worker that is
+     * the worker gone. The body is counted as it arrives, so this holds when
+     * the server does not say how long it is; CURLOPT_MAXFILESIZE, set beside
+     * it, refuses the ones that do say, before a byte of the body is read.
+     *
+     * @param int|null $max Bytes, or null for no limit
+     * @param string $body Filled in as the body arrives
+     * @param bool $tooLarge Set when the limit stopped the transfer
+     * @return Closure The callback
+     */
+    public static function bodyCollector(?int $max, string &$body, bool &$tooLarge): Closure
+    {
+        return static function (mixed $handle, string $chunk) use ($max, &$body, &$tooLarge): int {
+            if ($max !== null && strlen($body) + strlen($chunk) > $max) {
+                $tooLarge = true;
+
+                // Anything but the length of the chunk makes curl stop with CURLE_WRITE_ERROR.
+                return 0;
+            }
+
+            $body .= $chunk;
+
+            return strlen($chunk);
+        };
+    }
+
+    /**
+     * Whether a failed transfer failed because of the size limit.
+     *
+     * @param int $errno The cURL error number
+     * @param bool $tooLarge What bodyCollector() said
+     * @return bool
+     */
+    public static function exceededSize(int $errno, bool $tooLarge): bool
+    {
+        return $tooLarge || $errno === CURLE_FILESIZE_EXCEEDED;
+    }
+
     /**
      * A CURLOPT_HEADERFUNCTION that keeps the final response's headers.
      *

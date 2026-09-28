@@ -56,6 +56,15 @@ final class HttpFuture extends Pending implements Cancellable
     /** @var array<string, string> */
     private array $responseHeaders = [];
 
+    /** The body so far, filled in by the write callback. */
+    private string $body = '';
+
+    /** Whether the size limit stopped the transfer. */
+    private bool $tooLarge = false;
+
+    /** Bytes the body may take, or null for no limit. */
+    private ?int $maxSize = null;
+
     /**
      * Start a request.
      *
@@ -141,10 +150,23 @@ final class HttpFuture extends Pending implements Cancellable
         $handle = curl_init();
 
         $this->responseHeaders = [];
+        $this->body = '';
+        $this->tooLarge = false;
+
+        /*
+         * The size limit is curl's own option, so a caller changes it the way
+         * it changes a timeout: CURLOPT_MAXFILESIZE in $options, 0 for none.
+         * It is also enforced while the body arrives, which curl's option
+         * alone does not do when the server sends no Content-Length.
+         */
+        $this->maxSize = array_key_exists(CURLOPT_MAXFILESIZE, $options)
+            ? ((int) $options[CURLOPT_MAXFILESIZE] > 0 ? (int) $options[CURLOPT_MAXFILESIZE] : null)
+            : Curl::MAX_SIZE;
 
         $defaults = Curl::methodOptions($method) + [
             CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_WRITEFUNCTION => Curl::bodyCollector($this->maxSize, $this->body, $this->tooLarge),
+            CURLOPT_MAXFILESIZE => $this->maxSize ?? 0,
             CURLOPT_CONNECTTIMEOUT => self::CONNECT_TIMEOUT,
             CURLOPT_TIMEOUT => self::TIMEOUT,
             CURLOPT_FOLLOWLOCATION => true,
@@ -202,6 +224,16 @@ final class HttpFuture extends Pending implements Cancellable
     {
         $this->handle = null;
 
+        if ($errno !== CURLE_OK && Curl::exceededSize($errno, $this->tooLarge)) {
+            $this->rejectWith(new ClientException(sprintf(
+                'The response from %s is larger than %d bytes. Pass a larger CURLOPT_MAXFILESIZE, or 0 for no limit.',
+                $this->url,
+                (int) $this->maxSize
+            ), $errno));
+
+            return;
+        }
+
         if ($errno !== CURLE_OK) {
             /*
              * No response at all — a name that did not resolve, a refused
@@ -218,7 +250,8 @@ final class HttpFuture extends Pending implements Cancellable
         }
 
         $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
-        $body = (string) curl_multi_getcontent($handle);
+        $body = $this->body;
+        $this->body = '';
         $effective = (string) (curl_getinfo($handle, CURLINFO_EFFECTIVE_URL) ?: $this->url);
 
         $this->resolveWith(new ClientResponse($status, $body, $this->responseHeaders, $effective));

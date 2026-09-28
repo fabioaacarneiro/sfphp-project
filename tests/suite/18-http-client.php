@@ -229,3 +229,81 @@ $tests->run('the client refuses https-to-http redirects and follows http-to-http
         }
     }
 });
+
+$tests->run('a response larger than the limit is refused instead of filling memory', function () use ($tests): void {
+    /*
+     * CURLOPT_RETURNTRANSFER kept the whole body, however large: a service
+     * that answered two gigabytes exhausted memory_limit, and in a queue
+     * worker that was the worker gone. The body is counted as it arrives now,
+     * so a server that sends no Content-Length is stopped too.
+     */
+    if (!extension_loaded('curl')) {
+        return;
+    }
+
+    $port = 9000 + (getmypid() % 900);
+    $root = dirname(__DIR__) . '/fixtures';
+    $pid = (int) trim((string) shell_exec(sprintf(
+        'php -S 127.0.0.1:%d -t %s %s/http-server.php > /dev/null 2>&1 & echo $!',
+        $port,
+        escapeshellarg($root),
+        escapeshellarg($root)
+    )));
+    $base = 'http://127.0.0.1:' . $port;
+
+    try {
+        $listening = false;
+
+        for ($attempt = 0; $attempt < 50; $attempt++) {
+            $probe = @fsockopen('127.0.0.1', $port, $code, $message, 0.1);
+
+            if ($probe !== false) {
+                fclose($probe);
+                $listening = true;
+                break;
+            }
+
+            usleep(100_000);
+        }
+
+        if (!$listening) {
+            return;
+        }
+
+        $small = Http::base($base)->maxSize(1000);
+
+        // Under the limit, whole.
+        $tests->assertSame(500, strlen($small->get('/bytes', ['n' => 500])->body()));
+
+        // Over it, with and without a Content-Length, the error says what to do.
+        foreach (['/bytes', '/bytes-chunked'] as $path) {
+            try {
+                $small->get($path, ['n' => 5000]);
+                $tests->assertSame('an exception', 'none for ' . $path);
+            } catch (ClientException $e) {
+                $tests->assertSame(true, str_contains($e->getMessage(), 'larger than 1000 bytes'));
+                $tests->assertSame(true, str_contains($e->getMessage(), 'stream()'));
+            }
+        }
+
+        // No limit when asked for none.
+        $tests->assertSame(5000, strlen(Http::base($base)->maxSize(null)->get('/bytes-chunked', ['n' => 5000])->body()));
+
+        // The default is 16 MB.
+        $tests->assertThrows(
+            static fn () => Http::base($base)->get('/bytes-chunked', ['n' => 16 * 1024 * 1024 + 1]),
+            ClientException::class
+        );
+
+        // The async client holds to the same default, and takes curl's own option to change it.
+        $tests->assertSame(5000, strlen(SfphpProject\src\Async\await(Http::getAsync($base . '/bytes-chunked?n=5000'))->body()));
+        $tests->assertThrows(
+            static fn () => SfphpProject\src\Async\await(new SfphpProject\src\Async\Adapters\HttpFuture('GET', $base . '/bytes-chunked?n=5000', [], null, [CURLOPT_MAXFILESIZE => 1000])),
+            ClientException::class
+        );
+    } finally {
+        if ($pid > 0) {
+            exec('kill ' . $pid . ' 2>/dev/null');
+        }
+    }
+});

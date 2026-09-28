@@ -12,6 +12,29 @@ $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 
 header('X-Served-By: sfphp-test');
 
+// n bytes, with a Content-Length: a size limit can refuse it before reading any of it.
+if ($path === '/bytes') {
+    $n = max(0, (int) ($_GET['n'] ?? 0));
+    header('Content-Type: text/plain');
+    header('Content-Length: ' . $n);
+    echo str_repeat('x', $n);
+
+    return;
+}
+
+// n bytes in pieces and no Content-Length: only counting as it arrives can stop it.
+if ($path === '/bytes-chunked') {
+    $n = max(0, (int) ($_GET['n'] ?? 0));
+    header('Content-Type: text/plain');
+
+    for ($sent = 0; $sent < $n; $sent += 1024) {
+        echo str_repeat('x', min(1024, $n - $sent));
+        flush();
+    }
+
+    return;
+}
+
 if ($path === '/status/404') {
     http_response_code(404);
     header('Content-Type: application/json');
