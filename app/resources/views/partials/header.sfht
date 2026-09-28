@@ -7,7 +7,7 @@
     <title>{{ $title | default(APP_NAME) }}</title>
 
     <!-- SFCSS Framework -->
-    <link rel="stylesheet" href="{{ asset('css/sfcss.min.css') }}">
+    @sfcss
     <link rel="icon" href="data:,">
     {{-- SFJS sends this token with every request that changes something. --}}
     {!! csrf_meta() !!}

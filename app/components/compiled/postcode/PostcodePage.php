@@ -34,7 +34,7 @@ function PostcodePage(?Sfht $result = null): Sfht
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>.phpx + SFCSS + SFJS — SFPHP</title>
-            <link rel="stylesheet" href="'; echo \SfphpProject\src\View\Compiler::text((asset('css/sfcss.min.css'))); echo '">
+            '; echo \SfphpProject\src\View\PageScripts::sfcss(); echo '
             <link rel="icon" href="data:,">
             '; echo (csrf_meta()); echo '
         </head>
@@ -48,7 +48,7 @@ function PostcodePage(?Sfht $result = null): Sfht
 
             '; echo \SfphpProject\src\View\Compiler::text((PageFooter())); echo '
 
-            <script src="'; echo \SfphpProject\src\View\Compiler::text((asset('js/sfjs.min.js'))); echo '"></script>
+            '; echo \SfphpProject\src\View\PageScripts::sfjs(); echo '
         </body>
         </html>';  } catch (\Throwable $__e) { while (ob_get_level() > $__level) { ob_end_clean(); } throw $__e; } return new \SfphpProject\src\View\Sfht((string) ob_get_clean()); })(get_defined_vars())
 ;
