@@ -629,7 +629,7 @@ $tests->run('casts convert attributes on the way in and out', function () use ($
         $tests->assertSame(false, ArtigoModelTest::all()[1]->publicado);
         $tests->assertSame(['cor' => 'azul'], $artigo->meta);
         $tests->assertSame(42, $artigo->views);
-        $tests->assertSame(19.9, $artigo->preco);
+        $tests->assertSame('19.90', $artigo->preco);
         $tests->assertTrue($artigo->publicado_em instanceof DateTimeImmutable);
         $tests->assertSame('2026-09-21 10:30', $artigo->publicado_em->format('Y-m-d H:i'));
 
@@ -649,6 +649,54 @@ $tests->run('casts convert attributes on the way in and out', function () use ($
         // getAttribute() stays raw on purpose: relations join on these values.
         $tests->assertSame('1', $artigo->getAttribute('publicado'));
         $tests->assertSame(true, $artigo->cast('publicado'));
+    } finally {
+        Model::useConnection(null);
+    }
+});
+
+$tests->run('a decimal is a string, worked out on the digits and never through a float', function () use ($tests): void {
+    /*
+     * decimal:N used to be round((float) $value) on the way in and
+     * number_format((float) $value) on the way out. A float cannot hold 19.99,
+     * so 19.99 * 3 came to 59.970000000000006, and money with more digits than
+     * a float keeps lost its cents on every save.
+     */
+    $decimal = static fn (mixed $value, int $scale): string => (new ReflectionMethod(Model::class, 'decimal'))
+        ->invoke(null, $value, $scale, 'preco');
+
+    $tests->assertSame('19.90', $decimal('19.9', 2));
+    $tests->assertSame('19.99', $decimal(19.99, 2));
+    $tests->assertSame('5.00', $decimal(5, 2));
+
+    // Half away from zero, carrying as far as it has to.
+    $tests->assertSame('2.35', $decimal('2.345', 2));
+    $tests->assertSame('-2.35', $decimal('-2.345', 2));
+    $tests->assertSame('10.00', $decimal('9.995', 2));
+    $tests->assertSame('3', $decimal('2.5', 0));
+
+    // More digits than a float holds, kept.
+    $tests->assertSame('123456789012345678901.24', $decimal('123456789012345678901.235', 2));
+
+    // No negative zero.
+    $tests->assertSame('0.00', $decimal('-0.001', 2));
+
+    foreach (['abc', '', '1.2.3', INF] as $wrong) {
+        $tests->assertThrows(static fn () => $decimal($wrong, 2), InvalidArgumentException::class);
+    }
+
+    // And through the model, both ways: read as a string, stored without a float in between.
+    $pdo = new ModelPdoTest(['artigos' => [
+        ['id' => 1, 'publicado' => '1', 'meta' => null, 'publicado_em' => null, 'preco' => '1234567890123456.78', 'views' => '1'],
+    ]]);
+    Model::useConnection($pdo);
+
+    try {
+        $artigo = ArtigoModelTest::all()[0];
+        $tests->assertSame('1234567890123456.78', $artigo->preco);
+        $tests->assertSame('1234567890123456.78', $artigo->toArray()['preco']);
+
+        $artigo->preco = '0.1';
+        $tests->assertSame('0.10', $artigo->preco);
     } finally {
         Model::useConnection(null);
     }

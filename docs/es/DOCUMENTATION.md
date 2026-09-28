@@ -1743,6 +1743,14 @@ Disponibles: `int`, `float`, `bool`, `string`, `json`, `array`, `datetime`,
 `date` y `decimal:N`. Una columna nula sigue siendo nula — no se convierte en
 un valor cero.
 
+**Un `decimal:N` es una cadena**, `"19.90"`, con exactamente N dígitos después
+del punto, calculada sobre los dígitos y nunca mediante un float — un float no
+puede guardar 19.99, y `19.99 * 3` da `59.970000000000006`. El redondeo es la
+mitad hacia fuera del cero, como para el dinero, y un valor que no es un número
+se rechaza. Antes de la 0.42.0 era un float; el código que lo comparaba con `===`
+con un float, o lo leía como número en el JSON, ahora recibe la cadena. Para
+hacer cuentas, trabaja en céntimos enteros o con `bcmath`.
+
 La conversión funciona en ambos sentidos: `$article->meta = ['color' =>
 'verde']` se almacena como JSON, y un `DateTimeImmutable` se almacena en el
 formato de la base de datos.
@@ -5340,7 +5348,7 @@ Actualizar, entonces, es reemplazar esos archivos sabiendo cuáles son:
 ```bash
 ./sfphp upgrade --dry-run          # lo que haría, sin cambiar nada
 ./sfphp upgrade                    # la última versión publicada
-./sfphp upgrade --to=v0.41.0       # trae esa etiqueta con git
+./sfphp upgrade --to=v0.42.0       # trae esa etiqueta con git
 ./sfphp upgrade --from=../sfphp    # una copia que ya tienes
 ```
 
@@ -6770,7 +6778,6 @@ Cosas más pequeñas que conviene saber antes de que te sorprendan:
 | | |
 |---|---|
 | Timestamps Unix en columnas `INTEGER` | Una columna de 32 bits con signo se acaba en 2038. Las tablas del propio framework usan enteros de 64 bits — la de la cola desde la 0.41.0, consulta [Colas](#colas) — así que revisa las que escribes |
-| `decimal:N` convierte a float | Vale para mostrar, está mal para aritmética de dinero — guarda el dinero en céntimos enteros, o lee la columna cruda con `getAttribute()` |
 | Tamaño de la respuesta en el cliente HTTP | Nada lo limita; un servicio que responde gigabytes se lee en memoria. Usa un stream en su lugar |
 | Timeouts por defecto | 5 s para conectar y 15 s en total en el cliente síncrono; el asíncrono espera 10 y 30 |
 

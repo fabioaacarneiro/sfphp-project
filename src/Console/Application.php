@@ -169,7 +169,7 @@ final class Application
                 'Keeps the users migration and a create_sessions_table migration if you made one.',
                 'It lists what it will delete and asks you to type "reset". There is no undo.',
             ]],
-        'upgrade' => ['group' => 'Project', 'usage' => 'upgrade [--to=v0.41.0] [--from=dir] [--dry-run] [--force]', 'summary' => 'Replace the framework, keep the application',
+        'upgrade' => ['group' => 'Project', 'usage' => 'upgrade [--to=v0.42.0] [--from=dir] [--dry-run] [--force]', 'summary' => 'Replace the framework, keep the application',
             'details' => [
                 'Replaced whole: src/, sfphp, server.php.',
                 'Merged in:      resources/, lang/, tools/ — your files there stay.',
@@ -2473,7 +2473,7 @@ final class Application
                 $reference = $this->option($arguments, 'to') ?? $this->latestRelease();
 
                 if ($reference === null) {
-                    fwrite(STDERR, 'Error: could not find the latest release. Name one with --to=v0.41.0, or pass --from=<directory>.' . PHP_EOL);
+                    fwrite(STDERR, 'Error: could not find the latest release. Name one with --to=v0.42.0, or pass --from=<directory>.' . PHP_EOL);
 
                     return 1;
                 }

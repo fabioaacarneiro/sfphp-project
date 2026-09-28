@@ -1725,6 +1725,14 @@ $artigo->views;          // 42, não '42'
 Disponíveis: `int`, `float`, `bool`, `string`, `json`, `array`, `datetime`,
 `date` e `decimal:N`. Uma coluna nula continua nula — não vira valor zero.
 
+**Um `decimal:N` é uma string**, `"19.90"`, com exatamente N dígitos depois do
+ponto, calculada sobre os dígitos e nunca por um float — um float não guarda
+19.99, e `19.99 * 3` dá `59.970000000000006`. O arredondamento é metade para
+longe do zero, como para dinheiro, e um valor que não é número é recusado. Antes
+da 0.42.0 era um float; código que o comparava com `===` a um float, ou o lia
+como número no JSON, agora recebe a string. Para fazer contas, trabalhe em
+centavos inteiros ou com `bcmath`.
+
 A conversão vale nos dois sentidos: `$artigo->meta = ['cor' => 'verde']` é
 gravado como JSON, e um `DateTimeImmutable` é gravado no formato do banco.
 
@@ -5257,7 +5265,7 @@ Atualizar, então, é substituir esses arquivos sabendo quais são:
 ```bash
 ./sfphp upgrade --dry-run          # o que faria, sem mudar nada
 ./sfphp upgrade                    # o release mais recente
-./sfphp upgrade --to=v0.41.0       # busca essa tag com o git
+./sfphp upgrade --to=v0.42.0       # busca essa tag com o git
 ./sfphp upgrade --from=../sfphp    # uma cópia que você já tem
 ```
 
@@ -6668,7 +6676,6 @@ Coisas menores que vale saber antes que elas surpreendam:
 | | |
 |---|---|
 | Timestamps Unix em colunas `INTEGER` | Uma coluna de 32 bits com sinal acaba em 2038. As tabelas do próprio framework usam inteiros de 64 bits — a da fila desde a 0.41.0, veja [Filas](#filas) — então confira as que você escreve |
-| `decimal:N` converte para float | Serve para exibir, é errado para aritmética de dinheiro — guarde dinheiro em centavos inteiros, ou leia a coluna crua com `getAttribute()` |
 | Tamanho da resposta no cliente HTTP | Nada limita; um serviço que responde gigabytes é lido para a memória. Use stream |
 | Timeouts padrão | 5 s para conectar e 15 s no total para o cliente síncrono; o assíncrono espera 10 e 30 |
 
