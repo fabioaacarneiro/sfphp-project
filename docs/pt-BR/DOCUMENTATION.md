@@ -2867,9 +2867,20 @@ configurado para um serviço pode circular sem que nada consiga alterá-lo.
 | `Http::timeout($segundos, $conexao)` | `->timeout($segundos, $conexao)` | Quanto esperar |
 | — | `->asForm()` | Mandar corpos como formulário em vez de JSON |
 | — | `->insecure()` | Parar de verificar certificados |
+| — | `->maxSize($bytes)` | O maior corpo de resposta aceito; `null` para sem limite |
 
 Cada uma na fachada equivale a `Http::client()` seguido do método de instância, e
 todas devolvem um cliente, então encadeiam em qualquer ordem.
+
+**Um corpo de resposta maior que 16 MB é recusado** com uma `ClientException`
+que diz isso, em vez de ser lido para a memória: um serviço que responde
+gigabytes — por engano, ou porque a URL veio de outra pessoa — esgotava o
+`memory_limit`, e num worker de fila isso é o worker parado. O corpo é contado
+enquanto chega, então um servidor que não manda `Content-Length` também é
+barrado. O `->maxSize()` muda o limite; um download grande vai no `stream()`, que
+nunca guarda o corpo inteiro e não tem limite. O cliente assíncrono
+(`Http::getAsync()` e os demais) segue os mesmos 16 MB; um `HttpFuture` montado
+à mão recebe a opção do próprio curl, `CURLOPT_MAXFILESIZE`, `0` para sem limite.
 
 ### Ler a resposta
 
@@ -5265,7 +5276,7 @@ Atualizar, então, é substituir esses arquivos sabendo quais são:
 ```bash
 ./sfphp upgrade --dry-run          # o que faria, sem mudar nada
 ./sfphp upgrade                    # o release mais recente
-./sfphp upgrade --to=v0.42.0       # busca essa tag com o git
+./sfphp upgrade --to=v0.43.0       # busca essa tag com o git
 ./sfphp upgrade --from=../sfphp    # uma cópia que você já tem
 ```
 
@@ -6676,7 +6687,6 @@ Coisas menores que vale saber antes que elas surpreendam:
 | | |
 |---|---|
 | Timestamps Unix em colunas `INTEGER` | Uma coluna de 32 bits com sinal acaba em 2038. As tabelas do próprio framework usam inteiros de 64 bits — a da fila desde a 0.41.0, veja [Filas](#filas) — então confira as que você escreve |
-| Tamanho da resposta no cliente HTTP | Nada limita; um serviço que responde gigabytes é lido para a memória. Use stream |
 | Timeouts padrão | 5 s para conectar e 15 s no total para o cliente síncrono; o assíncrono espera 10 e 30 |
 
 ---

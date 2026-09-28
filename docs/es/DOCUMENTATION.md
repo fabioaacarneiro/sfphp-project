@@ -2904,9 +2904,21 @@ configurado para un servicio puede circular sin que nada pueda cambiarlo.
 | `Http::timeout($segundos, $conexion)` | `->timeout($segundos, $conexion)` | Cuánto esperar |
 | — | `->asForm()` | Mandar cuerpos como formulario en vez de JSON |
 | — | `->insecure()` | Dejar de verificar certificados |
+| — | `->maxSize($bytes)` | El mayor cuerpo de respuesta que se acepta; `null` para sin límite |
 
 Cada una en la fachada equivale a `Http::client()` seguido del método de
 instancia, y todas devuelven un cliente, así que encadenan en cualquier orden.
+
+**Un cuerpo de respuesta mayor de 16 MB se rechaza** con una `ClientException`
+que lo dice, en lugar de leerse en memoria: un servicio que responde gigabytes —
+por error, o porque la URL vino de otra persona — agotaba el `memory_limit`, y
+en un worker de cola eso es el worker caído. El cuerpo se cuenta mientras llega,
+así que también se detiene a un servidor que no envía `Content-Length`.
+`->maxSize()` cambia el límite; una descarga grande va en `stream()`, que nunca
+guarda el cuerpo entero y no tiene límite. El cliente asíncrono
+(`Http::getAsync()` y los demás) mantiene los mismos 16 MB; un `HttpFuture`
+construido a mano recibe la opción del propio curl, `CURLOPT_MAXFILESIZE`, `0`
+para sin límite.
 
 ### Leer la respuesta
 
@@ -5348,7 +5360,7 @@ Actualizar, entonces, es reemplazar esos archivos sabiendo cuáles son:
 ```bash
 ./sfphp upgrade --dry-run          # lo que haría, sin cambiar nada
 ./sfphp upgrade                    # la última versión publicada
-./sfphp upgrade --to=v0.42.0       # trae esa etiqueta con git
+./sfphp upgrade --to=v0.43.0       # trae esa etiqueta con git
 ./sfphp upgrade --from=../sfphp    # una copia que ya tienes
 ```
 
@@ -6778,7 +6790,6 @@ Cosas más pequeñas que conviene saber antes de que te sorprendan:
 | | |
 |---|---|
 | Timestamps Unix en columnas `INTEGER` | Una columna de 32 bits con signo se acaba en 2038. Las tablas del propio framework usan enteros de 64 bits — la de la cola desde la 0.41.0, consulta [Colas](#colas) — así que revisa las que escribes |
-| Tamaño de la respuesta en el cliente HTTP | Nada lo limita; un servicio que responde gigabytes se lee en memoria. Usa un stream en su lugar |
 | Timeouts por defecto | 5 s para conectar y 15 s en total en el cliente síncrono; el asíncrono espera 10 y 30 |
 
 ---

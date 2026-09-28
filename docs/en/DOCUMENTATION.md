@@ -2845,9 +2845,20 @@ for a service can be handed around without anything being able to change it.
 | `Http::timeout($seconds, $connect)` | `->timeout($seconds, $connect)` | How long to wait |
 | — | `->asForm()` | Send bodies as forms rather than JSON |
 | — | `->insecure()` | Stop verifying certificates |
+| — | `->maxSize($bytes)` | The largest response body to accept; `null` for no limit |
 
 Each one on the facade is the same as `Http::client()` followed by the instance
 method, and each returns a client, so they chain in any order.
+
+**A response body larger than 16 MB is refused** with a `ClientException` that
+says so, instead of being read into memory: a service answering gigabytes — by
+mistake, or because the URL came from somebody else — used to exhaust
+`memory_limit`, and in a queue worker that is the worker gone. The body is
+counted as it arrives, so a server that sends no `Content-Length` is stopped
+too. `->maxSize()` changes the limit; a large download belongs in `stream()`,
+which never holds the whole body and has no limit. The async client
+(`Http::getAsync()` and the rest) holds to the same 16 MB; a `HttpFuture` built
+by hand takes curl's own `CURLOPT_MAXFILESIZE`, `0` for none.
 
 ### Reading the answer
 
@@ -5239,7 +5250,7 @@ So upgrading means replacing those files, and knowing which ones they are:
 ```bash
 ./sfphp upgrade --dry-run          # what it would do, changing nothing
 ./sfphp upgrade                    # the latest release
-./sfphp upgrade --to=v0.42.0       # fetches that tag with git
+./sfphp upgrade --to=v0.43.0       # fetches that tag with git
 ./sfphp upgrade --from=../sfphp    # a copy you already have
 ```
 
@@ -6632,7 +6643,6 @@ Smaller things worth knowing before they surprise you:
 | | |
 |---|---|
 | Unix timestamps in `INTEGER` columns | A signed 32-bit column ends in 2038. The framework's own tables use 64-bit integers — the queue's since 0.41.0, see [Queue](#queue) — so check the ones you write |
-| Response size in the HTTP client | Nothing caps it; a service that answers gigabytes is read into memory. Stream it instead |
 | Default timeouts | 5 s to connect and 15 s in all for the synchronous client; the async one waits 10 and 30 |
 
 ---

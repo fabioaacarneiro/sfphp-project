@@ -323,3 +323,69 @@ $fakeRedis = static fn (): object => new class () {
         return array_values(array_filter($all, fn (string $key): bool => fnmatch($pattern, $key)));
     }
 };
+
+/**
+ * Start tests/fixtures/http-server.php, and say where it is.
+ *
+ * The port is one the system says is free, rather than one worked out from
+ * the process id: two tests that worked it out the same way took the same
+ * port, and the second connected to the first one's server while it was
+ * still going away — "Connection reset by peer", on CI and nowhere else.
+ * It is only handed back once the server that answers is this fixture, and
+ * stopping it waits until the process is gone.
+ *
+ * @return array{0: string, 1: Closure(): void}|null The base URL and a function that stops it, or null when it did not start
+ */
+function fixtureServer(): ?array
+{
+    $socket = @stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
+
+    if ($socket === false) {
+        return null;
+    }
+
+    $name = (string) stream_socket_get_name($socket, false);
+    $port = (int) substr($name, (int) strrpos($name, ':') + 1);
+    fclose($socket);
+
+    $root = __DIR__ . '/fixtures';
+    $pid = (int) trim((string) shell_exec(sprintf(
+        '%s -S 127.0.0.1:%d -t %s %s/http-server.php > /dev/null 2>&1 & echo $!',
+        escapeshellarg(PHP_BINARY),
+        $port,
+        escapeshellarg($root),
+        escapeshellarg($root)
+    )));
+
+    $stop = static function () use ($pid): void {
+        if ($pid <= 0) {
+            return;
+        }
+
+        exec('kill ' . $pid . ' 2>/dev/null');
+
+        for ($wait = 0; $wait < 100 && is_dir('/proc/' . $pid); $wait++) {
+            usleep(20_000);
+        }
+    };
+
+    for ($attempt = 0; $attempt < 100; $attempt++) {
+        $connection = @fsockopen('127.0.0.1', $port, $errno, $error, 0.1);
+
+        if ($connection !== false) {
+            fwrite($connection, "GET /status/404 HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n");
+            $answer = (string) stream_get_contents($connection);
+            fclose($connection);
+
+            if (str_contains($answer, 'X-Served-By: sfphp-test')) {
+                return ['http://127.0.0.1:' . $port, $stop];
+            }
+        }
+
+        usleep(50_000);
+    }
+
+    $stop();
+
+    return null;
+}

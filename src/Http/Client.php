@@ -58,6 +58,8 @@ final class Client
 
     private int $idleTimeout = self::IDLE_TIMEOUT;
 
+    private ?int $maxSize = Curl::MAX_SIZE;
+
     private bool $asForm = false;
 
     private bool $verify = true;
@@ -190,6 +192,25 @@ final class Client
         $client = clone $this;
         $client->timeout = max(1, $seconds);
         $client->connectTimeout = max(1, $connect ?? min($client->connectTimeout, $client->timeout));
+
+        return $client;
+    }
+
+    /**
+     * How large a response body may be before the request gives up on it.
+     *
+     * 16 MB unless said otherwise — far above what an API answers, and far
+     * below what fills a default memory_limit once the body is decoded. A
+     * larger download belongs in stream(), which never holds the whole body
+     * and has no limit.
+     *
+     * @param int|null $bytes Bytes, or null for no limit
+     * @return self A new client
+     */
+    public function maxSize(?int $bytes): self
+    {
+        $client = clone $this;
+        $client->maxSize = $bytes === null ? null : max(1, $bytes);
 
         return $client;
     }
@@ -423,10 +444,13 @@ final class Client
 
         $handle = curl_init();
         $responseHeaders = [];
+        $received = '';
+        $tooLarge = false;
 
         curl_setopt_array($handle, Curl::methodOptions($method) + [
             CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_WRITEFUNCTION => Curl::bodyCollector($this->maxSize, $received, $tooLarge),
+            CURLOPT_MAXFILESIZE => $this->maxSize ?? 0,
             CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
             CURLOPT_TIMEOUT => $this->timeout,
             CURLOPT_FOLLOWLOCATION => true,
@@ -444,7 +468,7 @@ final class Client
             curl_setopt($handle, CURLOPT_POSTFIELDS, $payload);
         }
 
-        $body = curl_exec($handle);
+        $finished = curl_exec($handle);
         $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
         $error = curl_error($handle);
         $errno = curl_errno($handle);
@@ -453,7 +477,15 @@ final class Client
 
         curl_close($handle);
 
-        if ($body === false) {
+        if ($finished === false) {
+            if (Curl::exceededSize($errno, $tooLarge)) {
+                throw new ClientException(sprintf(
+                    'The response from %s is larger than %d bytes. Raise the limit with maxSize(), or read it with stream().',
+                    $url,
+                    (int) $this->maxSize
+                ), $errno);
+            }
+
             /*
              * No response at all — DNS, refused connection, timeout, a
              * certificate that did not verify. That is not a status code to
@@ -465,7 +497,7 @@ final class Client
             );
         }
 
-        return new ClientResponse($status, (string) $body, $responseHeaders, $effective);
+        return new ClientResponse($status, $received, $responseHeaders, $effective);
     }
 
     /**
