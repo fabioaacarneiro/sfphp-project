@@ -5676,7 +5676,7 @@ $tests->run('morph updates a panel without throwing away what is being typed', f
         field.focus(); field.value = 'typing'; field.setSelectionRange(3, 3);
 
         // No swap named on purpose: the default is what is under test.
-        await sf.ajax.get('/x', { target: '#morphed' });
+        await sf.req.get('/x', { target: '#morphed' });
 
         document.getElementById('log').textContent = [
           'text=' + document.getElementById('heading').textContent,
@@ -5981,6 +5981,580 @@ $tests->run('the rules the browser checks are the rules the server enforces', fu
         static fn () => Validator::validate(['f' => 'a'], ['f' => 'inventada']),
         InvalidArgumentException::class
     );
+});
+
+/**
+ * Load a page with SFJS into headless Chrome and read back what it reported.
+ *
+ * The page calls report(value) when it is done; this returns the value,
+ * decoded. Before SFJS loads, console.warn and console.error are recorded in
+ * window.logged, and wait(ms) is there for the page's own script. Null means
+ * there is no Chrome here, and the test has nothing to check — the CI runner
+ * has one.
+ *
+ * @param string $markup The body's markup
+ * @param string $before Script that runs before SFJS: the fake fetch, above all
+ * @param string $after Script that runs after SFJS
+ * @return mixed What the page reported, or null
+ */
+function sfjsInBrowser(string $markup, string $before, string $after): mixed
+{
+    $browser = '';
+
+    foreach (['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'] as $candidate) {
+        $found = trim((string) shell_exec('command -v ' . escapeshellarg($candidate) . ' 2>/dev/null'));
+
+        if ($found !== '') {
+            $browser = $found;
+            break;
+        }
+    }
+
+    if ($browser === '') {
+        return null;
+    }
+
+    $directory = sys_get_temp_dir() . '/sfphp-sfjs-' . bin2hex(random_bytes(6));
+    mkdir($directory . '/profile', 0755, true);
+
+    $script = Assets::path() . '/js/sfjs.js';
+
+    file_put_contents($directory . '/harness.html', <<<HTML
+    <!DOCTYPE html>
+    <html><head><meta charset="utf-8"><meta name="csrf-token" content="the-token"></head>
+    <body>
+    {$markup}
+    <pre id="log">nothing happened</pre>
+    <script>
+      window.logged = { warn: [], error: [] };
+      ['warn', 'error'].forEach((level) => {
+        console[level] = (...args) => window.logged[level].push(args.map(String).join(' '));
+      });
+      window.addEventListener('error', (e) => window.logged.error.push('uncaught: ' + e.message));
+      window.addEventListener('unhandledrejection', (e) => window.logged.error.push('unhandled: ' + e.reason));
+      window.wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      window.report = (value) => { document.getElementById('log').textContent = JSON.stringify(value); };
+      {$before}
+    </script>
+    <script src="file://{$script}"></script>
+    <script>
+      {$after}
+    </script>
+    </body></html>
+    HTML);
+
+    try {
+        $command = escapeshellarg($browser)
+            . ' --headless --disable-gpu --no-sandbox --disable-dev-shm-usage'
+            . ' --no-first-run --no-default-browser-check --virtual-time-budget=5000'
+            . ' --user-data-dir=' . escapeshellarg($directory . '/profile')
+            . ' --dump-dom ' . escapeshellarg('file://' . $directory . '/harness.html') . ' 2>/dev/null';
+
+        $dom = (string) shell_exec($command);
+
+        if (!preg_match('/<pre id="log">(.*?)<\/pre>/s', $dom, $matches)) {
+            return null;
+        }
+
+        return json_decode(html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), true);
+    } finally {
+        exec('rm -rf ' . escapeshellarg($directory) . ' 2>/dev/null');
+    }
+}
+
+$tests->run('sf.req hands back the Response, and swaps from a copy of it', function () use ($tests): void {
+    /*
+     * sf.ajax resolved with nothing, so the answer to a request made from
+     * JavaScript could not be read at all — worse than fetch at the one thing
+     * fetch does. sf.req resolves with fetch's own Response, adds the CSRF
+     * token, and still swaps when it is given a target, from a copy, so the
+     * body is there for the caller afterwards.
+     */
+    $result = sfjsInBrowser(
+        '<div id="out"></div>',
+        <<<'JS'
+        window.calls = [];
+        window.fetch = (url, init) => {
+          calls.push({ url, method: init.method, headers: init.headers, body: init.body ?? null, credentials: init.credentials ?? null });
+          const json = url.startsWith('/api');
+          return Promise.resolve(new Response(json ? '{"name":"Ana"}' : '<b>swapped</b>', { status: 200, headers: { 'X-Stock': '3' } }));
+        };
+        JS,
+        <<<'JS'
+        window.addEventListener('load', async () => {
+          const got = await sf.req.get('/api/users', {
+            query: { page: 2, tag: ['x', 'y'], none: null },
+            headers: { Accept: 'application/json' },
+            credentials: 'include',
+          });
+          const user = await got.json();
+          const posted = await sf.req.post('/cart', { id: 7 }, { target: '#out' });
+
+          report({
+            isResponse: got instanceof Response,
+            status: got.status,
+            name: user.name,
+            get: calls[0],
+            post: calls[1],
+            swapped: document.getElementById('out').innerHTML,
+            bodyAfterSwap: await posted.text(),
+            stock: posted.headers.get('X-Stock'),
+          });
+        });
+        JS
+    );
+
+    if ($result === null) {
+        return;
+    }
+
+    $tests->assertSame(true, $result['isResponse']);
+    $tests->assertSame(200, $result['status']);
+    $tests->assertSame('Ana', $result['name']);
+
+    // The query is built, a list as repeated keys, and nothing for a null.
+    $tests->assertSame('/api/users?page=2&tag=x&tag=y', $result['get']['url']);
+    $tests->assertSame('application/json', $result['get']['headers']['Accept']);
+    $tests->assertSame('include', $result['get']['credentials']);
+
+    // A GET changes nothing, so it carries no token and no body.
+    $tests->assertSame(false, isset($result['get']['headers']['X-CSRF-Token']));
+    $tests->assertSame(null, $result['get']['body']);
+
+    $tests->assertSame('POST', $result['post']['method']);
+    $tests->assertSame('the-token', $result['post']['headers']['X-CSRF-Token']);
+    $tests->assertSame('application/json', $result['post']['headers']['Content-Type']);
+    $tests->assertSame('{"id":7}', $result['post']['body']);
+
+    // Swapped, and the body was still there to be read.
+    $tests->assertSame('<b>swapped</b>', $result['swapped']);
+    $tests->assertSame('<b>swapped</b>', $result['bodyAfterSwap']);
+    $tests->assertSame('3', $result['stock']);
+});
+
+$tests->run('sf.req rejects when no answer came, and only the latest request of an element lands', function () use ($tests): void {
+    /*
+     * sf.ajax caught every failure itself, so a page could not tell a network
+     * error from success — a try/catch around it caught nothing. sf.req
+     * settles the way fetch does: a failure, a timeout and an abort reject,
+     * each with the error fetch would give.
+     */
+    $result = sfjsInBrowser(
+        '<button id="go">go</button><div id="out"></div>',
+        <<<'JS'
+        window.fetch = (url, init) => new Promise((resolve, reject) => {
+          if (url === '/down') return reject(new TypeError('Failed to fetch'));
+
+          const delay = { '/slow': 200, '/hang': 10000 }[url] ?? 10;
+          const timer = setTimeout(() => resolve(new Response('<i>' + url + '</i>')), delay);
+
+          init.signal.addEventListener('abort', () => { clearTimeout(timer); reject(init.signal.reason); });
+        });
+        JS,
+        <<<'JS'
+        window.addEventListener('load', async () => {
+          const out = {};
+          const button = document.getElementById('go');
+          let errors = 0;
+
+          button.addEventListener('sf:error', () => errors++);
+
+          out.down = await sf.req.get('/down', { source: button }).then(() => 'resolved', (e) => e.name);
+          out.timeout = await sf.req.get('/hang', { timeout: 50 }).then(() => 'resolved', (e) => e.name);
+
+          const controller = new AbortController();
+          const cancelled = sf.req.get('/hang', { signal: controller.signal });
+          controller.abort();
+          out.cancelled = await cancelled.then(() => 'resolved', (e) => e.name);
+
+          // The slow one is asked first; the fast one replaces it.
+          const first = sf.req.get('/slow', { source: button, target: '#out' });
+          const second = sf.req.get('/fast', { source: button, target: '#out' });
+
+          out.first = await first.then(() => 'resolved', (e) => e.name);
+          await second;
+          await wait(300);
+
+          out.landed = document.getElementById('out').textContent;
+          out.errors = errors;
+          out.busy = document.getElementById('out').getAttribute('aria-busy');
+          out.disabled = button.disabled;
+
+          report(out);
+        });
+        JS
+    );
+
+    if ($result === null) {
+        return;
+    }
+
+    $tests->assertSame('TypeError', $result['down']);
+    $tests->assertSame('TimeoutError', $result['timeout']);
+    $tests->assertSame('AbortError', $result['cancelled']);
+
+    // The replaced request rejects, and its late answer never reaches the page.
+    $tests->assertSame('AbortError', $result['first']);
+    $tests->assertSame('/fast', $result['landed']);
+
+    // sf:error went out for the answer that did not come, not for the aborts.
+    $tests->assertSame(1, $result['errors']);
+
+    // And nothing is left looking busy.
+    $tests->assertSame(null, $result['busy']);
+    $tests->assertSame(false, $result['disabled']);
+});
+
+$tests->run('sf.target puts markup in place from a string or a response', function () use ($tests): void {
+    /*
+     * The second half of a request, on its own, so an answer can be looked at
+     * before it is sent somewhere. It goes through the same swap the
+     * attributes use: morph by default, and what arrives is bound.
+     */
+    $result = sfjsInBrowser(
+        '<div id="box"><h2 id="heading">one</h2></div><ul id="list"><li>a</li></ul><div id="more"></div>',
+        <<<'JS'
+        window.calls = [];
+        window.fetch = (url) => { calls.push(url); return Promise.resolve(new Response('<em>loaded</em>')); };
+        JS,
+        <<<'JS'
+        window.addEventListener('load', async () => {
+          const out = {};
+          const heading = document.getElementById('heading');
+
+          await sf.target('#box', '<h2 id="heading">two</h2>');
+          out.sameNode = heading === document.getElementById('heading');
+          out.text = heading.textContent;
+
+          await sf.target(document.getElementById('list'), new Response('<li>b</li>'), { swap: 'beforeend' });
+          out.list = document.getElementById('list').innerHTML;
+
+          const read = new Response('<p>x</p>');
+          await read.text();
+          out.used = await sf.target('#box', read).then(() => 'resolved', (e) => e.name + ': ' + e.message);
+
+          // What arrives is bound: this @get fires as soon as it is in the page.
+          await sf.target('#more', '<div @get="/loaded" @trigger="load"></div>');
+          await wait(50);
+          out.calls = calls;
+
+          report(out);
+        });
+        JS
+    );
+
+    if ($result === null) {
+        return;
+    }
+
+    $tests->assertSame(true, $result['sameNode']);
+    $tests->assertSame('two', $result['text']);
+    $tests->assertSame('<li>a</li><li>b</li>', $result['list']);
+    $tests->assertSame(true, str_starts_with($result['used'], 'TypeError: sf.target: this response was already read'));
+    $tests->assertSame(['/loaded'], $result['calls']);
+});
+
+$tests->run('a plugin is attached once per element, updated, and cleaned up when the element leaves', function () use ($tests): void {
+    /*
+     * sf.onBind hands a plugin the parent of whatever was swapped, so the
+     * elements that were already there come round again, and nothing says
+     * when one leaves. Every plugin had to remember a flag of its own and
+     * leaked its timers when it forgot. sf.plugin does the bookkeeping.
+     */
+    $result = sfjsInBrowser(
+        <<<'HTML'
+        <div id="scope" @state="{ count: 0 }">
+          <span id="count" @text="count"></span>
+          <div id="panel"><span id="one" @counter="a"></span></div>
+        </div>
+        <b @broken></b>
+        HTML,
+        <<<'JS'
+        window.fetch = (url, init) => new Promise((resolve, reject) => {
+          const timer = setTimeout(() => resolve(new Response('fetched ' + url)), url === '/hang' ? 10000 : 10);
+          init.signal.addEventListener('abort', () => { clearTimeout(timer); reject(init.signal.reason); });
+        });
+        JS,
+        <<<'JS'
+        window.addEventListener('load', async () => {
+          const out = { attached: 0, detached: 0, updated: [], pings: 0, ticks: 0 };
+
+          sf.plugin('counter', {
+            attach(el, ctx) {
+              out.attached++;
+              ctx.state.count++;
+              ctx.every(10, () => out.ticks++);
+              ctx.on(window, 'ping', () => out.pings++);
+              return () => out.detached++;
+            },
+            update(el, ctx) { out.updated.push(ctx.value); },
+          });
+
+          sf.plugin('broken', { attach() { throw new Error('boom'); } });
+          sf.plugin('later', { attach(el) { el.dataset.ok = 'yes'; } });
+
+          sf.plugin('fetcher', {
+            async attach(el, ctx) {
+              const answer = await ctx.req.get(ctx.value);
+              el.textContent = await answer.text();
+            },
+          });
+
+          await wait(0);
+          out.countAfterFirst = document.getElementById('count').textContent;
+
+          // A swap of the parent: the first element stays, a second arrives.
+          await sf.target('#panel', '<span id="one" @counter="a"></span><span id="two" @counter="b"></span>');
+          out.attachedAfterSwap = out.attached;
+
+          // A swap that changes a value.
+          await sf.target('#panel', '<span id="one" @counter="z"></span><span id="two" @counter="b"></span>');
+
+          window.dispatchEvent(new Event('ping'));
+          out.pingsBefore = out.pings;
+
+          // Taken out by plain DOM code, not by a swap.
+          document.getElementById('two').remove();
+          await wait(0);
+          out.detachedAfterRemove = out.detached;
+
+          window.dispatchEvent(new Event('ping'));
+          out.pingsAfter = out.pings;
+
+          document.getElementById('one').remove();
+          await wait(0);
+          const ticks = out.ticks;
+          await wait(100);
+          out.ticksStopped = out.ticks === ticks;
+
+          // Markup that another script put in the page.
+          document.body.insertAdjacentHTML('beforeend', '<i id="late" @later></i><i id="fetched" @fetcher="/data"></i><i id="hanging" @fetcher="/hang"></i>');
+          await wait(50);
+          out.late = document.getElementById('late').dataset.ok;
+          out.fetched = document.getElementById('fetched').textContent;
+
+          // Leaves while its request is in the air: the request is aborted, and that is not an error.
+          document.getElementById('hanging').remove();
+          await wait(50);
+
+          out.names = ['include', 'Bad_Name', 'hxthing', 'counter', 'stream', 'get'].map((name) => {
+            try { sf.plugin(name, { attach() {} }); return name + ': accepted'; } catch (e) { return name + ': ' + e.message; }
+          });
+
+          out.errors = logged.error;
+          out.countAtEnd = document.getElementById('count').textContent;
+
+          report(out);
+        });
+        JS
+    );
+
+    if ($result === null) {
+        return;
+    }
+
+    // Registered after the page was bound, and attached straight away; ctx.state writes reach @text.
+    $tests->assertSame('1', $result['countAfterFirst']);
+
+    // The element that survived the swap was not attached a second time.
+    $tests->assertSame(2, $result['attachedAfterSwap']);
+    $tests->assertSame(['z'], $result['updated']);
+    $tests->assertSame(2, $result['pingsBefore']);
+
+    // Removed: cleanup ran, its listener went, its timer stopped.
+    $tests->assertSame(1, $result['detachedAfterRemove']);
+    $tests->assertSame(3, $result['pingsAfter']);
+    $tests->assertSame(true, $result['ticksStopped']);
+
+    // Markup from elsewhere is attached too, and ctx.req answers.
+    $tests->assertSame('yes', $result['late']);
+    $tests->assertSame('fetched /data', $result['fetched']);
+
+    // One broken plugin is reported by name and stops nobody else.
+    $broken = array_values(array_filter($result['errors'], static fn (string $line): bool => str_contains($line, '@broken')));
+    $tests->assertSame(1, count($broken));
+    $tests->assertSame(true, str_contains($broken[0], 'failed in attach'));
+
+    // The request that was cut off by its element leaving is not an error.
+    $tests->assertSame(1, count($result['errors']));
+
+    [$include, $bad, $hx, $twice, $builtIn, $core] = $result['names'];
+    $tests->assertSame(true, str_contains($include, 'is reserved'));
+    $tests->assertSame(true, str_contains($bad, 'is not a valid name'));
+    $tests->assertSame(true, str_contains($hx, 'is reserved'));
+    $tests->assertSame(true, str_contains($twice, 'already registered'));
+    $tests->assertSame(true, str_contains($builtIn, 'already registered'));
+    $tests->assertSame(true, str_contains($core, 'is reserved'));
+});
+
+$tests->run('a stream is a plugin, and stops when its element leaves', function () use ($tests): void {
+    /*
+     * @stream moved onto sf.plugin: its own flag, its own observer and its
+     * own cleanup gave way to the ones every plugin gets. This is the check
+     * that a stream still streams, and still stops.
+     */
+    $result = sfjsInBrowser(
+        '<button id="start" @stream="/stream" @target="#out" @trigger="click">go</button><div id="out"></div>',
+        <<<'JS'
+        window.signals = [];
+        window.fetch = (url, init) => {
+          signals.push(init.signal);
+          const encoder = new TextEncoder();
+          const body = new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode('Hello, '));
+              setTimeout(() => controller.enqueue(encoder.encode('world')), 20);
+            },
+          });
+          return Promise.resolve(new Response(body));
+        };
+        JS,
+        <<<'JS'
+        window.addEventListener('load', async () => {
+          document.getElementById('start').click();
+          await wait(100);
+
+          const text = document.getElementById('out').textContent;
+
+          document.getElementById('start').remove();
+          await wait(20);
+
+          report({ text, requests: signals.length, stopped: signals[0] ? signals[0].aborted : null });
+        });
+        JS
+    );
+
+    if ($result === null) {
+        return;
+    }
+
+    $tests->assertSame('Hello, world', $result['text']);
+    $tests->assertSame(1, $result['requests']);
+    $tests->assertSame(true, $result['stopped']);
+});
+
+$tests->run('a plugin\'s callbacks are guarded: a failure is reported by name, a replaced request is not', function () use ($tests): void {
+    /*
+     * A request replaced by a newer one from the same element rejects with
+     * AbortError, as fetch does when it is aborted. An async listener that
+     * awaited it would print "Uncaught (in promise)" at every quick second
+     * click, so what ctx.on, ctx.every, ctx.after and ctx.debounce call is
+     * guarded like attach: the abort is quiet, a real failure is named.
+     */
+    $result = sfjsInBrowser(
+        '<button id="ask" @asker="/question">ask</button>',
+        <<<'JS'
+        window.fetch = (url, init) => new Promise((resolve, reject) => {
+          const timer = setTimeout(() => resolve(new Response('answer')), 50);
+          init.signal.addEventListener('abort', () => { clearTimeout(timer); reject(init.signal.reason); });
+        });
+        JS,
+        <<<'JS'
+        window.addEventListener('load', async () => {
+          sf.plugin('asker', {
+            attach(el, ctx) {
+              ctx.on(el, 'click', async () => {
+                const res = await ctx.req.get(ctx.value);
+                el.dataset.got = await res.text();
+              });
+              ctx.on(el, 'boom', () => { throw new Error('bad'); });
+            },
+          });
+
+          const button = document.getElementById('ask');
+
+          button.click();
+          await wait(5);
+          button.disabled = false;   // the first request disabled it; click again before it lands
+          button.click();
+          await wait(150);
+
+          button.dispatchEvent(new Event('boom'));
+          await wait(0);
+
+          report({ got: button.dataset.got, errors: logged.error });
+        });
+        JS
+    );
+
+    if ($result === null) {
+        return;
+    }
+
+    $tests->assertSame('answer', $result['got']);
+    $tests->assertSame(1, count($result['errors']));
+    $tests->assertSame(true, str_contains($result['errors'][0], '@asker failed in boom'));
+});
+
+$tests->run('what is deprecated still works, and says so once', function () use ($tests): void {
+    /*
+     * sf.ajax, sf.morph and the DOM, storage and util helpers are on their way
+     * out, and a page written against them keeps working until they go.
+     * sf.ajax keeps its old contract — nothing to resolve with, failures
+     * caught — because moving to sf.req is the change, not upgrading SFJS.
+     */
+    $result = sfjsInBrowser(
+        '<div id="a"></div>',
+        <<<'JS'
+        window.fetch = (url) => url === '/down'
+          ? Promise.reject(new TypeError('Failed to fetch'))
+          : Promise.resolve(new Response('swapped'));
+        JS,
+        <<<'JS'
+        window.addEventListener('load', async () => {
+          const out = {};
+
+          out.ajax = String(await sf.ajax.get('/x', { target: '#a' }));
+          out.swapped = document.getElementById('a').textContent;
+          out.failed = await sf.ajax.get('/down').then((v) => 'resolved: ' + v, () => 'rejected');
+
+          sf.dom.addClass('#a', 'one two');
+          sf.dom.addClass('#a', 'three');
+          out.classes = document.getElementById('a').className;
+
+          sf.morph(document.getElementById('a'), 'morphed');
+          out.morphed = document.getElementById('a').textContent;
+
+          out.warnings = logged.warn;
+
+          report(out);
+        });
+        JS
+    );
+
+    if ($result === null) {
+        return;
+    }
+
+    $tests->assertSame('undefined', $result['ajax']);
+    $tests->assertSame('swapped', $result['swapped']);
+    $tests->assertSame('resolved: undefined', $result['failed']);
+    $tests->assertSame('one two three', $result['classes']);
+    $tests->assertSame('morphed', $result['morphed']);
+
+    // Once per function, naming what to use instead.
+    $tests->assertSame(3, count($result['warnings']));
+    $tests->assertSame(true, str_contains($result['warnings'][0], 'sf.ajax.get is deprecated') && str_contains($result['warnings'][0], 'sf.req.get()'));
+    $tests->assertSame(true, str_contains($result['warnings'][1], 'sf.dom.addClass is deprecated') && str_contains($result['warnings'][1], 'classList.add()'));
+    $tests->assertSame(true, str_contains($result['warnings'][2], 'sf.morph() is deprecated') && str_contains($result['warnings'][2], 'sf.target(el, html)'));
+});
+
+$tests->run('a plugin cannot be named after a template directive', function () use ($tests): void {
+    /*
+     * The SFPHP parser reads @include, @if or @block in a template as its own
+     * syntax, so <div @include="x"> stops the page from compiling long before
+     * SFJS could see it. sf.plugin refuses those names, and this keeps its
+     * list in step with the parser's.
+     */
+    $script = (string) file_get_contents(Assets::path() . '/js/sfjs.js');
+    $start = strpos($script, 'const RESERVED = [');
+    $end = strpos($script, '];', $start ?: 0);
+
+    preg_match_all("/'([a-z-]+)'/", substr($script, (int) $start, (int) $end - (int) $start), $matches);
+
+    foreach (\SfphpProject\src\View\Parser::DIRECTIVES as $directive) {
+        $tests->assertSame(true, in_array(strtolower($directive), $matches[1], true));
+    }
 });
 
 $tests->run('a pattern that needs a pipe is given as an array', function () use ($tests): void {
