@@ -928,9 +928,7 @@ $tests->run('views escape output and protect view names', function () use ($test
         InvalidArgumentException::class
     );
 
-    ob_start();
-    View::partial('header', ['title' => '<script>']);
-    $output = ob_get_clean();
+    $output = View::makePartial('header', ['title' => '<script>']);
     $tests->assertTrue(str_contains($output, '&lt;script&gt;'));
 });
 
@@ -5771,7 +5769,7 @@ $tests->run('an element can say when it fires, and a field sends itself', functi
     <!DOCTYPE html>
     <html><head><meta charset="utf-8"></head>
     <body>
-    <div id="panel" \x40get="/tick" \x40trigger="load, every 200ms"></div>
+    <div id="panel" \x40get="/tick" \x40trigger="load, every:200ms"></div>
     <input id="search" name="q" value="abc" \x40get="/search" \x40target="#out" \x40trigger="input delay:50ms">
     <form id="form" \x40post="/save" \x40target="#out" \x40trigger="submit">
       <input name="title" value="hello"><button type="submit">go</button>
@@ -5865,7 +5863,7 @@ $tests->run('a declarative form sends the fields a visitor typed', function () u
     <!DOCTYPE html>
     <html><head><meta charset="utf-8"></head>
     <body>
-    <form method="get" action="/look" \x40hxGet="/look" \x40hxTarget="#result">
+    <form method="get" action="/look" \x40get="/look" \x40target="#result">
       <input name="postcode" value="01001-000">
       <button type="submit">Look up</button>
     </form>
@@ -6355,7 +6353,7 @@ $tests->run('a plugin is attached once per element, updated, and cleaned up when
           document.getElementById('hanging').remove();
           await wait(50);
 
-          out.names = ['include', 'Bad_Name', 'hxthing', 'counter', 'stream', 'get'].map((name) => {
+          out.names = ['include', 'Bad_Name', 'state', 'counter', 'stream', 'get'].map((name) => {
             try { sf.plugin(name, { attach() {} }); return name + ': accepted'; } catch (e) { return name + ': ' + e.message; }
           });
 
@@ -6396,10 +6394,10 @@ $tests->run('a plugin is attached once per element, updated, and cleaned up when
     // The request that was cut off by its element leaving is not an error.
     $tests->assertSame(1, count($result['errors']));
 
-    [$include, $bad, $hx, $twice, $builtIn, $core] = $result['names'];
+    [$include, $bad, $state, $twice, $builtIn, $core] = $result['names'];
     $tests->assertSame(true, str_contains($include, 'is reserved'));
     $tests->assertSame(true, str_contains($bad, 'is not a valid name'));
-    $tests->assertSame(true, str_contains($hx, 'is reserved'));
+    $tests->assertSame(true, str_contains($state, 'is reserved'));
     $tests->assertSame(true, str_contains($twice, 'already registered'));
     $tests->assertSame(true, str_contains($builtIn, 'already registered'));
     $tests->assertSame(true, str_contains($core, 'is reserved'));
@@ -6504,38 +6502,31 @@ $tests->run('a plugin\'s callbacks are guarded: a failure is reported by name, a
     $tests->assertSame(true, str_contains($result['errors'][0], '@asker failed in boom'));
 });
 
-$tests->run('what is deprecated still works, and says so once', function () use ($tests): void {
+$tests->run('what was deprecated is gone, and the old spellings do nothing', function () use ($tests): void {
     /*
-     * sf.ajax, sf.morph and the DOM, storage and util helpers are on their way
-     * out, and a page written against them keeps working until they go.
-     * sf.ajax keeps its old contract — nothing to resolve with, failures
-     * caught — because moving to sf.req is the change, not upgrading SFJS.
+     * Removed in 0.39.0: sf.ajax (sf.req), sf.morph (sf.target), the sf.dom,
+     * sf.storage and sf.util wrappers, the @hxGet spellings and "every 10s"
+     * with a space. A page still written against them has to fail where it
+     * can be seen — an undefined function, a button that does nothing — rather
+     * than keep working through an alias nobody remembers is there.
      */
     $result = sfjsInBrowser(
-        '<div id="a"></div>',
+        '<button id="old" @hxGet="/old" @hxTarget="#out">old</button>'
+        . '<div @get="/spaced" @trigger="every 50ms"></div><div id="out"></div>',
         <<<'JS'
-        window.fetch = (url) => url === '/down'
-          ? Promise.reject(new TypeError('Failed to fetch'))
-          : Promise.resolve(new Response('swapped'));
+        window.calls = [];
+        window.fetch = (url) => { calls.push(url); return Promise.resolve(new Response('swapped')); };
         JS,
         <<<'JS'
         window.addEventListener('load', async () => {
-          const out = {};
+          document.getElementById('old').click();
+          await wait(200);
 
-          out.ajax = String(await sf.ajax.get('/x', { target: '#a' }));
-          out.swapped = document.getElementById('a').textContent;
-          out.failed = await sf.ajax.get('/down').then((v) => 'resolved: ' + v, () => 'rejected');
-
-          sf.dom.addClass('#a', 'one two');
-          sf.dom.addClass('#a', 'three');
-          out.classes = document.getElementById('a').className;
-
-          sf.morph(document.getElementById('a'), 'morphed');
-          out.morphed = document.getElementById('a').textContent;
-
-          out.warnings = logged.warn;
-
-          report(out);
+          report({
+            gone: ['ajax', 'morph', 'dom', 'storage', 'util'].filter((name) => name in sf),
+            calls,
+            out: document.getElementById('out').textContent,
+          });
         });
         JS
     );
@@ -6544,17 +6535,9 @@ $tests->run('what is deprecated still works, and says so once', function () use 
         return;
     }
 
-    $tests->assertSame('undefined', $result['ajax']);
-    $tests->assertSame('swapped', $result['swapped']);
-    $tests->assertSame('resolved: undefined', $result['failed']);
-    $tests->assertSame('one two three', $result['classes']);
-    $tests->assertSame('morphed', $result['morphed']);
-
-    // Once per function, naming what to use instead.
-    $tests->assertSame(3, count($result['warnings']));
-    $tests->assertSame(true, str_contains($result['warnings'][0], 'sf.ajax.get is deprecated') && str_contains($result['warnings'][0], 'sf.req.get()'));
-    $tests->assertSame(true, str_contains($result['warnings'][1], 'sf.dom.addClass is deprecated') && str_contains($result['warnings'][1], 'classList.add()'));
-    $tests->assertSame(true, str_contains($result['warnings'][2], 'sf.morph() is deprecated') && str_contains($result['warnings'][2], 'sf.target(el, html)'));
+    $tests->assertSame([], $result['gone']);
+    $tests->assertSame([], $result['calls']);
+    $tests->assertSame('', $result['out']);
 });
 
 $tests->run('a plugin cannot be named after a template directive', function () use ($tests): void {
@@ -6786,7 +6769,7 @@ $tests->run('make:plugin writes a plugin, and refuses the names sf.plugin refuse
         $tests->assertSame($root . '/app/resources/js/plugins/countdown.js', $file);
         $tests->assertSame(true, str_contains((string) file_get_contents($file), "sf.plugin('countdown', {"));
 
-        foreach (['include', 'stream', 'hxthing', 'Bad_Name', '9lives'] as $name) {
+        foreach (['include', 'stream', 'swap', 'Bad_Name', '9lives'] as $name) {
             $tests->assertThrows(static fn () => $generator->generate($name), InvalidArgumentException::class);
         }
 

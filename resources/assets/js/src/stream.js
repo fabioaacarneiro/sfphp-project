@@ -16,8 +16,8 @@
    * @param {Element} element The element with @stream
    */
   function handleStream(element) {
-    const url = element.getAttribute('@stream') || element.getAttribute('@hxstream');
-    const target = element.getAttribute('@target') || element.getAttribute('@hxtarget');
+    const url = element.getAttribute('@stream');
+    const target = element.getAttribute('@target');
     const targetEl = target ? document.querySelector(target) : element;
     const method = (element.getAttribute('@method') || 'GET').toUpperCase();
 
@@ -52,7 +52,7 @@
       return;
     }
 
-    const isSSE = element.getAttribute('@sse') !== null || element.getAttribute('@hxsse') !== null;
+    const isSSE = element.getAttribute('@sse') !== null;
 
     // Starting again replaces the run in progress: stop it, then start from
     // an empty target, so a second click repeats the stream instead of
@@ -517,5 +517,4 @@
   const { register } = sf[Symbol.for('sfjs.internal')];
 
   register('stream', stream);
-  register('hxstream', stream);
 })();

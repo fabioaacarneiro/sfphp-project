@@ -827,9 +827,9 @@ View::makePartial('header', ['title' => 'Meu Site']);
 Response::sfht('posts/index', ['posts' => $posts]);
 ```
 
-`View::render()` e `View::partial()` ainda existem e ecoam, mas estão
-**deprecadas**: um `Response` precisa de um corpo que ele possa carregar, não
-de saída que já escapou para o cliente.
+`View::render()` e `View::partial()`, que ecoavam, foram removidos na 0.39.0:
+um `Response` precisa de um corpo que ele possa carregar, não de saída que já
+escapou para o cliente.
 
 Nomes de view são validados contra travessia de diretório. Templates vivem em
 `app/resources/views/` com extensão **`.sfht`**.
@@ -5117,7 +5117,6 @@ opcional, e `--short=`, `--description=`, `--color=`, `--background=`,
 
 ```bash
 ./sfphp make:migration create_posts title:string timestamps
-./sfphp make:migration:create posts       # obsoleto: o mesmo que make:migration create_posts
 ./sfphp migrate [--step=N] [--path=dir]
 ./sfphp rollback [--step=N] [--path=dir]
 ./sfphp status [--path=dir]
@@ -5226,7 +5225,7 @@ Atualizar, então, é substituir esses arquivos sabendo quais são:
 ```bash
 ./sfphp upgrade --dry-run          # o que faria, sem mudar nada
 ./sfphp upgrade                    # o release mais recente
-./sfphp upgrade --to=v0.38.0       # busca essa tag com o git
+./sfphp upgrade --to=v0.39.0       # busca essa tag com o git
 ./sfphp upgrade --from=../sfphp    # uma cópia que você já tem
 ```
 
@@ -5269,6 +5268,46 @@ composer dump-autoload
 > de um release anterior a este, faça a primeira atualização à mão — substitua
 > `src/`, o binário e o `server.php`, mescle `resources/`, `lang/` e `tools/`, e
 > compare o `public/index.php`. Daí em diante o comando faz isso.
+
+### Removido na 0.39.0
+
+O que a 0.36.0 depreciou no SFJS, e o que já estava depreciado antes, saiu. Uma
+página ou aplicação que ainda usa algo disso falha onde dá para ver — uma função
+indefinida, um atributo que não faz nada, um comando desconhecido — em vez de
+continuar funcionando por um alias que ninguém lembra que existe.
+
+| Removido | Use |
+|---|---|
+| `sf.ajax.get()`, `.post()`, `.put()`, `.patch()`, `.delete()` | `sf.req.get()` e os demais — resolvem com o `Response` e rejeitam quando não veio resposta |
+| `sf.morph(el, html)` | `sf.target(el, html)` |
+| `sf.dom.addClass()`, `removeClass()`, `toggleClass()`, `hasClass()` | `el.classList.add()`, `remove()`, `toggle()`, `contains()` |
+| `sf.dom.show()`, `hide()`, `toggle()` | `el.hidden = false`, `el.hidden = true`, `el.hidden = !el.hidden` |
+| `sf.dom.on()`, `off()` | `el.addEventListener()`, `removeEventListener()` — ou `ctx.on()` num plugin |
+| `sf.dom.ready()` | `sf.plugin()`, ou um script com `defer` |
+| `sf.storage.set()`, `get()`, `remove()`, `clear()` | `localStorage`, com `JSON.stringify()` e `JSON.parse()` |
+| `sf.util.debounce()`, `sf.util.id()` | `ctx.debounce()` e `ctx.id()` num plugin |
+| `sf.util.throttle()` | uma checagem de horário sua |
+| `sf.util.wait(ms)` | `new Promise((resolve) => setTimeout(resolve, ms))` |
+| `@hxGet`, `@hxPost`, `@hxPut`, `@hxPatch`, `@hxDelete`, `@hxTarget`, `@hxSwap`, `@hxTrigger`, `@hxstream`, `@hxsse` | `@get`, `@post`, `@put`, `@patch`, `@delete`, `@target`, `@swap`, `@trigger`, `@stream`, `@sse` |
+| `@trigger="every 10s"`, com espaço | `@trigger="every:10s"` |
+| `View::render()`, `View::partial()`, que ecoavam | `View::make()`, `View::makePartial()`, devolvidos num `Response` |
+| a `partial()` global | `View::makePartial()` |
+| a `assets()` global, que ecoava | `asset()`, que devolve a URL |
+| a `validate()` global | `Validator::validate()`, ou `$request->validate()` |
+| `Task::start()`, `Task::resume()` | agendar a task — veja o [guia de Async](./ASYNC.md) |
+| `./sfphp make:migration:create posts` | `./sfphp make:migration create_posts` |
+
+Os helpers de DOM e de storage davam, cada um, outro nome a uma única chamada
+nativa, e um segundo nome para `classList.add` é mais uma coisa para aprender e
+nada a mais para fazer. O `debounce` e o `id` não são nativos, e é por isso que
+moram no `ctx`, onde também param quando o elemento sai. Sem as grafias `@hx`,
+um plugin agora pode ter qualquer nome que comece com `hx`.
+
+Antes de atualizar, isto acha o que um projeto ainda usa:
+
+```bash
+grep -rnE "sf\.(ajax|morph|dom|storage|util)\b|@hx|every [0-9]|View::(render|partial)\(|[^:>]partial\(|[^a-z_]assets\(|make:migration:create" app
+```
 
 ### Começar do zero
 
@@ -5499,8 +5538,8 @@ Três destes fazem o que uma linha de JavaScript nativo não faz, e as próximas
 seções tratam deles: o `sf.req` envia uma requisição, o `sf.target` põe markup
 na página e o `sf.plugin` ensina ao SFJS um atributo seu. Os helpers que só
 davam outro nome a uma chamada nativa — `sf.dom`, `sf.storage`, `sf.util` —
-estão depreciados, assim como o `sf.ajax` e o `sf.morph`, que o `sf.req` e o
-`sf.target` substituem. Veja [Em vias de sair](#em-vias-de-sair).
+foram removidos na 0.39.0, assim como o `sf.ajax` e o `sf.morph`, que o
+`sf.req` e o `sf.target` substituem. Veja [Removido na 0.39.0](#removido-na-0390).
 
 ### Requisições pelo código: sf.req
 
@@ -5785,7 +5824,6 @@ porquê:
 - **os atributos que o próprio SFJS lê** — `get`, `post`, `target`, `swap`,
   `trigger`, `state`, `show`, `text`, `model`, `on`, `modal`, `tabs`,
   `tooltip` e os demais;
-- nomes que começam com `hx`, a grafia antiga dos atributos;
 - um nome já registrado — `stream` é um deles: o `@stream` é ele mesmo um
   plugin.
 
@@ -5796,36 +5834,6 @@ precisa manter uma marca própria e limpar o que deixou. Ele continua para
 comportamentos que não dependem de um atributo próprio — os menus dropdown do
 SFJS o usam para achar botões com `popovertarget`. Para um atributo, use o
 `sf.plugin`.
-
-### Em vias de sair
-
-Cada um destes continua funcionando, e avisa uma vez no console, dizendo o que
-usar no lugar. Eles saem num release futuro.
-
-| Depreciado | Use |
-|---|---|
-| `sf.ajax.get()`, `.post()`, `.put()`, `.patch()`, `.delete()` | `sf.req.get()` e os demais |
-| `sf.morph(el, html)` | `sf.target(el, html)` |
-| `sf.dom.addClass()`, `removeClass()`, `toggleClass()`, `hasClass()` | `el.classList.add()`, `remove()`, `toggle()`, `contains()` |
-| `sf.dom.show()`, `hide()`, `toggle()` | `el.hidden = false`, `el.hidden = true`, `el.hidden = !el.hidden` |
-| `sf.dom.on()`, `off()` | `el.addEventListener()`, `removeEventListener()` — ou `ctx.on()` num plugin |
-| `sf.dom.ready()` | `sf.plugin()`, ou um script com `defer` |
-| `sf.storage.set()`, `get()`, `remove()`, `clear()` | `localStorage`, com `JSON.stringify()` e `JSON.parse()` |
-| `sf.util.debounce()`, `sf.util.id()` | `ctx.debounce()` e `ctx.id()` num plugin |
-| `sf.util.throttle()` | uma checagem de horário sua |
-| `sf.util.wait(ms)` | `new Promise((resolve) => setTimeout(resolve, ms))` |
-
-Os helpers de DOM e de storage davam, cada um, outro nome a uma única chamada
-nativa, e um segundo nome para `classList.add` é mais uma coisa para aprender e
-nada a mais para fazer. O `debounce` e o `id` não são nativos, e é por isso que
-foram para o `ctx`, onde também param quando o elemento sai.
-
-**O `sf.ajax` mantém o contrato antigo**: resolve com nada, e uma falha é
-relatada no console em vez de lançada. O `sf.req` é onde estão o `Response` e a
-rejeição, então a mudança é passar para ele — atualizar o SFJS não muda nada
-para uma página que ainda chama o `sf.ajax`. O `sf.form.submit()`, que não era
-de nenhum dos dois, agora resolve com o `Response` e rejeita como o `sf.req`; um
-formulário enviado pelos atributos relata uma falha no console, como antes.
 
 ### Atributos declarativos
 
@@ -5856,10 +5864,6 @@ corpo JSON.
 O que volta é trocado como markup, então quem responde a um desses é um
 fragmento — renderizado pelo mesmo componente que o renderiza dentro da página
 inteira, e não JSON para o JavaScript remontar em HTML.
-
-> As grafias antigas `@hxGet`, `@hxTarget` e `@hxSwap` continuam funcionando e
-> querem dizer a mesma coisa. Elas foram distribuídas, então são lidas como
-> alias em vez de removidas; estão depreciadas e saem num release futuro.
 
 ### Dizer quando dispara
 
@@ -5905,9 +5909,6 @@ nome que ele não conhece simplesmente nunca dispara.
 
 Um fragmento que chega por uma troca também é ligado, então um painel que se
 atualiza continua se atualizando depois da primeira vez.
-
-> O `every 10s` com espaço é lido como `every:10s`. Ele saiu na 0.15.0, então
-> fica como grafia depreciada e some num release futuro.
 
 ### Estado na página
 

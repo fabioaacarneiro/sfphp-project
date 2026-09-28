@@ -10,10 +10,8 @@
 const sf = (() => {
   /*
    * The attributes are @get, @post, @put, @patch and @delete, with @target,
-   * @swap and @trigger beside them. The older @hxGet spellings still work and
-   * are read as the same thing: they shipped, so removing them would break
-   * pages that are already written. They are deprecated and go in a later
-   * release.
+   * @swap and @trigger beside them. The @hxGet spellings that came before
+   * them were removed in 0.39.0.
    */
   const VERBS = ['get', 'post', 'put', 'patch', 'delete'];
 
@@ -112,7 +110,7 @@ const sf = (() => {
   }
 
   /**
-   * The request an element declares, whichever spelling it used.
+   * The request an element declares.
    *
    * @param {Element} element The element
    * @returns {{method: string, url: string, target: ?string, swap: string}|null}
@@ -122,7 +120,7 @@ const sf = (() => {
 
     for (const attribute of Array.from(element.attributes)) {
       const name = attribute.name.toLowerCase();
-      const verb = VERBS.find((one) => name === '@' + one || name === '@hx' + one);
+      const verb = VERBS.find((one) => name === '@' + one);
 
       if (!verb || !attribute.value) continue;
 
@@ -138,14 +136,14 @@ const sf = (() => {
   }
 
   /**
-   * Read one of the companion attributes in either spelling.
+   * Read one of the companion attributes: @target, @swap, @trigger.
    *
    * @param {Element} element The element
    * @param {string} name Without the @, in lower case
    * @returns {?string}
    */
   function attributeOf(element, name) {
-    return element.getAttribute('@' + name) || element.getAttribute('@hx' + name);
+    return element.getAttribute('@' + name);
   }
 
   // ========== REQUESTS ==========
@@ -649,64 +647,14 @@ const sf = (() => {
     },
   };
 
-  // ========== DOM UTILITIES ==========
+  // ========== DOM READY ==========
 
+  /*
+   * sf.dom was a set of one-line wrappers for classList, hidden and
+   * addEventListener, removed in 0.39.0. This is the one piece of it SFJS
+   * uses itself.
+   */
   const dom = {
-    addClass: (element, className) => {
-      if (typeof element === 'string') element = document.querySelector(element);
-      element?.classList.add(...className.split(' '));
-    },
-
-    removeClass: (element, className) => {
-      if (typeof element === 'string') element = document.querySelector(element);
-      element?.classList.remove(...className.split(' '));
-    },
-
-    toggleClass: (element, className) => {
-      if (typeof element === 'string') element = document.querySelector(element);
-      element?.classList.toggle(className);
-    },
-
-    hasClass: (element, className) => {
-      if (typeof element === 'string') element = document.querySelector(element);
-      return element?.classList.contains(className) || false;
-    },
-
-    /*
-     * The hidden attribute, as @show, @toggle and SFCSS use it. An inline
-     * display could not reveal an element hidden with the attribute, and it
-     * overrode whatever display — flex, grid — the element's own CSS gave it.
-     * An inline "display: none" written to avoid a flash is cleared on show.
-     */
-    show: (element) => {
-      if (typeof element === 'string') element = document.querySelector(element);
-      if (!element) return;
-      element.hidden = false;
-      if (element.style.display === 'none') element.style.display = '';
-    },
-
-    hide: (element) => {
-      if (typeof element === 'string') element = document.querySelector(element);
-      if (element) element.hidden = true;
-    },
-
-    toggle: (element) => {
-      if (typeof element === 'string') element = document.querySelector(element);
-      if (!element) return;
-      if (element.hidden || element.style.display === 'none') dom.show(element);
-      else dom.hide(element);
-    },
-
-    on: (element, event, handler) => {
-      if (typeof element === 'string') element = document.querySelector(element);
-      element?.addEventListener(event, handler);
-    },
-
-    off: (element, event, handler) => {
-      if (typeof element === 'string') element = document.querySelector(element);
-      element?.removeEventListener(event, handler);
-    },
-
     ready: (callback) => {
       if (document.readyState !== 'loading') {
         callback();
@@ -954,19 +902,9 @@ const sf = (() => {
     else element.removeAttribute('aria-describedby');
   }
 
-  // ========== STORAGE ==========
-
-  const storage = {
-    set: (key, value) => localStorage.setItem(key, JSON.stringify(value)),
-    get: (key) => {
-      const item = localStorage.getItem(key);
-      return item ? JSON.parse(item) : null;
-    },
-    remove: (key) => localStorage.removeItem(key),
-    clear: () => localStorage.clear(),
-  };
-
   // ========== UTILITIES ==========
+
+  // For SFJS itself and for ctx in a plugin; sf.util was removed in 0.39.0.
 
   const util = {
     debounce: (fn, delay) => {
@@ -976,19 +914,6 @@ const sf = (() => {
         timeout = setTimeout(() => fn.apply(this, args), delay);
       };
     },
-
-    throttle: (fn, delay) => {
-      let last = 0;
-      return function (...args) {
-        const now = Date.now();
-        if (now - last >= delay) {
-          last = now;
-          fn.apply(this, args);
-        }
-      };
-    },
-
-    wait: (ms) => new Promise(resolve => setTimeout(resolve, ms)),
 
     /**
      * An element's id, giving it a unique one first if it has none — ARIA
@@ -1902,7 +1827,7 @@ const sf = (() => {
    * @trigger takes a comma-separated list, so one element can load itself and
    * then keep itself current:
    *
-   *   <div @get="/sales" @trigger="load, every 10s"></div>
+   *   <div @get="/sales" @trigger="load, every:10s"></div>
    *   <input name="q" @get="/search" @trigger="input delay:300ms" @target="#results">
    *
    * Without it, the old behaviour stands: a click on an element, a submit on a
@@ -1912,7 +1837,7 @@ const sf = (() => {
    * @returns {void}
    */
   function bindTriggers(root) {
-    const selector = VERBS.map((verb) => '[\\@' + verb + '], [\\@hx' + verb + ']').join(', ');
+    const selector = VERBS.map((verb) => '[\\@' + verb + ']').join(', ');
 
     root.querySelectorAll(selector).forEach((element) => {
       const spec = attributeOf(element, 'trigger');
@@ -1924,14 +1849,13 @@ const sf = (() => {
       spec.split(',').forEach((one) => {
         /*
          * One shape for everything: a word, or a word and a value joined by a
-         * colon, separated by spaces. "every 10s" with a space is read as the
-         * same thing, because it shipped — it is deprecated and goes in a
-         * later release.
+         * colon, separated by spaces. "every 10s", with a space, was read as
+         * "every:10s" until 0.39.0.
          */
         const parts = one.trim().split(/\s+/);
         const head = (parts[0] || '').split(':');
         const name = (head[0] || '').toLowerCase();
-        const argument = head[1] || parts[1] || '';
+        const argument = head[1] || '';
         const delay = readDelay(parts);
 
         if (name === 'load') {
@@ -2220,7 +2144,7 @@ const sf = (() => {
       throw new TypeError('sf.plugin: "' + name + '" is not a valid name. Use lower-case letters, digits and hyphens, starting with a letter.');
     }
 
-    if (RESERVED.includes(name) || name.startsWith('hx')) {
+    if (RESERVED.includes(name)) {
       throw new Error('sf.plugin: @' + name + ' is reserved — SFJS or the SFPHP templates already read it. Choose another name.');
     }
 
@@ -2520,63 +2444,10 @@ const sf = (() => {
 
   onBind((root) => plugins.forEach((entry) => sweep(root, entry)));
 
-  // ========== DEPRECATIONS ==========
-
-  const warned = new Set();
-
-  /**
-   * Keep a function that is on its way out working, and say so once.
-   *
-   * @param {string} name What the page called
-   * @param {string} instead What to call now
-   * @param {Function} fn The function
-   * @returns {Function}
-   */
-  function deprecated(name, instead, fn) {
-    return function (...args) {
-      if (!warned.has(name)) {
-        warned.add(name);
-        console.warn('SFJS: ' + name + ' is deprecated and goes in a later release. Use ' + instead + ' instead.');
-      }
-
-      return fn.apply(this, args);
-    };
-  }
-
-  /**
-   * The same, for every function of an object.
-   *
-   * @param {string} prefix How the page reaches it: "sf.dom"
-   * @param {Object} object Its functions
-   * @param {Object} instead What to call now, by function name
-   * @returns {Object}
-   */
-  function deprecatedAll(prefix, object, instead) {
-    return Object.fromEntries(Object.keys(object).map((key) => [
-      key,
-      deprecated(prefix + '.' + key, instead[key], object[key]),
-    ]));
-  }
-
-  /*
-   * sf.ajax keeps what it always did: it resolves with nothing, and a failure
-   * is reported rather than thrown. sf.req is where the Response and the
-   * rejection are, so moving to it is the change, not upgrading SFJS.
-   */
-  const ajax = deprecatedAll('sf.ajax', {
-    get: (...args) => quietly(req.get(...args)),
-    post: (...args) => quietly(req.post(...args)),
-    put: (...args) => quietly(req.put(...args)),
-    patch: (...args) => quietly(req.patch(...args)),
-    delete: (...args) => quietly(req.delete(...args)),
-  }, {
-    get: 'sf.req.get()', post: 'sf.req.post()', put: 'sf.req.put()', patch: 'sf.req.patch()', delete: 'sf.req.delete()',
-  });
-
   // ========== AUTO-INITIALIZATION ==========
 
   function init() {
-    const selector = VERBS.map((verb) => '[\\@' + verb + '], [\\@hx' + verb + ']').join(', ');
+    const selector = VERBS.map((verb) => '[\\@' + verb + ']').join(', ');
 
     /*
      * The server can hand the translations over in a meta element, which
@@ -2696,39 +2567,6 @@ const sf = (() => {
     validate,
     emit,
     t,
-
-    /*
-     * On their way out. The DOM and storage helpers wrapped a single native
-     * call each, and a second name for classList.add is one more thing to
-     * learn and nothing more to do; sf.morph is sf.target with the default
-     * swap; sf.ajax became sf.req.
-     */
-    ajax,
-    morph: deprecated('sf.morph()', 'sf.target(el, html)', morph),
-    dom: deprecatedAll('sf.dom', dom, {
-      addClass: 'el.classList.add()',
-      removeClass: 'el.classList.remove()',
-      toggleClass: 'el.classList.toggle()',
-      hasClass: 'el.classList.contains()',
-      show: 'el.hidden = false',
-      hide: 'el.hidden = true',
-      toggle: 'el.hidden = !el.hidden',
-      on: 'el.addEventListener(), or ctx.on() in a plugin',
-      off: 'el.removeEventListener()',
-      ready: 'sf.plugin(), or a script with defer',
-    }),
-    storage: deprecatedAll('sf.storage', storage, {
-      set: 'localStorage.setItem(key, JSON.stringify(value))',
-      get: 'JSON.parse(localStorage.getItem(key))',
-      remove: 'localStorage.removeItem()',
-      clear: 'localStorage.clear()',
-    }),
-    util: deprecatedAll('sf.util', util, {
-      debounce: 'ctx.debounce() in a plugin',
-      throttle: 'a timestamp check of your own',
-      wait: 'new Promise((resolve) => setTimeout(resolve, ms))',
-      id: 'ctx.id() in a plugin',
-    }),
 
     /*
      * For the other two parts of the bundle, which are built on the same

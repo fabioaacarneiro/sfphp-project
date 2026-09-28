@@ -54,34 +54,6 @@ final class View
     }
 
     /**
-     * Render a view and echo the result.
-     *
-     * @deprecated Use View::make() and return a Response instead.
-     * @param string $view The name of the view to render
-     * @param array<string, mixed> $data The data to pass to the view
-     * @return void
-     * @throws InvalidArgumentException If the view name is invalid or not found
-     */
-    public static function render(string $view, array $data = []): void
-    {
-        echo self::make($view, $data);
-    }
-
-    /**
-     * Render a partial and echo the result.
-     *
-     * @deprecated Use View::makePartial() and return a Response instead.
-     * @param string $view The name of the partial view
-     * @param array<string, mixed> $data The data to pass to the partial view
-     * @return void
-     * @throws InvalidArgumentException If the partial name is invalid or not found
-     */
-    public static function partial(string $view, array $data = []): void
-    {
-        echo self::makePartial($view, $data);
-    }
-
-    /**
      * Validate a template name and render it.
      *
      * @param string $name The name as the caller wrote it, used in error messages
