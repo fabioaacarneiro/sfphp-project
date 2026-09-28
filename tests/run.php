@@ -6575,6 +6575,265 @@ $tests->run('a plugin cannot be named after a template directive', function () u
     }
 });
 
+$tests->run('the page directives write SFCSS, SFJS, the plugins and each declared script once', function () use ($tests): void {
+    /*
+     * @script can sit in any component, however deep, because a page renders
+     * from the top down and @sfjs comes last in the body. A component used
+     * twice asks twice and gets one tag.
+     */
+    $root = sys_get_temp_dir() . '/sfphp-page-scripts-' . bin2hex(random_bytes(6));
+    mkdir($root . '/public/assets/js/scripts', 0755, true);
+
+    foreach (['plugins.js', 'plugins.min.js', 'scripts/home.min.js', 'scripts/chart.min.js'] as $built) {
+        file_put_contents($root . '/public/assets/js/' . $built, '');
+    }
+
+    $log = $root . '/php.log';
+    $previousLog = ini_set('error_log', $log);
+
+    $source = <<<'PHPX'
+    <?php
+
+    namespace SfphpTest\Scripts;
+
+    function Chart(): \SfphpProject\src\View\Sfht
+    {
+        return Sfht(
+            <canvas></canvas>@script('chart')
+        );
+    }
+
+    function Page(): \SfphpProject\src\View\Sfht
+    {
+        return Sfht(
+            <html><head>@sfcss</head><body>
+            @script('home')
+            {{ Chart() }}{{ Chart() }}
+            <p>write to me@sfjs.dev</p>
+            @sfjs
+            </body></html>
+        );
+    }
+    PHPX;
+
+    $file = $root . '/page.php';
+    file_put_contents($file, (new Phpx())->compile($source));
+
+    \SfphpProject\src\View\PageScripts::usePath($root);
+    \SfphpProject\src\View\PageScripts::reset();
+
+    try {
+        require $file;
+
+        $html = (string) \SfphpTest\Scripts\Page();
+
+        $tests->assertSame(true, str_contains($html, '<link rel="stylesheet" href="/assets/css/sfcss.min.css'));
+        $tests->assertSame(true, str_contains($html, 'me@sfjs.dev'));
+        $tests->assertSame(false, str_contains($html, 'data-sf-warning'));
+
+        preg_match_all('/<script src="\/assets\/js\/([^"?]+)/', $html, $matches);
+        $tests->assertSame(['sfjs.min.js', 'plugins.min.js', 'scripts/home.min.js', 'scripts/chart.min.js'], $matches[1]);
+
+        // A second page in the same request would put scripts after they were written.
+        $tests->assertThrows(static fn () => \SfphpTest\Scripts\Page(), RuntimeException::class);
+
+        \SfphpProject\src\View\PageScripts::reset();
+
+        // The readable builds.
+        $tests->assertSame(true, str_contains(\SfphpProject\src\View\PageScripts::sfcss('normal'), 'css/sfcss.css'));
+        $readable = \SfphpProject\src\View\PageScripts::sfjs('normal');
+        $tests->assertSame(true, str_contains($readable, 'js/sfjs.js') && str_contains($readable, 'js/plugins.js'));
+
+        // A value that is neither: the minified file, and a warning in the page and in the log.
+        \SfphpProject\src\View\PageScripts::reset();
+        $wrong = \SfphpProject\src\View\PageScripts::sfjs('minified');
+        $tests->assertSame(true, str_contains($wrong, 'js/sfjs.min.js'));
+        $tests->assertSame(true, str_contains($wrong, 'data-sf-warning="@sfjs(&#039;minified&#039;) expects &#039;min&#039; or &#039;normal&#039;; the minified file was used."'));
+        $tests->assertSame(true, str_contains((string) file_get_contents($log), "@sfjs('minified') expects"));
+
+        // A script that was never built says so, instead of a silent 404.
+        \SfphpProject\src\View\PageScripts::reset();
+        \SfphpProject\src\View\PageScripts::script('ghost');
+        $tests->assertSame(true, str_contains(\SfphpProject\src\View\PageScripts::sfjs(), 'has no public/assets/js/scripts/ghost.min.js'));
+
+        // "home.js" is "home", and a path out of the folder is refused.
+        \SfphpProject\src\View\PageScripts::reset();
+        \SfphpProject\src\View\PageScripts::script('home.js');
+        \SfphpProject\src\View\PageScripts::script('home');
+        $tests->assertSame(1, substr_count(\SfphpProject\src\View\PageScripts::sfjs(), 'scripts/home.min.js'));
+        $tests->assertThrows(static fn () => \SfphpProject\src\View\PageScripts::script('../secret'), RuntimeException::class);
+    } finally {
+        \SfphpProject\src\View\PageScripts::usePath(null);
+        \SfphpProject\src\View\PageScripts::reset();
+        ini_set('error_log', $previousLog === false ? '' : $previousLog);
+        exec('rm -rf ' . escapeshellarg($root));
+    }
+});
+
+$tests->run('a request starts with no scripts left over from the last one', function () use ($tests): void {
+    /*
+     * In a persistent worker the list outlives the request. Without the reset
+     * in dispatch, the next visitor's page would refuse its first @script,
+     * because the last page had already written its scripts.
+     */
+    $log = sys_get_temp_dir() . '/sfphp-reset-' . bin2hex(random_bytes(6)) . '.log';
+    $previousLog = ini_set('error_log', $log);
+
+    try {
+        \SfphpProject\src\View\PageScripts::script('left-over');
+        \SfphpProject\src\View\PageScripts::sfjs();
+
+        (new Router(new Container()))->dispatch(Request::create('GET', '/sfphp-no-such-page'));
+
+        \SfphpProject\src\View\PageScripts::script('next');
+        $tests->assertSame(true, str_contains(\SfphpProject\src\View\PageScripts::sfjs(), 'scripts/next.min.js'));
+    } finally {
+        \SfphpProject\src\View\PageScripts::reset();
+        ini_set('error_log', $previousLog === false ? '' : $previousLog);
+        @unlink($log);
+    }
+});
+
+$tests->run('js:build bundles the plugins one scope each, and builds and cleans up the page scripts', function () use ($tests): void {
+    /*
+     * The plugins share one file, so each is wrapped: two that both declare
+     * `const format` would otherwise be a syntax error, and one that throws
+     * while loading would stop the rest. The minifier does not understand
+     * regular expressions, so what it writes is checked, and a script it
+     * would break is kept whole.
+     */
+    $root = sys_get_temp_dir() . '/sfphp-bundle-' . bin2hex(random_bytes(6));
+    $plugins = $root . '/app/resources/js/plugins';
+    $scripts = $root . '/app/resources/js/scripts';
+    mkdir($plugins, 0755, true);
+    mkdir($scripts . '/admin', 0755, true);
+
+    file_put_contents($plugins . '/a.js', "const format = 1;\nwindow.aLoaded = format;\n");
+    file_put_contents($plugins . '/b.js', "const format = 2;\nthrow new Error('b broke');\n");
+    file_put_contents($plugins . '/c.js', "const format = 3; // a comment\nwindow.cLoaded = format;\n");
+    file_put_contents($scripts . '/home.js', "window.home = true; // gone once minified\n");
+    file_put_contents($scripts . '/admin/users.js', "const slashes = /\\/\\//;\nwindow.users = slashes.test('//');\n");
+
+    $node = trim((string) shell_exec('command -v node 2>/dev/null')) !== '';
+
+    try {
+        $lines = (new \SfphpProject\src\View\ScriptBundler($root))->build();
+        $public = $root . '/public/assets/js';
+
+        $tests->assertSame(true, str_contains(implode("\n", $lines), 'plugins.js: 3 plugins'));
+
+        $bundle = (string) file_get_contents($public . '/plugins.js');
+        $tests->assertSame(true, strpos($bundle, '// plugins/a.js') < strpos($bundle, '// plugins/b.js'));
+        $tests->assertSame(true, strpos($bundle, '// plugins/b.js') < strpos($bundle, '// plugins/c.js'));
+        $tests->assertSame(true, is_file($public . '/plugins.min.js'));
+
+        $tests->assertSame(true, is_file($public . '/scripts/home.js'));
+        $tests->assertSame(true, is_file($public . '/scripts/admin/users.min.js'));
+
+        if ($node) {
+            // The regex would have lost its "//": the minified copy is the source.
+            $tests->assertSame(file_get_contents($scripts . '/admin/users.js'), file_get_contents($public . '/scripts/admin/users.min.js'));
+            $tests->assertSame(true, str_contains(implode("\n", $lines), 'scripts/admin/users.js: the minifier broke it'));
+
+            // And one it can minify is minified.
+            $tests->assertSame(false, str_contains((string) file_get_contents($public . '/scripts/home.min.js'), 'gone once minified'));
+        }
+
+        // In the browser, each plugin in its own scope: b fails alone.
+        $result = sfjsInBrowser('', '', $bundle . "\nwindow.addEventListener('load', () => report({ a: window.aLoaded, c: window.cLoaded, errors: logged.error }));");
+
+        if ($result !== null) {
+            $tests->assertSame(1, $result['a']);
+            $tests->assertSame(3, $result['c']);
+            $tests->assertSame(1, count($result['errors']));
+            $tests->assertSame(true, str_contains($result['errors'][0], 'SFJS: plugins/b.js failed to load'));
+        }
+
+        // What is not valid JavaScript is refused, naming the file.
+        if ($node) {
+            file_put_contents($plugins . '/broken.js', "const = ;\n");
+            $tests->assertThrows(static fn () => (new \SfphpProject\src\View\ScriptBundler($root))->build(), RuntimeException::class);
+            unlink($plugins . '/broken.js');
+        }
+
+        // A name that is where a minified copy goes.
+        file_put_contents($scripts . '/page.min.js', "window.x = 1;\n");
+        $tests->assertThrows(static fn () => (new \SfphpProject\src\View\ScriptBundler($root))->build(), RuntimeException::class);
+        unlink($scripts . '/page.min.js');
+
+        // Sources gone: what was built from them goes too, folders included.
+        array_map('unlink', glob($plugins . '/*.js') ?: []);
+        unlink($scripts . '/admin/users.js');
+        (new \SfphpProject\src\View\ScriptBundler($root))->build();
+
+        $tests->assertSame(false, is_file($public . '/plugins.js'));
+        $tests->assertSame(false, is_file($public . '/plugins.min.js'));
+        $tests->assertSame(false, is_dir($public . '/scripts/admin'));
+        $tests->assertSame(true, is_file($public . '/scripts/home.js'));
+    } finally {
+        exec('rm -rf ' . escapeshellarg($root));
+    }
+});
+
+$tests->run('make:plugin writes a plugin, and refuses the names sf.plugin refuses', function () use ($tests): void {
+    $root = sys_get_temp_dir() . '/sfphp-make-plugin-' . bin2hex(random_bytes(6));
+    mkdir($root, 0755, true);
+
+    try {
+        $generator = new \SfphpProject\src\Console\Generators\PluginGenerator($root);
+        $file = $generator->generate('Countdown');
+
+        $tests->assertSame($root . '/app/resources/js/plugins/countdown.js', $file);
+        $tests->assertSame(true, str_contains((string) file_get_contents($file), "sf.plugin('countdown', {"));
+
+        foreach (['include', 'stream', 'hxthing', 'Bad_Name', '9lives'] as $name) {
+            $tests->assertThrows(static fn () => $generator->generate($name), InvalidArgumentException::class);
+        }
+
+        // It never replaces a plugin that is there.
+        $tests->assertThrows(static fn () => $generator->generate('countdown'), \SfphpProject\src\Console\Generators\GeneratorFileExists::class);
+    } finally {
+        exec('rm -rf ' . escapeshellarg($root));
+    }
+
+    /*
+     * The same list as sf.plugin, plus the one SFJS registers for itself, so
+     * a name make:plugin accepts is one the browser accepts.
+     */
+    $script = (string) file_get_contents(Assets::path() . '/js/sfjs.js');
+    $start = strpos($script, 'const RESERVED = [');
+    $end = strpos($script, '];', $start ?: 0);
+    preg_match_all("/'([a-z-]+)'/", substr($script, (int) $start, (int) $end - (int) $start), $matches);
+
+    $browser = array_merge($matches[1], ['stream']);
+    $server = \SfphpProject\src\Console\Generators\PluginGenerator::RESERVED;
+
+    sort($browser);
+    sort($server);
+
+    $tests->assertSame($browser, $server);
+});
+
+$tests->run('what the server noticed while writing the page is said in the console', function () use ($tests): void {
+    /*
+     * @sfjs('minified') or a plugin edited and not rebuilt is noticed while
+     * PHP writes the page, and a strict Content-Security-Policy refuses the
+     * inline script that could report it. So it travels as data-sf-warning,
+     * and SFJS says it.
+     */
+    $result = sfjsInBrowser(
+        '<link rel="stylesheet" href="data:," data-sf-warning="the first"><i data-sf-warning="the second"></i>',
+        '',
+        "window.addEventListener('load', () => report(logged.warn));"
+    );
+
+    if ($result === null) {
+        return;
+    }
+
+    $tests->assertSame(['SFPHP: the first', 'SFPHP: the second'], $result);
+});
+
 $tests->run('a pattern that needs a pipe is given as an array', function () use ($tests): void {
     /*
      * Rules are pipe separated, so a pattern containing one cannot be written
