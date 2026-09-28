@@ -47,6 +47,28 @@ jobs:
       # the structure of the three and checks every link.
       - run: composer run docs
 
+  # The unit suite's SQLite tests run against a real in-memory database, and
+  # skip where pdo_sqlite is missing — which the unit job, holding to the
+  # extensions composer.json requires, may be. Here it is installed, and its
+  # absence fails the job instead of skipping the tests.
+  sqlite:
+    name: SQLite
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: ctype, curl, fileinfo, filter, json, mbstring, openssl, pdo, session, tokenizer, pdo_sqlite
+          coverage: none
+      - run: composer install --prefer-dist --no-progress
+      - name: pdo_sqlite is installed
+        run: |
+          php -r "exit(in_array('sqlite', PDO::getAvailableDrivers(), true) ? 0 : 1);"
+      - run: php tests/run.php --filter=sqlite
+
   # tests/db.php checks the schema builder against real servers. It has always
   # existed but nothing ever ran it, so dialect bugs could only be found by
   # hand. Both engines run here because the builder promises parity between

@@ -2107,8 +2107,8 @@ $schema->drop('posts');
 $schema->dropIfExists('posts');
 $schema->rename('posts', 'articles');
 $schema->hasTable('posts');          // MySQL, PostgreSQL and SQLite
-$schema->hasColumn('posts', 'title');
-$schema->hasIndex('posts', 'posts_title_index');
+$schema->hasColumn('posts', 'title');  // MySQL, PostgreSQL and SQLite
+$schema->hasIndex('posts', 'posts_title_index');  // MySQL, PostgreSQL and SQLite
 $schema->statement('SET ...', $bindings);
 $schema->driver();
 ```
@@ -5200,7 +5200,7 @@ So upgrading means replacing those files, and knowing which ones they are:
 ```bash
 ./sfphp upgrade --dry-run          # what it would do, changing nothing
 ./sfphp upgrade                    # the latest release
-./sfphp upgrade --to=v0.39.0       # fetches that tag with git
+./sfphp upgrade --to=v0.40.0       # fetches that tag with git
 ./sfphp upgrade --from=../sfphp    # a copy you already have
 ```
 
@@ -6511,6 +6511,26 @@ composer run test:db     # integration against real MySQL/PostgreSQL
 composer run test:all
 composer run docs        # the three languages agree, and every link resolves
 ```
+
+The unit suite is `tests/run.php` and the files under `tests/suite/`, one per
+part of the framework — `01-http.php`, `02-database.php` and on to
+`22-sqlite.php` — run in the order of their names. `tests/bootstrap.php` and
+`tests/support.php` hold what they share: the fixtures, the fakes, and
+`sfjsInBrowser()`, which loads a page with SFJS into headless Chrome and reads
+back what it reported. A new test goes in the file of the part it tests.
+
+```bash
+php tests/run.php                   # everything, in about fifteen seconds
+php tests/run.php --filter=sfjs     # only the tests whose name, or whose file's name, contains sfjs
+```
+
+Each result is printed as it happens, on STDERR, and the failures again,
+together, at the end. The suite does not read the project's `.env`: a
+developer's `APP_ENV=development` used to skip the assertions that only hold in
+production, so every local run passed while CI failed. A test that needs a
+setting sets it, and puts back what was there. The browser tests skip where
+there is no Chrome and the SQLite tests where there is no `pdo_sqlite`; CI has
+both, and a job of its own fails if SQLite is missing.
 
 `tests/db.php` needs DSNs in the environment and skips with a notice when there
 are none:
