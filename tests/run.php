@@ -3433,6 +3433,13 @@ $tests->run('the file cache lives in a private directory inside the project', fu
     // A directory others can write to is tightened before it is used.
     chmod($directory, 0777);
     new FileDriver($directory);
+
+    /*
+     * Before PHP 8.3 chmod() does not clear the stat cache, so without this the
+     * test read back the mode it had set itself — 0777 on 8.1 and 8.2 — while
+     * the directory on disk was already 0700.
+     */
+    clearstatcache();
     $tests->assertSame('0700', substr(sprintf('%o', fileperms($directory)), -4));
 
     // A relative CACHE_PATH resolves against the project, not the working directory.
