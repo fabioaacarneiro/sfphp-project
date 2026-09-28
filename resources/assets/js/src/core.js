@@ -148,18 +148,75 @@ const sf = (() => {
     return element.getAttribute('@' + name) || element.getAttribute('@hx' + name);
   }
 
-  // ========== AJAX ==========
+  // ========== REQUESTS ==========
 
-  const ajax = {
+  /*
+   * sf.req is fetch with what a page needs around it. What comes back is the
+   * browser's own Response, so everything fetch can do is still there and
+   * nobody learns a second response object. What it adds is in two options:
+   * `source`, the element that asked — a newer request from it aborts the
+   * older one, it is marked busy, the events are dispatched on it — and
+   * `target`, where the answer goes, swapped the way the attributes swap.
+   * Without either it is fetch that remembers the CSRF token.
+   */
+  const req = {
     get: (url, options = {}) => request('GET', url, options),
     post: (url, data = {}, options = {}) => request('POST', url, { ...options, data }),
     put: (url, data = {}, options = {}) => request('PUT', url, { ...options, data }),
-    delete: (url, options = {}) => request('DELETE', url, options),
     patch: (url, data = {}, options = {}) => request('PATCH', url, { ...options, data }),
+    delete: (url, options = {}) => request('DELETE', url, options),
   };
 
+  // fetch's own options, handed over untouched.
+  const FETCH_OPTIONS = ['credentials', 'cache', 'mode', 'redirect', 'referrer', 'referrerPolicy', 'integrity', 'keepalive', 'priority'];
+
   /**
-   * Send a request and put the answer where it was asked for.
+   * The reason a request that is no longer wanted gives when it stops.
+   *
+   * @param {string} message Why
+   * @returns {DOMException}
+   */
+  function aborted(message) {
+    return new DOMException(message, 'AbortError');
+  }
+
+  /**
+   * Make one controller follow the caller's signal and a timeout.
+   *
+   * AbortSignal.any() does this, but it arrived in 2024 and the pages this
+   * runs on are older than that.
+   *
+   * @param {AbortController} controller The request's controller
+   * @param {?AbortSignal} signal The caller's signal
+   * @param {number} timeout Milliseconds, or 0 for none
+   * @returns {Function} Undoes the links once the request is over
+   */
+  function link(controller, signal, timeout) {
+    const undo = [];
+
+    if (signal) {
+      const follow = () => controller.abort(signal.reason);
+
+      if (signal.aborted) follow();
+      else {
+        signal.addEventListener('abort', follow, { once: true });
+        undo.push(() => signal.removeEventListener('abort', follow));
+      }
+    }
+
+    if (timeout > 0) {
+      const timer = setTimeout(() => {
+        controller.abort(new DOMException('The request took longer than ' + timeout + ' ms.', 'TimeoutError'));
+      }, timeout);
+
+      undo.push(() => clearTimeout(timer));
+    }
+
+    return () => undo.forEach((one) => one());
+  }
+
+  /**
+   * Send a request, and put the answer where it was asked for.
    *
    * `source` is the element that asked, when there is one. It is what the
    * lifecycle events are dispatched on, what is marked busy, and what owns the
@@ -167,14 +224,26 @@ const sf = (() => {
    * a slow answer to an old question must never overwrite a fast answer to the
    * new one — the search box that shows results for "ab" after "abc" was typed.
    *
+   * The promise settles the way fetch's does: it resolves with the Response
+   * for any answer, a 422 included, and rejects when there was none — the
+   * network failed, the timeout ran out, or the request was aborted, by the
+   * caller's signal or by a newer request from the same element. It used to
+   * resolve with nothing in every case, so a failure could not be caught.
+   *
    * @param {string} method The HTTP method
    * @param {string} url Where to send it
-   * @param {Object} options data, target, swap, source, errorTarget, onSuccess, onError
-   * @returns {Promise<void>}
+   * @param {Object} options data, query, headers, signal, timeout, target,
+   *                         swap, errorTarget, source, and fetch's own options
+   * @returns {Promise<Response>}
    */
   function request(method, url, options = {}) {
-    const { data = {}, target = null, swap = DEFAULTS.swapStrategy, onSuccess = null, onError = null, source = null, errorTarget = null } = options;
+    const {
+      data = {}, query = null, headers: extra = {}, signal = null, timeout = 0,
+      target = null, swap = DEFAULTS.swapStrategy, errorTarget = null, source = null,
+      onSuccess = null, onError = null,
+    } = options;
     const into = find(target);
+    const address = query ? withQuery(url, query) : url;
 
     const headers = { 'X-Requested-With': 'XMLHttpRequest' };
     let body;
@@ -202,10 +271,15 @@ const sf = (() => {
       }
     }
 
-    if (!emit(source, 'sf:before', { url, method, target: into }, true)) return Promise.resolve();
+    // The caller's headers are the last word: an Accept, an Authorization.
+    Object.assign(headers, extra);
+
+    if (!emit(source, 'sf:before', { url: address, method, target: into }, true)) {
+      return Promise.reject(aborted('A sf:before listener cancelled the request.'));
+    }
 
     if (source && source.__sfRequest) {
-      source.__sfRequest.abort();
+      source.__sfRequest.abort(aborted('A newer request from the same element replaced this one.'));
       setBusy(source, source.__sfRequest.into, false);
     }
 
@@ -216,12 +290,37 @@ const sf = (() => {
 
     // Whether this is still the element's latest request.
     const current = () => !source || source.__sfRequest === controller;
+    const unlink = link(controller, signal, timeout);
+
+    const init = { method, headers, body, signal: controller.signal };
+
+    FETCH_OPTIONS.forEach((key) => {
+      if (key in options) init[key] = options[key];
+    });
 
     setBusy(source, into, true);
 
-    return fetch(url, { method, headers, body, signal: controller.signal })
-      .then((response) => response.text().then((html) => {
-        if (!current()) return;
+    /*
+     * What goes into the page is read from a copy, so the Response handed back
+     * still has its body: the caller can read the JSON of the answer that was
+     * just swapped, or pass it to sf.target somewhere else.
+     */
+    const land = (response) => {
+      if (!current()) throw aborted('A newer request from the same element replaced this one.');
+
+      const wanted = target || errorTarget || onSuccess || onError;
+
+      if (!wanted) {
+        if (response.ok) emit(source, 'sf:after', { response, target: null });
+        else emit(source, 'sf:error', { error: new Error('HTTP ' + response.status), response, target: null });
+
+        return response;
+      }
+
+      const copy = typeof response.clone === 'function' ? response.clone() : response;
+
+      return copy.text().then((html) => {
+        if (!current()) throw aborted('A newer request from the same element replaced this one.');
 
         /*
          * An error answer is still an answer. A 422 carrying the form back with
@@ -234,31 +333,73 @@ const sf = (() => {
           const fallback = find(errorTarget);
 
           if (fallback) performSwap(fallback, html, swap);
-          else console.error('SFJS Ajax Error:', error);
+          else if (target) console.error('SFJS: HTTP ' + response.status + ' from ' + address + ', and no @error-target to put it in.');
 
           emit(source, 'sf:error', { error, response, target: fallback });
           if (onError) onError(error, html);
 
-          return;
+          return response;
         }
 
         if (target) performSwap(target, html, swap);
         emit(source, 'sf:after', { response, target: into });
         if (onSuccess) onSuccess(html);
-      }))
-      .catch((error) => {
-        if (error.name === 'AbortError' || !current()) return;
 
-        console.error('SFJS Ajax Error:', error);
-        emit(source, 'sf:error', { error, response: null, target: null });
-        if (onError) onError(error);
+        return response;
+      });
+    };
+
+    return fetch(address, init)
+      .then(land)
+      .catch((error) => {
+        /*
+         * Nobody is told about a request that was stopped on purpose — by the
+         * caller, or by a newer one. A timeout and a network failure are
+         * reported: they are the answers that did not come.
+         */
+        if (error.name !== 'AbortError' && current()) {
+          emit(source, 'sf:error', { error, response: null, target: null });
+          if (onError) onError(error);
+        }
+
+        throw error;
       })
       .finally(() => {
+        unlink();
+
         if (!current()) return;
 
         setBusy(source, into, false);
         if (source) source.__sfRequest = null;
       });
+  }
+
+  /**
+   * Put markup into the page, the way an answer to a request is put there.
+   *
+   * The content is a string of HTML or a Response, whose body is read for it.
+   * This is the second half of a request, on its own: the answer can be
+   * looked at first and sent where it belongs — a list, or a box of warnings.
+   *
+   * @param {Element|string} where The element, or a selector
+   * @param {string|Response} content The markup
+   * @param {Object} options swap: the strategy, morph when not given
+   * @returns {Promise<void>} Settles once the markup is in place
+   */
+  function place(where, content, options = {}) {
+    const swap = options.swap || DEFAULTS.swapStrategy;
+
+    if (content && typeof content === 'object' && typeof content.text === 'function') {
+      if (content.bodyUsed) {
+        return Promise.reject(new TypeError('sf.target: this response was already read. Pass the text you read from it instead.'));
+      }
+
+      return content.text().then((html) => performSwap(where, html, swap));
+    }
+
+    performSwap(where, content === null || content === undefined ? '' : String(content), swap);
+
+    return Promise.resolve();
   }
 
   /**
@@ -501,10 +642,10 @@ const sf = (() => {
        * action and quietly swapped nothing.
        */
       if (method === 'GET' || method === 'DELETE') {
-        return ajax[method.toLowerCase()](withQuery(action, form.serialize(formElement, submitter)), swapOptions);
+        return req[method.toLowerCase()](withQuery(action, form.serialize(formElement, submitter)), swapOptions);
       }
 
-      return ajax[method.toLowerCase()](action, data, swapOptions);
+      return req[method.toLowerCase()](action, data, swapOptions);
     },
   };
 
@@ -1663,6 +1804,32 @@ const sf = (() => {
    * @returns {?Promise}
    */
   function send(element) {
+    return quietly(dispatch(element));
+  }
+
+  /**
+   * Say in the console what a declared request failed with.
+   *
+   * A request an attribute declared has no code waiting on it to catch a
+   * failure, so it would surface as an unhandled rejection. sf:error has
+   * already gone out; this is the line for whoever did not listen for it.
+   *
+   * @param {?Promise} sent The request
+   * @returns {?Promise<void>}
+   */
+  function quietly(sent) {
+    return sent ? sent.then(() => undefined, (error) => {
+      if (error.name !== 'AbortError') console.error('SFJS: request failed —', error);
+    }) : null;
+  }
+
+  /**
+   * Start the request an element declares.
+   *
+   * @param {Element} element The element
+   * @returns {?Promise<Response>}
+   */
+  function dispatch(element) {
     if (element.tagName === 'FORM') return form.submit(element);
 
     const declared = declaration(element);
@@ -1723,10 +1890,10 @@ const sf = (() => {
     const method = declared.method.toLowerCase();
 
     if (method === 'get' || method === 'delete') {
-      return ajax[method](withQuery(declared.url, data), options);
+      return req[method](withQuery(declared.url, data), options);
     }
 
-    return ajax[method](declared.url, data, options);
+    return req[method](declared.url, data, options);
   }
 
   /**
@@ -1929,6 +2096,13 @@ const sf = (() => {
   /** What extensions asked to run on every root that gets bound. */
   const binders = [];
 
+  /*
+   * Declared up here, beside the binders, because onBind reads it and the
+   * plugin section calls onBind while this file is still running: a let
+   * further down is not there yet, and reading it threw.
+   */
+  let initialised = false;
+
   /**
    * Wire up everything SFJS knows about under a root: on load, and again on
    * whatever a swap brings in.
@@ -1991,9 +2165,415 @@ const sf = (() => {
     return amount * 1000;
   }
 
-  // ========== AUTO-INITIALIZATION ==========
+  // ========== PLUGINS ==========
 
-  let initialised = false;
+  /*
+   * Names a plugin cannot take. The template directives come first: the
+   * SFPHP parser reads "@include" or "@if" in a .phpx or .sfht file as its
+   * own syntax before any browser sees it, so <div @include="x"> does not
+   * reach SFJS at all — it stops the template from compiling. After them, the
+   * attributes SFJS reads itself, and the directives the framework is about
+   * to add. A test keeps the first group in step with Parser::DIRECTIVES.
+   */
+  const RESERVED = [
+    // Template directives
+    'if', 'elseif', 'else', 'endif', 'unless', 'endunless',
+    'foreach', 'endforeach', 'forelse', 'empty', 'endforelse',
+    'for', 'endfor', 'while', 'endwhile',
+    'extends', 'block', 'endblock', 'include', 'includewhen',
+    'component', 'use', 'php', 'endphp',
+    // Directives on their way
+    'script', 'scripts', 'sfcss', 'sfjs',
+    // What SFJS reads itself
+    'get', 'post', 'put', 'patch', 'delete', 'target', 'swap', 'trigger',
+    'error-target', 'into', 'loading', 'state', 'show', 'text', 'class',
+    'model', 'on', 'toggle', 'validate', 'key',
+    'sse', 'method', 'body', 'abort', 'events', 'done',
+    'modal', 'dismiss', 'tabs', 'tooltip', 'tooltip-placement',
+  ];
+
+  // By name: { name, definition, selector, bound }.
+  const plugins = new Map();
+
+  /**
+   * Teach SFJS an attribute of your own.
+   *
+   *     sf.plugin('countdown', {
+   *       attach(el, ctx) {
+   *         const end = new Date(ctx.value);
+   *         ctx.every(1000, () => { el.textContent = left(end); });
+   *       },
+   *     });
+   *
+   * attach runs once for every element that carries @countdown — on the page
+   * and in every fragment a swap brings in — and whatever it set up through
+   * ctx is undone when the element leaves the page. update, when given, runs
+   * when a swap changes the attribute's value; without it the plugin is
+   * detached and attached again. detach, when given, runs last.
+   *
+   * @param {string} name Lower case, digits and hyphens: "countdown", "chart-line"
+   * @param {{attach: Function, update?: Function, detach?: Function}} definition What it does
+   * @returns {void}
+   */
+  function plugin(name, definition) {
+    if (typeof name !== 'string' || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name)) {
+      throw new TypeError('sf.plugin: "' + name + '" is not a valid name. Use lower-case letters, digits and hyphens, starting with a letter.');
+    }
+
+    if (RESERVED.includes(name) || name.startsWith('hx')) {
+      throw new Error('sf.plugin: @' + name + ' is reserved — SFJS or the SFPHP templates already read it. Choose another name.');
+    }
+
+    register(name, definition);
+  }
+
+  /**
+   * Register a plugin without the name checks, for SFJS's own.
+   *
+   * @param {string} name The attribute, without the @
+   * @param {Object} definition What it does
+   * @returns {void}
+   */
+  function register(name, definition) {
+    if (plugins.has(name)) {
+      throw new Error('sf.plugin: @' + name + ' is already registered.');
+    }
+
+    if (!definition || typeof definition.attach !== 'function') {
+      throw new TypeError('sf.plugin: @' + name + ' needs an attach(el, ctx) function.');
+    }
+
+    const entry = { name, definition, selector: '[\\@' + name + ']', bound: new Set() };
+
+    plugins.set(name, entry);
+
+    // Registered after the page was bound: the page is bound for it now.
+    if (initialised) sweep(document, entry);
+  }
+
+  /**
+   * Bring the elements under a root up to date with one plugin.
+   *
+   * @param {Document|Element} root Where to look
+   * @param {Object} entry The plugin
+   * @returns {void}
+   */
+  function sweep(root, entry) {
+    const attribute = '@' + entry.name;
+
+    // What a swap took the attribute away from, or took out of the page.
+    entry.bound.forEach((element) => {
+      if (!element.isConnected || !element.hasAttribute(attribute)) detach(element, entry);
+    });
+
+    const found = root.querySelectorAll ? Array.from(root.querySelectorAll(entry.selector)) : [];
+
+    if (root.matches && root.matches(entry.selector)) found.push(root);
+
+    found.forEach((element) => {
+      const record = element.__sfPlugins && element.__sfPlugins.get(entry.name);
+
+      if (!record) {
+        attach(element, entry);
+
+        return;
+      }
+
+      const value = element.getAttribute(attribute);
+
+      if (record.value === value) return;
+
+      record.value = value;
+
+      if (typeof entry.definition.update === 'function') {
+        run(entry, 'update', () => entry.definition.update(element, record.ctx));
+
+        return;
+      }
+
+      detach(element, entry);
+      attach(element, entry);
+    });
+  }
+
+  /**
+   * Call a plugin's function, so one broken plugin does not stop the rest.
+   *
+   * attach may be async. A promise it returns can resolve to a cleanup, and
+   * a rejection is reported like a throw — except the AbortError of a
+   * request that stopped because the element left, which is not a failure.
+   *
+   * @param {Object} entry The plugin
+   * @param {string} stage attach, update or detach
+   * @param {Function} call The call
+   * @returns {*} What it returned
+   */
+  function run(entry, stage, call) {
+    const report = (error) => {
+      if (error && error.name === 'AbortError') return;
+
+      console.error('SFJS: @' + entry.name + ' failed in ' + stage + ' —', error);
+    };
+
+    try {
+      const returned = call();
+
+      if (returned && typeof returned.then === 'function') {
+        return returned.then((value) => value, (error) => report(error));
+      }
+
+      return returned;
+    } catch (error) {
+      report(error);
+
+      return undefined;
+    }
+  }
+
+  /**
+   * Attach a plugin to one element.
+   *
+   * @param {Element} element The element
+   * @param {Object} entry The plugin
+   * @returns {void}
+   */
+  function attach(element, entry) {
+    const record = {
+      value: element.getAttribute('@' + entry.name),
+      controller: new AbortController(),
+      cleanups: [],
+      detached: false,
+    };
+
+    record.ctx = context(element, entry, record);
+
+    if (!element.__sfPlugins) element.__sfPlugins = new Map();
+
+    element.__sfPlugins.set(entry.name, record);
+    entry.bound.add(element);
+
+    const keep = (cleanup) => {
+      if (typeof cleanup !== 'function') return;
+
+      // An async attach that finished after its element left.
+      if (record.detached) cleanup();
+      else record.cleanups.push(cleanup);
+    };
+
+    const returned = run(entry, 'attach', () => entry.definition.attach(element, record.ctx));
+
+    if (returned && typeof returned.then === 'function') returned.then(keep);
+    else keep(returned);
+  }
+
+  /**
+   * Undo what a plugin set up on one element.
+   *
+   * @param {Element} element The element
+   * @param {Object} entry The plugin
+   * @returns {void}
+   */
+  function detach(element, entry) {
+    const record = element.__sfPlugins && element.__sfPlugins.get(entry.name);
+
+    if (!record) return;
+
+    element.__sfPlugins.delete(entry.name);
+    entry.bound.delete(element);
+    record.detached = true;
+
+    // Listeners, timers and requests made through ctx all hang off this.
+    record.controller.abort(aborted('The element left the page.'));
+
+    record.cleanups.splice(0).reverse().forEach((cleanup) => run(entry, 'detach', cleanup));
+
+    if (typeof entry.definition.detach === 'function') {
+      run(entry, 'detach', () => entry.definition.detach(element, record.ctx));
+    }
+  }
+
+  /**
+   * What a plugin is handed: its element's value, and tools that clean up
+   * after themselves.
+   *
+   * Everything here is tied to the element. A listener added with ctx.on, a
+   * timer from ctx.every, a request from ctx.req — each stops when the
+   * element leaves the page, which is the part a plugin written by hand
+   * forgets, and the part that leaks: an interval writing into a node nobody
+   * can see, for as long as the tab stays open.
+   *
+   * The callbacks given to ctx.on, ctx.every, ctx.after and ctx.debounce are
+   * guarded the way attach is: a throw or a rejected promise is reported with
+   * the plugin's name, and an AbortError is not reported at all — a request
+   * replaced by a newer one, or cut off because the element left, is not a
+   * failure, and an async listener that awaited it would otherwise fill the
+   * console with "Uncaught (in promise)" at every keystroke.
+   *
+   * @param {Element} element The element
+   * @param {Object} entry The plugin
+   * @param {Object} record Its bookkeeping
+   * @returns {Object}
+   */
+  function context(element, entry, record) {
+    const { name } = entry;
+    const { signal } = record.controller;
+    const later = (cleanup) => record.cleanups.push(cleanup);
+    const guard = (stage, callback) => function (...args) {
+      return run(entry, stage, () => callback.apply(this, args));
+    };
+
+    // A request from ctx.req belongs to the element: it is its source, and it stops when the element goes.
+    const own = (options) => ({ source: element, signal, ...options });
+
+    return {
+      name,
+      signal,
+
+      // The attribute's value, as it is now.
+      get value() {
+        return element.getAttribute('@' + name) || '';
+      },
+
+      // The @state the element is inside, or null. Writing to it updates the page.
+      get state() {
+        return scopeOf(element);
+      },
+
+      attr: (other) => attributeOf(element, other),
+
+      on(where, type, listener, options = {}) {
+        const node = find(where);
+
+        if (node) node.addEventListener(type, guard(type, listener), { ...options, signal });
+      },
+
+      every(ms, callback) {
+        const timer = setInterval(guard('every', callback), ms);
+
+        later(() => clearInterval(timer));
+      },
+
+      after(ms, callback) {
+        const timer = setTimeout(guard('after', callback), ms);
+
+        later(() => clearTimeout(timer));
+      },
+
+      debounce(callback, ms) {
+        const guarded = guard('debounce', callback);
+        let timer;
+
+        later(() => clearTimeout(timer));
+
+        return function (...args) {
+          clearTimeout(timer);
+          timer = setTimeout(() => guarded.apply(this, args), ms);
+        };
+      },
+
+      req: {
+        get: (url, options = {}) => req.get(url, own(options)),
+        post: (url, data = {}, options = {}) => req.post(url, data, own(options)),
+        put: (url, data = {}, options = {}) => req.put(url, data, own(options)),
+        patch: (url, data = {}, options = {}) => req.patch(url, data, own(options)),
+        delete: (url, options = {}) => req.delete(url, own(options)),
+      },
+
+      target: (where, content, options) => place(where, content, options),
+      emit: (type, detail = {}) => emit(element, type, detail),
+      t,
+      id: (prefix = 'sf-' + name) => util.id(element, prefix),
+      cleanup: later,
+    };
+  }
+
+  /*
+   * Swaps bind what they bring in, but markup can also arrive another way —
+   * a script of the page's own, a third-party widget — and an element can be
+   * taken out without a swap. One observer covers both. A morph moves nodes
+   * by taking them out and putting them back, so an element is only detached
+   * if it is still out of the page when the observer runs.
+   */
+  function watchPlugins() {
+    const observer = new MutationObserver((mutations) => {
+      let removed = false;
+
+      mutations.forEach((mutation) => {
+        if (mutation.removedNodes.length) removed = true;
+
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === 1 && node.isConnected) plugins.forEach((entry) => sweep(node, entry));
+        });
+      });
+
+      if (!removed) return;
+
+      plugins.forEach((entry) => {
+        entry.bound.forEach((element) => {
+          if (!element.isConnected) detach(element, entry);
+        });
+      });
+    });
+
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  onBind((root) => plugins.forEach((entry) => sweep(root, entry)));
+
+  // ========== DEPRECATIONS ==========
+
+  const warned = new Set();
+
+  /**
+   * Keep a function that is on its way out working, and say so once.
+   *
+   * @param {string} name What the page called
+   * @param {string} instead What to call now
+   * @param {Function} fn The function
+   * @returns {Function}
+   */
+  function deprecated(name, instead, fn) {
+    return function (...args) {
+      if (!warned.has(name)) {
+        warned.add(name);
+        console.warn('SFJS: ' + name + ' is deprecated and goes in a later release. Use ' + instead + ' instead.');
+      }
+
+      return fn.apply(this, args);
+    };
+  }
+
+  /**
+   * The same, for every function of an object.
+   *
+   * @param {string} prefix How the page reaches it: "sf.dom"
+   * @param {Object} object Its functions
+   * @param {Object} instead What to call now, by function name
+   * @returns {Object}
+   */
+  function deprecatedAll(prefix, object, instead) {
+    return Object.fromEntries(Object.keys(object).map((key) => [
+      key,
+      deprecated(prefix + '.' + key, instead[key], object[key]),
+    ]));
+  }
+
+  /*
+   * sf.ajax keeps what it always did: it resolves with nothing, and a failure
+   * is reported rather than thrown. sf.req is where the Response and the
+   * rejection are, so moving to it is the change, not upgrading SFJS.
+   */
+  const ajax = deprecatedAll('sf.ajax', {
+    get: (...args) => quietly(req.get(...args)),
+    post: (...args) => quietly(req.post(...args)),
+    put: (...args) => quietly(req.put(...args)),
+    patch: (...args) => quietly(req.patch(...args)),
+    delete: (...args) => quietly(req.delete(...args)),
+  }, {
+    get: 'sf.req.get()', post: 'sf.req.post()', put: 'sf.req.put()', patch: 'sf.req.patch()', delete: 'sf.req.delete()',
+  });
+
+  // ========== AUTO-INITIALIZATION ==========
 
   function init() {
     const selector = VERBS.map((verb) => '[\\@' + verb + '], [\\@hx' + verb + ']').join(', ');
@@ -2056,11 +2636,12 @@ const sf = (() => {
       if (attributeOf(e.target, 'trigger')) return;
 
       e.preventDefault();
-      form.submit(e.target, { submitter: e.submitter });
+      quietly(form.submit(e.target, { submitter: e.submitter }));
     });
 
     initialised = true;
     bindAll(document);
+    watchPlugins();
 
     document.addEventListener('blur', (e) => {
       if (e.target.hasAttribute && e.target.hasAttribute('@validate')) form_validation.check(e.target);
@@ -2096,17 +2677,55 @@ const sf = (() => {
   // ========== EXPORTS ==========
 
   return {
-    ajax,
+    req,
+    target: place,
+    plugin,
     bind: bindAll,
     onBind,
-    morph,
     form: { ...form, ...form_validation },
-    dom,
     validate,
-    storage,
-    util,
     emit,
     t,
+
+    /*
+     * On their way out. The DOM and storage helpers wrapped a single native
+     * call each, and a second name for classList.add is one more thing to
+     * learn and nothing more to do; sf.morph is sf.target with the default
+     * swap; sf.ajax became sf.req.
+     */
+    ajax,
+    morph: deprecated('sf.morph()', 'sf.target(el, html)', morph),
+    dom: deprecatedAll('sf.dom', dom, {
+      addClass: 'el.classList.add()',
+      removeClass: 'el.classList.remove()',
+      toggleClass: 'el.classList.toggle()',
+      hasClass: 'el.classList.contains()',
+      show: 'el.hidden = false',
+      hide: 'el.hidden = true',
+      toggle: 'el.hidden = !el.hidden',
+      on: 'el.addEventListener(), or ctx.on() in a plugin',
+      off: 'el.removeEventListener()',
+      ready: 'sf.plugin(), or a script with defer',
+    }),
+    storage: deprecatedAll('sf.storage', storage, {
+      set: 'localStorage.setItem(key, JSON.stringify(value))',
+      get: 'JSON.parse(localStorage.getItem(key))',
+      remove: 'localStorage.removeItem()',
+      clear: 'localStorage.clear()',
+    }),
+    util: deprecatedAll('sf.util', util, {
+      debounce: 'ctx.debounce() in a plugin',
+      throttle: 'a timestamp check of your own',
+      wait: 'new Promise((resolve) => setTimeout(resolve, ms))',
+      id: 'ctx.id() in a plugin',
+    }),
+
+    /*
+     * For the other two parts of the bundle, which are built on the same
+     * pieces. Not part of the API: a symbol keeps it out of sight, and out of
+     * the way of anything a page adds to sf.
+     */
+    [Symbol.for('sfjs.internal')]: { register, ready: dom.ready, id: util.id },
 
     /*
      * Assigning merges rather than replaces, so a page that translates three

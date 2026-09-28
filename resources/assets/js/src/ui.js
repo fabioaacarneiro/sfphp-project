@@ -14,6 +14,7 @@
 
 (() => {
   const { emit } = sf;
+  const { id, ready } = sf[Symbol.for('sfjs.internal')];
 
   // Everything is delegated from the document, so markup added later works.
   const on = (type, listener, capture = false) => document.addEventListener(type, listener, capture);
@@ -372,7 +373,7 @@
       tip = document.createElement('div');
       tip.setAttribute('role', 'tooltip');
       tip.setAttribute('popover', 'manual');
-      tip.id = sf.util.id(tip, 'sf-tooltip');
+      tip.id = id(tip, 'sf-tooltip');
       document.body.appendChild(tip);
     }
 
@@ -503,7 +504,7 @@
 
       own.hidden = !selected;
       own.setAttribute('role', 'tabpanel');
-      own.setAttribute('aria-labelledby', sf.util.id(tab, 'sf-tab'));
+      own.setAttribute('aria-labelledby', id(tab, 'sf-tab'));
 
       // A panel with nothing focusable in it has to be reachable itself.
       if (!own.hasAttribute('tabindex')) own.tabIndex = 0;
@@ -575,7 +576,7 @@
     return stack;
   }
 
-  sf.dom.ready(stackOf);
+  ready(stackOf);
 
   /**
    * Show a short message that goes away by itself.
@@ -679,7 +680,7 @@
 
       const dialog = document.querySelector(opener.getAttribute('@modal'));
 
-      if (dialog) opener.setAttribute('aria-controls', sf.util.id(dialog, 'sf-dialog'));
+      if (dialog) opener.setAttribute('aria-controls', id(dialog, 'sf-dialog'));
     });
 
     all('[popovertarget]').forEach((invoker) => {
