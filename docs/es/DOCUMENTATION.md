@@ -5288,7 +5288,7 @@ Actualizar, entonces, es reemplazar esos archivos sabiendo cuáles son:
 ```bash
 ./sfphp upgrade --dry-run          # lo que haría, sin cambiar nada
 ./sfphp upgrade                    # la última versión publicada
-./sfphp upgrade --to=v0.37.0       # trae esa etiqueta con git
+./sfphp upgrade --to=v0.38.0       # trae esa etiqueta con git
 ./sfphp upgrade --from=../sfphp    # una copia que ya tienes
 ```
 
