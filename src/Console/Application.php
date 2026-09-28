@@ -140,7 +140,6 @@ final class Application
                 '',
                 'Example: ./sfphp make:migration create_posts title:string body:text timestamps',
             ]],
-        'make:migration:create' => ['group' => 'Database', 'usage' => 'make:migration:create <table>', 'summary' => 'Deprecated: make:migration create_<table> does the same'],
         'migrate' => ['group' => 'Database', 'usage' => 'migrate [--path=database/migrations] [--step=N]', 'summary' => 'Run the pending migrations'],
         'rollback' => ['group' => 'Database', 'usage' => 'rollback [--path=database/migrations] [--step=N]', 'summary' => 'Undo the last N migrations (one by default)',
             'details' => ['--step counts migrations, not batches: --step=3 undoes the three most recent, whichever batch they ran in.']],
@@ -170,7 +169,7 @@ final class Application
                 'Keeps the users migration and a create_sessions_table migration if you made one.',
                 'It lists what it will delete and asks you to type "reset". There is no undo.',
             ]],
-        'upgrade' => ['group' => 'Project', 'usage' => 'upgrade [--to=v0.38.0] [--from=dir] [--dry-run] [--force]', 'summary' => 'Replace the framework, keep the application',
+        'upgrade' => ['group' => 'Project', 'usage' => 'upgrade [--to=v0.39.0] [--from=dir] [--dry-run] [--force]', 'summary' => 'Replace the framework, keep the application',
             'details' => [
                 'Replaced whole: src/, sfphp, server.php.',
                 'Merged in:      resources/, lang/, tools/ — your files there stay.',
@@ -297,7 +296,6 @@ final class Application
                 'css:build' => $this->cssBuild($arguments),
                 'js:build' => $this->jsBuild($arguments),
                 'make:migration' => $this->makeMigration($arguments),
-                'make:migration:create' => $this->makeMigrationCreate($arguments),
                 'make:controller' => $this->makeController($arguments),
                 'make:phpx' => $this->makePhpx($arguments),
                 'make:plugin' => $this->makePlugin($arguments),
@@ -1230,39 +1228,6 @@ final class Application
         $this->writeLine('Created request: ' . $this->relativePath($file));
 
         return 0;
-    }
-
-    /**
-     * Generate a migration with pre-filled schema.
-     *
-     * @param array<int, string> $arguments The command arguments
-     * @return int
-     */
-    private function makeMigrationCreate(array $arguments): int
-    {
-        $table = $this->firstArgument($arguments);
-
-        if ($table === null) {
-            throw new \InvalidArgumentException('Table name is required.');
-        }
-
-        /*
-         * Superseded by `make:migration create_<table> [fields]`, which reads
-         * the name instead of taking the table as a separate argument — and
-         * which can also alter and drop. Kept because it shipped, forwarding
-         * so there is one code path rather than two that drift.
-         */
-        $this->writeLine('  make:migration:create is deprecated. Use:');
-        $this->writeLine('    ./sfphp make:migration create_' . $table . ' title:string timestamps');
-        $this->writeLine('');
-
-        $forwarded = ['create_' . $table];
-
-        foreach (array_slice($arguments, 1) as $argument) {
-            $forwarded[] = $argument;
-        }
-
-        return $this->makeMigration($forwarded);
     }
 
     /**
@@ -2508,7 +2473,7 @@ final class Application
                 $reference = $this->option($arguments, 'to') ?? $this->latestRelease();
 
                 if ($reference === null) {
-                    fwrite(STDERR, 'Error: could not find the latest release. Name one with --to=v0.38.0, or pass --from=<directory>.' . PHP_EOL);
+                    fwrite(STDERR, 'Error: could not find the latest release. Name one with --to=v0.39.0, or pass --from=<directory>.' . PHP_EOL);
 
                     return 1;
                 }

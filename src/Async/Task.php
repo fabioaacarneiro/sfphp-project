@@ -101,26 +101,4 @@ final class Task extends Pending implements Cancellable
     {
         $this->cancelWith($reason);
     }
-
-    /**
-     * Start this Task outside a scheduler.
-     *
-     * @return void
-     * @deprecated Schedule it instead; a Task that starts itself cannot await.
-     */
-    public function start(): void
-    {
-        $this->step();
-    }
-
-    /**
-     * Resume this Task outside a scheduler.
-     *
-     * @return void
-     * @deprecated Schedule it instead; the scheduler knows when it may be resumed.
-     */
-    public function resume(): void
-    {
-        $this->step();
-    }
 }

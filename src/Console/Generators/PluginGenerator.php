@@ -51,7 +51,7 @@ final class PluginGenerator extends GeneratorBase
             );
         }
 
-        if (in_array($name, self::RESERVED, true) || str_starts_with($name, 'hx')) {
+        if (in_array($name, self::RESERVED, true)) {
             throw new InvalidArgumentException(
                 "@{$name} is reserved — SFJS or the SFPHP templates already read it. Choose another name."
             );
