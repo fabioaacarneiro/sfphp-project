@@ -86,7 +86,7 @@ final class Schema
     }
 
     /**
-     * Check whether a table exists (MySQL and PostgreSQL).
+     * Check whether a table exists (MySQL, PostgreSQL and SQLite).
      *
      * @param string $table The table name, optionally qualified as "schema.table"
      * @return bool
@@ -117,7 +117,7 @@ final class Schema
     }
 
     /**
-     * Check whether a column exists (MySQL and PostgreSQL).
+     * Check whether a column exists (MySQL, PostgreSQL and SQLite).
      *
      * @param string $table The table name, optionally qualified as "schema.table"
      * @param string $column The column name
@@ -126,6 +126,15 @@ final class Schema
     public function hasColumn(string $table, string $column): bool
     {
         [$schema, $name] = Identifier::split($table);
+
+        /*
+         * SQLite has no information_schema. pragma_table_info() is the same
+         * answer as a table a query can filter; it has been there since 3.16.
+         */
+        if ($this->driver() === 'sqlite') {
+            return $this->exists('SELECT 1 FROM pragma_table_info(:table) WHERE name = :column', ['table' => $name, 'column' => $column]);
+        }
+
         $bindings = ['table' => $name, 'column' => $column];
         $default = match ($this->driver()) {
             'mysql' => 'DATABASE()',
@@ -142,7 +151,7 @@ final class Schema
     }
 
     /**
-     * Check whether an index exists (MySQL and PostgreSQL).
+     * Check whether an index exists (MySQL, PostgreSQL and SQLite).
      *
      * @param string $table The table name, optionally qualified as "schema.table"
      * @param string $index The index name
@@ -165,6 +174,10 @@ final class Schema
                 . $this->schemaExpression('current_schema()', $schema, $bindings)
                 . ' AND tablename = :table AND indexname = :index',
                 $bindings
+            ),
+            'sqlite' => $this->exists(
+                "SELECT 1 FROM sqlite_master WHERE type = 'index' AND tbl_name = :table AND name = :index",
+                ['table' => $name, 'index' => $index]
             ),
             default => $this->unsupportedIntrospection(),
         };
