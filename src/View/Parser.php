@@ -35,6 +35,7 @@ final class Parser
         'include', 'includeWhen',
         'component', 'use',
         'php', 'endphp',
+        'script', 'sfcss', 'sfjs',
     ];
 
     /**
@@ -43,6 +44,7 @@ final class Parser
     private const REQUIRE_ARGUMENTS = [
         'if', 'elseif', 'unless', 'foreach', 'forelse', 'for', 'while',
         'extends', 'block', 'include', 'includeWhen', 'component',
+        'script',
     ];
 
     /**

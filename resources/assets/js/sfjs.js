@@ -2172,8 +2172,8 @@ const sf = (() => {
    * SFPHP parser reads "@include" or "@if" in a .phpx or .sfht file as its
    * own syntax before any browser sees it, so <div @include="x"> does not
    * reach SFJS at all — it stops the template from compiling. After them, the
-   * attributes SFJS reads itself, and the directives the framework is about
-   * to add. A test keeps the first group in step with Parser::DIRECTIVES.
+   * attributes SFJS reads itself. A test keeps the first group in step with
+   * Parser::DIRECTIVES.
    */
   const RESERVED = [
     // Template directives
@@ -2182,7 +2182,7 @@ const sf = (() => {
     'for', 'endfor', 'while', 'endwhile',
     'extends', 'block', 'endblock', 'include', 'includewhen',
     'component', 'use', 'php', 'endphp',
-    // Directives on their way
+    // The directives that load a page's CSS and scripts, and the plural reserved beside them
     'script', 'scripts', 'sfcss', 'sfjs',
     // What SFJS reads itself
     'get', 'post', 'put', 'patch', 'delete', 'target', 'swap', 'trigger',
@@ -2583,6 +2583,16 @@ const sf = (() => {
      * needs no inline script — a page under a strict Content-Security-Policy
      * cannot run one — and is escaped by {{ }} like any other attribute.
      */
+    /*
+     * What the server noticed while writing the page — @sfjs('minified'), a
+     * plugin edited and not rebuilt — travels on the tags as data-sf-warning,
+     * because an inline script to report it would be refused under a strict
+     * Content-Security-Policy. It is said here, where somebody is looking.
+     */
+    document.querySelectorAll('[data-sf-warning]').forEach((element) => {
+      console.warn('SFPHP: ' + element.getAttribute('data-sf-warning'));
+    });
+
     const translated = document.querySelector('meta[name="sf-messages"]');
 
     if (translated) {

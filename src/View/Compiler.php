@@ -363,6 +363,11 @@ final class Compiler
 
             'use' => $this->compileUse($args, $line),
 
+            // What SFCSS, SFJS and the page's scripts need, written by PageScripts.
+            'script' => "\\SfphpProject\\src\\View\\PageScripts::script({$args});{$this->eol}",
+            'sfcss' => "echo \\SfphpProject\\src\\View\\PageScripts::sfcss({$args});{$this->eol}",
+            'sfjs' => "echo \\SfphpProject\\src\\View\\PageScripts::sfjs({$args});{$this->eol}",
+
             default => '',
         };
     }
