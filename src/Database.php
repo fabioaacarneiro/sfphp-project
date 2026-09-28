@@ -300,16 +300,7 @@ class Database
         return "pgsql:host=$host;port=$port;dbname=$dbname";
 
       case 'sqlite':
-        /*
-         * A relative file is the project's, not the working directory's: the
-         * CLI started from one directory and PHP-FPM from another used to open
-         * two different databases.
-         */
-        if ($dbname !== ':memory:' && $dbname !== '' && !str_starts_with($dbname, 'file:')) {
-          $dbname = PrivateDirectory::resolve($dbname);
-        }
-
-        return "sqlite:$dbname";
+        return 'sqlite:' . self::sqliteFile($dbname);
 
       case 'sqlsrv':
         return "sqlsrv:Server=$host,$port;Database=$dbname";
@@ -328,5 +319,72 @@ class Database
           "Unsupported driver: $driver. Set DB_DSN for custom PDO drivers."
         );
     }
+  }
+
+  /**
+   * Where an SQLite DB_NAME points, as SQLite should be given it.
+   *
+   *     database/app.sqlite           the project's database/, whatever the working directory
+   *     /var/lib/app/app.sqlite       as it is
+   *     ~/data/app.sqlite             the home directory of the user PHP runs as
+   *     file:database/app.sqlite?mode=ro   a URI, its path resolved the same way
+   *     :memory:                      as it is
+   *
+   * A relative file is the project's, not the working directory's: the CLI
+   * started from one directory and PHP-FPM from another used to open two
+   * different databases — and a relative path inside a file: URI still did.
+   * "~" was taken literally, as a folder called ~ inside the project.
+   *
+   * SQLite creates a missing file but not a missing directory, and says only
+   * "unable to open database file". The directory is checked here so the
+   * error names it. It is not created: a typo in the path would otherwise
+   * become a new, empty database that nobody notices.
+   *
+   * @param string $name DB_NAME
+   * @return string The path or URI
+   * @throws RuntimeException If the file's directory does not exist
+   */
+  private static function sqliteFile(string $name): string
+  {
+    if ($name === '' || $name === ':memory:') {
+      return $name;
+    }
+
+    $uri = str_starts_with($name, 'file:');
+    $query = '';
+    $path = $uri ? substr($name, strlen('file:')) : $name;
+
+    if ($uri && ($at = strpos($path, '?')) !== false) {
+      $query = substr($path, $at);
+      $path = substr($path, 0, $at);
+    }
+
+    // file::memory:?cache=shared, and a URI with an authority, are SQLite's to read.
+    if ($uri && ($path === ':memory:' || str_starts_with($path, '//'))) {
+      return $name;
+    }
+
+    if ($path === '~' || str_starts_with($path, '~/')) {
+      $home = getenv('HOME') ?: (function_exists('posix_getpwuid') && function_exists('posix_geteuid') ? (posix_getpwuid(posix_geteuid())['dir'] ?? '') : '');
+
+      if ($home === '') {
+        throw new RuntimeException('DB_NAME starts with ~, but the home directory of the user PHP runs as is not known. Give the full path.');
+      }
+
+      $path = rtrim($home, '/') . substr($path, 1);
+    }
+
+    $path = PrivateDirectory::resolve($path);
+    $directory = dirname($path);
+
+    if (!is_dir($directory)) {
+      throw new RuntimeException(sprintf(
+        'DB_NAME points to %s, but the directory %s does not exist. Create it, or correct DB_NAME.',
+        $path,
+        $directory
+      ));
+    }
+
+    return $uri ? 'file:' . $path . $query : $path;
   }
 }

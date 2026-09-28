@@ -1433,9 +1433,30 @@ la extensión PDO que falta (`the PHP extension pdo_mysql is not installed`), o
 el driver y el host que no respondieron. La contraseña y el texto propio del
 driver se quedan en el log.
 
-Un `DB_NAME` relativo de SQLite se lee desde la raíz del proyecto, así que la
-consola y el servidor web abren el mismo archivo sea cual sea el directorio en
-que arrancó cada uno.
+**SQLite** recibe el archivo en `DB_NAME`, en cualquier lugar al que llegue el
+servidor:
+
+| `DB_NAME` | Abre |
+|---|---|
+| `database/app.sqlite` | el `database/app.sqlite` del proyecto, sea cual sea el directorio en que arrancó la consola o el servidor web |
+| `/var/lib/app/app.sqlite` | ese archivo |
+| `~/data/app.sqlite` | `data/app.sqlite` en el directorio personal del usuario con el que se ejecuta PHP |
+| `file:database/app.sqlite?mode=ro` | una URI de SQLite, con sus parámetros intactos y la ruta resuelta de la misma forma — aquí, solo lectura |
+| `:memory:` | una base de datos que dura lo que dura la conexión |
+
+SQLite crea un archivo que no existe, pero no un directorio que no existe. El
+directorio se comprueba antes de conectar, y el error lo nombra, en lugar del
+`unable to open database file` de SQLite. No se crea automáticamente: una errata en la
+ruta se convertiría en una base de datos nueva y vacía de la que nadie se da
+cuenta.
+
+Un archivo en un disco que el servidor monta funciona como cualquier otro
+archivo. **Un servicio de SQLite alojado — Turso, Cloudflare D1, SQLite Cloud —
+no es un archivo**: cada uno habla un protocolo propio por la red, y
+`pdo_sqlite` solo abre archivos, así que ninguno está soportado todavía. Es
+mejor evitar un sistema de archivos de red (NFS, SMB) para una base de datos
+que recibe escrituras: SQLite depende de bloqueos de archivo que estos
+implementan de forma poco fiable.
 
 ### Constructor de consultas
 

@@ -1420,9 +1420,29 @@ driver e lança uma que diz o que pode ser dito sem ela — a extensão PDO que
 falta (`the PHP extension pdo_mysql is not installed`), ou o driver e o host que
 não responderam. A senha e o texto do próprio driver ficam no log.
 
-Um `DB_NAME` relativo do SQLite é lido a partir da raiz do projeto, então o
-console e o servidor web abrem o mesmo arquivo seja qual for o diretório em que
-cada um começou.
+**O SQLite** recebe o arquivo em `DB_NAME`, em qualquer lugar que o servidor
+alcance:
+
+| `DB_NAME` | Abre |
+|---|---|
+| `database/app.sqlite` | o `database/app.sqlite` do projeto, seja qual for o diretório em que o console ou o servidor web começou |
+| `/var/lib/app/app.sqlite` | esse arquivo |
+| `~/data/app.sqlite` | `data/app.sqlite` na pasta pessoal do usuário com que o PHP roda |
+| `file:database/app.sqlite?mode=ro` | uma URI do SQLite, com os parâmetros mantidos e o caminho resolvido do mesmo jeito — aqui, só leitura |
+| `:memory:` | um banco que dura enquanto durar a conexão |
+
+O SQLite cria um arquivo que não existe, mas não uma pasta que não existe. A
+pasta é conferida antes de conectar, e o erro a nomeia, em vez do
+`unable to open database file` do SQLite. Ela não é criada automaticamente: um erro de
+digitação no caminho viraria um banco novo e vazio que ninguém percebe.
+
+Um arquivo num disco que o servidor monta funciona como qualquer outro
+arquivo. **Um serviço de SQLite hospedado — Turso, Cloudflare D1, SQLite Cloud
+— não é um arquivo**: cada um fala um protocolo próprio pela rede, e o
+`pdo_sqlite` só abre arquivos, então nenhum deles é suportado ainda. Um sistema
+de arquivos de rede (NFS, SMB) é melhor evitar para um banco que recebe
+escritas: o SQLite depende de travas de arquivo que eles implementam de forma
+pouco confiável.
 
 ### Query Builder
 
