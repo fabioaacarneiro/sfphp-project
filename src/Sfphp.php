@@ -19,5 +19,5 @@ final class Sfphp
      * it matches composer.json, so a release cannot bump one and forget the
      * other.
      */
-    public const VERSION = '0.34.0';
+    public const VERSION = '0.36.0';
 }
