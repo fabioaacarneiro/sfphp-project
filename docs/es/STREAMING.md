@@ -343,10 +343,11 @@ es un evento, y el navegador lo ignora:
 
 SFJS lee una respuesta en stream dentro de un elemento de la página sin
 JavaScript propio. El streaming forma parte del paquete único de SFJS, así que
-basta con la única etiqueta de script — no hay un archivo de streaming aparte:
+basta con `@sfjs` — la única etiqueta de script que escribe —; no hay un archivo
+de streaming aparte:
 
-```html
-<script src="{{ asset('js/sfjs.min.js') }}"></script>
+```sfht
+@sfjs
 ```
 
 ### Streams de texto

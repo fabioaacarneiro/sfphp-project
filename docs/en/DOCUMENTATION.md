@@ -959,6 +959,98 @@ A `.phpx` component is a function, not a partial: import it once with
 template — and call it as `{{ Card('Hello', $body) }}`. See
 [Components and .phpx](#components-and-phpx).
 
+### SFCSS, SFJS and page scripts
+
+```sfht
+<head>
+    @sfcss
+    {!! csrf_meta() !!}
+</head>
+<body>
+    …
+    @sfjs
+</body>
+```
+
+`@sfcss` writes the `<link>` for SFCSS and `@sfjs` the `<script>` tags for
+SFJS, each with the `?v=` that `asset()` adds, so a browser fetches a file again
+the moment it changes. Both take the build — `'min'`, the default, or
+`'normal'`, the readable one for debugging:
+
+```sfht
+@sfcss                                              {{-- the same as @sfcss() and @sfcss('min') --}}
+@sfjs('normal')
+@sfjs(APP_ENV === 'development' ? 'normal' : 'min')
+```
+
+The argument is PHP, as in every directive, so it can be an expression. A value
+that is neither does not break the page: the minified file is used, and the page
+says so — in the browser console, through a `data-sf-warning` attribute that
+SFJS reads, and in the PHP log, for a page that has no SFJS to read it. The
+warning travels as an attribute rather than as an inline script because a strict
+Content-Security-Policy refuses inline scripts.
+
+**`@sfjs` writes more than SFJS**, in this order: SFJS, the project's plugins
+(`plugins.js`, when there are any — see [Plugins: sf.plugin](#plugins-sfplugin)),
+and every script the page declared with `@script`. Written in that order by one
+directive, a plugin can never load before the `sf` it uses.
+
+**`@script('home')` declares that the page needs
+`app/resources/js/scripts/home.js`.** Any template or component can declare
+one, however deep, and a script asked for twice is loaded once:
+
+```php
+function SalesChart(array $sales): Sfht
+{
+    return Sfht(
+        @script('chart')
+        <canvas data-sales="{{ json_encode($sales) }}"></canvas>
+    );
+}
+```
+
+A page with five `SalesChart()`s loads `chart.js` once. A name can have
+folders — `@script('admin/users')` — and the `.js` is the directive's to add.
+
+What follows from the way a page renders:
+
+- **`@sfjs` goes at the end of `<body>`.** A page renders from the top down, so
+  everything inside the body has declared its scripts by the time it is
+  reached. A `@script` that comes after `@sfjs` is an error that says so,
+  instead of a script that silently never loads. In a layout, a `@script` in a
+  child's `@block` works: the child's blocks render before the layout does.
+- **A fragment does not pass through `@sfjs`**, so a `@script` in a fragment
+  that a swap brings in loads nothing. Behaviour that fragments need belongs in
+  a plugin, which every page loads.
+- **The list belongs to the request.** `Router::dispatch()` clears it, so in a
+  persistent worker one visitor's scripts never reach the next visitor's page.
+- **`csrf_meta()` stays explicit.** It opens a session, and a directive that did
+  it on every page with SFJS would open one — and send a `Set-Cookie` that a CDN
+  cannot cache — for every visitor of every public page.
+
+`./sfphp js:build` builds what the directives load:
+
+| Source | Built to | Loaded |
+|---|---|---|
+| `app/resources/js/plugins/*.js` | `public/assets/js/plugins.js`, `plugins.min.js` | on every page with `@sfjs` |
+| `app/resources/js/scripts/**/*.js` | `public/assets/js/scripts/<name>.js`, `<name>.min.js` | where a page says `@script('<name>')` |
+
+The plugins share one file, so a page makes one request for all of them, and
+each is wrapped in a scope of its own: two plugins that both declare
+`const format` would otherwise be a syntax error, and a plugin that throws while
+it loads would stop the ones after it. Every source is checked with node before
+it is built, so a mistake is reported with the name of the file that has it.
+What the minifier writes is checked too: it does not understand regular
+expressions, and a regex holding `//` or a quote would come out broken, so that
+file's `.min.js` is the source unchanged — larger, never broken. Without node,
+nothing can be checked, and every `.min.js` is the source. What was built from a
+source that is gone is removed.
+
+In development, plugins edited after the last build, or never built at all, are
+reported the way a wrong build name is — in the console and in the log —
+because a plugin that "does nothing" is usually one that was not rebuilt. A
+`@script` with no built file is reported in every environment.
+
 ### Inline PHP
 
 ```sfht
@@ -4936,7 +5028,7 @@ usage, `./sfphp help` groups them, and `./sfphp help <command>` — or
 which a test holds against the dispatcher. An option takes its value after `=`
 or after a space: `--port=8080` and `--port 8080` are the same.
 
-### Generation (14 generators)
+### Generation (17 generators)
 
 ```bash
 ./sfphp make:controller Post   # PostController, and the view its action renders
@@ -4952,12 +5044,15 @@ or after a space: `--port=8080` and `--port 8080` are the same.
 ./sfphp make:seeder User       # UserSeeder
 ./sfphp make:factory User
 ./sfphp make:pwa --name="My App" --logo=path/to/logo.png
+./sfphp make:phpx Card         # app/components/Card.phpx
+./sfphp make:sfht Dashboard    # app/resources/views/dashboard/index.sfht
+./sfphp make:plugin countdown  # app/resources/js/plugins/countdown.js, the plugin for @countdown
 
 ./sfphp make:scaffold Post     # controller + view + model + repository + service
 ```
 
-Fourteen generators here and two migration commands under
-[Database](#database-2) make the sixteen `make:*` commands.
+Seventeen generators here and `make:migration` under [Database](#database-2)
+make the eighteen `make:*` commands.
 
 **A generator never overwrites.** A file that is already there is refused, with
 its path, and `--force` replaces it; `make:scaffold` keeps the parts that exist
@@ -5045,7 +5140,7 @@ and the new colours never reached the browser. `--force` replaces either.
 ./sfphp env:example    # creates .env from .env-example
 ./sfphp init           # finishes a new project: .env, assets, .gitignore, composer scripts
 ./sfphp css:build      # builds SFCSS from the config and publishes it; --config= --output=
-./sfphp js:build       # joins core.js, stream.js and ui.js into sfjs.js, minifies and publishes it
+./sfphp js:build       # builds SFJS, the project's plugins and page scripts, and publishes them
 ./sfphp build --phpx   # compiles the .phpx components; --from= --to=
 ./sfphp test [filter]  # runs tests/*Test.php
 ./sfphp reset          # removes the example application; --force skips the question
@@ -5170,6 +5265,9 @@ serve` each copy it into `public/assets`, so using it is one line of HTML:
 <link rel="stylesheet" href="/assets/css/sfcss.min.css">
 ```
 
+In a template, `@sfcss` writes that line — see
+[SFCSS, SFJS and page scripts](#sfcss-sfjs-and-page-scripts).
+
 Nothing has to be generated to use SFCSS. The generator is there for changing
 it, which is [further down](#changing-sfcss).
 
@@ -5283,6 +5381,9 @@ interface components (modals, menus, tooltips, tabs, toasts).
 <!-- or sfjs.js, readable, for debugging — never both: each is the whole bundle -->
 ```
 
+In a template, `@sfjs` writes that tag, and the project's plugins and page
+scripts after it — see [SFCSS, SFJS and page scripts](#sfcss-sfjs-and-page-scripts).
+
 Up to 0.27, streams and the interface components were `sfjs-stream.js` and
 `sfjs-ui.js`, two extra files that only worked when loaded after this one. They
 are part of `sfjs.js` now and are no longer published: a page that includes
@@ -5292,7 +5393,7 @@ The source is three files under `resources/assets/js/src/` — `core.js`,
 `stream.js`, `ui.js` — that the builder joins, in that order, into the bundle.
 
 ```bash
-./sfphp js:build         # joins the parts, writes sfjs.js and sfjs.min.js, and publishes them
+./sfphp js:build         # joins the parts, writes sfjs.js and sfjs.min.js, publishes them, then builds the project's plugins and scripts
 ```
 
 The minifier removes comments and collapses whitespace, and deliberately does
@@ -5529,12 +5630,18 @@ sf.plugin('countdown', {
 });
 ```
 
-A plugin is a script loaded after SFJS:
+A plugin lives in `app/resources/js/plugins/`, one file each. `make:plugin`
+writes one, `./sfphp js:build` bundles them all into `plugins.js`, and `@sfjs`
+loads that on every page, right after SFJS:
 
-```html
-<script src="/assets/js/sfjs.min.js"></script>
-<script src="/assets/js/countdown.js"></script>
+```bash
+./sfphp make:plugin countdown   # app/resources/js/plugins/countdown.js, for @countdown
+./sfphp js:build                # public/assets/js/plugins.js and plugins.min.js
 ```
+
+`make:plugin` refuses the names `sf.plugin` refuses, listed below, so the
+mistake is caught before anything is built. A page without templates loads the
+bundle itself, after SFJS: `<script src="/assets/js/plugins.min.js"></script>`.
 
 **What a plugin is told, and when:**
 
@@ -5612,8 +5719,8 @@ left — is not a failure, and is not reported.
 - **the template directives** — `if`, `foreach`, `include`, `block` and the
   rest. The SFPHP parser reads `@include` in a `.phpx` or `.sfht` file as its
   own syntax before any browser sees it, so `<div @include="x">` does not reach
-  SFJS at all: it stops the template from compiling. `script`, `scripts`,
-  `sfcss` and `sfjs` are reserved for directives on their way;
+  SFJS at all: it stops the template from compiling. `script`, `sfcss` and
+  `sfjs` are among them, and `scripts` is reserved beside them;
 - **the attributes SFJS reads itself** — `get`, `post`, `target`, `swap`,
   `trigger`, `state`, `show`, `text`, `model`, `on`, `modal`, `tabs`,
   `tooltip` and the rest;

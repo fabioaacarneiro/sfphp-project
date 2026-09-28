@@ -523,7 +523,7 @@ function PostcodePage(?Sfht $result = null): Sfht
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>.phpx + SFCSS + SFJS — SFPHP</title>
-            <link rel="stylesheet" href="{{ asset('css/sfcss.min.css') }}">
+            @sfcss
         </head>
         <body class="bg-light">
             {{ PageHeader() }}
@@ -535,7 +535,7 @@ function PostcodePage(?Sfht $result = null): Sfht
 
             {{ PageFooter() }}
 
-            <script src="{{ asset('js/sfjs.min.js') }}"></script>
+            @sfjs
         </body>
         </html>
     );

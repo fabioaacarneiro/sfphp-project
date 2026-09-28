@@ -332,11 +332,11 @@ an event, and the browser ignores it:
 ## Streaming in the Browser (SFJS `@stream`)
 
 SFJS reads a streamed response into a page element without any JavaScript of
-your own. Streaming is part of the single SFJS bundle, so the one script tag is
-all it takes — there is no separate streaming file:
+your own. Streaming is part of the single SFJS bundle, so `@sfjs` — the one
+script tag it writes — is all it takes; there is no separate streaming file:
 
-```html
-<script src="{{ asset('js/sfjs.min.js') }}"></script>
+```sfht
+@sfjs
 ```
 
 ### Text streams
