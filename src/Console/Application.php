@@ -11,11 +11,13 @@ use SfphpProject\src\Console\Generators\FactoryGenerator;
 use SfphpProject\src\Console\Generators\ListenerGenerator;
 use SfphpProject\src\Console\Generators\MiddlewareGenerator;
 use SfphpProject\src\Console\Generators\ModelGenerator;
+use SfphpProject\src\Console\Generators\PhpxGenerator;
 use SfphpProject\src\Console\Generators\PolicyGenerator;
 use SfphpProject\src\Console\Generators\RepositoryGenerator;
 use SfphpProject\src\Console\Generators\RequestGenerator;
 use SfphpProject\src\Console\Generators\SeederGenerator;
 use SfphpProject\src\Console\Generators\ServiceGenerator;
+use SfphpProject\src\Console\Generators\SfhtGenerator;
 use SfphpProject\src\Console\Generators\TestGenerator;
 use SfphpProject\src\Database;
 use SfphpProject\src\Database\Seeder;
@@ -98,7 +100,9 @@ final class Application
         'test' => ['group' => 'Server', 'usage' => 'test [filter] [--path=tests]', 'summary' => 'Run the project\'s tests (tests/*Test.php)',
             'details' => ['Runs every TestCase under tests/ — see make:test. A filter keeps the tests whose class or method name contains it.']],
 
-        'make:controller' => ['group' => 'Generate', 'usage' => 'make:controller <Name> [--force]', 'summary' => 'A controller, and the view its action renders'],
+        'make:controller' => ['group' => 'Generate', 'usage' => 'make:controller <Name> [--no-view|--template=sfht|phpx] [--force]', 'summary' => 'A controller (optionally with view)'],
+        'make:phpx' => ['group' => 'Generate', 'usage' => 'make:phpx <Name> [--force]', 'summary' => 'A PHPX component'],
+        'make:sfht' => ['group' => 'Generate', 'usage' => 'make:sfht <Name> [--force]', 'summary' => 'An SFHT view template'],
         'make:model' => ['group' => 'Generate', 'usage' => 'make:model <Name> [--force]', 'summary' => 'A model'],
         'make:request' => ['group' => 'Generate', 'usage' => 'make:request <Name> [--force]', 'summary' => 'A validation class for a form'],
         'make:middleware' => ['group' => 'Generate', 'usage' => 'make:middleware <Name> [--force]', 'summary' => 'A middleware'],
@@ -292,6 +296,8 @@ final class Application
                 'make:migration' => $this->makeMigration($arguments),
                 'make:migration:create' => $this->makeMigrationCreate($arguments),
                 'make:controller' => $this->makeController($arguments),
+                'make:phpx' => $this->makePhpx($arguments),
+                'make:sfht' => $this->makeSfht($arguments),
                 'make:model' => $this->makeModel($arguments),
                 'make:pwa' => $this->makePwa($arguments),
                 'make:repository' => $this->makeRepository($arguments),
@@ -601,7 +607,24 @@ final class Application
             throw new \InvalidArgumentException('Controller name is required.');
         }
 
-        $generator = new ControllerGenerator($this->rootPath(), in_array('--force', $arguments, true));
+        // Parse options
+        $options = [];
+        if (in_array('--no-view', $arguments, true)) {
+            $options['no-view'] = true;
+        }
+
+        // Extract --template=sfht or --template=phpx
+        foreach ($arguments as $arg) {
+            if (str_starts_with($arg, '--template=')) {
+                $template = substr($arg, strlen('--template='));
+                if (in_array($template, ['sfht', 'phpx'], true)) {
+                    $options['template'] = $template;
+                }
+            }
+        }
+
+        $generator = (new ControllerGenerator($this->rootPath(), in_array('--force', $arguments, true)))
+            ->withOptions($options);
         $file = $generator->generate($name);
 
         $this->writeLine('Created controller: ' . $this->relativePath($file));
@@ -609,6 +632,48 @@ final class Application
         if ($generator->view !== null) {
             $this->writeLine('Created view:       ' . $this->relativePath($generator->view));
         }
+
+        return 0;
+    }
+
+    /**
+     * Generate a PHPX component.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makePhpx(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('Component name is required.');
+        }
+
+        $generator = new PhpxGenerator($this->rootPath(), in_array('--force', $arguments, true));
+        $file = $generator->generate($name);
+
+        $this->writeLine('Created PHPX component: ' . $this->relativePath($file));
+
+        return 0;
+    }
+
+    /**
+     * Generate an SFHT view.
+     *
+     * @param array<int, string> $arguments The command arguments
+     * @return int
+     */
+    private function makeSfht(array $arguments): int
+    {
+        $name = $this->firstArgument($arguments);
+        if ($name === null) {
+            throw new \InvalidArgumentException('View name is required.');
+        }
+
+        $generator = new SfhtGenerator($this->rootPath(), in_array('--force', $arguments, true));
+        $file = $generator->generate($name);
+
+        $this->writeLine('Created SFHT view: ' . $this->relativePath($file));
 
         return 0;
     }
