@@ -89,31 +89,16 @@ $tests->run('the client talks to a real server', function () use ($tests): void 
         return;
     }
 
-    $port = 8000 + (getmypid() % 900);
-    $root = dirname(__DIR__) . '/fixtures';
-    $command = sprintf(
-        'php -S 127.0.0.1:%d -t %s %s/http-server.php > /dev/null 2>&1 & echo $!',
-        $port,
-        escapeshellarg($root),
-        escapeshellarg($root)
-    );
+    $server = fixtureServer();
 
-    $pid = (int) trim((string) shell_exec($command));
-    $base = 'http://127.0.0.1:' . $port;
+    if ($server === null) {
+        return;
+    }
+
+    [$base, $stop] = $server;
+    $port = (int) parse_url($base, PHP_URL_PORT);
 
     try {
-        // Wait for it to accept, rather than sleeping a guessed amount.
-        for ($attempt = 0; $attempt < 50; $attempt++) {
-            $probe = @fsockopen('127.0.0.1', $port, $code, $message, 0.1);
-
-            if ($probe !== false) {
-                fclose($probe);
-                break;
-            }
-
-            usleep(100_000);
-        }
-
         $response = Http::get($base . '/users', ['page' => 2, 'q' => 'ação']);
 
         $tests->assertSame(200, $response->status());
@@ -154,9 +139,7 @@ $tests->run('the client talks to a real server', function () use ($tests): void 
             ClientException::class
         );
     } finally {
-        if ($pid > 0) {
-            exec('kill ' . $pid . ' 2>/dev/null');
-        }
+        $stop();
     }
 });
 
@@ -173,27 +156,16 @@ $tests->run('the client refuses https-to-http redirects and follows http-to-http
     $tests->assertSame(CURLPROTO_HTTP | CURLPROTO_HTTPS, $protocols->invoke(null, 'http://127.0.0.1/x'));
 
     // And on the wire: a plain-http service that redirects is followed.
-    $port = 9000 + (getmypid() % 900);
-    $root = dirname(__DIR__) . '/fixtures';
-    $pid = (int) trim((string) shell_exec(sprintf(
-        'php -S 127.0.0.1:%d -t %s %s/http-server.php > /dev/null 2>&1 & echo $!',
-        $port,
-        escapeshellarg($root),
-        escapeshellarg($root)
-    )));
+    $server = fixtureServer();
+
+    if ($server === null) {
+        return;
+    }
+
+    [$base, $stop] = $server;
+    $port = (int) parse_url($base, PHP_URL_PORT);
 
     try {
-        for ($attempt = 0; $attempt < 50; $attempt++) {
-            $probe = @fsockopen('127.0.0.1', $port, $code, $message, 0.1);
-
-            if ($probe !== false) {
-                fclose($probe);
-                break;
-            }
-
-            usleep(100_000);
-        }
-
         $response = Http::get('http://127.0.0.1:' . $port . '/redirect');
         $tests->assertSame(200, $response->status());
         $tests->assertSame('Redirected successfully', $response->body());
@@ -224,9 +196,7 @@ $tests->run('the client refuses https-to-http redirects and follows http-to-http
         $tests->assertSame('Bearer secret', $client->get('/echo-method')->json()['authorization']);
         $tests->assertSame(null, $client->get('http://localhost:' . $port . '/echo-method')->json()['authorization']);
     } finally {
-        if ($pid > 0) {
-            exec('kill ' . $pid . ' 2>/dev/null');
-        }
+        $stop();
     }
 });
 
@@ -241,35 +211,16 @@ $tests->run('a response larger than the limit is refused instead of filling memo
         return;
     }
 
-    $port = 9000 + (getmypid() % 900);
-    $root = dirname(__DIR__) . '/fixtures';
-    $pid = (int) trim((string) shell_exec(sprintf(
-        'php -S 127.0.0.1:%d -t %s %s/http-server.php > /dev/null 2>&1 & echo $!',
-        $port,
-        escapeshellarg($root),
-        escapeshellarg($root)
-    )));
-    $base = 'http://127.0.0.1:' . $port;
+    $server = fixtureServer();
+
+    if ($server === null) {
+        return;
+    }
+
+    [$base, $stop] = $server;
+    $port = (int) parse_url($base, PHP_URL_PORT);
 
     try {
-        $listening = false;
-
-        for ($attempt = 0; $attempt < 50; $attempt++) {
-            $probe = @fsockopen('127.0.0.1', $port, $code, $message, 0.1);
-
-            if ($probe !== false) {
-                fclose($probe);
-                $listening = true;
-                break;
-            }
-
-            usleep(100_000);
-        }
-
-        if (!$listening) {
-            return;
-        }
-
         $small = Http::base($base)->maxSize(1000);
 
         // Under the limit, whole.
@@ -302,8 +253,6 @@ $tests->run('a response larger than the limit is refused instead of filling memo
             ClientException::class
         );
     } finally {
-        if ($pid > 0) {
-            exec('kill ' . $pid . ' 2>/dev/null');
-        }
+        $stop();
     }
 });
