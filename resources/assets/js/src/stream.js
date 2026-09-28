@@ -441,29 +441,22 @@
     return parseFloat(match[1]) * (unit === 'ms' ? 1 : unit === 'm' ? 60000 : 1000);
   }
 
-  const selector = '[\\@stream], [\\@hxstream]';
-
-  /**
-   * Bind streaming handlers to elements
-   * @param {Document|Element} root The DOM root to search
+  /*
+   * A stream is a plugin like any other: attached once per element, and
+   * stopped when its element leaves the page — a stream whose element a swap
+   * removed used to keep its connection open, writing into a node nobody
+   * could see while the server kept producing for it. Everything below is
+   * set up through ctx, so leaving the page undoes it.
    */
-  function bindStreaming(root) {
-    const found = Array.from(root.querySelectorAll(selector));
-
-    // The root itself: an element added on its own is a root with no match inside.
-    if (root.matches && root.matches(selector)) found.push(root);
-
-    found.forEach((element) => {
-      if (element.__sfStreamBound) return;
-      element.__sfStreamBound = true;
-
-      const spec = element.getAttribute('@trigger') || element.getAttribute('@hxtrigger') || defaultTrigger(element);
+  const stream = {
+    attach(element, ctx) {
+      const spec = ctx.attr('trigger') || defaultTrigger(element);
 
       // @abort names the element that stops whatever run is in progress.
-      // Bound once here, not per run, so restarting does not stack listeners.
       const abortSelector = element.getAttribute('@abort');
+
       if (abortSelector) {
-        document.querySelector(abortSelector)?.addEventListener('click', () => {
+        ctx.on(document.querySelector(abortSelector), 'click', () => {
           element.__sfStreamStop?.();
           element.__sfStreamStop = null;
         });
@@ -485,7 +478,7 @@
         if (trigger === '') return;
 
         if (trigger === 'load') {
-          if (delay > 0) setTimeout(() => { if (element.isConnected) handleStream(element); }, delay);
+          if (delay > 0) ctx.after(delay, () => handleStream(element));
           else handleStream(element);
 
           return;
@@ -500,77 +493,29 @@
             return;
           }
 
-          const timer = setInterval(() => {
-            if (!element.isConnected) {
-              clearInterval(timer);
-
-              return;
-            }
-
-            handleStream(element);
-          }, period);
+          ctx.every(period, () => handleStream(element));
 
           return;
         }
 
         // Support other triggers like click, input, etc.
-        const fire = delay > 0 ? sf.util.debounce(() => handleStream(element), delay) : () => handleStream(element);
-        element.addEventListener(trigger, (e) => {
+        const fire = delay > 0 ? ctx.debounce(() => handleStream(element), delay) : () => handleStream(element);
+
+        ctx.on(element, trigger, (e) => {
           if (trigger === 'submit' || trigger === 'click') e.preventDefault();
           fire();
         });
       });
-    });
-  }
 
-  /**
-   * Stop the streams of elements that have left the page.
-   *
-   * A stream whose element a swap removed kept its connection open and kept
-   * writing into a node nobody could see, and the server kept producing for
-   * it. isConnected is checked rather than trusting the removal, because a
-   * morph moves nodes by removing and re-inserting them.
-   *
-   * @param {Node} node A removed node
-   * @returns {void}
-   */
-  function stopRemoved(node) {
-    const found = Array.from(node.querySelectorAll(selector));
+      return () => {
+        element.__sfStreamStop?.();
+        element.__sfStreamStop = null;
+      };
+    },
+  };
 
-    if (node.matches(selector)) found.push(node);
+  const { register } = sf[Symbol.for('sfjs.internal')];
 
-    found.forEach((element) => {
-      if (element.isConnected || !element.__sfStreamStop) return;
-
-      element.__sfStreamStop();
-      element.__sfStreamStop = null;
-    });
-  }
-
-  /*
-   * Bound when the document is ready, not when the script runs: loaded in the
-   * <head>, document.body does not exist yet, and observing it threw — which
-   * took the whole extension down before it bound a single element.
-   */
-  sf.dom.ready(() => {
-    bindStreaming(document);
-
-    // Also bind dynamically added content, and stop what was taken away.
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
-          if (node.nodeType === 1) bindStreaming(node);
-        });
-
-        mutation.removedNodes.forEach((node) => {
-          if (node.nodeType === 1) stopRemoved(node);
-        });
-      });
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-  });
+  register('stream', stream);
+  register('hxstream', stream);
 })();

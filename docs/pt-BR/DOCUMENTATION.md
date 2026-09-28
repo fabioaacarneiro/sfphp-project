@@ -5295,8 +5295,8 @@ Referência completa: [SFCSS](SFCSS.md) e
 
 ## SFJS
 
-Biblioteca JavaScript sem dependências — 113KB crus, 58KB minificados,
-**15,4KB gzipped**. Exposta como `window.sf`. É **um arquivo só**, com tudo:
+Biblioteca JavaScript sem dependências — 133KB crus, 68KB minificados,
+**18KB gzipped**. Exposta como `window.sf`. É **um arquivo só**, com tudo:
 requisições e swaps, validação, estado, streams (`@stream`, `@sse`) e os
 componentes de interface (modais, menus, tooltips, abas, toasts).
 
@@ -5329,44 +5329,360 @@ se perdeu, o que uma aspa dentro de um literal de regex provoca.
 ### API programática
 
 ```js
-sf.ajax.get('/api/posts');
-sf.ajax.post('/api/posts', { title: 'Olá' });
-sf.ajax.put('/api/posts/1', { title: 'Editado' });
-sf.ajax.delete('/api/posts/1');
-sf.ajax.patch('/api/posts/1', { title: 'X' });
+sf.req.get('/api/posts', { query: { page: 2 } });   // resolve com o próprio Response do fetch
+sf.req.post('/api/posts', { title: 'Olá' });
+sf.req.put('/api/posts/1', { title: 'Editado' });
+sf.req.patch('/api/posts/1', { title: 'X' });
+sf.req.delete('/api/posts/1');
+
+sf.target('#lista', html);                          // põe markup na página, como uma troca põe
+sf.plugin('countdown', { attach(el, ctx) { /* … */ } });   // um atributo seu: @countdown
 
 sf.form.serialize(formEl);
-sf.form.submit(formEl);
+sf.form.submit(formEl);     // envia como os atributos dele dizem; resolve com o Response
 sf.form.validate(inputEl);
-
-sf.dom.addClass(el, 'ativo');   sf.dom.removeClass(el, 'ativo');
-sf.dom.toggleClass(el, 'ativo'); sf.dom.hasClass(el, 'ativo');
-sf.dom.show(el); sf.dom.hide(el); sf.dom.toggle(el);   // o atributo hidden, como o @show
-sf.dom.on(el, 'click', fn);     sf.dom.off(el, 'click', fn);
-sf.dom.ready(fn);
+sf.form.check(inputEl);     // valida, e mostra ou limpa a mensagem
 
 sf.validate.email(v);  sf.validate.required(v);  sf.validate.number(v);
 sf.validate.url(v);    sf.validate.minLength(v, 5);  sf.validate.maxLength(v, 50);
 sf.validate.pattern(v, '^[a-z]+$');
 
-sf.storage.set('k', {a: 1});  sf.storage.get('k');
-sf.storage.remove('k');       sf.storage.clear();
-
-sf.util.debounce(fn, 300);  sf.util.throttle(fn, 300);  sf.util.wait(500);
-sf.util.id(el, 'prefixo');  // o id de el, dando-lhe um único antes se ele não tiver
-
-sf.form.check(inputEl);     // valida, e mostra ou limpa a mensagem
 sf.messages = { required: 'Campo obrigatório.' };   // veja "O que o SFJS diz, em qualquer idioma"
 sf.config({ swapStrategy: 'innerHTML', messages: { close: 'Fechar' } });
 sf.t('minLength', { min: 3 });          // uma mensagem pela chave, com os marcadores preenchidos
 sf.emit(el, 'app:saved', { id: 7 });    // um CustomEvent que borbulha
-sf.onBind((raiz) => { /* roda na página e em todo fragmento que uma troca traz */ });
 sf.bind(el);                            // liga a marcação que você mesmo inseriu
-sf.morph(el, html);                     // a troca padrão, sem requisição
+sf.onBind((raiz) => { /* … */ });       // um nível abaixo do sf.plugin — veja "Plugins"
 
 sf.toast('Salvo.', { variant: 'success' });   // um componente de interface
 sf.modal.open(dialogEl);  sf.modal.close(dialogEl);
 ```
+
+Três destes fazem o que uma linha de JavaScript nativo não faz, e as próximas
+seções tratam deles: o `sf.req` envia uma requisição, o `sf.target` põe markup
+na página e o `sf.plugin` ensina ao SFJS um atributo seu. Os helpers que só
+davam outro nome a uma chamada nativa — `sf.dom`, `sf.storage`, `sf.util` —
+estão depreciados, assim como o `sf.ajax` e o `sf.morph`, que o `sf.req` e o
+`sf.target` substituem. Veja [Em vias de sair](#em-vias-de-sair).
+
+### Requisições pelo código: sf.req
+
+```js
+const res = await sf.req.get('/api/users/7');
+const user = await res.json();
+```
+
+O que volta é **o próprio `Response` do fetch** — `res.ok`, `res.status`,
+`res.headers`, `res.json()`, `res.text()`, `res.blob()` —, então não há um
+segundo objeto de resposta para aprender, e nada do que o fetch faz se perde. O
+`get` e o `delete` recebem `(url, opções)`; o `post`, o `put` e o `patch`
+recebem `(url, dados, opções)`, em que `dados` é um objeto enviado como JSON ou
+um `FormData` enviado como `multipart/form-data`.
+
+| Opção | |
+|---|---|
+| `query` | um objeto que vira a query string: `{ page: 2, tag: ['a', 'b'] }` é `?page=2&tag=a&tag=b`. `null` e `undefined` ficam de fora |
+| `headers` | somados aos da própria requisição, e eles prevalecem: um `Accept`, um `Authorization` |
+| `signal` | um `AbortSignal` seu. Abortá-lo cancela a requisição |
+| `timeout` | milissegundos. Quando acabam, a requisição é abortada e rejeita com `TimeoutError`. Cobre a espera pela resposta e, com um `target`, a troca |
+| `source` | o elemento que pediu — veja abaixo |
+| `target`, `swap` | para onde a resposta vai, e como — veja abaixo |
+| `errorTarget` | para onde vai uma resposta que não é 2xx — veja [Quando o servidor diz não](#quando-o-servidor-diz-não) |
+| `credentials`, `cache`, `mode`, `redirect`, `referrer`, `referrerPolicy`, `integrity`, `keepalive`, `priority` | entregues ao fetch como estão |
+
+Toda requisição leva `X-Requested-With: XMLHttpRequest`, que é como o
+`$request->isFragment()` sabe que deve responder com o fragmento, e `POST`,
+`PUT`, `PATCH` e `DELETE` levam o `X-CSRF-Token` lido de
+`<meta name="csrf-token">`. Esquecer esse header é o erro mais comum com o
+fetch puro, e o sintoma é uma recusa que não diz o porquê.
+
+**Ela se resolve do jeito que o fetch se resolve:**
+
+| O que aconteceu | A promise |
+|---|---|
+| veio uma resposta, qualquer que seja o status — um 422 também | resolve com o `Response`; `res.ok` diz se foi 2xx |
+| não veio resposta: a rede falhou | rejeita com o `TypeError` que o fetch dá |
+| o `timeout` acabou | rejeita com um `DOMException` chamado `TimeoutError` |
+| foi abortada — pelo seu `signal`, por uma requisição mais nova do mesmo `source` ou por um listener de `sf:before` que chamou `preventDefault()` | rejeita com um `DOMException` chamado `AbortError` |
+
+```js
+try {
+  const res = await sf.req.post('/orders', order, { timeout: 5000 });
+
+  if (!res.ok) return showProblem(await res.text());
+} catch (error) {
+  if (error.name === 'AbortError') return;   // parada de propósito
+  showOffline();                             // TypeError ou TimeoutError
+}
+```
+
+**O `source` e o `target` são o motivo de o `sf.req` existir.** Sem nenhum dos
+dois, ele é um fetch que lembra do token CSRF, e isso é de propósito: escolhê-lo
+para uma chamada simples de JSON não custa nada. Com eles, uma requisição feita
+pelo código ganha o que os atributos ganham.
+
+Com **`source`**, a requisição pertence a um elemento:
+
+- uma requisição mais nova do mesmo elemento aborta a mais antiga. A antiga
+  rejeita com `AbortError`, e a resposta atrasada dela nunca chega à página — a
+  caixa de busca que mostra os resultados de "ab" depois que "abc" foi digitado;
+- o alvo recebe `aria-busy`, o botão é desabilitado para que um segundo clique
+  não envie um segundo pedido, e o foco volta quando a resposta chega;
+- `sf:before`, `sf:after` e `sf:error` são disparados nele — veja
+  [A vida de uma requisição](#a-vida-de-uma-requisição).
+
+Com **`target`**, a resposta é trocada na página: `morph` por padrão, então o
+foco, o cursor e o que foi digitado sobrevivem, e o que chega é ligado — um
+`@get` dentro dele funciona, um plugin dentro dele é anexado. A troca lê uma
+cópia do corpo, então o `Response` que você recebe de volta ainda pode ser lido.
+
+Esta é uma caixa de busca que pergunta enquanto o visitante digita, espera a
+digitação parar, nunca mostra uma resposta velha e marca os resultados como
+ocupados — com fetch:
+
+```js
+let controller;
+let timer;
+
+input.addEventListener('input', () => {
+  clearTimeout(timer);
+  timer = setTimeout(async () => {
+    controller?.abort();
+    controller = new AbortController();
+
+    const results = document.querySelector('#results');
+    results.setAttribute('aria-busy', 'true');
+
+    try {
+      const url = '/search?' + new URLSearchParams({ q: input.value });
+      const res = await fetch(url, { signal: controller.signal, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+
+      results.innerHTML = await res.text();   // o foco e o que foi digitado dentro se perdem
+    } catch (error) {
+      if (error.name !== 'AbortError') console.error(error);
+    } finally {
+      results.removeAttribute('aria-busy');
+    }
+  }, 300);
+});
+```
+
+Com o `sf.req` num plugin, em que o `ctx.debounce` é a espera e o elemento é o
+`source`:
+
+```js
+sf.plugin('search', {
+  attach(input, ctx) {
+    ctx.on(input, 'input', ctx.debounce(() => {
+      ctx.req.get(ctx.value, { query: { q: input.value }, target: ctx.attr('target') });
+    }, 300));
+  },
+});
+```
+
+E sem JavaScript nenhum, que é por onde o SFJS quer que você comece:
+
+```html
+<input name="q" @get="/search" @trigger="input delay:300ms" @target="#results">
+```
+
+A requisição que cada tecla substitui rejeita com `AbortError`. Dentro de um
+plugin isso já está resolvido — o que o `ctx.on`, o `ctx.every`, o `ctx.after` e
+o `ctx.debounce` chamam é protegido, então um abort fica em silêncio e uma falha
+de verdade é relatada com o nome do plugin. Código fora de um plugin que dispara
+uma requisição sem esperar por ela acrescenta `.catch(() => {})`, como faria com
+o fetch.
+
+A versão com fetch tem mais um problema que nenhum cuidado resolve: o
+`innerHTML` reconstrói os resultados, então um formulário dentro deles perde o
+foco e o texto digitado pela metade, e o que eles trazem — um `@get`, um plugin —
+fica inerte. Preservá-los exigiria um morph, que no SFJS tem umas 175 linhas, ou
+uma dependência.
+
+### Colocar markup na página: sf.target
+
+```js
+sf.target(onde, conteudo, { swap });   // uma Promise que se resolve quando o markup está no lugar
+```
+
+`onde` é um elemento ou um seletor. `conteudo` é uma string de HTML, ou um
+`Response`, cujo corpo é lido para isso. `swap` é qualquer uma das
+[estratégias de troca](#estratégias-de-troca), `morph` quando não é dado. É a
+segunda metade de uma requisição, sozinha, para que uma resposta possa ser
+examinada antes de ir para algum lugar:
+
+```js
+const res = await sf.req.get('/cart/summary');
+
+if (res.headers.get('X-Stock') === '0') {
+  await sf.target('#alerts', res, { swap: 'beforeend' });
+} else {
+  await sf.target('#cart', res);
+}
+```
+
+É a mesma troca que os atributos usam — o foco mantido, o que chega ligado —,
+então markup montado no código fica tão vivo quanto markup que veio do servidor.
+Um `Response` só pode ser lido uma vez: passar um cujo corpo já foi lido rejeita
+com um `TypeError` que diz isso, e passar o texto que você leu resolve.
+
+### Plugins: sf.plugin
+
+O SFJS é feito para que uma página não precise de JavaScript próprio, e a
+maioria não precisa. Quando uma precisa — um gráfico, uma contagem regressiva,
+um mapa, algo que o framework não cobre —, o jeito de acrescentar é um atributo,
+para que o markup continue declarativo e o comportamento seja escrito uma vez:
+
+```html
+<span @countdown="2026-12-31T23:59:59">…</span>
+```
+
+```js
+sf.plugin('countdown', {
+  attach(el, ctx) {
+    const end = new Date(ctx.value);
+
+    const tick = () => {
+      const left = Math.max(0, Math.round((end - Date.now()) / 1000));
+      el.textContent = left + 's';
+    };
+
+    tick();
+    ctx.every(1000, tick);   // parado sozinho quando el sai da página
+  },
+});
+```
+
+Um plugin é um script carregado depois do SFJS:
+
+```html
+<script src="/assets/js/sfjs.min.js"></script>
+<script src="/assets/js/countdown.js"></script>
+```
+
+**O que um plugin fica sabendo, e quando:**
+
+| | |
+|---|---|
+| `attach(el, ctx)` | uma vez para cada elemento que tem o atributo — na página, em todo fragmento que uma troca traz e no markup que qualquer outro script põe na página. Pode devolver uma função de limpeza, e pode ser `async` |
+| `update(el, ctx)` | opcional. Uma troca mudou o valor do atributo num elemento que ficou. Sem `update`, o plugin é desanexado e anexado de novo, então sempre vê o valor em vigor |
+| `detach(el, ctx)` | opcional. O elemento saiu da página, ou perdeu o atributo |
+
+Quando um elemento sai, o que ele montou pelo `ctx` é desfeito primeiro —
+listeners removidos, timers parados, requisições abortadas —, depois as limpezas
+rodam, a última registrada primeiro, e depois o `detach`. É a parte que um
+plugin escrito à mão esquece, e a parte que vaza: um intervalo escrevendo num
+nó que ninguém vê, enquanto a aba ficar aberta.
+
+**O que o `ctx` traz:**
+
+| | |
+|---|---|
+| `ctx.value` | o valor do atributo, como está agora |
+| `ctx.name` | o nome do plugin |
+| `ctx.attr('target')` | outro atributo do mesmo elemento — aqui, o `@target` |
+| `ctx.state` | o `@state` em que o elemento está, ou `null`. Escrever nele atualiza a página: `ctx.state.count++` atualiza todo `@text="count"` |
+| `ctx.on(alvo, tipo, listener, opções)` | `addEventListener`, removido quando o elemento sai. `alvo` é um elemento, `window`, `document` ou um seletor |
+| `ctx.every(ms, fn)`, `ctx.after(ms, fn)` | `setInterval` e `setTimeout`, parados quando o elemento sai |
+| `ctx.debounce(fn, ms)` | uma função que espera as chamadas pararem; uma chamada ainda esperando quando o elemento sai é descartada |
+| `ctx.req.get()`, `.post()`, `.put()`, `.patch()`, `.delete()` | o `sf.req` com o elemento como `source`: ocupado, a corrida, os eventos — e abortado quando o elemento sai |
+| `ctx.target(onde, conteudo, opções)` | o `sf.target` |
+| `ctx.emit(tipo, detalhe)` | um `CustomEvent` que borbulha, no elemento |
+| `ctx.t(chave, valores)` | o `sf.t` |
+| `ctx.id(prefixo)` | o id do elemento, dando-lhe um único antes — para `aria-controls` e `aria-labelledby` |
+| `ctx.signal` | um `AbortSignal` abortado quando o elemento sai, para um `fetch` ou um `addEventListener` seu |
+| `ctx.cleanup(fn)` | roda `fn` quando o elemento sai |
+
+Um plugin que pergunta ao servidor, soma a uma lista e escreve no estado:
+
+```html
+<div @state="{ loaded: 10 }">
+  <ul id="posts">…</ul>
+  <p><span @text="loaded"></span> posts</p>
+  <button @load-more="/posts" @target="#posts">Mais</button>
+</div>
+```
+
+```js
+sf.plugin('load-more', {
+  attach(button, ctx) {
+    let page = 1;
+
+    ctx.on(button, 'click', async () => {
+      const res = await ctx.req.get(ctx.value, { query: { page: page + 1 } });
+
+      if (!res.ok) return;
+
+      page++;
+      await ctx.target(ctx.attr('target'), res, { swap: 'beforeend' });
+      ctx.state.loaded = document.querySelectorAll('#posts li').length;
+
+      if (res.headers.get('X-Last-Page') === 'true') button.hidden = true;
+    });
+  },
+});
+```
+
+**Um plugin que falha é relatado pelo nome** — `SFJS: @countdown failed in
+attach` no console, com o erro —, e todos os outros plugins continuam
+funcionando. O mesmo vale para o que ele entrega ao `ctx.on`, ao `ctx.every`,
+ao `ctx.after` e ao `ctx.debounce`: um listener que lança um erro é relatado
+como `failed in click`. Um `AbortError` — uma requisição substituída por uma
+mais nova, ou parada porque o elemento saiu — não é falha, e não é relatado.
+
+**Nomes.** Letras minúsculas, dígitos e hífens, começando por uma letra:
+`countdown`, `chart-line`. O `sf.plugin` recusa, com uma mensagem que diz o
+porquê:
+
+- **as diretivas de template** — `if`, `foreach`, `include`, `block` e as
+  demais. O parser do SFPHP lê `@include` num arquivo `.phpx` ou `.sfht` como
+  sintaxe dele antes que qualquer navegador o veja, então `<div @include="x">`
+  nem chega ao SFJS: impede o template de compilar. `script`, `scripts`,
+  `sfcss` e `sfjs` estão reservados para diretivas que estão chegando;
+- **os atributos que o próprio SFJS lê** — `get`, `post`, `target`, `swap`,
+  `trigger`, `state`, `show`, `text`, `model`, `on`, `modal`, `tabs`,
+  `tooltip` e os demais;
+- nomes que começam com `hx`, a grafia antiga dos atributos;
+- um nome já registrado — `stream` é um deles: o `@stream` é ele mesmo um
+  plugin.
+
+**O `sf.onBind` é o nível abaixo.** Ele chama uma função com a página, e depois
+com a raiz de toda troca — o pai do que foi trocado, então elementos que já
+estavam lá passam de novo, e nada avisa quando um sai. Um plugin que o usa
+precisa manter uma marca própria e limpar o que deixou. Ele continua para
+comportamentos que não dependem de um atributo próprio — os menus dropdown do
+SFJS o usam para achar botões com `popovertarget`. Para um atributo, use o
+`sf.plugin`.
+
+### Em vias de sair
+
+Cada um destes continua funcionando, e avisa uma vez no console, dizendo o que
+usar no lugar. Eles saem num release futuro.
+
+| Depreciado | Use |
+|---|---|
+| `sf.ajax.get()`, `.post()`, `.put()`, `.patch()`, `.delete()` | `sf.req.get()` e os demais |
+| `sf.morph(el, html)` | `sf.target(el, html)` |
+| `sf.dom.addClass()`, `removeClass()`, `toggleClass()`, `hasClass()` | `el.classList.add()`, `remove()`, `toggle()`, `contains()` |
+| `sf.dom.show()`, `hide()`, `toggle()` | `el.hidden = false`, `el.hidden = true`, `el.hidden = !el.hidden` |
+| `sf.dom.on()`, `off()` | `el.addEventListener()`, `removeEventListener()` — ou `ctx.on()` num plugin |
+| `sf.dom.ready()` | `sf.plugin()`, ou um script com `defer` |
+| `sf.storage.set()`, `get()`, `remove()`, `clear()` | `localStorage`, com `JSON.stringify()` e `JSON.parse()` |
+| `sf.util.debounce()`, `sf.util.id()` | `ctx.debounce()` e `ctx.id()` num plugin |
+| `sf.util.throttle()` | uma checagem de horário sua |
+| `sf.util.wait(ms)` | `new Promise((resolve) => setTimeout(resolve, ms))` |
+
+Os helpers de DOM e de storage davam, cada um, outro nome a uma única chamada
+nativa, e um segundo nome para `classList.add` é mais uma coisa para aprender e
+nada a mais para fazer. O `debounce` e o `id` não são nativos, e é por isso que
+foram para o `ctx`, onde também param quando o elemento sai.
+
+**O `sf.ajax` mantém o contrato antigo**: resolve com nada, e uma falha é
+relatada no console em vez de lançada. O `sf.req` é onde estão o `Response` e a
+rejeição, então a mudança é passar para ele — atualizar o SFJS não muda nada
+para uma página que ainda chama o `sf.ajax`. O `sf.form.submit()`, que não era
+de nenhum dos dois, agora resolve com o `Response` e rejeita como o `sf.req`; um
+formulário enviado pelos atributos relata uma falha no console, como antes.
 
 ### Atributos declarativos
 
@@ -5634,7 +5950,7 @@ listener no `document` ouve a página inteira:
 |---|---|
 | `sf:before` | antes de enviar. Cancelável: `preventDefault()` impede a requisição. `detail`: `{url, method, target}` |
 | `sf:after` | depois que uma resposta de sucesso foi colocada na página. `detail`: `{response, target}` |
-| `sf:error` | numa resposta fora de 2xx ou numa falha de rede. `detail`: `{error, response, target}` — `response` é `null` quando nada voltou, e `target` é o elemento do `@error-target` quando o corpo foi exibido lá |
+| `sf:error` | numa resposta fora de 2xx, numa falha de rede ou num `timeout` que acabou. `detail`: `{error, response, target}` — `response` é `null` quando nada voltou, e `target` é o elemento do `@error-target` quando o corpo foi exibido lá |
 
 ```js
 document.addEventListener('sf:before', (e) => {
@@ -5650,7 +5966,7 @@ document.addEventListener('sf:error', (e) => {
 quando não há mensagem, então uma aplicação acrescenta as suas chaves ao
 `sf.messages` e as lê do mesmo jeito. Um elemento que uma troca já tirou da
 página não tem para onde borbulhar, então os eventos dele vão para o `document`
-— assim como os das chamadas `sf.ajax.*` feitas sem elemento.
+— assim como os das chamadas `sf.req.*` feitas sem `source`.
 
 Enquanto uma requisição está no ar:
 
@@ -5694,7 +6010,7 @@ volta com as mensagens é a coisa mais útil que o servidor pode mandar, então 
 Com `@error-target`, o corpo é trocado lá com a estratégia do `@swap` do
 elemento, e o `sf:error` dispara mesmo assim. Sem ele, nada na página muda e é
 pelo `sf:error` que você fica sabendo. A mesma opção existe em código:
-`sf.ajax.post(url, dados, { target: '#boas-vindas', errorTarget: '#cadastro' })`.
+`sf.req.post(url, dados, { target: '#boas-vindas', errorTarget: '#cadastro' })`.
 
 ### O que uma requisição envia
 
