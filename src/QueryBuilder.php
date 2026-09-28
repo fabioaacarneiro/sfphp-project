@@ -191,6 +191,64 @@ class QueryBuilder
      * @return self The current query builder
      * @throws InvalidArgumentException If an identifier, operator, or join type is invalid
      */
+    /**
+     * Rows whose column contains the text, taken literally.
+     *
+     * where('name', 'LIKE', "%{$term}%") reads a % or _ in what a visitor
+     * typed as a wildcard: "%" finds every row, "a_c" finds "abc". Here the
+     * text is escaped, so it means what it says. The escape character is "!",
+     * given with ESCAPE, because a backslash is read differently by MySQL,
+     * PostgreSQL and SQLite and "!" is read the same by all of them.
+     *
+     * Whether it ignores case is the database's: MySQL's usual collations do,
+     * PostgreSQL's LIKE does not, SQLite's does for ASCII.
+     *
+     * @param string $column The column
+     * @param string $text What it must contain
+     * @return self
+     */
+    public function whereContains(string $column, string $text): self
+    {
+        return $this->addLike($column, '%' . $this->escapeLike($text) . '%');
+    }
+
+    /**
+     * Rows whose column starts with the text, taken literally.
+     *
+     * @param string $column The column
+     * @param string $text How it must start
+     * @return self
+     */
+    public function whereStartsWith(string $column, string $text): self
+    {
+        return $this->addLike($column, $this->escapeLike($text) . '%');
+    }
+
+    /**
+     * Rows whose column ends with the text, taken literally.
+     *
+     * @param string $column The column
+     * @param string $text How it must end
+     * @return self
+     */
+    public function whereEndsWith(string $column, string $text): self
+    {
+        return $this->addLike($column, '%' . $this->escapeLike($text));
+    }
+
+    private function escapeLike(string $text): string
+    {
+        return str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $text);
+    }
+
+    private function addLike(string $column, string $pattern): self
+    {
+        return $this->addCondition(
+            'AND',
+            $this->quoteIdentifier($column) . ' LIKE ' . $this->bind($pattern) . " ESCAPE '!'"
+        );
+    }
+
     public function join(
         string $table,
         string $first,
@@ -393,14 +451,71 @@ class QueryBuilder
     }
 
     /**
-     * Update rows matching the configured conditions.
+     * Update the rows the where() calls select.
+     *
+     * Without a where() this refuses, rather than changing every row: the
+     * way that happens is almost never a query written to touch the whole
+     * table, but a filter that was added inside an if and did not run —
+     * `if ($id) { $query->where('id', $id); }` with no id in the request.
+     * updateAll() is the call that means every row.
      *
      * @param array $data The column values to update
      * @return int The number of affected rows
      * @throws InvalidArgumentException If the data is empty or contains an invalid column
-     * @throws RuntimeException If no table was selected
+     * @throws RuntimeException If no table was selected, or nothing narrows the update
      */
     public function update(array $data): int
+    {
+        $this->requireConditions('update', 'updateAll');
+
+        return $this->runUpdate($data);
+    }
+
+    /**
+     * Update every row of the table.
+     *
+     * @param array $data The column values to update
+     * @return int The number of affected rows
+     * @throws InvalidArgumentException If the data is empty or contains an invalid column
+     * @throws RuntimeException If no table was selected, or a where() was given
+     */
+    public function updateAll(array $data): int
+    {
+        $this->refuseConditions('updateAll', 'update');
+
+        return $this->runUpdate($data);
+    }
+
+    /**
+     * Delete the rows the where() calls select.
+     *
+     * Without a where() this refuses, for the reason update() does.
+     * deleteAll() is the call that means every row.
+     *
+     * @return int The number of affected rows
+     * @throws RuntimeException If no table was selected, or nothing narrows the delete
+     */
+    public function delete(): int
+    {
+        $this->requireConditions('delete', 'deleteAll');
+
+        return $this->runDelete();
+    }
+
+    /**
+     * Delete every row of the table.
+     *
+     * @return int The number of affected rows
+     * @throws RuntimeException If no table was selected, or a where() was given
+     */
+    public function deleteAll(): int
+    {
+        $this->refuseConditions('deleteAll', 'delete');
+
+        return $this->runDelete();
+    }
+
+    private function runUpdate(array $data): int
     {
         if ($data === []) {
             throw new InvalidArgumentException('Update data cannot be empty.');
@@ -422,13 +537,7 @@ class QueryBuilder
         return $statement->rowCount();
     }
 
-    /**
-     * Delete rows matching the configured conditions.
-     *
-     * @return int The number of affected rows
-     * @throws RuntimeException If no table was selected
-     */
-    public function delete(): int
+    private function runDelete(): int
     {
         $statement = $this->execute(
             'DELETE FROM ' . $this->getTable() . $this->compileWhere(),
@@ -438,12 +547,29 @@ class QueryBuilder
         return $statement->rowCount();
     }
 
-    /**
-     * Build the SELECT SQL statement without executing it.
-     *
-     * @return string The generated SQL statement
-     * @throws RuntimeException If the table or pagination is not supported
-     */
+    private function requireConditions(string $method, string $everyRow): void
+    {
+        if ($this->conditions === []) {
+            throw new RuntimeException(sprintf(
+                '%s() without a where() would change every row of %s. Add a where(), or call %s() if every row is what you mean.',
+                $method,
+                $this->getTable(),
+                $everyRow
+            ));
+        }
+    }
+
+    private function refuseConditions(string $method, string $filtered): void
+    {
+        if ($this->conditions !== []) {
+            throw new RuntimeException(sprintf(
+                '%s() means every row, and this query has a where(). Call %s() to change only the rows it selects.',
+                $method,
+                $filtered
+            ));
+        }
+    }
+
     public function toSql(): string
     {
         $this->getTable();

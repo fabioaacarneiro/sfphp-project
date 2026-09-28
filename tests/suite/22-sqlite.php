@@ -142,3 +142,64 @@ $tests->run('SQLite runs migrations from files and rolls them back', function ()
         exec('rm -rf ' . escapeshellarg($directory));
     }
 });
+
+$tests->run('update() and delete() refuse to touch every row unless asked, and the LIKE helpers take text literally', function () use ($tests, $sqlite): void {
+    /*
+     * update() and delete() with no where() used to run as UPDATE / DELETE on
+     * the whole table. The way that happens is a filter added inside an if
+     * that did not run, so they refuse now, and updateAll() / deleteAll() are
+     * the calls that mean every row. And where('title', 'LIKE', "%{$term}%")
+     * read a % or _ in the term as a wildcard.
+     */
+    $pdo = $sqlite();
+
+    if ($pdo === null) {
+        return;
+    }
+
+    (new Schema($pdo))->create('posts', function (Blueprint $table): void {
+        $table->id();
+        $table->string('title');
+        $table->integer('views')->default(0);
+    });
+
+    $posts = static fn (): QueryBuilder => (new QueryBuilder($pdo))->from('posts');
+
+    foreach (['a%c', 'abc', 'a_c', '50% off', 'x!y'] as $title) {
+        $posts()->insert(['title' => $title]);
+    }
+
+    // No where(): refused, and nothing changed.
+    $tests->assertThrows(static fn () => $posts()->update(['views' => 1]), RuntimeException::class);
+    $tests->assertThrows(static fn () => $posts()->delete(), RuntimeException::class);
+    $tests->assertSame(0, $posts()->where('views', '>', 0)->count());
+    $tests->assertSame(5, $posts()->count());
+
+    try {
+        $posts()->delete();
+    } catch (RuntimeException $e) {
+        $tests->assertSame(true, str_contains($e->getMessage(), 'deleteAll()'));
+    }
+
+    // Text taken literally: % and _ and the escape character itself.
+    $titles = static fn (QueryBuilder $query): array => array_column($query->orderBy('title')->get(), 'title');
+
+    $tests->assertSame(['50% off', 'a%c'], $titles($posts()->whereContains('title', '%')));
+    $tests->assertSame(['a_c'], $titles($posts()->whereContains('title', '_')));
+    $tests->assertSame(['x!y'], $titles($posts()->whereContains('title', '!')));
+    $tests->assertSame(['a%c', 'a_c', 'abc'], $titles($posts()->whereStartsWith('title', 'a')));
+    $tests->assertSame(['a%c', 'a_c', 'abc'], $titles($posts()->whereEndsWith('title', 'c')));
+    $tests->assertSame(['a%c'], $titles($posts()->whereStartsWith('title', 'a%')));
+
+    // A filtered change still works, and composes with the helpers.
+    $tests->assertSame(1, $posts()->whereContains('title', '_')->update(['views' => 3]));
+    $tests->assertSame(1, $posts()->whereEndsWith('title', ' off')->delete());
+
+    // Every row, when that is what is asked for — and never with a where().
+    $tests->assertThrows(static fn () => $posts()->where('id', '=', 1)->updateAll(['views' => 7]), RuntimeException::class);
+    $tests->assertThrows(static fn () => $posts()->where('id', '=', 1)->deleteAll(), RuntimeException::class);
+    $tests->assertSame(4, $posts()->updateAll(['views' => 7]));
+    $tests->assertSame(4, $posts()->where('views', '=', 7)->count());
+    $tests->assertSame(4, $posts()->deleteAll());
+    $tests->assertSame(0, $posts()->count());
+});
