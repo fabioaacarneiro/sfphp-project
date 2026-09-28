@@ -5206,7 +5206,7 @@ Atualizar, então, é substituir esses arquivos sabendo quais são:
 ```bash
 ./sfphp upgrade --dry-run          # o que faria, sem mudar nada
 ./sfphp upgrade                    # o release mais recente
-./sfphp upgrade --to=v0.36.0       # busca essa tag com o git
+./sfphp upgrade --to=v0.37.0       # busca essa tag com o git
 ./sfphp upgrade --from=../sfphp    # uma cópia que você já tem
 ```
 
@@ -5286,14 +5286,20 @@ e nada vai para uma lixeira.
 
 Framework CSS de componentes e utilitários. **Ele chega pronto** — o pacote
 traz a folha de estilo, e o `composer create-project` e o `sfphp serve`
-copiam para `public/assets`, então usar é uma linha de HTML:
+copiam para `public/assets`, então usar é uma diretiva num template ou
+componente:
+
+```sfht
+@sfcss        {{-- no <head>; @sfcss('normal') para o build legível --}}
+```
+
+Ela escreve o `<link>`, com a versão que faz o navegador buscar o arquivo de
+novo quando ele muda — veja [SFCSS, SFJS e scripts de página](#sfcss-sfjs-e-scripts-de-página).
+Uma página que não é template escreve a tag ela mesma:
 
 ```html
 <link rel="stylesheet" href="/assets/css/sfcss.min.css">
 ```
-
-Num template, o `@sfcss` escreve essa linha — veja
-[SFCSS, SFJS e scripts de página](#sfcss-sfjs-e-scripts-de-página).
 
 Nada precisa ser gerado para usar o SFCSS. O gerador existe para mudá-lo, o
 que está [mais abaixo](#mudar-o-sfcss).
@@ -5403,13 +5409,18 @@ Biblioteca JavaScript sem dependências — 133KB crus, 68KB minificados,
 requisições e swaps, validação, estado, streams (`@stream`, `@sse`) e os
 componentes de interface (modais, menus, tooltips, abas, toasts).
 
+```sfht
+@sfjs         {{-- no fim do <body>: o SFJS, depois os plugins e os scripts de página do projeto --}}
+```
+
+O `@sfjs('normal')` carrega o build legível, para depurar — veja
+[SFCSS, SFJS e scripts de página](#sfcss-sfjs-e-scripts-de-página). Uma página
+que não é template escreve a tag ela mesma:
+
 ```html
 <script src="/assets/js/sfjs.min.js"></script>
 <!-- ou sfjs.js, legível, para depurar — nunca os dois: cada um é o pacote inteiro -->
 ```
-
-Num template, o `@sfjs` escreve essa tag, e depois dela os plugins e os
-scripts de página do projeto — veja [SFCSS, SFJS e scripts de página](#sfcss-sfjs-e-scripts-de-página).
 
 Até a 0.27, os streams e os componentes de interface eram `sfjs-stream.js` e
 `sfjs-ui.js`, dois arquivos a mais que só funcionavam se carregados depois

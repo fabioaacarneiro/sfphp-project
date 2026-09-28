@@ -34,6 +34,15 @@ Lista completa de classes: [referência de utilitários](SFCSS_UTILITIES.md).
 
 ## Instalação
 
+Num template ou componente do SFPHP:
+
+```sfht
+@sfcss        {{-- @sfcss('normal') para o build legível --}}
+```
+
+Ele escreve a tag abaixo, com a versão que faz o navegador buscar o arquivo de
+novo quando ele muda. Em qualquer outro lugar, escreva a tag:
+
 ```html
 <link rel="stylesheet" href="/assets/css/sfcss.min.css">
 ```

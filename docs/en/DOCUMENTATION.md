@@ -5182,7 +5182,7 @@ So upgrading means replacing those files, and knowing which ones they are:
 ```bash
 ./sfphp upgrade --dry-run          # what it would do, changing nothing
 ./sfphp upgrade                    # the latest release
-./sfphp upgrade --to=v0.36.0       # fetches that tag with git
+./sfphp upgrade --to=v0.37.0       # fetches that tag with git
 ./sfphp upgrade --from=../sfphp    # a copy you already have
 ```
 
@@ -5259,14 +5259,20 @@ There is no undo and nothing goes to a trash bin.
 
 A CSS framework of components and utilities. **It arrives built** — the
 package carries the stylesheet, and `composer create-project` and `sfphp
-serve` each copy it into `public/assets`, so using it is one line of HTML:
+serve` each copy it into `public/assets`, so using it is one directive in a
+template or component:
+
+```sfht
+@sfcss        {{-- in <head>; @sfcss('normal') for the readable build --}}
+```
+
+It writes the `<link>`, with the version that makes a browser fetch the file
+again when it changes — see [SFCSS, SFJS and page scripts](#sfcss-sfjs-and-page-scripts).
+A page that is not a template writes the tag itself:
 
 ```html
 <link rel="stylesheet" href="/assets/css/sfcss.min.css">
 ```
-
-In a template, `@sfcss` writes that line — see
-[SFCSS, SFJS and page scripts](#sfcss-sfjs-and-page-scripts).
 
 Nothing has to be generated to use SFCSS. The generator is there for changing
 it, which is [further down](#changing-sfcss).
@@ -5376,13 +5382,18 @@ gzipped**. Exposed as `window.sf`. It is **one file**, with everything in it:
 requests and swaps, validation, state, streams (`@stream`, `@sse`) and the
 interface components (modals, menus, tooltips, tabs, toasts).
 
+```sfht
+@sfjs         {{-- at the end of <body>: SFJS, then the project's plugins and page scripts --}}
+```
+
+`@sfjs('normal')` loads the readable build, for debugging — see
+[SFCSS, SFJS and page scripts](#sfcss-sfjs-and-page-scripts). A page that is not
+a template writes the tag itself:
+
 ```html
 <script src="/assets/js/sfjs.min.js"></script>
 <!-- or sfjs.js, readable, for debugging — never both: each is the whole bundle -->
 ```
-
-In a template, `@sfjs` writes that tag, and the project's plugins and page
-scripts after it — see [SFCSS, SFJS and page scripts](#sfcss-sfjs-and-page-scripts).
 
 Up to 0.27, streams and the interface components were `sfjs-stream.js` and
 `sfjs-ui.js`, two extra files that only worked when loaded after this one. They

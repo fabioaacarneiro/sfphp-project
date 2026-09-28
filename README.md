@@ -69,8 +69,8 @@ A full-stack, production-ready PHP framework with **zero runtime dependencies**,
 |---------|-------------|
 | **SFHT Templates** | Auto-escaping, layout inheritance, component composition |
 | **.phpx Components** | Markup inside PHP functions, compiled on build |
-| **SFCSS Framework** | 3,836 classes — components and utilities — from one config: forms, navs, modals, dropdowns, dark theme, contrast computed to WCAG AA, 33KB gzipped |
-| **SFJS Library** | One file: AJAX, accessible validation, streaming, modal, dropdown, tooltip, tabs and toasts — 15KB gzipped |
+| **SFCSS Framework** | 3,836 classes — components and utilities — from one config: forms, navs, modals, dropdowns, dark theme, contrast computed to WCAG AA, 33KB gzipped — loaded with `@sfcss` |
+| **SFJS Library** | One file: requests with `sf.req`, accessible validation, streaming, modal, dropdown, tooltip, tabs and toasts, and attributes of your own with `sf.plugin` — loaded with `@sfjs`, 18KB gzipped |
 | **Built-in Assets** | Published to `public/` with zero config |
 
 ### Advanced Features

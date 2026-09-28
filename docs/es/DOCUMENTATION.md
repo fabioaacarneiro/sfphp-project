@@ -5288,7 +5288,7 @@ Actualizar, entonces, es reemplazar esos archivos sabiendo cuáles son:
 ```bash
 ./sfphp upgrade --dry-run          # lo que haría, sin cambiar nada
 ./sfphp upgrade                    # la última versión publicada
-./sfphp upgrade --to=v0.36.0       # trae esa etiqueta con git
+./sfphp upgrade --to=v0.37.0       # trae esa etiqueta con git
 ./sfphp upgrade --from=../sfphp    # una copia que ya tienes
 ```
 
@@ -5368,14 +5368,20 @@ deshacer y nada va a una papelera.
 
 Un framework CSS de componentes y utilidades. **Llega construido** — el
 paquete trae la hoja de estilos, y `composer create-project` y `sfphp
-serve` la copian a `public/assets`, así que usarla es una línea de HTML:
+serve` la copian a `public/assets`, así que usarla es una directiva en una
+plantilla o componente:
+
+```sfht
+@sfcss        {{-- en el <head>; @sfcss('normal') para el build legible --}}
+```
+
+Escribe el `<link>`, con la versión que hace que el navegador vuelva a pedir el
+archivo cuando cambia — consulta [SFCSS, SFJS y scripts de página](#sfcss-sfjs-y-scripts-de-página).
+Una página que no es una plantilla escribe la etiqueta ella misma:
 
 ```html
 <link rel="stylesheet" href="/assets/css/sfcss.min.css">
 ```
-
-En una plantilla, `@sfcss` escribe esa línea — consulta
-[SFCSS, SFJS y scripts de página](#sfcss-sfjs-y-scripts-de-página).
 
 No hay que generar nada para usar SFCSS. El generador está para cambiarlo,
 que es lo que viene [más abajo](#cambiar-sfcss).
@@ -5491,13 +5497,18 @@ Una biblioteca JavaScript sin dependencias — 133KB en crudo, 68KB minificada,
 todo: peticiones y swaps, validación, estado, streams (`@stream`, `@sse`) y los
 componentes de interfaz (modales, menús, tooltips, pestañas, toasts).
 
+```sfht
+@sfjs         {{-- al final del <body>: SFJS, luego los plugins y los scripts de página del proyecto --}}
+```
+
+`@sfjs('normal')` carga el build legible, para depurar — consulta
+[SFCSS, SFJS y scripts de página](#sfcss-sfjs-y-scripts-de-página). Una página
+que no es una plantilla escribe la etiqueta ella misma:
+
 ```html
 <script src="/assets/js/sfjs.min.js"></script>
 <!-- o sfjs.js, legible, para depurar — nunca ambos: cada uno es el paquete entero -->
 ```
-
-En una plantilla, `@sfjs` escribe esa etiqueta, y después los plugins y los
-scripts de página del proyecto — consulta [SFCSS, SFJS y scripts de página](#sfcss-sfjs-y-scripts-de-página).
 
 Hasta la 0.27, los streams y los componentes de interfaz eran `sfjs-stream.js`
 y `sfjs-ui.js`, dos archivos más que solo funcionaban si se cargaban después de
