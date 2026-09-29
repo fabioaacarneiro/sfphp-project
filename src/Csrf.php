@@ -28,6 +28,18 @@ final class Csrf
          * idle and absolute deadlines unavoidable: a caller that started the
          * session some other way would have skipped them.
          */
+        if ($secure === null && Session::isConfigured()) {
+            /*
+             * Started the way StartSession configured it — its handler and
+             * deadlines. This used to pass no handler, so a CSRF token issued
+             * before the middleware ran put the session in PHP's files
+             * whatever SESSION_DRIVER said.
+             */
+            Session::begin();
+
+            return;
+        }
+
         Session::start(
             $secure ?? self::isHttps(),
             null,
@@ -123,7 +135,8 @@ final class Csrf
             return false;
         }
 
-        self::startSession();
+        // A visitor with no session has no token to match, and is not given a session to find that out.
+        Session::resume();
         $sessionToken = Session::get(self::SESSION_KEY);
 
         if (!is_string($sessionToken) || $sessionToken === '') {

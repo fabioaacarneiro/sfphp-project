@@ -34,7 +34,8 @@ final class SessionGuard implements Guard
      */
     public function resolve(Request $request): ?Authenticatable
     {
-        Csrf::startSession();
+        // Resumed, not begun: asking who is signed in must not give every visitor a session.
+        Session::resume();
 
         $identifier = Session::get(self::SESSION_KEY);
 

@@ -4462,6 +4462,36 @@ it any more. Going through `Session` is what makes the two deadlines below
 unavoidable: code that started a session some other way would have skipped
 them.
 
+### When a session starts
+
+**A session starts when it is needed, not on every request.** Until 0.47.0
+every request started one, so every visitor got a `Set-Cookie` and a session
+file on every page — a public page nobody is signed in to included. That is a
+file per visitor on disk, and a page a CDN cannot cache, because it answers
+each visitor with a cookie of their own.
+
+| The request | The session |
+|---|---|
+| brings a session cookie back | started by `StartSession`, and its two deadlines checked, as before |
+| has no cookie, and the page only reads — `Session::get()`, `has()`, `all()`, asking who is signed in | **never started**: there is nothing to read, and no cookie is sent |
+| has no cookie, and something writes — `put()`, `forget()`, `flush()`, `regenerate()`, `invalidate()`, a CSRF token for a form, a login | started at that write |
+
+So a page with a form has a session, because the form's token needs one, and a
+page without one does not. A `POST` from a visitor with no session is refused
+by the CSRF check without a session being made for it.
+
+Two calls start it by hand, and a page rarely needs either:
+
+```php
+Session::begin();    // now, creating one if the visitor has none
+Session::resume();   // only if the request brought one back
+```
+
+A session started late is started the way `StartSession` configured it — the
+same handler and deadlines. The CSRF helpers used to start one without the
+handler, so a token issued before the middleware ran put the session in PHP's
+files whatever `SESSION_DRIVER` said.
+
 ### Two deadlines
 
 ```ini
@@ -4635,6 +4665,16 @@ an action, check the request you were given, as above.
 
 In practice you rarely call `csrf_verify()` yourself: the `VerifyCsrfToken`
 middleware applies the check by default. See [Middleware](#middleware).
+
+**The check runs before the route is matched.** It is a global middleware, so
+every `POST`, `PUT`, `PATCH` and `DELETE` is checked whatever its path — one
+without a valid token is refused with 403 even where no route would have
+answered, and would otherwise have been a 404. That is deliberate: a check a
+route has to remember to ask for is the one that gets forgotten. `GET`, `HEAD`
+and `OPTIONS` are never checked; neither is a request with a bearer token and no
+session cookie, which a browser cannot send on its own; and paths are exempted
+by segment, `new VerifyCsrfToken(['/webhooks'])`, which exempts `/webhooks/stripe`
+but not `/webhooks-admin`.
 
 ---
 
@@ -5351,7 +5391,7 @@ So upgrading means replacing those files, and knowing which ones they are:
 ```bash
 ./sfphp upgrade --dry-run          # what it would do, changing nothing
 ./sfphp upgrade                    # the latest release
-./sfphp upgrade --to=v0.46.0       # fetches that tag with git
+./sfphp upgrade --to=v0.47.0       # fetches that tag with git
 ./sfphp upgrade --from=../sfphp    # a copy you already have
 ```
 
@@ -6706,6 +6746,7 @@ that is not set takes the default in the second column.
 | `SESSION_TABLE` | `sessions` | The `database` driver's table |
 | `SESSION_LIFETIME` | `7200` | Seconds a session may sit idle before it ends |
 | `SESSION_ABSOLUTE_LIFETIME` | `43200` | Seconds a session may last however busy it is |
+| `TRUSTED_PROXIES` | — | Comma-separated addresses or CIDR ranges of the proxies whose `X-Forwarded-*` headers are believed; read in `public/index.php`. See [Security](#security) |
 | `NO_COLOR` | — | Set to anything, `dump()` in a terminal prints no colour ([no-color.org](https://no-color.org)) |
 
 ### Methods by class
@@ -6853,7 +6894,7 @@ issue: that is how a piece of the internals becomes API.
 - `Database\Relation` — declare relations on the model
 - `Debug\Dumper`, `Debug\HtmlDump`, `Debug\TextDump`, `Debug\PendingDumps` — use `dump()` and `dd()`
 - `Dotenv`, `PrivateDirectory`, `JsMinifier`, `Cache\Ttl`, `ErrorHandler::handle*()`, `Console\Application` beyond `run()`, the generators' `withOptions()`, `Testing\TestCase::runTest()`
-- `Assets::usePath()`, `PageScripts::usePath()` and the other `use*()` seams that exist for the framework's own tests
+- `Assets::usePath()`, `PageScripts::usePath()` and the other `use*()` seams that exist for the framework's own tests, and `Session::configure()`, which `StartSession` calls
 
 ---
 
