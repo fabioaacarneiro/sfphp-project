@@ -5280,7 +5280,7 @@ Atualizar, então, é substituir esses arquivos sabendo quais são:
 ```bash
 ./sfphp upgrade --dry-run          # o que faria, sem mudar nada
 ./sfphp upgrade                    # o release mais recente
-./sfphp upgrade --to=v0.44.0       # busca essa tag com o git
+./sfphp upgrade --to=v0.45.0       # busca essa tag com o git
 ./sfphp upgrade --from=../sfphp    # uma cópia que você já tem
 ```
 
@@ -6823,7 +6823,7 @@ composer run docs        # os três idiomas concordam, e todo link resolve
 
 A suíte unitária é o `tests/run.php` e os arquivos em `tests/suite/`, um por
 parte do framework — `01-http.php`, `02-database.php` e assim até
-`22-sqlite.php` —, executados na ordem dos nomes. O `tests/bootstrap.php` e o
+`23-streaming.php` —, executados na ordem dos nomes. O `tests/bootstrap.php` e o
 `tests/support.php` guardam o que eles compartilham: as fixtures, os fakes, o
 `sfjsInBrowser()`, que carrega uma página com SFJS num Chrome headless e lê de
 volta o que ela reportou, e o `fixtureServer()`, que sobe o
