@@ -334,9 +334,10 @@ $fakeRedis = static fn (): object => new class () {
  * It is only handed back once the server that answers is this fixture, and
  * stopping it waits until the process is gone.
  *
+ * @param string $script The file under tests/fixtures that answers the requests
  * @return array{0: string, 1: Closure(): void}|null The base URL and a function that stops it, or null when it did not start
  */
-function fixtureServer(): ?array
+function fixtureServer(string $script = 'http-server.php'): ?array
 {
     $socket = @stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
 
@@ -350,11 +351,11 @@ function fixtureServer(): ?array
 
     $root = __DIR__ . '/fixtures';
     $pid = (int) trim((string) shell_exec(sprintf(
-        '%s -S 127.0.0.1:%d -t %s %s/http-server.php > /dev/null 2>&1 & echo $!',
+        '%s -S 127.0.0.1:%d -t %s %s > /dev/null 2>&1 & echo $!',
         escapeshellarg(PHP_BINARY),
         $port,
         escapeshellarg($root),
-        escapeshellarg($root)
+        escapeshellarg($root . '/' . $script)
     )));
 
     $stop = static function () use ($pid): void {

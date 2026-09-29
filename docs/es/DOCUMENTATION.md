@@ -4561,6 +4561,38 @@ Session::id();
 Pasar por `Session` es lo que vuelve inevitables los dos plazos de abajo: un
 código que iniciara la sesión de otra forma se los habría saltado.
 
+### Cuándo empieza una sesión
+
+**Una sesión empieza cuando hace falta, no en cada petición.** Hasta la 0.47.0,
+cada petición iniciaba una, así que cada visitante recibía un `Set-Cookie` y un
+archivo de sesión en cada página — incluida una página pública en la que nadie
+ha iniciado sesión. Eso es un archivo por visitante en disco, y una página que
+un CDN no puede cachear, porque responde a cada visitante con una cookie
+propia.
+
+| La petición | La sesión |
+|---|---|
+| trae de vuelta una cookie de sesión | la inicia `StartSession`, con sus dos plazos comprobados, como antes |
+| no tiene cookie, y la página solo lee — `Session::get()`, `has()`, `all()`, preguntar quién ha iniciado sesión | **nunca se inicia**: no hay nada que leer, y no se envía ninguna cookie |
+| no tiene cookie, y algo escribe — `put()`, `forget()`, `flush()`, `regenerate()`, `invalidate()`, un token CSRF para un formulario, un login | se inicia en esa escritura |
+
+Así que una página con formulario tiene sesión, porque el token del formulario
+la necesita, y una página sin formulario no la tiene. Un `POST` de un visitante
+sin sesión lo rechaza la comprobación de CSRF sin que se cree una sesión para
+él.
+
+Dos llamadas la inician a mano, y una página rara vez necesita alguna:
+
+```php
+Session::begin();    // ahora, creando una si el visitante no tiene
+Session::resume();   // solo si la petición trajo una de vuelta
+```
+
+Una sesión iniciada tarde se inicia como la configuró `StartSession` — el mismo
+handler y los mismos plazos. Los helpers de CSRF iniciaban una sin el handler,
+así que un token emitido antes de que corriera el middleware ponía la sesión en
+los archivos de PHP, dijera lo que dijera `SESSION_DRIVER`.
+
 ### Dos plazos
 
 ```ini
@@ -4734,6 +4766,16 @@ una acción, comprueba la petición que recibiste, como arriba.
 En la práctica rara vez llamas a `csrf_verify()` tú mismo: el middleware
 `VerifyCsrfToken` aplica la comprobación por defecto. Consulta
 [Middleware](#middleware).
+
+**La comprobación se hace antes de encontrar la ruta.** Es un middleware
+global, así que cada `POST`, `PUT`, `PATCH` y `DELETE` se comprueba sea cual sea
+su ruta — uno sin token válido se rechaza con 403 incluso donde ninguna ruta
+habría respondido, y que de otro modo sería un 404. Es a propósito: una
+comprobación que la ruta tiene que acordarse de pedir es la que se olvida.
+`GET`, `HEAD` y `OPTIONS` nunca se comprueban; tampoco una petición con bearer
+token y sin cookie de sesión, que un navegador no puede enviar por sí solo; y
+las rutas se eximen por segmento, `new VerifyCsrfToken(['/webhooks'])`, que
+exime `/webhooks/stripe` pero no `/webhooks-admin`.
 
 ---
 
@@ -5463,7 +5505,7 @@ Actualizar, entonces, es reemplazar esos archivos sabiendo cuáles son:
 ```bash
 ./sfphp upgrade --dry-run          # lo que haría, sin cambiar nada
 ./sfphp upgrade                    # la última versión publicada
-./sfphp upgrade --to=v0.46.0       # trae esa etiqueta con git
+./sfphp upgrade --to=v0.47.0       # trae esa etiqueta con git
 ./sfphp upgrade --from=../sfphp    # una copia que ya tienes
 ```
 
@@ -6855,6 +6897,7 @@ segunda columna.
 | `SESSION_TABLE` | `sessions` | La tabla del driver `database` |
 | `SESSION_LIFETIME` | `7200` | Segundos que una sesión puede estar inactiva antes de terminar |
 | `SESSION_ABSOLUTE_LIFETIME` | `43200` | Segundos que una sesión puede durar por muy activa que esté |
+| `TRUSTED_PROXIES` | — | Direcciones o rangos CIDR, separados por comas, de los proxies cuyas cabeceras `X-Forwarded-*` se aceptan; se lee en `public/index.php`. Consulta [Seguridad](#seguridad) |
 | `NO_COLOR` | — | Definida con cualquier valor, `dump()` en una terminal no usa color ([no-color.org](https://no-color.org)) |
 
 ### Métodos por clase
@@ -7002,7 +7045,7 @@ del interior se convierte en API.
 - `Database\Relation` — declara las relaciones en el model
 - `Debug\Dumper`, `Debug\HtmlDump`, `Debug\TextDump`, `Debug\PendingDumps` — usa `dump()` y `dd()`
 - `Dotenv`, `PrivateDirectory`, `JsMinifier`, `Cache\Ttl`, `ErrorHandler::handle*()`, `Console\Application` más allá de `run()`, el `withOptions()` de los generadores, `Testing\TestCase::runTest()`
-- `Assets::usePath()`, `PageScripts::usePath()` y los otros puntos `use*()` que existen para los tests del propio framework
+- `Assets::usePath()`, `PageScripts::usePath()` y los otros puntos `use*()` que existen para los tests del propio framework, y `Session::configure()`, que llama `StartSession`
 
 ---
 

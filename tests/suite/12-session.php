@@ -131,3 +131,78 @@ $tests->run('a shared handler lets a second instance read the same session', fun
     $tests->assertSame('', $first->read($id));
     $tests->assertSame(0, $first->gc(3600));
 });
+
+$tests->run('a session starts when it is written to, not on every page', function () use ($tests): void {
+    /*
+     * StartSession used to start one on every request, so every visitor got
+     * a Set-Cookie and a session file on every page — a public page a CDN
+     * cannot cache, because it answers each visitor with a cookie of their
+     * own. Over a real server, because a cookie is a header: a page that
+     * never writes to the session sends none, and one that does sends one.
+     */
+    $server = fixtureServer('session-app.php');
+
+    if ($server === null) {
+        return;
+    }
+
+    [$base, $stop] = $server;
+    $port = (int) parse_url($base, PHP_URL_PORT);
+
+    $send = static function (string $method, string $path, ?string $cookie = null, array $headers = []) use ($port): array {
+        $connection = fsockopen('127.0.0.1', $port, $errno, $error, 2);
+        $lines = [$method . ' ' . $path . ' HTTP/1.0', 'Host: 127.0.0.1'];
+
+        if ($cookie !== null) {
+            $lines[] = 'Cookie: ' . $cookie;
+        }
+
+        foreach ($headers as $name => $value) {
+            $lines[] = $name . ': ' . $value;
+        }
+
+        if ($method === 'POST') {
+            $lines[] = 'Content-Length: 0';
+        }
+
+        fwrite($connection, implode("\r\n", $lines) . "\r\n\r\n");
+        $answer = (string) stream_get_contents($connection);
+        fclose($connection);
+
+        [$head, $body] = explode("\r\n\r\n", $answer, 2) + [1 => ''];
+        preg_match('/^HTTP\/\S+ (\d+)/', $head, $status);
+        preg_match('/^Set-Cookie: ([^;\r\n]+)/mi', $head, $setCookie);
+
+        return ['status' => (int) ($status[1] ?? 0), 'cookie' => $setCookie[1] ?? null, 'body' => $body];
+    };
+
+    try {
+        // Reading, or not touching it at all: no cookie, no session.
+        $tests->assertSame(null, $send('GET', '/plain')['cookie']);
+        $read = $send('GET', '/read');
+        $tests->assertSame(null, $read['cookie']);
+        $tests->assertSame('read:none', $read['body']);
+
+        // Writing starts one, and the next request with the cookie finds it.
+        $written = $send('GET', '/write');
+        $tests->assertSame(true, is_string($written['cookie']) && str_starts_with($written['cookie'], 'PHPSESSID='));
+        $tests->assertSame('read:written', $send('GET', '/read', $written['cookie'])['body']);
+
+        // A page with a form issues a token, so it has a session.
+        $form = $send('GET', '/form');
+        $tests->assertSame(true, is_string($form['cookie']));
+        $token = substr($form['body'], strlen('token:'));
+
+        // A POST with no session is refused without being given one to be refused with.
+        $refused = $send('POST', '/submit');
+        $tests->assertSame(403, $refused['status']);
+        $tests->assertSame(null, $refused['cookie']);
+
+        // And with the session and its token, it is accepted.
+        $accepted = $send('POST', '/submit', $form['cookie'], ['X-CSRF-Token' => $token]);
+        $tests->assertSame(200, $accepted['status']);
+        $tests->assertSame('accepted', $accepted['body']);
+    } finally {
+        $stop();
+    }
+});

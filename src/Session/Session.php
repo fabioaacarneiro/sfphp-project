@@ -38,6 +38,101 @@ final class Session
     private const EXPIRED = '_sfphp_expired';
 
     /**
+     * How to start the session, as StartSession configured it for this
+     * request, and whether the request came with a session cookie.
+     *
+     * @var array{secure: ?bool, handler: ?SessionHandlerInterface, idle: int, absolute: int, cookie: bool}|null
+     */
+    private static ?array $configuration = null;
+
+    /**
+     * Say how the session starts, without starting it.
+     *
+     * A session used to start on every request, so every visitor got a
+     * Set-Cookie and a session file on every page — a public page nobody is
+     * signed in to included. That is a file per visitor on disk, and a page a
+     * CDN cannot cache because it answers each visitor with a cookie of their
+     * own. Now it starts when it is needed: straight away when the request
+     * brings a session back (resume()), and on the first write otherwise
+     * (begin()). A page that only reads, for a visitor with no session, never
+     * has one.
+     *
+     * @param bool|null $secure Whether the cookie may only travel over HTTPS
+     * @param SessionHandlerInterface|null $handler Where sessions are stored, or null for PHP's own
+     * @param int $idleSeconds Seconds of inactivity before the session ends, 0 to disable
+     * @param int $absoluteSeconds Seconds since creation before the session ends, 0 to disable
+     * @param bool $cookieSent Whether the request carries the session cookie
+     * @return void
+     */
+    public static function configure(
+        ?bool $secure,
+        ?SessionHandlerInterface $handler,
+        int $idleSeconds,
+        int $absoluteSeconds,
+        bool $cookieSent
+    ): void {
+        self::$configuration = [
+            'secure' => $secure,
+            'handler' => $handler,
+            'idle' => $idleSeconds,
+            'absolute' => $absoluteSeconds,
+            'cookie' => $cookieSent,
+        ];
+    }
+
+    /**
+     * Whether StartSession has said how this request's session starts.
+     *
+     * @return bool
+     */
+    public static function isConfigured(): bool
+    {
+        return self::$configuration !== null;
+    }
+
+    /**
+     * Start the session now, creating one if the visitor has none.
+     *
+     * What a write does before it writes, and what issuing a CSRF token does.
+     * Started the way configure() said — the same handler and deadlines the
+     * request would have had.
+     *
+     * @return void
+     */
+    public static function begin(): void
+    {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            return;
+        }
+
+        $config = self::$configuration;
+
+        if ($config === null) {
+            self::start();
+
+            return;
+        }
+
+        self::start($config['secure'], $config['handler'], $config['idle'], $config['absolute']);
+    }
+
+    /**
+     * Start the session only if the request brought one back.
+     *
+     * Without a session cookie there is nothing to read, so nothing is
+     * created: a visitor who has never written to a session does not get one
+     * for asking whether they have one.
+     *
+     * @return void
+     */
+    public static function resume(): void
+    {
+        if (self::$configuration === null || self::$configuration['cookie']) {
+            self::begin();
+        }
+    }
+
+    /**
      * Start the session, enforcing both deadlines.
      *
      * @param bool|null $secure Whether the cookie may only travel over HTTPS
@@ -202,6 +297,8 @@ final class Session
      */
     public static function put(string $key, mixed $value): void
     {
+        self::begin();
+
         $_SESSION[$key] = $value;
     }
 
@@ -224,6 +321,8 @@ final class Session
      */
     public static function forget(string $key): void
     {
+        self::begin();
+
         unset($_SESSION[$key]);
     }
 
@@ -251,6 +350,8 @@ final class Session
      */
     public static function flush(): void
     {
+        self::begin();
+
         $_SESSION = [];
     }
 
@@ -261,6 +362,8 @@ final class Session
      */
     public static function regenerate(): void
     {
+        self::begin();
+
         if (session_status() !== PHP_SESSION_ACTIVE) {
             return;
         }

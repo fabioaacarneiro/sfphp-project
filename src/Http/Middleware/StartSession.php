@@ -60,12 +60,16 @@ final class StartSession implements Middleware
          * clear the moment a visitor reaches the site over HTTP.
          * Request::isSecure() consults the trusted-proxy configuration.
          */
-        Session::start(
+        Session::configure(
             $request->isSecure(),
             $this->handler,
             $this->idleSeconds ?? (Config::int('SESSION_LIFETIME', 0)),
-            $this->absoluteSeconds ?? (Config::int('SESSION_ABSOLUTE_LIFETIME', 0))
+            $this->absoluteSeconds ?? (Config::int('SESSION_ABSOLUTE_LIFETIME', 0)),
+            $request->cookie(session_name() ?: 'PHPSESSID') !== null
         );
+
+        // A session the request brought back starts now, so its deadlines are checked; a new one waits for a write.
+        Session::resume();
 
         return $next($request);
     }
