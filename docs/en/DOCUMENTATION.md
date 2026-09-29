@@ -5239,9 +5239,7 @@ or after a space: `--port=8080` and `--port 8080` are the same.
 ### Generation (17 generators)
 
 ```bash
-./sfphp make:controller Post   # PostController, and the view its action renders
-./sfphp make:controller Post --template=phpx   # the view as app/components/Post.phpx instead of an .sfht template
-./sfphp make:controller Post --no-view         # the controller alone
+./sfphp make:controller Post   # PostController only; its page comes from make:sfht or make:phpx
 ./sfphp make:model Post
 ./sfphp make:repository Post
 ./sfphp make:service Post
@@ -5258,7 +5256,7 @@ or after a space: `--port=8080` and `--port 8080` are the same.
 ./sfphp make:sfht Dashboard    # app/resources/views/dashboard/index.sfht
 ./sfphp make:plugin countdown  # app/resources/js/plugins/countdown.js, the plugin for @countdown
 
-./sfphp make:scaffold Post     # controller + view + model + repository + service
+./sfphp make:scaffold Post     # controller + model + repository + service
 ```
 
 Seventeen generators here and `make:migration` under [Database](#database-2)
@@ -5269,6 +5267,14 @@ its path, and `--force` replaces it; `make:scaffold` keeps the parts that exist
 and writes the rest. The suffix is added once — `make:test PostTest` and
 `make:test Post` both write `PostTest` — and the first letter is upper-cased, so
 `make:controller product` writes `ProductController.php`.
+
+**`make:controller` writes the controller and nothing else.** Which page its
+action answers with — a template, a component, JSON — is yours to choose, and
+`make:sfht` and `make:phpx` write each. Until 0.48.0 it wrote an `.sfht` view
+too, or a `.phpx` with `--template=phpx`; those options are refused now, with
+the command to use instead. The action it writes answers with a heading on its
+own, so the first request works before any page exists, and its comment shows
+the three ways to replace it.
 
 `make:pwa` reads `app/pwa/config.php` when it exists — `--name` is then
 optional, and `--short=`, `--description=`, `--color=`, `--background=`,
@@ -5391,7 +5397,7 @@ So upgrading means replacing those files, and knowing which ones they are:
 ```bash
 ./sfphp upgrade --dry-run          # what it would do, changing nothing
 ./sfphp upgrade                    # the latest release
-./sfphp upgrade --to=v0.47.0       # fetches that tag with git
+./sfphp upgrade --to=v0.48.0       # fetches that tag with git
 ./sfphp upgrade --from=../sfphp    # a copy you already have
 ```
 
@@ -5433,12 +5439,13 @@ composer dump-autoload
 > `src/`, the binary and `server.php`, merge `resources/`, `lang/` and `tools/`,
 > and diff `public/index.php`. From then on this command does it.
 
-### Removed in 0.39.0
+### Removed, and what replaces it
 
-What 0.36.0 deprecated in SFJS, and what had been deprecated before it, is
-gone. A page or an application that still uses any of it fails where it can be
-seen — an undefined function, an attribute that does nothing, an unknown
-command — rather than keep working through an alias nobody remembers is there.
+What 0.36.0 deprecated in SFJS, and what had been deprecated before it, was
+removed in 0.39.0; a row removed later says in which version. A page or an
+application that still uses any of it fails where it can be seen — an undefined
+function, an attribute that does nothing, an unknown command — rather than keep
+working through an alias nobody remembers is there.
 
 | Removed | Use |
 |---|---|
@@ -5460,6 +5467,7 @@ command — rather than keep working through an alias nobody remembers is there.
 | the global `validate()` | `Validator::validate()`, or `$request->validate()` |
 | `Task::start()`, `Task::resume()` | scheduling the task — see the [Async guide](./ASYNC.md) |
 | `./sfphp make:migration:create posts` | `./sfphp make:migration create_posts` |
+| `make:controller --template=…`, `--no-view`, and the view it wrote (0.48.0) | `make:controller` for the controller, then `make:sfht` or `make:phpx` for its page |
 
 The DOM and storage helpers each renamed a single native call, and a second
 name for `classList.add` is one more thing to learn and nothing more to do.
@@ -5702,7 +5710,7 @@ sections are about them: `sf.req` sends a request, `sf.target` puts markup in
 the page, and `sf.plugin` teaches SFJS an attribute of your own. The helpers
 that only renamed a native call — `sf.dom`, `sf.storage`, `sf.util` — were
 removed in 0.39.0, as were `sf.ajax` and `sf.morph`, which `sf.req` and
-`sf.target` replace. See [Removed in 0.39.0](#removed-in-0390).
+`sf.target` replace. See [Removed, and what replaces it](#removed-and-what-replaces-it).
 
 ### Requests from code: sf.req
 

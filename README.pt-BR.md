@@ -162,7 +162,8 @@ cd my-app
 ### Crie um controller
 
 ```bash
-./sfphp make:controller Product     # cria app/controllers/ProductController.php e a view dele
+./sfphp make:controller Product     # cria app/controllers/ProductController.php
+./sfphp make:sfht Product           # e a página dele: app/resources/views/product/index.sfht
 ```
 
 ### Monte uma rota

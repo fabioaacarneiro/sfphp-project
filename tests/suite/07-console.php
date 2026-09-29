@@ -79,9 +79,6 @@ $tests->run('every generator produces a class that actually loads', function () 
             @unlink($path);
         }
 
-        // make:controller writes the view its action renders, too.
-        @unlink($root . '/app/resources/views/genprobe/index.sfht');
-        @rmdir($root . '/app/resources/views/genprobe');
 
         foreach (array_unique(array_map(
             static fn (string $relative): string => $root . '/' . dirname($relative),
@@ -751,9 +748,14 @@ $tests->run('reset removes the example application and refuses to do it in silen
             $tests->assertTrue(is_file($root . '/' . $file));
         }
 
-        // The routes file is rewritten, or the application boots into a
-        // controller that is no longer there.
-        $routes = (string) file_get_contents($root . '/src/routes.php');
+        /*
+         * The routes file is rewritten, or the application boots into a
+         * controller that is no longer there. This read src/routes.php, which
+         * the project does not have: it got an empty string, which never
+         * contains "MainController", so it passed whatever reset did.
+         */
+        $tests->assertTrue(is_file($root . '/app/routes/web.php'));
+        $routes = (string) file_get_contents($root . '/app/routes/web.php');
         $tests->assertSame(false, str_contains($routes, 'MainController'));
 
         // Running it again has nothing left to do, and says so.
@@ -942,7 +944,15 @@ $tests->run('a generator never overwrites, trims the suffix it adds, and a gener
         $controller = new \SfphpProject\src\Console\Generators\ControllerGenerator($root);
         $file = $controller->generate('productController');
         $tests->assertTrue(str_ends_with($file, '/ProductController.php'));
-        $tests->assertTrue(is_file($root . '/app/resources/views/product/index.sfht'));
+
+        /*
+         * Only the controller: the page is make:sfht's or make:phpx's to write.
+         * And its action answers on its own, rather than rendering a template
+         * that does not exist and failing the first request.
+         */
+        $tests->assertSame(false, is_dir($root . '/app/resources/views'));
+        $tests->assertSame(false, is_dir($root . '/app/components'));
+        $tests->assertTrue(str_contains((string) file_get_contents($file), "return Response::html('<h1>Product</h1>');"));
 
         file_put_contents($file, "<?php // mine\n");
         $tests->assertThrows(fn () => (new \SfphpProject\src\Console\Generators\ControllerGenerator($root))->generate('Product'), \SfphpProject\src\Console\Generators\GeneratorFileExists::class);
@@ -968,6 +978,26 @@ $tests->run('a generator never overwrites, trims the suffix it adds, and a gener
         $tests->assertTrue(in_array('PASS Tests\\PostTest::testExample', $lines, true));
     } finally {
         exec('rm -rf ' . escapeshellarg($root));
+    }
+});
+
+$tests->run('make:controller refuses the view options it no longer has, and says what to use', function () use ($tests): void {
+    /*
+     * --template picked between an .sfht and a .phpx, and ignored in silence a
+     * value it did not know. The controller writes no page now; an option
+     * that asks for one is an error that names the command that does.
+     */
+    $makeController = new ReflectionMethod(Application::class, 'makeController');
+
+    foreach (['--no-view', '--template=phpx', '--template=blade'] as $option) {
+        try {
+            // Refused before anything is written.
+            $makeController->invoke(new Application(['sfphp']), ['productController', $option]);
+            $tests->assertSame('an exception', 'none for ' . $option);
+        } catch (InvalidArgumentException $e) {
+            $tests->assertSame(true, str_contains($e->getMessage(), $option . ' is not an option'));
+            $tests->assertSame(true, str_contains($e->getMessage(), 'make:sfht Product') && str_contains($e->getMessage(), 'make:phpx ProductPage'));
+        }
     }
 });
 
