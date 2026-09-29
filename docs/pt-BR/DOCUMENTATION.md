@@ -5266,9 +5266,7 @@ ou depois de um espaço: `--port=8080` e `--port 8080` são a mesma coisa.
 ### Geração (17 geradores)
 
 ```bash
-./sfphp make:controller Post   # PostController, e a view que a action dele renderiza
-./sfphp make:controller Post --template=phpx   # a view como app/components/Post.phpx em vez de um template .sfht
-./sfphp make:controller Post --no-view         # só o controller
+./sfphp make:controller Post   # só o PostController; a página vem do make:sfht ou do make:phpx
 ./sfphp make:model Post
 ./sfphp make:repository Post
 ./sfphp make:service Post
@@ -5285,7 +5283,7 @@ ou depois de um espaço: `--port=8080` e `--port 8080` são a mesma coisa.
 ./sfphp make:sfht Dashboard    # app/resources/views/dashboard/index.sfht
 ./sfphp make:plugin countdown  # app/resources/js/plugins/countdown.js, o plugin do @countdown
 
-./sfphp make:scaffold Post     # controller + view + model + repository + service
+./sfphp make:scaffold Post     # controller + model + repository + service
 ```
 
 Os dezessete geradores daqui e o `make:migration` em [Banco](#banco) somam os
@@ -5296,6 +5294,14 @@ caminho dele, e o `--force` o substitui; o `make:scaffold` mantém as partes que
 existem e escreve o resto. O sufixo é acrescentado uma vez — `make:test PostTest`
 e `make:test Post` escrevem os dois `PostTest` — e a primeira letra vira
 maiúscula, então `make:controller product` escreve `ProductController.php`.
+
+**O `make:controller` escreve o controller e mais nada.** Qual página a action
+dele responde — um template, um componente, JSON — é escolha sua, e o
+`make:sfht` e o `make:phpx` escrevem cada uma. Até a 0.48.0 ele escrevia também
+uma view `.sfht`, ou um `.phpx` com `--template=phpx`; essas opções agora são
+recusadas, com o comando a usar no lugar. A action que ele escreve responde com
+um título sozinha, então a primeira requisição funciona antes de existir
+qualquer página, e o comentário dela mostra as três formas de substituí-la.
 
 O `make:pwa` lê o `app/pwa/config.php` quando ele existe — o `--name` passa a ser
 opcional, e `--short=`, `--description=`, `--color=`, `--background=`,
@@ -5419,7 +5425,7 @@ Atualizar, então, é substituir esses arquivos sabendo quais são:
 ```bash
 ./sfphp upgrade --dry-run          # o que faria, sem mudar nada
 ./sfphp upgrade                    # o release mais recente
-./sfphp upgrade --to=v0.47.0       # busca essa tag com o git
+./sfphp upgrade --to=v0.48.0       # busca essa tag com o git
 ./sfphp upgrade --from=../sfphp    # uma cópia que você já tem
 ```
 
@@ -5463,9 +5469,10 @@ composer dump-autoload
 > `src/`, o binário e o `server.php`, mescle `resources/`, `lang/` e `tools/`, e
 > compare o `public/index.php`. Daí em diante o comando faz isso.
 
-### Removido na 0.39.0
+### Removido, e o que substitui
 
-O que a 0.36.0 depreciou no SFJS, e o que já estava depreciado antes, saiu. Uma
+O que a 0.36.0 depreciou no SFJS, e o que já estava depreciado antes, saiu na
+0.39.0; uma linha que saiu depois diz em qual versão. Uma
 página ou aplicação que ainda usa algo disso falha onde dá para ver — uma função
 indefinida, um atributo que não faz nada, um comando desconhecido — em vez de
 continuar funcionando por um alias que ninguém lembra que existe.
@@ -5490,6 +5497,7 @@ continuar funcionando por um alias que ninguém lembra que existe.
 | a `validate()` global | `Validator::validate()`, ou `$request->validate()` |
 | `Task::start()`, `Task::resume()` | agendar a task — veja o [guia de Async](./ASYNC.md) |
 | `./sfphp make:migration:create posts` | `./sfphp make:migration create_posts` |
+| `make:controller --template=…`, `--no-view`, e a view que ele escrevia (0.48.0) | `make:controller` para o controller, depois `make:sfht` ou `make:phpx` para a página |
 
 Os helpers de DOM e de storage davam, cada um, outro nome a uma única chamada
 nativa, e um segundo nome para `classList.add` é mais uma coisa para aprender e
@@ -5733,7 +5741,7 @@ seções tratam deles: o `sf.req` envia uma requisição, o `sf.target` põe mar
 na página e o `sf.plugin` ensina ao SFJS um atributo seu. Os helpers que só
 davam outro nome a uma chamada nativa — `sf.dom`, `sf.storage`, `sf.util` —
 foram removidos na 0.39.0, assim como o `sf.ajax` e o `sf.morph`, que o
-`sf.req` e o `sf.target` substituem. Veja [Removido na 0.39.0](#removido-na-0390).
+`sf.req` e o `sf.target` substituem. Veja [Removido, e o que substitui](#removido-e-o-que-substitui).
 
 ### Requisições pelo código: sf.req
 

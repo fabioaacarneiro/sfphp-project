@@ -102,7 +102,7 @@ final class Application
         'test' => ['group' => 'Server', 'usage' => 'test [filter] [--path=tests]', 'summary' => 'Run the project\'s tests (tests/*Test.php)',
             'details' => ['Runs every TestCase under tests/ — see make:test. A filter keeps the tests whose class or method name contains it.']],
 
-        'make:controller' => ['group' => 'Generate', 'usage' => 'make:controller <Name> [--no-view|--template=sfht|phpx] [--force]', 'summary' => 'A controller (optionally with view)'],
+        'make:controller' => ['group' => 'Generate', 'usage' => 'make:controller <Name> [--force]', 'summary' => 'A controller; its page comes from make:sfht or make:phpx'],
         'make:phpx' => ['group' => 'Generate', 'usage' => 'make:phpx <Name> [--force]', 'summary' => 'A PHPX component'],
         'make:plugin' => ['group' => 'Generate', 'usage' => 'make:plugin <name> [--force]', 'summary' => 'An SFJS plugin: the attribute @<name>'],
         'make:sfht' => ['group' => 'Generate', 'usage' => 'make:sfht <Name> [--force]', 'summary' => 'An SFHT view template'],
@@ -114,7 +114,7 @@ final class Application
         'make:policy' => ['group' => 'Generate', 'usage' => 'make:policy <Name> [--force]', 'summary' => 'An authorization policy that denies until told otherwise'],
         'make:repository' => ['group' => 'Generate', 'usage' => 'make:repository <Name> [--force]', 'summary' => 'A repository'],
         'make:service' => ['group' => 'Generate', 'usage' => 'make:service <Name> [--force]', 'summary' => 'A service'],
-        'make:scaffold' => ['group' => 'Generate', 'usage' => 'make:scaffold <Name> [--force]', 'summary' => 'Controller, view, model, repository and service at once',
+        'make:scaffold' => ['group' => 'Generate', 'usage' => 'make:scaffold <Name> [--force]', 'summary' => 'Controller, model, repository and service at once',
             'details' => ['A part that already exists is kept and named; --force replaces it.']],
         'make:test' => ['group' => 'Generate', 'usage' => 'make:test <Name> [--force]', 'summary' => 'A test for ./sfphp test'],
         'make:seeder' => ['group' => 'Generate', 'usage' => 'make:seeder <Name> [--force]', 'summary' => 'A seeder'],
@@ -169,7 +169,7 @@ final class Application
                 'Keeps the users migration and a create_sessions_table migration if you made one.',
                 'It lists what it will delete and asks you to type "reset". There is no undo.',
             ]],
-        'upgrade' => ['group' => 'Project', 'usage' => 'upgrade [--to=v0.47.0] [--from=dir] [--dry-run] [--force]', 'summary' => 'Replace the framework, keep the application',
+        'upgrade' => ['group' => 'Project', 'usage' => 'upgrade [--to=v0.48.0] [--from=dir] [--dry-run] [--force]', 'summary' => 'Replace the framework, keep the application',
             'details' => [
                 'Replaced whole: src/, sfphp, server.php.',
                 'Merged in:      resources/, lang/, tools/ — your files there stay.',
@@ -609,31 +609,31 @@ final class Application
             throw new \InvalidArgumentException('Controller name is required.');
         }
 
-        // Parse options
-        $options = [];
-        if (in_array('--no-view', $arguments, true)) {
-            $options['no-view'] = true;
-        }
+        /*
+         * The controller does not write a page any more: --template chose
+         * between two kinds silently, and ignored a third it did not know.
+         * Said out loud rather than ignored, so a script that passed them
+         * finds out.
+         */
+        // The name the generator will use: "productController" is Product.
+        $base = ucfirst((string) preg_replace('/Controller$/i', '', $name));
 
-        // Extract --template=sfht or --template=phpx
-        foreach ($arguments as $arg) {
-            if (str_starts_with($arg, '--template=')) {
-                $template = substr($arg, strlen('--template='));
-                if (in_array($template, ['sfht', 'phpx'], true)) {
-                    $options['template'] = $template;
-                }
+        foreach ($arguments as $argument) {
+            if ($argument === '--no-view' || str_starts_with($argument, '--template')) {
+                throw new \InvalidArgumentException(sprintf(
+                    'make:controller no longer writes a view, so %s is not an option. Write the page with ./sfphp make:sfht %s or ./sfphp make:phpx %sPage.',
+                    $argument,
+                    $base,
+                    $base
+                ));
             }
         }
 
-        $generator = (new ControllerGenerator($this->rootPath(), in_array('--force', $arguments, true)))
-            ->withOptions($options);
+        $generator = new ControllerGenerator($this->rootPath(), in_array('--force', $arguments, true));
         $file = $generator->generate($name);
 
         $this->writeLine('Created controller: ' . $this->relativePath($file));
-
-        if ($generator->view !== null) {
-            $this->writeLine('Created view:       ' . $this->relativePath($generator->view));
-        }
+        $this->writeLine('Its page: ./sfphp make:sfht ' . $base . ' or ./sfphp make:phpx ' . $base . 'Page');
 
         return 0;
     }
@@ -979,16 +979,14 @@ final class Application
                 $file = $generator->generate($name);
                 $this->writeLine('✓ Created ' . $part . ': ' . $this->relativePath($file));
 
-                if ($generator instanceof ControllerGenerator && $generator->view !== null) {
-                    $this->writeLine('✓ Created view: ' . $this->relativePath($generator->view));
-                }
             } catch (\SfphpProject\src\Console\Generators\GeneratorFileExists $exists) {
                 $this->writeLine('• Kept existing ' . $part . ' (--force replaces it)');
             }
         }
 
         $this->writeLine('');
-        $this->writeLine('Done.');
+        $base = ucfirst((string) preg_replace('/Controller$/i', '', $name));
+        $this->writeLine('Done. The page: ./sfphp make:sfht ' . $base . ' or ./sfphp make:phpx ' . $base . 'Page');
 
         return 0;
     }
@@ -2473,7 +2471,7 @@ final class Application
                 $reference = $this->option($arguments, 'to') ?? $this->latestRelease();
 
                 if ($reference === null) {
-                    fwrite(STDERR, 'Error: could not find the latest release. Name one with --to=v0.47.0, or pass --from=<directory>.' . PHP_EOL);
+                    fwrite(STDERR, 'Error: could not find the latest release. Name one with --to=v0.48.0, or pass --from=<directory>.' . PHP_EOL);
 
                     return 1;
                 }

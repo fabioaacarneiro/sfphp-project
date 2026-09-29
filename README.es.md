@@ -162,7 +162,8 @@ Eso es todo. Abre `http://localhost:8000` y tendrás:
 ### Crea un controlador
 
 ```bash
-./sfphp make:controller Product     # crea app/controllers/ProductController.php y su vista
+./sfphp make:controller Product     # crea app/controllers/ProductController.php
+./sfphp make:sfht Product           # y su página: app/resources/views/product/index.sfht
 ```
 
 ### Define una ruta
