@@ -54,6 +54,7 @@ code does today. Where something does not exist, it says so — see
 - [CLI](#cli)
 - [SFCSS](#sfcss)
 - [SFJS](#sfjs)
+- [Reference](#reference)
 - [Tests](#tests)
 - [Known limitations](#known-limitations)
 - [Related Guides](#related-guides)
@@ -1713,7 +1714,8 @@ $article->views;          // 42, not '42'
 ```
 
 Available: `int`, `float`, `bool`, `string`, `json`, `array`, `datetime`,
-`date` and `decimal:N`. A null column stays null — it does not become a zero
+`date` and `decimal:N`; `integer`, `double` and `boolean` are the same as `int`,
+`float` and `bool`. A null column stays null — it does not become a zero
 value.
 
 **A `decimal:N` is a string**, `"19.90"`, with exactly N digits after the point,
@@ -5101,6 +5103,8 @@ or after a space: `--port=8080` and `--port 8080` are the same.
 
 ```bash
 ./sfphp make:controller Post   # PostController, and the view its action renders
+./sfphp make:controller Post --template=phpx   # the view as app/components/Post.phpx instead of an .sfht template
+./sfphp make:controller Post --no-view         # the controller alone
 ./sfphp make:model Post
 ./sfphp make:repository Post
 ./sfphp make:service Post
@@ -5250,7 +5254,7 @@ So upgrading means replacing those files, and knowing which ones they are:
 ```bash
 ./sfphp upgrade --dry-run          # what it would do, changing nothing
 ./sfphp upgrade                    # the latest release
-./sfphp upgrade --to=v0.43.0       # fetches that tag with git
+./sfphp upgrade --to=v0.44.0       # fetches that tag with git
 ./sfphp upgrade --from=../sfphp    # a copy you already have
 ```
 
@@ -5485,7 +5489,7 @@ Full reference: [SFCSS](SFCSS.md) and
 
 ## SFJS
 
-A dependency-free JavaScript library — 133KB raw, 68KB minified, **18KB
+A dependency-free JavaScript library — 128KB raw, 64KB minified, **17KB
 gzipped**. Exposed as `window.sf`. It is **one file**, with everything in it:
 requests and swaps, validation, state, streams (`@stream`, `@sse`) and the
 interface components (modals, menus, tooltips, tabs, toasts).
@@ -6545,6 +6549,217 @@ that is not a disclosure — a filter panel opened from a toolbar — use
 
 ---
 
+## Reference
+
+Everything the framework reads from the environment, the public methods the
+chapters above use without dwelling on, and what is internal. The chapters say
+why and when; this says what exists.
+
+### Environment variables
+
+Read from `.env` at boot — the suite ignores it, see [Tests](#tests) — and
+through `Config`, so a test can override one with `Config::set()`. A variable
+that is not set takes the default in the second column.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `APP_NAME` | `SfphpProject` | Your application's name, as the constant `APP_NAME` for your own pages; `make:pwa` takes its own `--name` |
+| `APP_VERSION` | `1.0.0` | Your application's version, as the constant `APP_VERSION` for your own pages. The framework's version is `Sfphp::VERSION` |
+| `APP_ENV` | `production` | `development` shows errors in detail and logs from `debug`; anything else is production |
+| `APP_LOCALE` | `en` | The language used when the visitor asks for none the application offers |
+| `APP_LOCALES` | `en,pt_BR,es` | The languages the application offers, in order of preference |
+| `APP_TIMEZONE` | `UTC` | The zone times are *shown* in; they are always stored in UTC |
+| `AUTH_LOGIN_PATH` | `/login` | Where `Authenticate` redirects a page request that has no user |
+| `CACHE_DRIVER` | `file` | `file`, `redis`, or `array` / `memory` (for the length of a process) |
+| `CACHE_PATH` | `storage/cache` | The file cache's directory, created private (0700) |
+| `CACHE_PREFIX` | `sfphp:cache:` | The prefix of every Redis cache key |
+| `DB_DRIVER` | `mysql` | `mysql`, `pgsql`, `sqlite`, `sqlsrv`, `oci`, `firebird`, `dblib` |
+| `DB_DSN` | — | A whole PDO DSN, for a driver the list does not cover; wins over the rest |
+| `DB_HOST` | `localhost` | The database server |
+| `DB_PORT` | the driver's | The port |
+| `DB_NAME` | — | The database; for SQLite, the file — see [Connection](#connection) |
+| `DB_USER` | — | The user |
+| `DB_PASS` | — | The password |
+| `DB_CHARSET` | `utf8mb4` | The MySQL connection's character set |
+| `JWT_KEY` | — | The secret tokens are signed with, 32 characters or more; required to issue or check one |
+| `LOG_CHANNEL` | `stream` | `stream` (to `LOG_PATH`), `error_log`, or `null` to drop every record |
+| `LOG_PATH` | `php://stderr` | Where the `stream` channel writes |
+| `LOG_LEVEL` | `debug` in development, `info` otherwise | The least severe level written |
+| `MAIL_DRIVER` | `log` | `smtp`, `mail` (PHP's `mail()`), `log` or `array` (kept in memory, for tests) |
+| `MAIL_HOST` | `localhost` | The SMTP server |
+| `MAIL_PORT` | `25` | Its port |
+| `MAIL_USERNAME` | — | SMTP login |
+| `MAIL_PASSWORD` | — | SMTP password |
+| `MAIL_ENCRYPTION` | `none` | `tls` / `starttls`, `ssl` / `smtps`, or `none` |
+| `MAIL_TIMEOUT` | `30` | Seconds to wait for the SMTP server |
+| `MAIL_ALLOW_PLAINTEXT_AUTH` | `false` | Allow sending the password over a connection that is not encrypted; refused otherwise |
+| `MAIL_FROM_ADDRESS` | — | The sender a message gets when it names none |
+| `MAIL_FROM_NAME` | — | Its name |
+| `MAIL_ALWAYS_TO` | — | Send every message to this address instead — a staging environment's safety net |
+| `QUEUE_DRIVER` | `database` | `database` or `redis` |
+| `QUEUE_TABLE` | `jobs` | The database queue's table |
+| `QUEUE_FAILED_TABLE` | `failed_jobs` | Where jobs that ran out of tries are kept |
+| `QUEUE_RESERVATION_SECONDS` | `900` | How long a reserved job is someone's before another worker may take it |
+| `REDIS_HOST` | `127.0.0.1` | The Redis server |
+| `REDIS_PORT` | `6379` | Its port |
+| `REDIS_PASSWORD` | — | Its password |
+| `REDIS_DB` | `0` | The database number |
+| `REDIS_TIMEOUT` | `2` | Seconds to wait for the connection |
+| `SESSION_DRIVER` | `native` | `native` (PHP's files), `database` or `cache` — see [Where sessions are stored](#where-sessions-are-stored) |
+| `SESSION_TABLE` | `sessions` | The `database` driver's table |
+| `SESSION_LIFETIME` | `7200` | Seconds a session may sit idle before it ends |
+| `SESSION_ABSOLUTE_LIFETIME` | `43200` | Seconds a session may last however busy it is |
+| `NO_COLOR` | — | Set to anything, `dump()` in a terminal prints no colour ([no-color.org](https://no-color.org)) |
+
+### Methods by class
+
+The public methods the chapters mention in passing or not at all. A method
+that has a chapter of its own is not repeated here.
+
+**Request**
+
+| Method | What it does |
+|---|---|
+| `queryAll()` | Every query-string value |
+| `bodyAll()` | The whole parsed body: form fields or decoded JSON |
+| `hasHeader($name)` | Whether a header was sent; case-insensitive |
+| `server($key, $default)` | A `$_SERVER` value, as the request was built with it |
+| `rawFiles()` | `$_FILES` as PHP laid it out; `file()` and `files()` are the usable form |
+| `attributes()` · `withAttributes([...])` | Every value middleware attached; a copy with several more |
+| `Request::trustedProxies()` | The proxies whose forwarding headers are believed |
+
+**Model**
+
+| Method | What it does |
+|---|---|
+| `Model::useConnection($pdo)` | Use this PDO for every model; `null` goes back to `Database::connect()`. How a test gives models an in-memory database |
+| `Model::hydrate($row)` | A model from a row that is already in the database, without saving anything |
+| `Model::primaryKey()` · `Model::fillable()` | The key column; the columns `fill()` accepts |
+| `attributes()` | Every attribute, raw — before any cast |
+| `relationLoaded($name)` · `setRelation($name, $value)` | Whether a relation is loaded; attach one you loaded yourself |
+
+**Uploads**
+
+| Method | What it does |
+|---|---|
+| `clientExtension()` | The extension of the name the client sent, lower-cased — a hint, never proof of the type |
+| `temporaryPath()` | Where PHP put the upload before it is stored |
+| `dimensions()` | `[width, height]` for an image, `null` otherwise |
+
+**Errors, JWT and CSRF**
+
+| Method | What it does |
+|---|---|
+| `ErrorPage::response($status, $message, $request, $title)` | The framework's error page for a status, as HTML or JSON as the request prefers, in the visitor's language |
+| `JWT::lifetime()` | How long a token is valid: 3600 seconds |
+| `Csrf::rotate()` | A new token for the session, as login does — the anonymous one stops working |
+| `Csrf::fromRequest()` · `Csrf::validateRequest()` | The token the current request carries — the `_token` field, or the `X-CSRF-Token` or `X-XSRF-Token` header; whether it matches the session's |
+
+**Translations**
+
+| Method | What it does |
+|---|---|
+| `Translator::setFallback($locale)` · `Translator::fallback()` | The language consulted when the active one has no entry |
+| `Translator::addPath($path)` · `Translator::paths()` | Add a directory of catalogs; the directories searched, last added first |
+
+**Logs and metrics**
+
+| Method | What it does |
+|---|---|
+| `notice()` · `critical()` · `emergency()` | The levels between and beyond `info`, `warning` and `error`; every PSR-3 level exists |
+| `minimumLevel(Level::Warning)` | A logger that keeps only that level and above |
+| `withContext([...])` · `context()` | A logger whose every record carries these values; what it carries |
+| `Level::fromName($name)` · `severity()` · `atLeast($level)` | A level from `LOG_LEVEL`-style text, falling back instead of throwing; its rank; the filter test |
+| `MemoryDriver::records()` | Every record written, for a test to read |
+| `Metrics::record($name, $ms, $labels)` | Record a duration you measured yourself |
+
+**Mail**
+
+| Method | What it does |
+|---|---|
+| `MailManager::alwaysTo($address)` · `using()` | A manager that sends everything to one address; the driver in use |
+| `Message::sender()` · `toAddresses()` · `ccAddresses()` | Who it is from and to, with names, for a test or a driver |
+| `textBody()` · `htmlBody()` · `toString()` | The bodies; the message as an SMTP `DATA` command carries it |
+| `redirectedTo($address)` | A copy addressed to someone else, what `alwaysTo()` sends |
+
+**Time, validation, views and sessions**
+
+| Method | What it does |
+|---|---|
+| `Time::utc()` · `Time::displayZone()` · `Time::frozen()` | The UTC zone; the `APP_TIMEZONE` zone; whether the clock is held still |
+| `Validator::isEmail($v)` · `Validator::isUrl($v)` | The `email` and `url` rules on their own: an address in any script; http or https with a host |
+| `View::setPaths($paths, $cachePath)` | Where templates are looked for, and where their compiled copies go |
+| `Session::startedAt()` · `Session::lastActivityAt()` | Unix times the session began and was last used, or `null` |
+
+**Routing and the container**
+
+| Method | What it does |
+|---|---|
+| `$router->routes()` | Every registered route, for a tool that lists or checks them |
+| `getMethod()` · `getController()` · `getAction()` · `getName()` · `getMiddleware()` · `generateUrl([...])` | What a `Route` says about itself; its path with the parameters filled in |
+| `$container->resolve($class)` | An instance built through the constructor's types, without registering it |
+
+**Cache, queue and auth drivers**
+
+| Method | What it does |
+|---|---|
+| `CacheManager::fromConfig()` · `getDriver()` | The cache `CACHE_DRIVER` names; the driver behind it |
+| `QueueManager::fromConfig()` · `getDriver()` · `push($job, $delay)` · `work($timeout)` | The queue `QUEUE_DRIVER` names, and running it — what `queue:work` does |
+| `Queue`: `push()` · `pop()` · `delete()` · `release()` · `failed()` · `retry()` · `failedJobs()` · `size()` · `flush()` | The contract a queue driver implements; `DatabaseDriver` and `RedisDriver` are the two that ship |
+| `Job`: `getId()` · `getAttempts()` · `getTries()` · `getTimeout()` · `getDelay()` | What a job knows about its own run, inside `handle()` |
+| `Guard::resolve($request)` | The contract of a guard: the user behind a request, or `null` |
+| `UserProvider`: `retrieveById()` · `retrieveByCredentials()` · `validateCredentials()` | The contract that finds users and checks passwords; `ModelUserProvider` is the one that ships |
+| `Auth::resolve($request, $guard)` · `Auth::resolved()` · `Auth::defaultGuard()` | Ask a guard once per request and keep the answer; whether it was asked; the default guard's name |
+| `TokenDenylist::isRevoked($token)` · `TokenDenylist::useCache($cache)` | Whether a JWT was revoked; which cache holds the list |
+
+**Schema builder**
+
+| Method | What it does |
+|---|---|
+| `foreignUuid()` · `foreignUlid()` | A UUID or ULID column meant to reference another table |
+| `unsignedTinyInteger()` · `unsignedSmallInteger()` · `unsignedMediumInteger()` | Unsigned integer columns of each size |
+| `autoIncrement()` | Make the current column auto-incrementing |
+| `onDelete($action)` · `onUpdate($action)` | The current foreign key's action by name: `CASCADE`, `SET NULL`, `SET DEFAULT`, `RESTRICT` or `NO ACTION` |
+| `cascadeOnUpdate()` · `nullOnUpdate()` · `restrictOnUpdate()` · `noActionOnUpdate()` | The same for updates, spelled out |
+| `deferrable($initiallyDeferred)` | A foreign key checked at commit rather than per statement (PostgreSQL) |
+| `engine()` · `tableCharset()` · `tableCollation()` | The table's storage engine, character set and collation (MySQL) |
+| `tableComment($comment)` · `renameTable($name)` · `dropFullText($columns)` | Comment the table; rename it; drop a full-text index |
+
+**PWA builders**
+
+| Method | What it does |
+|---|---|
+| `ManifestGenerator`: `shortName()` · `description()` · `startUrl()` · `themeColor()` · `backgroundColor()` · `orientation()` · `icon()` · `screenshot()` · `shortcut()` · `category()` | Build `manifest.json` in code instead of `app/pwa/config.php`; each sets the manifest field of the same name |
+| `ServiceWorkerGenerator`: `appName()` · `staticAssets()` · `apiRoutes()` · `offlineFallback()` · `enablePushNotifications()` · `enableBackgroundSync()` · `generate()` · `save($path)` | The same for the service worker — see the [PWA guide](./PWA_GUIDE.md) |
+
+**Async and assets**
+
+| Method | What it does |
+|---|---|
+| `Task::isTerminated()` · `ReactiveState::isLoading()` · `StreamFuture::isProcessing()` | Whether a task has finished; whether a reactive value is waiting on its Future; whether a stream is still being read |
+| `CacheInvalidator::getDependents($key)` | The keys invalidated along with this one |
+| `Assets::cssFor([...])` | Only the part of SFCSS the listed classes need, for a page that inlines its stylesheet |
+| `Assets::link($target)` | Symlink a project's `public/assets` to the package's copy instead of copying — what `assets:publish --symlink` does |
+
+### Internal classes
+
+These are public because another part of the framework calls them, not for an
+application to use. They can change in any release without notice, and nothing
+here promises to keep them. If you find yourself needing one, say so in an
+issue: that is how a piece of the internals becomes API.
+
+- `Async\Context`, `Async\EventLoop` and the `Scheduler` methods beyond `run()` — the runtime's own bookkeeping
+- `View\Parser`, `View\Compiler`, `View\Cache`, `View\Phpx::compile()` and the `SfhtEngine` methods compiled templates call (`renderPartial`, `extend`, `startBlock`, `endBlock`, `resolve`, the filter registry)
+- `View\PageScripts` and `View\ScriptBundler` — use the directives and `js:build`
+- `Http\Curl`, `Http\ClientStream`, `Http\Response::isStream()` / `producer()` — what the client and the emitter share
+- `Migrations\Identifier`, `Migrations\Expression`, `Migrations\MigrationLock`, `Migrations\MigrationRepository`, `Migrations\MigrationRunner` — use the `migrate` commands
+- `Database\Relation` — declare relations on the model
+- `Debug\Dumper`, `Debug\HtmlDump`, `Debug\TextDump`, `Debug\PendingDumps` — use `dump()` and `dd()`
+- `Dotenv`, `PrivateDirectory`, `JsMinifier`, `Cache\Ttl`, `ErrorHandler::handle*()`, `Console\Application` beyond `run()`, the generators' `withOptions()`, `Testing\TestCase::runTest()`
+- `Assets::usePath()`, `PageScripts::usePath()` and the other `use*()` seams that exist for the framework's own tests
+
+---
+
 ## Tests
 
 A bespoke runner, no PHPUnit — consistent with zero dependencies.
@@ -6565,9 +6780,11 @@ composer run docs        # the three languages agree, and every link resolves
 The unit suite is `tests/run.php` and the files under `tests/suite/`, one per
 part of the framework — `01-http.php`, `02-database.php` and on to
 `22-sqlite.php` — run in the order of their names. `tests/bootstrap.php` and
-`tests/support.php` hold what they share: the fixtures, the fakes, and
+`tests/support.php` hold what they share: the fixtures, the fakes,
 `sfjsInBrowser()`, which loads a page with SFJS into headless Chrome and reads
-back what it reported. A new test goes in the file of the part it tests.
+back what it reported, and `fixtureServer()`, which starts
+`tests/fixtures/http-server.php` on a port the system says is free and hands
+back its URL and a function that stops it. A new test goes in the file of the part it tests.
 
 ```bash
 php tests/run.php                   # everything, in about fifteen seconds
