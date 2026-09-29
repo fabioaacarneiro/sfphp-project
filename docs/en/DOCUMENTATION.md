@@ -253,16 +253,36 @@ See [Time and time zones](#time-and-time-zones).
 ```
 src/            The framework (namespace SfphpProject\src)
 app/            EXAMPLE application code — illustrative, not prescriptive
+  controllers/    make:controller
+  models/         make:model
+  components/     .phpx components (make:phpx); compiled/ is what build --phpx writes
+  resources/
+    views/        .sfht templates (make:sfht)
+    js/plugins/   SFJS plugins (make:plugin), bundled by js:build
+    js/scripts/   page scripts for @script, built by js:build
+  routes/         web.php and api.php
+  middleware/ events/ listeners/ policies/ requests/ services/ repositories/
+                  where the other make:* commands write
+  pwa/            config.php, what make:pwa builds from
 public/         Document root: index.php and assets/ (css, js, images)
+storage/        Written at run time, created private (0700): cache/ for the file
+                cache, cache/sfht/ for compiled templates
 resources/      SFCSS and SFJS sources, published into public/assets
 lang/           Message catalogs (en, pt_BR, es)
 database/       The application's migrations/, seeders/, factories/
-tools/          The SFCSS and SFJS builders, and the docs-parity check
+tools/          The SFCSS and SFJS builders, and the documentation checks
 tests/          A bespoke suite, no PHPUnit (a created project's own tests run with ./sfphp test)
 docs/           This documentation
 sfphp           The CLI entry point
 server.php      Router script for the built-in server
 ```
+
+`storage/` is the only directory the framework writes to while it runs. When it
+cannot be written — a read-only deploy, a container without a volume — the cache
+and the compiled templates fall back to a private directory under the system's
+temporary directory, named after the user and the project, instead of failing.
+Uploads go wherever `$file->store($directory)` is told; `storage/` is a good
+place for them, outside `public/`.
 
 PSR-4 autoloading:
 
@@ -1280,7 +1300,7 @@ See [.phpx components](PHPX_COMPONENTS.md#from-a-controller) for the whole of it
 
 ### Why a component returns Sfht
 
-```php
+```text
 {{ Card('Hello', $body) }}    the card renders
 {{ $body }}                    the text is escaped
 ```
@@ -1384,6 +1404,39 @@ final class PostController
 The container resolves union types, uses default values when available, accepts
 `null` for nullable parameters, and detects circular dependencies with a
 `RuntimeException`.
+
+**`get()` builds once and keeps it.** The first `get()` of a class or a factory
+builds the instance and the container holds on to it; every later `get()` —
+and every constructor that asks for it — receives that same object. A factory
+therefore runs once per container, which is what a database connection or a
+client with its own pool wants. `resolve()` is the other way: a new instance,
+built through the constructor every time, and never kept.
+
+```php
+use SfphpProject\src\Container;
+
+// An interface, bound to what implements it; the factory is handed the container.
+$container->set(PaymentGateway::class, fn (Container $c): PaymentGateway => new StripeGateway($c->get(Client::class)));
+
+$container->get(PaymentGateway::class) === $container->get(PaymentGateway::class);   // true: kept
+$container->resolve(ReportBuilder::class) === $container->resolve(ReportBuilder::class);   // false: new each time
+
+$container->has(Mailer::class);   // true once set — and for any class it could build without being told
+```
+
+The front controller builds the application's container in `public/index.php`
+and hands it to the `Router`, which resolves every controller and every
+middleware given by class name through it. Registering a binding there is how a
+controller receives an interface in its constructor.
+
+When it cannot build something it says what, with a `RuntimeException`:
+
+| Message | Means |
+|---|---|
+| `Class X does not exist.` | the name is wrong, or nothing autoloads it |
+| `Class X is not instantiable.` | an interface or an abstract class with no binding — `set()` one |
+| `Circular dependency detected while resolving X.` | X needs, through its constructors, something that needs X |
+| `Factory for X must return an object.` | a factory returned something else, `null` included |
 
 ---
 
@@ -3798,6 +3851,22 @@ expose, so it uses `mbstring` — a required extension. The ASCII folding that
 remains in the code is for a runtime that lacks the extension anyway: it
 degrades a display detail rather than corrupting data.
 
+`Str::truncate()` counts the suffix towards the limit, so the result is never
+longer than asked for, and the `truncate` filter in templates is this function.
+`Str::plural()` is the small English rule the framework uses for table names —
+`post` is `posts`, `category` is `categories`, `key` is `keys`, keeping a
+capital where there is one — and a model whose name it gets wrong sets `$table`
+instead.
+
+```php
+Str::truncate('日本語テキスト', 5, '…');  // 日本語テ…  — five characters in all
+Str::plural('category');                // categories
+```
+
+`strlen()` is still right for bytes — a column's size, a header's length — and
+wrong for anything a person reads: `strlen('José')` is 5. The `min`, `max`,
+`minLength` and `maxLength` validation rules count characters, through `Str`.
+
 ---
 
 ## Authentication
@@ -4715,6 +4784,45 @@ What the signature enforces:
 php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 ```
 
+### A token API, end to end
+
+`Auth::attempt()` belongs to the session guard. A token is issued by checking
+the credentials through the provider and signing the id:
+
+```php
+use SfphpProject\src\Auth\Auth;
+use SfphpProject\src\JWT;
+
+// POST /api/token — trade an e-mail and a password for a token.
+public function token(Request $request): Response
+{
+    $provider = Auth::provider();
+    $user = $provider->retrieveByCredentials(['email' => $request->input('email')]);
+
+    if ($user === null || !$provider->validateCredentials($user, ['password' => $request->input('password')])) {
+        return Response::json(['message' => __('auth.failed')], HTTP_UNAUTHORIZED);
+    }
+
+    return Response::json(['token' => JWT::generate(['id' => $user->getAuthIdentifier()]), 'expires_in' => JWT::lifetime()]);
+}
+
+// GET /api/me — behind new Authenticate('api', required: true).
+public function me(Request $request): Response
+{
+    return Response::json(['id' => $request->user()->getAuthIdentifier()]);
+}
+```
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" https://example.com/api/me
+```
+
+The token guard reads `Authorization: Bearer`, checks the signature and the
+expiry, asks the denylist, and finds the user by the `id` claim; a request
+without a valid one is answered 401. There is no refresh token: a client asks
+for a new one before `expires_in` runs out, and a token is revoked before then
+through `TokenDenylist` — see [Revoking a token](#revoking-a-token).
+
 ---
 
 ## Debugging
@@ -4970,6 +5078,69 @@ use SfphpProject\src\Http\HttpException;
 
 throw new HttpException(404);
 throw new HttpException(409, 'That slug is taken.');
+```
+
+### Your own errors
+
+An exception of your own gets its status by implementing `HttpStatus`. Whether
+its **message** reaches the client depends on what it extends:
+
+```php
+use SfphpProject\src\Http\HttpException;
+use SfphpProject\src\Http\HttpStatus;
+
+// A status and a message the client is meant to read.
+final class SlugTaken extends HttpException
+{
+    public function __construct(string $slug)
+    {
+        parent::__construct(HTTP_CONFLICT, 'The slug "' . $slug . '" is taken.');
+    }
+}
+
+// A status only: the client reads the standard text for it, the log reads yours.
+final class QuotaExceeded extends RuntimeException implements HttpStatus
+{
+    public function status(): int
+    {
+        return HTTP_TOO_MANY_REQUESTS;
+    }
+}
+```
+
+| Thrown | Status | What the client reads, in development | In production |
+|---|---|---|---|
+| an `HttpException` | its own | its message | its message, below 500 |
+| anything else implementing `HttpStatus` | its own | its message | the standard text for the status, in the visitor's language |
+| any other exception | 500 | its message | the standard text for 500 |
+
+So a message written for the visitor extends `HttpException`, and a message
+written for whoever reads the log does not. A JSON client gets the same text in
+one field:
+
+```json
+{"message": "The slug \"launch\" is taken."}
+```
+
+To answer with the error page without throwing — from a middleware, say — ask
+`ErrorPage` for it; it picks HTML or JSON from the request, as the router does:
+
+```php
+use SfphpProject\src\Http\ErrorPage;
+
+return ErrorPage::response(HTTP_CONFLICT, 'That slug is taken.', $request);
+```
+
+And an exception you expect is caught where it happens, like any other:
+
+```php
+use SfphpProject\src\Database\ModelNotFoundException;
+
+try {
+    $post = Post::findOrFail($id);
+} catch (ModelNotFoundException) {
+    return Response::redirect('/posts');
+}
 ```
 
 Every error the framework answers — 400, 401, 403, 404, 405, 429, 500, 503 —
@@ -5397,7 +5568,7 @@ So upgrading means replacing those files, and knowing which ones they are:
 ```bash
 ./sfphp upgrade --dry-run          # what it would do, changing nothing
 ./sfphp upgrade                    # the latest release
-./sfphp upgrade --to=v0.48.0       # fetches that tag with git
+./sfphp upgrade --to=v0.49.0       # fetches that tag with git
 ./sfphp upgrade --from=../sfphp    # a copy you already have
 ```
 
@@ -6877,6 +7048,7 @@ that has a chapter of its own is not repeated here.
 |---|---|
 | `ManifestGenerator`: `shortName()` · `description()` · `startUrl()` · `themeColor()` · `backgroundColor()` · `orientation()` · `icon()` · `screenshot()` · `shortcut()` · `category()` | Build `manifest.json` in code instead of `app/pwa/config.php`; each sets the manifest field of the same name |
 | `ServiceWorkerGenerator`: `appName()` · `staticAssets()` · `apiRoutes()` · `offlineFallback()` · `enablePushNotifications()` · `enableBackgroundSync()` · `generate()` · `save($path)` | The same for the service worker — see the [PWA guide](./PWA_GUIDE.md) |
+| `PwaConfig::fromFile($path)` · `get($key)` · `name()` · `shortName()` · `version()` · `staticAssets()` · `icons()` · the other settings | `app/pwa/config.php` read with the defaults filled in — what `make:pwa` builds from; each method returns one setting, a list replaces its default rather than merging into it |
 
 **Async and assets**
 
@@ -6902,7 +7074,7 @@ issue: that is how a piece of the internals becomes API.
 - `Database\Relation` — declare relations on the model
 - `Debug\Dumper`, `Debug\HtmlDump`, `Debug\TextDump`, `Debug\PendingDumps` — use `dump()` and `dd()`
 - `Dotenv`, `PrivateDirectory`, `JsMinifier`, `Cache\Ttl`, `ErrorHandler::handle*()`, `Console\Application` beyond `run()`, the generators' `withOptions()`, `Testing\TestCase::runTest()`
-- `Assets::usePath()`, `PageScripts::usePath()` and the other `use*()` seams that exist for the framework's own tests, and `Session::configure()`, which `StartSession` calls
+- `Assets::usePath()`, `PageScripts::usePath()` and the other `use*()` seams that exist for the framework's own tests, and `Session::configure()` and `Session::isConfigured()`, which `StartSession` and the CSRF helpers call, and `Csrf::startSession()`
 
 ---
 

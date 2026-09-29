@@ -251,7 +251,7 @@ echo Card('Welcome', '<script>alert(1)</script>', 'green');
 Y si recibe otro componente, lo imprime como marcado — que es lo que permite a
 `Address` componer `Field` con `{{ }}` en lugar de con `{!! !!}`:
 
-```php
+```text
 {{ Field('Street', $street) }}    el campo se renderiza
 {{ $street }}                      el texto se escapa
 ```

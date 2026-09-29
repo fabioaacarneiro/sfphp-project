@@ -162,6 +162,7 @@ $tests->run('the package is a project somebody can start developing in', functio
      * languages, does not.
      */
     $tests->assertTrue((bool) preg_match('#^/tools/docs-parity\.php\s+export-ignore#m', $attributes));
+    $tests->assertTrue((bool) preg_match('#^/tools/docs-examples\.php\s+export-ignore#m', $attributes));
     $tests->assertSame(0, preg_match('#^/tools\s+export-ignore#m', $attributes));
 });
 
