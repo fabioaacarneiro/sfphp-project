@@ -341,3 +341,141 @@ $tests->run('a remember cookie is not a password that can be replayed', function
 
     $tests->assertSame(true, $issued['expires'] > time());
 });
+
+$tests->run('a password reset token stops working when it expires, when the password changes, or when it is tampered with', function () use ($tests): void {
+    /*
+     * Nothing is stored: the token is signed over the user's current password
+     * hash, so changing the password is what makes it single-use.
+     */
+    $key = $_ENV['JWT_KEY'] ?? null;
+    $_ENV['JWT_KEY'] = bin2hex(random_bytes(32));
+
+    $user = new class implements \SfphpProject\src\Auth\Authenticatable {
+        public string $password;
+
+        public function __construct()
+        {
+            $this->password = password_hash('old secret', PASSWORD_DEFAULT);
+        }
+
+        public function getAuthIdentifierName(): string
+        {
+            return 'id';
+        }
+
+        public function getAuthIdentifier(): mixed
+        {
+            return 7;
+        }
+
+        public function getAuthPassword(): string
+        {
+            return $this->password;
+        }
+    };
+
+    $provider = new class ($user) implements \SfphpProject\src\Auth\UserProvider {
+        public function __construct(private \SfphpProject\src\Auth\Authenticatable $user)
+        {
+        }
+
+        public function retrieveById(mixed $identifier): ?\SfphpProject\src\Auth\Authenticatable
+        {
+            return (string) $identifier === '7' ? $this->user : null;
+        }
+
+        public function retrieveByCredentials(array $credentials): ?\SfphpProject\src\Auth\Authenticatable
+        {
+            return null;
+        }
+
+        public function validateCredentials(\SfphpProject\src\Auth\Authenticatable $user, array $credentials): bool
+        {
+            return false;
+        }
+    };
+
+    try {
+        $token = \SfphpProject\src\Auth\PasswordReset::token($user);
+
+        // URL-safe, and it finds the user.
+        $tests->assertSame(1, preg_match('/^[A-Za-z0-9_.-]+$/', $token));
+        $tests->assertSame($user, \SfphpProject\src\Auth\PasswordReset::user($token, $provider));
+
+        // Tampered with anywhere: the id, the expiry, the signature.
+        [$id, $expires, $signature] = explode('.', $token);
+        $tests->assertSame(null, \SfphpProject\src\Auth\PasswordReset::user($id . '.' . ($expires + 3600) . '.' . $signature, $provider));
+        $tests->assertSame(null, \SfphpProject\src\Auth\PasswordReset::user(rtrim(strtr(base64_encode('8'), '+/', '-_'), '=') . '.' . $expires . '.' . $signature, $provider));
+        $tests->assertSame(null, \SfphpProject\src\Auth\PasswordReset::user($id . '.' . $expires . '.' . strrev($signature), $provider));
+        $tests->assertSame(null, \SfphpProject\src\Auth\PasswordReset::user('not a token', $provider));
+
+        // Expired.
+        \SfphpProject\src\Time::freeze(\SfphpProject\src\Time::now()->modify('+2 hours'));
+        $tests->assertSame(null, \SfphpProject\src\Auth\PasswordReset::user($token, $provider));
+        \SfphpProject\src\Time::unfreeze();
+
+        // The password changed: the link that did it, and every link before it, is dead.
+        $user->password = password_hash('new secret', PASSWORD_DEFAULT);
+        $tests->assertSame(null, \SfphpProject\src\Auth\PasswordReset::user($token, $provider));
+
+        // A different key never accepts it.
+        $fresh = \SfphpProject\src\Auth\PasswordReset::token($user);
+        $_ENV['JWT_KEY'] = bin2hex(random_bytes(32));
+        $tests->assertSame(null, \SfphpProject\src\Auth\PasswordReset::user($fresh, $provider));
+    } finally {
+        \SfphpProject\src\Time::unfreeze();
+
+        if ($key === null) {
+            unset($_ENV['JWT_KEY']);
+        } else {
+            $_ENV['JWT_KEY'] = $key;
+        }
+    }
+});
+
+$tests->run('TOTP matches RFC 6238, tolerates a drifting clock, and refuses a code used twice', function () use ($tests): void {
+    // RFC 6238, appendix B: the SHA-1 secret "12345678901234567890", six-digit codes.
+    $rfc = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+
+    foreach ([59 => '287082', 1111111109 => '081804', 1111111111 => '050471', 1234567890 => '005924', 2000000000 => '279037', 20000000000 => '353130'] as $time => $code) {
+        $tests->assertSame($code, \SfphpProject\src\Auth\Totp::code($rfc, $time));
+    }
+
+    $secret = \SfphpProject\src\Auth\Totp::secret();
+    $tests->assertSame(32, strlen($secret));
+    $tests->assertSame(1, preg_match('/^[A-Z2-7]+$/', $secret));
+
+    $now = 1_000_000;
+    $step = intdiv($now, 30);
+    $code = \SfphpProject\src\Auth\Totp::code($secret, $now);
+
+    // Right now, and a step either side for a phone whose clock drifts.
+    $tests->assertSame($step, \SfphpProject\src\Auth\Totp::verify($secret, $code, null, 1, $now));
+    $tests->assertSame($step, \SfphpProject\src\Auth\Totp::verify($secret, $code, null, 1, $now + 30));
+    $tests->assertSame(null, \SfphpProject\src\Auth\Totp::verify($secret, $code, null, 1, $now + 90));
+
+    // Typed with a space, or with a dash.
+    $tests->assertSame($step, \SfphpProject\src\Auth\Totp::verify($secret, substr($code, 0, 3) . ' ' . substr($code, 3), null, 1, $now));
+
+    // Used once already: the stored step refuses it.
+    $tests->assertSame(null, \SfphpProject\src\Auth\Totp::verify($secret, $code, $step, 1, $now));
+
+    // Wrong, or not six digits.
+    $wrong = str_pad((string) (((int) $code + 1) % 1_000_000), 6, '0', STR_PAD_LEFT);
+    $tests->assertSame(null, \SfphpProject\src\Auth\Totp::verify($secret, $wrong, null, 0, $now));
+    $tests->assertSame(null, \SfphpProject\src\Auth\Totp::verify($secret, '12345', null, 1, $now));
+
+    $tests->assertSame(
+        'otpauth://totp/My%20App:ana%40example.com?secret=' . $secret . '&issuer=My%20App&algorithm=SHA1&digits=6&period=30',
+        \SfphpProject\src\Auth\Totp::uri($secret, 'ana@example.com', 'My App')
+    );
+    $tests->assertThrows(static fn () => \SfphpProject\src\Auth\Totp::uri($secret, 'a:b', 'My App'), InvalidArgumentException::class);
+    $tests->assertThrows(static fn () => \SfphpProject\src\Auth\Totp::code('not base32!'), InvalidArgumentException::class);
+
+    $codes = \SfphpProject\src\Auth\Totp::recoveryCodes(8);
+    $tests->assertSame(8, count(array_unique($codes)));
+
+    foreach ($codes as $recovery) {
+        $tests->assertSame(1, preg_match('/^[a-hjkmnp-z2-9]{5}-[a-hjkmnp-z2-9]{5}$/', $recovery));
+    }
+});
