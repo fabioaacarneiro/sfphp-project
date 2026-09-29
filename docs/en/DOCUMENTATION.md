@@ -5254,7 +5254,7 @@ So upgrading means replacing those files, and knowing which ones they are:
 ```bash
 ./sfphp upgrade --dry-run          # what it would do, changing nothing
 ./sfphp upgrade                    # the latest release
-./sfphp upgrade --to=v0.44.0       # fetches that tag with git
+./sfphp upgrade --to=v0.45.0       # fetches that tag with git
 ./sfphp upgrade --from=../sfphp    # a copy you already have
 ```
 
@@ -6779,7 +6779,7 @@ composer run docs        # the three languages agree, and every link resolves
 
 The unit suite is `tests/run.php` and the files under `tests/suite/`, one per
 part of the framework — `01-http.php`, `02-database.php` and on to
-`22-sqlite.php` — run in the order of their names. `tests/bootstrap.php` and
+`23-streaming.php` — run in the order of their names. `tests/bootstrap.php` and
 `tests/support.php` hold what they share: the fixtures, the fakes,
 `sfjsInBrowser()`, which loads a page with SFJS into headless Chrome and reads
 back what it reported, and `fixtureServer()`, which starts

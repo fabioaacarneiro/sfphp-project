@@ -245,3 +245,70 @@ $tests->run('a deadlock is reported once, and the next await is not blamed for i
     // The stuck task used to stay parked and fail this unrelated await too.
     $tests->assertSame('fine', SfphpProject\src\Async\await(SfphpProject\src\Async\delay(1, 'fine')));
 });
+
+$tests->run('await, all(), a thrown exception, syncRun() and delay() behave as the async guide says', function () use ($tests): void {
+    /*
+     * From tests/AsyncBasicTest.php, which only ./sfphp test ran and CI never
+     * did. One scheduler per case, pushed and popped, as the guide describes.
+     */
+    $withScheduler = static function (callable $case): void {
+        SfphpProject\src\Async\Context::clear();
+        SfphpProject\src\Async\Context::pushScheduler(new SfphpProject\src\Async\Scheduler());
+
+        try {
+            $case();
+        } finally {
+            SfphpProject\src\Async\Context::popScheduler();
+        }
+    };
+
+    $tests->assertSame(true, SfphpProject\src\Async\async(static fn () => 42) instanceof SfphpProject\src\Async\Task);
+
+    $withScheduler(static function () use ($tests): void {
+        $tests->assertSame(42, SfphpProject\src\Async\await(SfphpProject\src\Async\async(static fn () => 42)));
+
+        $tests->assertSame([1, 2, 3], SfphpProject\src\Async\await(SfphpProject\src\Async\CompositeFuture::all(
+            SfphpProject\src\Async\async(static fn () => 1),
+            SfphpProject\src\Async\async(static fn () => 2),
+            SfphpProject\src\Async\async(static fn () => 3),
+        )));
+
+        $tests->assertThrows(
+            static fn () => SfphpProject\src\Async\await(SfphpProject\src\Async\async(static function (): never {
+                throw new Exception('inside the task');
+            })),
+            Exception::class
+        );
+    });
+
+    $tests->assertSame(123, SfphpProject\src\Async\syncRun(SfphpProject\src\Async\async(static fn () => 123)));
+
+    $withScheduler(static function () use ($tests): void {
+        $startedAt = microtime(true);
+        SfphpProject\src\Async\await(SfphpProject\src\Async\delay(50));
+        $tests->assertSame(true, microtime(true) - $startedAt >= 0.05);
+
+        // Three timers wait together: about the longest, not the sum of 180 ms.
+        $startedAt = microtime(true);
+        $values = SfphpProject\src\Async\await(SfphpProject\src\Async\CompositeFuture::all(
+            SfphpProject\src\Async\async(static function (): string {
+                SfphpProject\src\Async\await(SfphpProject\src\Async\delay(50));
+
+                return 'a';
+            }),
+            SfphpProject\src\Async\async(static function (): string {
+                SfphpProject\src\Async\await(SfphpProject\src\Async\delay(100));
+
+                return 'b';
+            }),
+            SfphpProject\src\Async\async(static function (): string {
+                SfphpProject\src\Async\await(SfphpProject\src\Async\delay(30));
+
+                return 'c';
+            }),
+        ));
+
+        $tests->assertSame(['a', 'b', 'c'], $values);
+        $tests->assertSame(true, microtime(true) - $startedAt < 0.16);
+    });
+});
