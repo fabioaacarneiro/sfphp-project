@@ -135,9 +135,9 @@ reemplaza por `no-cache`.
 PHP envía el suyo por defecto, `text/html; charset=UTF-8`:
 
 ```php
-headers: ['Content-Type' => 'text/plain; charset=utf-8']        // texto
-headers: ['Content-Type' => 'text/event-stream; charset=utf-8'] // Server-Sent Events
-headers: ['Content-Type' => 'application/x-ndjson']             // un valor JSON por línea
+Response::stream($produce, headers: ['Content-Type' => 'text/plain; charset=utf-8']);        // texto
+Response::stream($produce, headers: ['Content-Type' => 'text/event-stream; charset=utf-8']); // Server-Sent Events
+Response::stream($produce, headers: ['Content-Type' => 'application/x-ndjson']);             // un valor JSON por línea
 ```
 
 ### Peticiones HEAD

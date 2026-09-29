@@ -44,7 +44,8 @@ jobs:
       # The documentation exists in English, Portuguese and Spanish, and a
       # version that falls behind is worse than one that does not exist,
       # because a reader cannot tell which pages are current. This compares
-      # the structure of the three and checks every link.
+      # the structure of the three and checks every link, and checks that every
+      # PHP example parses and that what it calls on the framework exists.
       - run: composer run docs
 
   # The unit suite's SQLite tests run against a real in-memory database, and

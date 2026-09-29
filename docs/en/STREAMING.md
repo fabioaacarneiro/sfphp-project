@@ -129,9 +129,9 @@ headers, so they cannot currently be overridden: a `Cache-Control` passed in
 PHP sends its default, `text/html; charset=UTF-8`:
 
 ```php
-headers: ['Content-Type' => 'text/plain; charset=utf-8']        // text
-headers: ['Content-Type' => 'text/event-stream; charset=utf-8'] // Server-Sent Events
-headers: ['Content-Type' => 'application/x-ndjson']             // one JSON value per line
+Response::stream($produce, headers: ['Content-Type' => 'text/plain; charset=utf-8']);        // text
+Response::stream($produce, headers: ['Content-Type' => 'text/event-stream; charset=utf-8']); // Server-Sent Events
+Response::stream($produce, headers: ['Content-Type' => 'application/x-ndjson']);             // one JSON value per line
 ```
 
 ### HEAD Requests

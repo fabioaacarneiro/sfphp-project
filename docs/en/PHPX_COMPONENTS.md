@@ -247,7 +247,7 @@ echo Card('Welcome', '<script>alert(1)</script>', 'green');
 And given another component, it prints it as markup — which is what lets
 `Address` compose `Field` with `{{ }}` rather than with `{!! !!}`:
 
-```php
+```text
 {{ Field('Street', $street) }}    the field renders
 {{ $street }}                      the text is escaped
 ```

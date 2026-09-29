@@ -256,17 +256,38 @@ no un ajuste. Consulta [Tiempo y zonas horarias](#tiempo-y-zonas-horarias).
 
 ```
 src/            El framework (namespace SfphpProject\src)
-app/            Código de EJEMPLO de la aplicación — ilustrativo, no prescriptivo
-public/         Document root: index.php y assets/ (css, js, images)
+app/            Código de EJEMPLO de la aplicación — ilustrativo, no normativo
+  controllers/    make:controller
+  models/         make:model
+  components/     componentes .phpx (make:phpx); compiled/ es lo que escribe build --phpx
+  resources/
+    views/        plantillas .sfht (make:sfht)
+    js/plugins/   plugins de SFJS (make:plugin), empaquetados por js:build
+    js/scripts/   scripts de página para @script, construidos por js:build
+  routes/         web.php y api.php
+  middleware/ events/ listeners/ policies/ requests/ services/ repositories/
+                  donde escriben los otros comandos make:*
+  pwa/            config.php, de lo que make:pwa construye todo
+public/         Raíz pública: index.php y assets/ (css, js, imágenes)
+storage/        Se escribe al ejecutarse, creado privado (0700): cache/ para la caché
+                en archivo, cache/sfht/ para las plantillas compiladas
 resources/      Fuentes de SFCSS y SFJS, publicadas en public/assets
 lang/           Catálogos de mensajes (en, pt_BR, es)
-database/       migrations/, seeders/, factories/ de la aplicación
-tools/          Los generadores de SFCSS y SFJS, y la comprobación docs-parity
-tests/          Suite propia, sin PHPUnit (los tests de un proyecto creado se ejecutan con ./sfphp test)
+database/       Las migrations/, seeders/ y factories/ de la aplicación
+tools/          Los builders de SFCSS y SFJS, y las comprobaciones de la documentación
+tests/          Una suite propia, sin PHPUnit (los tests de un proyecto creado se ejecutan con ./sfphp test)
 docs/           Esta documentación
-sfphp           Punto de entrada del CLI
-server.php      Script de enrutado del servidor incorporado
+sfphp           El punto de entrada de la CLI
+server.php      Script enrutador del servidor integrado
 ```
+
+`storage/` es el único directorio en el que el framework escribe mientras se
+ejecuta. Cuando no se puede escribir en él — un despliegue de solo lectura, un
+contenedor sin volumen —, la caché y las plantillas compiladas pasan a un
+directorio privado dentro del directorio temporal del sistema, con el nombre del
+usuario y del proyecto, en lugar de fallar. Los uploads van adonde diga
+`$file->store($directory)`; `storage/` es un buen sitio para ellos, fuera de
+`public/`.
 
 Autocarga PSR-4:
 
@@ -1301,7 +1322,7 @@ Consulta [componentes .phpx](PHPX_COMPONENTS.md#desde-un-controlador) para el te
 
 ### Por qué un componente devuelve Sfht
 
-```php
+```text
 {{ Card('Hola', $cuerpo) }}    la tarjeta se renderiza
 {{ $cuerpo }}                   el texto se escapa
 ```
@@ -1407,6 +1428,40 @@ final class PostController
 El contenedor resuelve tipos de unión, usa valores por defecto cuando existen,
 acepta `null` en parámetros que lo admiten, y detecta dependencias circulares
 con una `RuntimeException`.
+
+**`get()` construye una vez y la guarda.** El primer `get()` de una clase o de
+una fábrica construye la instancia, y el contenedor la guarda; cada `get()`
+siguiente — y cada constructor que la pida — recibe ese mismo objeto. Una
+fábrica, por tanto, se ejecuta una vez por contenedor, que es lo que quiere una
+conexión de base de datos o un cliente con pool propio. `resolve()` es lo
+contrario: una instancia nueva, construida por el constructor cada vez, y nunca
+guardada.
+
+```php
+use SfphpProject\src\Container;
+
+// Una interfaz, ligada a lo que la implementa; la fábrica recibe el contenedor.
+$container->set(PaymentGateway::class, fn (Container $c): PaymentGateway => new StripeGateway($c->get(Client::class)));
+
+$container->get(PaymentGateway::class) === $container->get(PaymentGateway::class);   // true: guardada
+$container->resolve(ReportBuilder::class) === $container->resolve(ReportBuilder::class);   // false: nueva cada vez
+
+$container->has(Mailer::class);   // true tras el set — y para cualquier clase que pueda construir sin que se lo digan
+```
+
+El front controller construye el contenedor de la aplicación en
+`public/index.php` y se lo entrega al `Router`, que resuelve con él cada
+controlador y cada middleware dado por el nombre de su clase. Registrar una
+ligadura ahí es como un controlador recibe una interfaz en su constructor.
+
+Cuando no puede construir algo, dice qué, con una `RuntimeException`:
+
+| Mensaje | Significa |
+|---|---|
+| `Class X does not exist.` | el nombre está mal, o nada lo carga |
+| `Class X is not instantiable.` | una interfaz o una clase abstracta sin ligadura — haz el `set()` de una |
+| `Circular dependency detected while resolving X.` | X necesita, por sus constructores, algo que necesita X |
+| `Factory for X must return an object.` | una fábrica devolvió otra cosa, `null` incluido |
 
 ---
 
@@ -3878,6 +3933,23 @@ minúsculas necesita las tablas Unicode que PCRE no expone, así que usa
 es para un runtime al que, aun así, le falte la extensión: degrada un detalle de
 presentación en vez de corromper datos.
 
+`Str::truncate()` cuenta el sufijo dentro del límite, así que el resultado nunca
+supera lo pedido, y el filtro `truncate` de las plantillas es esta función.
+`Str::plural()` es la pequeña regla del inglés que usa el framework para los
+nombres de tabla — `post` es `posts`, `category` es `categories`, `key` es
+`keys`, conservando la mayúscula donde la haya —, y un model cuyo nombre falla
+define `$table` en su lugar.
+
+```php
+Str::truncate('日本語テキスト', 5, '…');  // 日本語テ…  — cinco caracteres en total
+Str::plural('category');                // categories
+```
+
+`strlen()` sigue siendo correcto para bytes — el tamaño de una columna, de una
+cabecera — e incorrecto para todo lo que lee una persona: `strlen('José')` es 5.
+Las reglas de validación `min`, `max`, `minLength` y `maxLength` cuentan
+caracteres, a través de `Str`.
+
 ---
 
 ## Autenticación
@@ -4815,6 +4887,45 @@ Lo que la firma impone:
 php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 ```
 
+### Una API con token, de principio a fin
+
+`Auth::attempt()` es del guard de sesión. Un token se emite comprobando las
+credenciales a través del provider y firmando el id:
+
+```php
+use SfphpProject\src\Auth\Auth;
+use SfphpProject\src\JWT;
+
+// POST /api/token — cambia un correo y una contraseña por un token.
+public function token(Request $request): Response
+{
+    $provider = Auth::provider();
+    $user = $provider->retrieveByCredentials(['email' => $request->input('email')]);
+
+    if ($user === null || !$provider->validateCredentials($user, ['password' => $request->input('password')])) {
+        return Response::json(['message' => __('auth.failed')], HTTP_UNAUTHORIZED);
+    }
+
+    return Response::json(['token' => JWT::generate(['id' => $user->getAuthIdentifier()]), 'expires_in' => JWT::lifetime()]);
+}
+
+// GET /api/me — detrás de new Authenticate('api', required: true).
+public function me(Request $request): Response
+{
+    return Response::json(['id' => $request->user()->getAuthIdentifier()]);
+}
+```
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" https://example.com/api/me
+```
+
+El guard de token lee `Authorization: Bearer`, comprueba la firma y la
+caducidad, consulta la lista de revocados y encuentra al usuario por el claim
+`id`; una petición sin un token válido recibe un 401. No hay refresh token: el
+cliente pide uno nuevo antes de que se acabe `expires_in`, y un token se revoca
+antes a través de `TokenDenylist` — consulta [Revocar un token](#revocar-un-token).
+
 ---
 
 ## Depuración
@@ -5076,6 +5187,70 @@ use SfphpProject\src\Http\HttpException;
 
 throw new HttpException(404);
 throw new HttpException(409, 'Ese slug ya está en uso.');
+```
+
+### Tus propios errores
+
+Una excepción tuya recibe su estado implementando `HttpStatus`. Que su
+**mensaje** llegue al cliente depende de lo que extiende:
+
+```php
+use SfphpProject\src\Http\HttpException;
+use SfphpProject\src\Http\HttpStatus;
+
+// Un estado y un mensaje pensado para que lo lea el cliente.
+final class SlugTaken extends HttpException
+{
+    public function __construct(string $slug)
+    {
+        parent::__construct(HTTP_CONFLICT, 'The slug "' . $slug . '" is taken.');
+    }
+}
+
+// Solo un estado: el cliente lee el texto estándar, el log lee el tuyo.
+final class QuotaExceeded extends RuntimeException implements HttpStatus
+{
+    public function status(): int
+    {
+        return HTTP_TOO_MANY_REQUESTS;
+    }
+}
+```
+
+| Lanzada | Estado | Lo que lee el cliente, en desarrollo | En producción |
+|---|---|---|---|
+| una `HttpException` | el suyo | su mensaje | su mensaje, por debajo de 500 |
+| cualquier otra que implemente `HttpStatus` | el suyo | su mensaje | el texto estándar del estado, en el idioma del visitante |
+| cualquier otra excepción | 500 | su mensaje | el texto estándar del 500 |
+
+Así que un mensaje escrito para el visitante extiende `HttpException`, y un
+mensaje escrito para quien lee el log no. Un cliente JSON recibe el mismo texto
+en un campo:
+
+```json
+{"message": "The slug \"launch\" is taken."}
+```
+
+Para responder con la página de error sin lanzar nada — desde un middleware,
+por ejemplo —, pídesela a `ErrorPage`; elige HTML o JSON según la petición, como
+hace el router:
+
+```php
+use SfphpProject\src\Http\ErrorPage;
+
+return ErrorPage::response(HTTP_CONFLICT, 'That slug is taken.', $request);
+```
+
+Y una excepción que esperas se captura donde ocurre, como cualquier otra:
+
+```php
+use SfphpProject\src\Database\ModelNotFoundException;
+
+try {
+    $post = Post::findOrFail($id);
+} catch (ModelNotFoundException) {
+    return Response::redirect('/posts');
+}
 ```
 
 Todo error que responde el framework — 400, 401, 403, 404, 405, 429, 500, 503 —
@@ -5511,7 +5686,7 @@ Actualizar, entonces, es reemplazar esos archivos sabiendo cuáles son:
 ```bash
 ./sfphp upgrade --dry-run          # lo que haría, sin cambiar nada
 ./sfphp upgrade                    # la última versión publicada
-./sfphp upgrade --to=v0.48.0       # trae esa etiqueta con git
+./sfphp upgrade --to=v0.49.0       # trae esa etiqueta con git
 ./sfphp upgrade --from=../sfphp    # una copia que ya tienes
 ```
 
@@ -7027,6 +7202,7 @@ método que tiene capítulo propio no se repite aquí.
 |---|---|
 | `ManifestGenerator`: `shortName()` · `description()` · `startUrl()` · `themeColor()` · `backgroundColor()` · `orientation()` · `icon()` · `screenshot()` · `shortcut()` · `category()` | Construye `manifest.json` en código en lugar de `app/pwa/config.php`; cada uno fija el campo del manifiesto del mismo nombre |
 | `ServiceWorkerGenerator`: `appName()` · `staticAssets()` · `apiRoutes()` · `offlineFallback()` · `enablePushNotifications()` · `enableBackgroundSync()` · `generate()` · `save($path)` | Lo mismo para el service worker — consulta la [guía de PWA](./PWA_GUIDE.md) |
+| `PwaConfig::fromFile($path)` · `get($key)` · `name()` · `shortName()` · `version()` · `staticAssets()` · `icons()` · los demás ajustes | `app/pwa/config.php` leído con los valores por defecto rellenados — de lo que `make:pwa` construye todo; cada método devuelve un ajuste, y una lista sustituye su valor por defecto en lugar de sumarse a él |
 
 **Async y assets**
 
@@ -7052,7 +7228,7 @@ del interior se convierte en API.
 - `Database\Relation` — declara las relaciones en el model
 - `Debug\Dumper`, `Debug\HtmlDump`, `Debug\TextDump`, `Debug\PendingDumps` — usa `dump()` y `dd()`
 - `Dotenv`, `PrivateDirectory`, `JsMinifier`, `Cache\Ttl`, `ErrorHandler::handle*()`, `Console\Application` más allá de `run()`, el `withOptions()` de los generadores, `Testing\TestCase::runTest()`
-- `Assets::usePath()`, `PageScripts::usePath()` y los otros puntos `use*()` que existen para los tests del propio framework, y `Session::configure()`, que llama `StartSession`
+- `Assets::usePath()`, `PageScripts::usePath()` y los otros puntos `use*()` que existen para los tests del propio framework, y `Session::configure()` y `Session::isConfigured()`, que llaman `StartSession` y los helpers de CSRF, y `Csrf::startSession()`
 
 ---
 
