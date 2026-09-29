@@ -70,7 +70,7 @@ Un framework PHP full-stack, listo para producción, con **cero dependencias en 
 | **Plantillas SFHT** | Escape automático, herencia de layouts, composición de componentes |
 | **Componentes .phpx** | Marcado dentro de funciones PHP, compilado en el build |
 | **Framework SFCSS** | 3.836 clases — componentes y utilidades — a partir de una sola configuración: formularios, navegación, modales, menús desplegables, tema oscuro, contraste calculado para WCAG AA, 33KB comprimidos — se carga con `@sfcss` |
-| **Biblioteca SFJS** | Un solo archivo: peticiones con `sf.req`, validación accesible, streaming, modal, menú desplegable, tooltip, pestañas y toasts, y atributos propios con `sf.plugin` — se carga con `@sfjs`, 18KB comprimidos |
+| **Biblioteca SFJS** | Un solo archivo: peticiones con `sf.req`, validación accesible, streaming, modal, menú desplegable, tooltip, pestañas y toasts, y atributos propios con `sf.plugin` — se carga con `@sfjs`, 17KB comprimidos |
 | **Assets incorporados** | Publicados en `public/` sin ninguna configuración |
 
 ### Funcionalidades avanzadas
