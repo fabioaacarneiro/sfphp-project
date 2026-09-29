@@ -4092,14 +4092,111 @@ by CI.
 `auth.logged_out` ship in the three languages the framework carries. See
 [Internationalisation](#internationalisation).
 
+### Password reset
+
+`PasswordReset` makes and checks the token a "forgot your password" link
+carries. **Nothing is stored**: the token is the user's id and an expiry,
+signed with `JWT_KEY` over the user's **current password hash**. So it stops
+working at the expiry, and the moment the password changes — once a reset has
+happened, the link that did it is dead, and so is every link issued before it.
+No table, no clean-up job, and a database someone reads holds no working
+tokens.
+
+```php
+use SfphpProject\src\Auth\Hash;
+use SfphpProject\src\Auth\PasswordReset;
+
+// "Forgot your password?" — e-mail a link that carries the token.
+$user = User::query()->where('email', $request->input('email'))->first();
+
+if ($user !== null) {
+    $link = 'https://example.com/reset-password?token=' . PasswordReset::token($user);
+    // send $link with Mail
+}
+
+// The reset page, when the form comes back with the token and a new password.
+$user = PasswordReset::user($request->input('token'));
+
+if ($user === null) {
+    // expired, already used, or not a token: ask for a new link
+}
+
+$user->forceFill(['password' => Hash::make($request->input('password'))])->save();
+```
+
+| | |
+|---|---|
+| `PasswordReset::token($user, $lifetime = 3600)` | A URL-safe token for the user, valid for `$lifetime` seconds |
+| `PasswordReset::user($token, $provider = null)` | The user it was issued for, or `null` when it is malformed, expired, signed with another key, for a user who no longer exists, or issued before the password last changed. `$provider` defaults to `Auth::provider()` |
+
+It needs `JWT_KEY`, 32 characters or more, and refuses to run without it. The
+signature says what it is for, so a password reset token and a JWT can share
+the key and neither can pass for the other. The e-mail, the two forms, and
+refusing a visitor who asks for links too often are the application's —
+rate limit the "send me a link" route with `RateLimit`. And the page answers the
+same whether the address has an account or not; see
+[Account enumeration](#account-enumeration).
+
+A token only becomes single-use because the reset changes the password. A flow
+that let someone "confirm" without setting a new password would leave the link
+working until it expires.
+
+### Two-factor authentication
+
+`Totp` is the one-time-password half of two-factor sign-in: the six digits an
+authenticator app shows, as RFC 6238 defines them — SHA-1, six digits, thirty
+seconds, which is what every authenticator reads without asking.
+
+```php
+use SfphpProject\src\Auth\Totp;
+
+// Turning it on: a secret for the user, shown as a QR code of the URI.
+$secret = Totp::secret();
+$uri = Totp::uri($secret, $user->email, 'My App');   // otpauth://totp/My%20App:ana%40example.com?secret=...
+
+// Signing in: after the password, the six digits the app shows.
+$step = Totp::verify($user->totp_secret, $request->input('code'), $user->totp_last_step);
+
+if ($step === null) {
+    // wrong, too old, or already used
+}
+
+$user->forceFill(['totp_last_step' => $step])->save();
+
+// Recovery codes, for a lost phone: shown once, stored hashed.
+$codes = Totp::recoveryCodes();          // ['k7pq2-xm4ra', ...]
+$hashes = array_map([Hash::class, 'make'], $codes);
+```
+
+| | |
+|---|---|
+| `Totp::secret($bytes = 20)` | A new secret, base32 — the letters A to Z and the digits 2 to 7. Store it with the user, encrypted if you can: whoever has it can make the codes |
+| `Totp::uri($secret, $account, $issuer)` | The `otpauth://` URI an authenticator reads, usually from a QR code. Neither `$account` nor `$issuer` may contain `:` |
+| `Totp::verify($secret, $code, $lastStep = null, $window = 1)` | The time step the code belongs to, or `null`. Spaces and dashes in the code are ignored |
+| `Totp::code($secret, $time = null)` | The code for a moment, for a test or a tool |
+| `Totp::recoveryCodes($count = 8)` | Single-use codes like `k7pq2-xm4ra`, from an alphabet without `0`, `1`, `o`, `i` and `l` |
+
+**`verify()` returns the step, and that is what stops a code working twice.**
+A code from one step before or after now is accepted too, for a phone whose
+clock drifts — so without more, a code someone saw over a shoulder works for a
+minute and a half. Store the step `verify()` returns and pass it back as
+`$lastStep` next time: a code whose step is not later than it is refused.
+`$window = 0` accepts only the current thirty seconds.
+
+**Drawing the QR code is not here.** It needs an image library, and the URI is
+all an authenticator needs; render it with a library in the browser, and show
+the secret as text beside it for people who type it in. **Recovery codes are
+shown once** and stored hashed, as passwords are, and each is deleted when it
+is used.
+
 ### What is missing
 
 | Missing | Situation |
 |---|---|
 | The "remember me" flow | `RememberToken` issues and verifies the cookie; reading it on a request and reissuing it is the application's |
-| Password recovery | No token table, no e-mail flow |
+| Password recovery | The token is `PasswordReset`; the e-mail and the forms are the application's — see [Password reset](#password-reset) |
 | E-mail verification | The `email_verified_at` column exists; the flow does not |
-| Two-factor | Does not exist |
+| Two-factor | The codes are `Totp`; enrolling, the second sign-in step and storing the secret are the application's — see [Two-factor authentication](#two-factor-authentication) |
 | Roles and permissions | `Gate` decides; storing roles is your application's job |
 
 Rate limiting on the login form **does** exist — see [Security](#security).
@@ -4337,7 +4434,7 @@ outside the document root.
 
 | Missing | Situation |
 |---|---|
-| Password recovery, e-mail verification, 2FA | The flows belong to the application; [Mail](#mail) is the piece the framework owes it |
+| Password recovery, e-mail verification, 2FA | The flows belong to the application; the framework gives the tokens ([Password reset](#password-reset)), the codes ([Two-factor authentication](#two-factor-authentication)) and [Mail](#mail) |
 | A safe default for more than one instance | `CACHE_DRIVER` defaults to `file`, which is right for one machine and wrong for several. The framework cannot tell which you are running, so it says so rather than guessing. See [Choosing the driver](#choosing-the-driver) |
 | Storage abstraction for uploads | Files are validated and stored locally; S3 or a shared volume is the application's to arrange. See [File uploads](#file-uploads) |
 | Audit logging | Records are structured and carry a request id, but nothing writes a deliberate "who changed what" trail. See [Logging](#logging) |
@@ -5254,7 +5351,7 @@ So upgrading means replacing those files, and knowing which ones they are:
 ```bash
 ./sfphp upgrade --dry-run          # what it would do, changing nothing
 ./sfphp upgrade                    # the latest release
-./sfphp upgrade --to=v0.45.0       # fetches that tag with git
+./sfphp upgrade --to=v0.46.0       # fetches that tag with git
 ./sfphp upgrade --from=../sfphp    # a copy you already have
 ```
 
@@ -6581,7 +6678,7 @@ that is not set takes the default in the second column.
 | `DB_USER` | — | The user |
 | `DB_PASS` | — | The password |
 | `DB_CHARSET` | `utf8mb4` | The MySQL connection's character set |
-| `JWT_KEY` | — | The secret tokens are signed with, 32 characters or more; required to issue or check one |
+| `JWT_KEY` | — | The secret JWTs and password reset tokens are signed with, 32 characters or more; required to issue or check either |
 | `LOG_CHANNEL` | `stream` | `stream` (to `LOG_PATH`), `error_log`, or `null` to drop every record |
 | `LOG_PATH` | `php://stderr` | Where the `stream` channel writes |
 | `LOG_LEVEL` | `debug` in development, `info` otherwise | The least severe level written |
@@ -6843,7 +6940,7 @@ does not do, and you should know before choosing it.
 
 | Missing | Impact |
 |---|---|
-| **Password recovery and two-factor** | Login exists; these flows do not, and they are the application's to write. See [Authentication](#authentication) and [Mail](#mail) |
+| **The password recovery and two-factor screens** | The pieces exist — `PasswordReset` and `Totp` — and so does Mail; the forms, the e-mails and where the secret is stored are the application's. See [Password reset](#password-reset) and [Two-factor authentication](#two-factor-authentication) |
 | **An event bus between processes** | `Dispatcher` delivers in the same process, synchronously. Telling another service something happened is a queue job or a message broker, not this |
 | **A full ORM** | There is a [Models](#models) layer with hydration, attribute types, relations (including many-to-many) and `with()`. There is no identity map, unit of work, lazy-loading proxy, polymorphic relation or schema derived from the class — and [ORM or query builder?](#orm-or-query-builder) explains the reason for each |
 | **Relative dates** | "3 hours ago" is not provided: the phrasing is per language and belongs to the application. Localised dates and numbers are, through `Time::localised()` and `Time::number()`. See [Time and time zones](#time-and-time-zones) |

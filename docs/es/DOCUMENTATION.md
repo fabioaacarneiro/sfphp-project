@@ -4182,14 +4182,113 @@ valor por defecto de PHP lo detecta la CI.
 vienen en los tres idiomas que trae el framework. Consulta
 [Internacionalización](#internacionalización).
 
+### Restablecer la contraseña
+
+`PasswordReset` crea y comprueba el token que lleva un enlace de "olvidé mi
+contraseña". **No se guarda nada**: el token es el id del usuario y una
+caducidad, firmados con `JWT_KEY` sobre el **hash actual de la contraseña** del
+usuario. Así deja de valer al caducar, y en el momento en que cambia la
+contraseña — una vez hecho el restablecimiento, el enlace que lo hizo muere, y
+también cada enlace emitido antes. Sin tabla, sin job de limpieza, y una base de
+datos que alguien lea no guarda ningún token que funcione.
+
+```php
+use SfphpProject\src\Auth\Hash;
+use SfphpProject\src\Auth\PasswordReset;
+
+// "Olvidé mi contraseña" — envía por correo un enlace con el token.
+$user = User::query()->where('email', $request->input('email'))->first();
+
+if ($user !== null) {
+    $link = 'https://example.com/reset-password?token=' . PasswordReset::token($user);
+    // envía el $link con Mail
+}
+
+// La página de restablecimiento, cuando el formulario vuelve con el token y la contraseña nueva.
+$user = PasswordReset::user($request->input('token'));
+
+if ($user === null) {
+    // caducado, ya usado, o no es un token: pide un enlace nuevo
+}
+
+$user->forceFill(['password' => Hash::make($request->input('password'))])->save();
+```
+
+| | |
+|---|---|
+| `PasswordReset::token($user, $lifetime = 3600)` | Un token seguro para URL para el usuario, válido durante `$lifetime` segundos |
+| `PasswordReset::user($token, $provider = null)` | El usuario para el que se emitió, o `null` si está mal formado, caducado, firmado con otra clave, es de un usuario que ya no existe, o se emitió antes del último cambio de contraseña. `$provider` es por defecto `Auth::provider()` |
+
+Necesita `JWT_KEY`, de 32 caracteres o más, y se niega a funcionar sin ella. La
+firma dice para qué sirve, así que un token de restablecimiento y un JWT pueden
+compartir la clave y ninguno pasa por el otro. El correo, los dos formularios y
+rechazar a un visitante que pide demasiados enlaces son de la aplicación —
+limita la ruta de "envíame un enlace" con `RateLimit`. Y la página responde
+igual haya o no una cuenta con esa dirección; consulta
+[Enumeración de cuentas](#enumeración-de-cuentas).
+
+Un token solo es de un único uso porque el restablecimiento cambia la
+contraseña. Un flujo que dejara "confirmar" sin fijar una contraseña nueva
+dejaría el enlace funcionando hasta que caduque.
+
+### Autenticación en dos factores
+
+`Totp` es la mitad de contraseña de un solo uso del inicio de sesión en dos
+factores: los seis dígitos que muestra una app autenticadora, tal como los
+define la RFC 6238 — SHA-1, seis dígitos, treinta segundos, que es lo que toda
+autenticadora lee sin preguntar.
+
+```php
+use SfphpProject\src\Auth\Totp;
+
+// Activarlo: un secreto para el usuario, mostrado como código QR de la URI.
+$secret = Totp::secret();
+$uri = Totp::uri($secret, $user->email, 'My App');   // otpauth://totp/My%20App:ana%40example.com?secret=...
+
+// Iniciar sesión: tras la contraseña, los seis dígitos que muestra la app.
+$step = Totp::verify($user->totp_secret, $request->input('code'), $user->totp_last_step);
+
+if ($step === null) {
+    // incorrecto, demasiado viejo, o ya usado
+}
+
+$user->forceFill(['totp_last_step' => $step])->save();
+
+// Códigos de recuperación, para un móvil perdido: se muestran una vez, se guardan con hash.
+$codes = Totp::recoveryCodes();          // ['k7pq2-xm4ra', ...]
+$hashes = array_map([Hash::class, 'make'], $codes);
+```
+
+| | |
+|---|---|
+| `Totp::secret($bytes = 20)` | Un secreto nuevo, en base32 — las letras de la A a la Z y los dígitos del 2 al 7. Guárdalo con el usuario, cifrado si puedes: quien lo tenga puede generar los códigos |
+| `Totp::uri($secret, $account, $issuer)` | La URI `otpauth://` que lee una autenticadora, normalmente desde un código QR. Ni `$account` ni `$issuer` pueden contener `:` |
+| `Totp::verify($secret, $code, $lastStep = null, $window = 1)` | El paso de tiempo al que pertenece el código, o `null`. Los espacios y guiones del código se ignoran |
+| `Totp::code($secret, $time = null)` | El código de un instante, para un test o una herramienta |
+| `Totp::recoveryCodes($count = 8)` | Códigos de un solo uso como `k7pq2-xm4ra`, de un alfabeto sin `0`, `1`, `o`, `i` ni `l` |
+
+**`verify()` devuelve el paso, y eso es lo que impide que un código valga dos
+veces.** También se acepta un código de un paso antes o después del actual,
+para un móvil cuyo reloj se adelanta o se atrasa — así que, sin nada más, un
+código que alguien vio por encima del hombro vale minuto y medio. Guarda el
+paso que devuelve `verify()` y pásalo como `$lastStep` la vez siguiente: un
+código cuyo paso no sea posterior se rechaza. Con `$window = 0`, solo se
+aceptan los treinta segundos actuales.
+
+**Dibujar el código QR no está aquí.** Necesita una biblioteca de imágenes, y la
+URI es todo lo que necesita una autenticadora; genéralo con una biblioteca en el
+navegador, y muestra el secreto como texto al lado para quien lo escribe. **Los
+códigos de recuperación se muestran una vez** y se guardan con hash, como las
+contraseñas, y cada uno se borra al usarse.
+
 ### Qué falta
 
 | Ausente | Situación |
 |---|---|
 | El flujo de «recordarme» | `RememberToken` emite y verifica la cookie; leerla en una petición y reemitirla es de la aplicación |
-| Recuperación de contraseña | Sin tabla de tokens, sin flujo de correo |
+| Recuperación de contraseña | El token es `PasswordReset`; el correo y los formularios son de la aplicación — consulta [Restablecer la contraseña](#restablecer-la-contraseña) |
 | Verificación de correo | La columna `email_verified_at` existe; el flujo no |
-| Doble factor | No existe |
+| Doble factor | Los códigos son `Totp`; activarlo, el segundo paso del inicio de sesión y guardar el secreto son de la aplicación — consulta [Autenticación en dos factores](#autenticación-en-dos-factores) |
 | Roles y permisos | `Gate` decide; almacenar roles es tarea de tu aplicación |
 
 La limitación de intentos en el formulario de inicio de sesión **sí** existe —
@@ -4435,7 +4534,7 @@ guardado sigue perteneciendo fuera del document root.
 
 | Ausente | Situación |
 |---|---|
-| Recuperación de contraseña, verificación de correo, 2FA | Los flujos son de la aplicación; [Correo](#correo) es la pieza que el framework les debe |
+| Recuperación de contraseña, verificación de correo, 2FA | Los flujos son de la aplicación; el framework da los tokens ([Restablecer la contraseña](#restablecer-la-contraseña)), los códigos ([Autenticación en dos factores](#autenticación-en-dos-factores)) y el [Correo](#correo) |
 | Un valor por defecto seguro para más de una instancia | `CACHE_DRIVER` viene como `file`, que está bien para una máquina y mal para varias. El framework no puede saber cuál es tu caso, así que lo dice en vez de adivinar. Consulta [Elegir el driver](#elegir-el-driver) |
 | Abstracción de almacenamiento para subidas | Los archivos se validan y se guardan localmente; S3 o un volumen compartido es de la aplicación. Consulta [Subida de archivos](#subida-de-archivos) |
 | Registro de auditoría | Los registros son estructurados y llevan id de petición, pero nada escribe un rastro deliberado de "quién cambió qué". Consulta [Registro](#registro) |
@@ -5364,7 +5463,7 @@ Actualizar, entonces, es reemplazar esos archivos sabiendo cuáles son:
 ```bash
 ./sfphp upgrade --dry-run          # lo que haría, sin cambiar nada
 ./sfphp upgrade                    # la última versión publicada
-./sfphp upgrade --to=v0.45.0       # trae esa etiqueta con git
+./sfphp upgrade --to=v0.46.0       # trae esa etiqueta con git
 ./sfphp upgrade --from=../sfphp    # una copia que ya tienes
 ```
 
@@ -6728,7 +6827,7 @@ segunda columna.
 | `DB_USER` | — | El usuario |
 | `DB_PASS` | — | La contraseña |
 | `DB_CHARSET` | `utf8mb4` | El juego de caracteres de la conexión MySQL |
-| `JWT_KEY` | — | El secreto con el que se firman los tokens, de 32 caracteres o más; obligatorio para emitir o verificar uno |
+| `JWT_KEY` | — | El secreto con el que se firman los JWT y los tokens de restablecimiento de contraseña, de 32 caracteres o más; obligatorio para emitir o verificar cualquiera de ellos |
 | `LOG_CHANNEL` | `stream` | `stream` (a `LOG_PATH`), `error_log` o `null` para descartar cada registro |
 | `LOG_PATH` | `php://stderr` | Dónde escribe el canal `stream` |
 | `LOG_LEVEL` | `debug` in development, `info` otherwise | El nivel menos grave que se escribe |
@@ -6991,7 +7090,7 @@ hace, y que deberías conocer antes de elegirlo.
 
 | Ausente | Impacto |
 |---|---|
-| **Recuperación de contraseña y doble factor** | El inicio de sesión existe; estos flujos no, y son de la aplicación. Consulta [Autenticación](#autenticación) y [Correo](#correo) |
+| **Las pantallas de recuperación de contraseña y de doble factor** | Las piezas existen — `PasswordReset` y `Totp` — y también el Correo; los formularios, los correos y dónde se guarda el secreto son de la aplicación. Consulta [Restablecer la contraseña](#restablecer-la-contraseña) y [Autenticación en dos factores](#autenticación-en-dos-factores) |
 | **Un bus de eventos entre procesos** | `Dispatcher` entrega en el mismo proceso, de forma síncrona. Avisar a otro servicio de que algo pasó es un trabajo en cola o un broker de mensajes, no esto |
 | **Un ORM completo** | Hay una capa de [Modelos](#modelos) con hidratación, tipos de atributo, relaciones (incluido muchos a muchos) y `with()`. No hay mapa de identidad, unidad de trabajo, proxy de carga perezosa, relación polimórfica ni esquema derivado de la clase — y [¿ORM o constructor de consultas?](#orm-o-constructor-de-consultas) explica el motivo de cada uno |
 | **Fechas relativas** | "hace 3 horas" no existe: la frase es por idioma y pertenece a la aplicación. Las fechas y los números localizados sí, con `Time::localised()` y `Time::number()`. Consulta [Tiempo y zonas horarias](#tiempo-y-zonas-horarias) |
